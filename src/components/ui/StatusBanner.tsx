@@ -11,9 +11,9 @@ interface StatusBannerProps {
 }
 
 const styles = {
-  success: "bg-emerald-50 text-emerald-800 border-emerald-200",
-  error: "bg-red-50 text-red-700 border-red-200",
-  neutral: "bg-ink-50 text-ink-700 border-ink-200",
+  success: "bg-[var(--color-success-bg)] text-[var(--color-success-text)]",
+  error: "bg-[var(--color-danger-bg)] text-[var(--color-danger-text)]",
+  neutral: "bg-brand-50 text-brand-800",
 };
 
 const icons = {
@@ -28,7 +28,7 @@ export function StatusBanner({ variant = "neutral", children, onDismiss, classNa
     <div
       role="status"
       className={cn(
-        "mb-6 flex items-start gap-2.5 text-sm border rounded-lg px-3 py-2.5",
+        "mb-6 flex items-start gap-3 rounded-lg px-4 py-3 text-sm leading-6 shadow-[inset_0_0_0_1px_rgba(31,22,51,0.08)]",
         styles[variant],
         className,
       )}
@@ -37,8 +37,9 @@ export function StatusBanner({ variant = "neutral", children, onDismiss, classNa
       <span className="flex-1">{children}</span>
       {onDismiss ? (
         <button
+          type="button"
           onClick={onDismiss}
-          className="shrink-0 p-1 -mr-1 rounded-md hover:bg-black/5 focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-500/50"
+          className="icon-button -my-2 -mr-2 grid size-10 shrink-0 place-items-center rounded-lg hover:bg-black/5 focus:outline-none"
           aria-label="Dismiss message"
         >
           <X className="w-3.5 h-3.5" />

@@ -9,14 +9,14 @@ export interface AvatarProps extends React.HTMLAttributes<HTMLDivElement> {
 }
 
 const sizes = {
-  sm: "w-8 h-8 text-xs rounded-lg",
-  md: "w-9 h-9 text-sm rounded-xl",
-  lg: "w-14 h-14 text-xl rounded-2xl",
+  sm: "size-8 text-xs rounded-lg",
+  md: "size-10 text-sm rounded-xl",
+  lg: "size-14 text-xl rounded-[18px]",
 };
 
 const variants = {
-  brand: "bg-brand-700 text-white shadow-sm",
-  neutral: "bg-brand-100 text-brand-800",
+  brand: "bg-ink-950 text-white",
+  neutral: "bg-brand-50 text-brand-800",
 };
 
 export function Avatar({ initials, size = "md", variant = "neutral", className, ...props }: AvatarProps) {

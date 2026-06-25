@@ -10,11 +10,11 @@ export interface BadgeProps extends React.HTMLAttributes<HTMLSpanElement> {
 
 const variants = {
   default: "bg-ink-100 text-ink-700",
-  success: "bg-emerald-50 text-emerald-700 border border-emerald-200",
-  error: "bg-red-50 text-red-700 border border-red-200",
-  warning: "bg-amber-50 text-amber-700 border border-amber-200",
-  info: "bg-brand-50 text-brand-800 border border-brand-200",
-  brand: "bg-brand-700 text-white border border-brand-700",
+  success: "bg-[var(--color-success-bg)] text-[var(--color-success-text)]",
+  error: "bg-[var(--color-danger-bg)] text-[var(--color-danger-text)]",
+  warning: "bg-accent-300 text-ink-950",
+  info: "bg-brand-50 text-brand-800",
+  brand: "bg-ink-950 text-white",
 };
 
 export function Badge({ children, variant = "default", icon: Icon, className, ...props }: BadgeProps) {

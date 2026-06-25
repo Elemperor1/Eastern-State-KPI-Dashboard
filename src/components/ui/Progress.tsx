@@ -12,7 +12,7 @@ export function Progress({ value, max = 100, color, className, ...props }: Progr
   const pct = Math.max(0, Math.min(100, (value / max) * 100));
   return (
     <div
-      className={cn("h-2 rounded-full bg-ink-100 overflow-hidden", className)}
+      className={cn("h-1.5 overflow-hidden rounded-full bg-ink-100", className)}
       role="progressbar"
       aria-valuemin={0}
       aria-valuemax={max}
@@ -20,7 +20,7 @@ export function Progress({ value, max = 100, color, className, ...props }: Progr
       {...props}
     >
       <div
-        className="h-full rounded-full bg-emerald-500 transition-[width] duration-500"
+        className="h-full rounded-full bg-brand-500 transition-[width] duration-500"
         style={{ width: `${pct}%`, backgroundColor: color }}
       />
     </div>

@@ -9,7 +9,11 @@ export interface TableProps extends React.TableHTMLAttributes<HTMLTableElement> 
 export function Table({ children, className, minWidth, ...props }: TableProps) {
   return (
     <div className="scroll-hint">
-      <table className={cn("data-table", minWidth && `min-w-[${minWidth}]`, className)} {...props}>
+      <table
+        className={cn("data-table", className)}
+        style={minWidth ? { minWidth } : undefined}
+        {...props}
+      >
         {children}
       </table>
     </div>

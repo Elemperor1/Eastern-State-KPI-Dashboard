@@ -22,20 +22,18 @@ export function IconButton({
     <button
       type="button"
       aria-label={label}
+      title={label}
       className={cn(
-        "relative inline-flex items-center justify-center rounded-lg focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-500/50 transition-[scale,background-color,border-color] duration-150 ease-out active:scale-[0.96]",
-        // Visible size
-        size === "sm" ? "w-8 h-8" : "w-9 h-9",
-        // Minimum 40×40 px hit area per WCAG / polish skill
-        "before:absolute before:-inset-1 before:content-[''] before:rounded-lg",
-        variant === "secondary" && "bg-white border border-ink-200 text-ink-700 hover:bg-ink-50 hover:border-ink-300",
-        variant === "danger" && "bg-red-50 border border-red-200 text-red-700 hover:bg-red-100",
+        "icon-button relative inline-flex items-center justify-center rounded-lg focus:outline-none transition-[scale,background-color,color,box-shadow] duration-150 ease-out active:scale-[0.96]",
+        size === "sm" ? "size-10" : "size-11",
+        variant === "secondary" && "bg-white text-ink-700 shadow-[0_0_0_1px_rgba(31,22,51,0.13)] hover:bg-ink-50",
+        variant === "danger" && "bg-[var(--color-danger-bg)] text-[var(--color-danger-text)] shadow-[inset_0_0_0_1px_rgba(139,36,73,0.15)] hover:bg-[var(--color-danger-hover)]",
         variant === "ghost" && "text-ink-500 hover:bg-ink-100 hover:text-ink-700",
         className,
       )}
       {...props}
     >
-      <Icon className={cn("shrink-0", size === "sm" ? "w-3.5 h-3.5" : "w-4 h-4")} aria-hidden />
+      <Icon className={cn("shrink-0", size === "sm" ? "size-4" : "size-[18px]")} aria-hidden />
     </button>
   );
 }
