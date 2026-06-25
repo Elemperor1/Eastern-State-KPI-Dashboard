@@ -5,7 +5,7 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { ExportPDFButton } from "@/components/ExportPDFButton";
 import { DashboardControls, type CompareState } from "@/components/DashboardControls";
 import { CategoryOverviewCard } from "@/components/CategoryOverviewCard";
-import { ChartContainer, PageHeader } from "@/components/ui";
+import { PageHeader } from "@/components/ui";
 import { SampleDataBadge } from "@/components/SampleDataBadge";
 import { CHART_COLORS, MONTH_FULL } from "@/lib/analytics";
 import type { DashboardData } from "@/lib/dashboard-data";
@@ -39,7 +39,7 @@ export function DashboardOverviewClient({
   const monthLabel = MONTH_FULL[state.currentMonth - 1];
 
   return (
-    <div className="px-6 py-6 lg:px-8 lg:py-8 max-w-[1400px] mx-auto">
+    <div className="page-content page-content-wide page-enter">
       <div id="dashboard-print-root">
         <PageHeader
           eyebrow="KPI Intelligence Dashboard"
@@ -67,29 +67,31 @@ export function DashboardOverviewClient({
           onChange={updateState}
         />
 
-        <section aria-label="Categories" className="mb-10">
-          <ChartContainer
-            eyebrow="Category Overview"
-            title="Performance by area"
-            className="mb-0"
-            bodyClassName="-mx-5 -mb-5 lg:-mx-6 lg:-mb-6"
-          >
-            <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6 p-5 lg:p-6">
-              {data.categories.map((cat, idx) => (
-                <CategoryOverviewCard
-                  key={cat.id}
-                  category={cat}
-                  kpis={data.kpis}
-                  entries={data.entries}
-                  breakdowns={data.breakdowns}
-                  currentYear={state.currentYear}
-                  compareYear={state.compareYear}
-                  currentMonth={state.currentMonth}
-                  accent={CHART_COLORS[idx % CHART_COLORS.length]}
-                />
-              ))}
+        <section aria-label="Categories" className="mb-12">
+          <div className="mb-5 flex flex-wrap items-end justify-between gap-4">
+            <div>
+              <p className="section-eyebrow">Category Overview</p>
+              <h2 className="text-2xl font-medium tracking-[-0.02em] text-ink-900">Performance by area</h2>
             </div>
-          </ChartContainer>
+            <p className="max-w-md text-sm leading-6 text-ink-600 text-pretty">
+              Open a category for metric-level trends, values, and reporting context.
+            </p>
+          </div>
+          <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
+            {data.categories.map((cat, idx) => (
+              <CategoryOverviewCard
+                key={cat.id}
+                category={cat}
+                kpis={data.kpis}
+                entries={data.entries}
+                breakdowns={data.breakdowns}
+                currentYear={state.currentYear}
+                compareYear={state.compareYear}
+                currentMonth={state.currentMonth}
+                accent={CHART_COLORS[idx % CHART_COLORS.length]}
+              />
+            ))}
+          </div>
         </section>
       </div>
     </div>

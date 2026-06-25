@@ -63,7 +63,7 @@ export function CategoryPageClient({
   const printId = `category-${categorySlug}-print`;
 
   return (
-    <div className="px-6 py-6 lg:px-8 lg:py-8 max-w-[1400px] mx-auto">
+    <div className="page-content page-content-wide page-enter">
       <div id={printId}>
         <Breadcrumb href="/dashboard/overview" label="All categories" />
 
@@ -92,7 +92,7 @@ export function CategoryPageClient({
                 {MONTH_FULL[state.currentMonth - 1]} {state.currentYear} vs {state.compareYear}
               </h2>
             </div>
-            <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6">
+            <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
               {monthlyKpis.map((kpi, idx) => {
                 const analytics = analyticsFor(kpi);
                 return (

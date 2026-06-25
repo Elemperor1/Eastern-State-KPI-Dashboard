@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import {
   Bar,
   BarChart,
+  Cell,
   CartesianGrid,
   ResponsiveContainer,
   Tooltip,
@@ -125,7 +126,7 @@ export function MetricDetailClient({
         : "Neutral direction";
 
   return (
-    <div className="px-6 py-6 lg:px-8 lg:py-8 max-w-[1200px] mx-auto">
+    <div className="page-content page-enter">
       <div id={printId}>
         <Breadcrumb href={`/dashboard/category/${category.slug}`} label={category.name} />
 
@@ -135,7 +136,7 @@ export function MetricDetailClient({
           subtitle={
             <>
               {kpi.description}{" "}
-              <span className="text-ink-400">· {kpi.reporting_frequency} · {kpi.unit_type} · {directionLabel}</span>
+              <span className="text-ink-500">· {kpi.reporting_frequency} · {kpi.unit_type} · {directionLabel}</span>
             </>
           }
           actions={
@@ -158,14 +159,15 @@ export function MetricDetailClient({
 
         {!isBreakdown ? (
           <section className="mb-10">
-            <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-              <StatCard
+            <Card className="overflow-hidden">
+              <div className="grid grid-cols-2 divide-x divide-y divide-ink-100 lg:grid-cols-4 lg:divide-y-0">
+              <StatItem
                 label={isAnnual ? `${state.currentYear} value` : `${MONTH_FULL[state.currentMonth - 1]} ${state.currentYear}`}
                 value={formatValue(comp.currentValue, kpi.unit_type, { compact: kpi.unit_type === "currency" })}
                 unit={kpi.unit}
                 tone={favorableMonthly ? "good" : comp.delta < 0 ? "bad" : "neutral"}
               />
-              <StatCard
+              <StatItem
                 label={`YoY change vs ${state.compareYear}`}
                 value={kpi.unit_type === "percent" && comp.ptsChange !== null
                   ? `${comp.ptsChange > 0 ? "+" : ""}${comp.ptsChange.toFixed(1)} pts`
@@ -175,12 +177,12 @@ export function MetricDetailClient({
                 sub={formatDelta(comp.delta, kpi.unit_type)}
                 tone={favorableMonthly ? "good" : comp.delta < 0 ? "bad" : "neutral"}
               />
-              <StatCard
+              <StatItem
                 label={`YTD through ${MONTH_FULL[state.currentMonth - 1]}`}
                 value={formatValue(ytd.currentValue, kpi.unit_type, { compact: kpi.unit_type === "currency" })}
                 unit={kpi.unit}
               />
-              <StatCard
+              <StatItem
                 label={`YTD vs ${ytd.compareYear}`}
                 value={kpi.unit_type === "percent" && ytd.ptsChange !== null
                   ? `${ytd.ptsChange > 0 ? "+" : ""}${ytd.ptsChange.toFixed(1)} pts`
@@ -190,7 +192,8 @@ export function MetricDetailClient({
                 sub={formatDelta(ytd.delta, kpi.unit_type)}
                 tone={isFavorable(kpi.direction, ytd.delta) ? "good" : ytd.delta < 0 ? "bad" : "neutral"}
               />
-            </div>
+              </div>
+            </Card>
           </section>
         ) : null}
 
@@ -220,7 +223,14 @@ export function MetricDetailClient({
                     width={70}
                   />
                   <Tooltip formatter={(v: number) => formatValue(Number(v), kpi.unit_type)} cursor={{ fill: "var(--chart-cursor)" }} />
-                  <Bar dataKey="value" radius={[6, 6, 0, 0]} maxBarSize={64} fill="var(--chart-brand)" />
+                  <Bar dataKey="value" radius={[6, 6, 0, 0]} maxBarSize={64}>
+                    {ytdBar.map((entry, index) => (
+                      <Cell
+                        key={entry.name}
+                        fill={index === ytdBar.length - 1 ? "var(--chart-primary)" : "var(--chart-violet-mid)"}
+                      />
+                    ))}
+                  </Bar>
                 </BarChart>
               </ResponsiveContainer>
             </div>
@@ -257,8 +267,15 @@ export function MetricDetailClient({
                       tick={{ fontSize: 11, fill: "var(--chart-axis)" }}
                       width={70}
                     />
-                    <Tooltip formatter={(v: number) => formatValue(Number(v), kpi.unit_type)} cursor={{ fill: "var(--chart-cursor)" }} />
-                    <Bar dataKey="value" radius={[6, 6, 0, 0]} maxBarSize={120} fill="var(--chart-brand)" />
+                      <Tooltip formatter={(v: number) => formatValue(Number(v), kpi.unit_type)} cursor={{ fill: "var(--chart-cursor)" }} />
+                    <Bar dataKey="value" radius={[6, 6, 0, 0]} maxBarSize={120}>
+                      {ytdBar.map((entry, index) => (
+                        <Cell
+                          key={entry.name}
+                          fill={index === ytdBar.length - 1 ? "var(--chart-primary)" : "var(--chart-violet-mid)"}
+                        />
+                      ))}
+                    </Bar>
                   </BarChart>
                 </ResponsiveContainer>
               </div>
@@ -285,7 +302,7 @@ export function MetricDetailClient({
               </thead>
               <tbody>
                 {tableRows.map((r, idx) => (
-                  <tr key={idx} className="hover:bg-ink-50/50 transition-colors">
+                  <tr key={idx} className="transition-colors hover:bg-ink-50/70">
                     <td className="font-medium text-ink-900">{r.period}</td>
                     <td className="text-right tabular text-ink-900 font-medium">
                       {r.value === undefined || r.value === null ? "—" : formatValue(Number(r.value), kpi.unit_type)}
@@ -307,7 +324,7 @@ export function MetricDetailClient({
   );
 }
 
-function StatCard({
+function StatItem({
   label,
   value,
   unit,
@@ -321,15 +338,19 @@ function StatCard({
   tone?: "good" | "bad" | "neutral";
 }) {
   const toneClass =
-    tone === "good" ? "text-emerald-700" : tone === "bad" ? "text-red-700" : "text-ink-900";
+    tone === "good"
+      ? "text-[var(--color-success-text)]"
+      : tone === "bad"
+        ? "text-[var(--color-danger-text)]"
+        : "text-ink-900";
   return (
-    <Card className="p-5">
-      <p className="text-xs font-medium text-ink-500 mb-2">{label}</p>
+    <div className="min-w-0 p-5">
+      <p className="mb-2 text-[10px] font-semibold uppercase tracking-[0.08em] text-ink-500">{label}</p>
       <div className="flex items-baseline gap-1.5">
-        <span className={`text-2xl font-semibold tabular ${toneClass}`}>{value}</span>
-        {unit ? <span className="text-xs text-ink-500">{unit}</span> : null}
+        <span className={`text-[28px] font-medium leading-none tracking-[-0.02em] tabular ${toneClass}`}>{value}</span>
+        {unit ? <span className="text-sm text-ink-500">{unit}</span> : null}
       </div>
-      {sub ? <p className={`text-xs mt-1 tabular font-medium ${toneClass}`}>{sub}</p> : null}
-    </Card>
+      {sub ? <p className={`mt-2 text-sm tabular font-medium ${toneClass}`}>{sub}</p> : null}
+    </div>
   );
 }

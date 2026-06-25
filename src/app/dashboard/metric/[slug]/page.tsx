@@ -1,22 +1,29 @@
 import { redirect } from "next/navigation";
 import { getSession } from "@/lib/session";
 import { AppShell } from "@/components/AppShell";
-import { DashboardOverviewClient } from "./DashboardOverviewClient";
+import { MetricDetailClient } from "./MetricDetailClient";
 import { loadDashboardData } from "@/lib/dashboard-data";
+import { getKPIBySlug } from "@/lib/repository";
 import { defaultComparisonPair } from "@/lib/analytics";
 
 export const dynamic = "force-dynamic";
 
-export default async function DashboardOverviewPage({
+export default async function MetricDetailPage({
+  params,
   searchParams,
 }: {
+  params: Promise<{ slug: string }>;
   searchParams: Promise<Record<string, string | string[] | undefined>>;
 }) {
+  const { slug } = await params;
   const sp = await searchParams;
   const session = await getSession();
   if (!session.user) redirect("/login");
 
   const data = loadDashboardData();
+  const kpi = getKPIBySlug(slug);
+  if (!kpi) redirect("/dashboard/overview");
+
   const fallbackPair = defaultComparisonPair(data.years);
 
   function parseThroughMonth(raw: string | string[] | undefined, fallbackYear: number): number {
@@ -34,7 +41,7 @@ export default async function DashboardOverviewPage({
 
   return (
     <AppShell user={session.user}>
-      <DashboardOverviewClient data={data} initialState={initialState} />
+      <MetricDetailClient data={data} kpiSlug={slug} initialState={initialState} />
     </AppShell>
   );
 }
