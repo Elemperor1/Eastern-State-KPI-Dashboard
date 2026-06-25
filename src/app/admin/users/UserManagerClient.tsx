@@ -2,7 +2,20 @@
 
 import { useState } from "react";
 import { Plus, Trash2, RotateCcw } from "lucide-react";
-import { Badge, Button, Card, FormField, Input, Select, IconButton, PageHeader, StatusBanner, Table } from "@/components/ui";
+import {
+  Badge,
+  Button,
+  Card,
+  ConfirmDialog,
+  Dialog,
+  FormField,
+  IconButton,
+  Input,
+  PageHeader,
+  Select,
+  StatusBanner,
+  Table,
+} from "@/components/ui";
 import type { User } from "@/lib/types";
 
 export function UserManagerClient({
@@ -14,6 +27,10 @@ export function UserManagerClient({
 }) {
   const [users, setUsers] = useState(initialUsers);
   const [feedback, setFeedback] = useState<{ message: string; variant: "success" | "error" } | null>(null);
+  const [deleteTarget, setDeleteTarget] = useState<User | null>(null);
+  const [resetTarget, setResetTarget] = useState<User | null>(null);
+  const [newPassword, setNewPassword] = useState("");
+  const [resetting, setResetting] = useState(false);
 
   async function refresh() {
     const res = await fetch("/api/users");
@@ -41,23 +58,26 @@ export function UserManagerClient({
     await refresh();
   }
 
-  async function resetPassword(id: number) {
-    if (!confirm("Reset this user’s password to the default?")) return;
+  async function resetPassword(id: number, password: string) {
+    setResetting(true);
     const res = await fetch("/api/users", {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ id }),
+      body: JSON.stringify({ id, password }),
     });
     if (!res.ok) {
       setFeedback({ message: "Could not reset password.", variant: "error" });
+      setResetting(false);
       return;
     }
-    setFeedback({ message: "Password reset.", variant: "success" });
+    setFeedback({ message: "Password updated.", variant: "success" });
+    setResetTarget(null);
+    setNewPassword("");
+    setResetting(false);
     await refresh();
   }
 
   async function deleteUser(id: number, name: string) {
-    if (!confirm(`Delete user "${name}"?`)) return;
     const res = await fetch("/api/users", {
       method: "DELETE",
       headers: { "Content-Type": "application/json" },
@@ -72,7 +92,7 @@ export function UserManagerClient({
   }
 
   return (
-    <div className="px-6 py-6 lg:px-8 lg:py-8 max-w-[1000px] mx-auto">
+    <div className="page-content page-enter">
       <PageHeader
         eyebrow="Admin · Users"
         title="Team & Access"
@@ -85,7 +105,7 @@ export function UserManagerClient({
         </StatusBanner>
       ) : null}
 
-      <Card className="p-5 mb-6">
+      <Card className="mb-6 p-5 lg:p-6">
         <form
           id="create-user-form"
           onSubmit={async (e) => {
@@ -93,7 +113,7 @@ export function UserManagerClient({
             await createUser(new FormData(e.currentTarget));
           }}
         >
-          <h2 className="text-sm font-semibold text-ink-900 mb-4 flex items-center gap-2">
+          <h2 className="mb-5 flex items-center gap-2 text-xl font-semibold text-ink-900">
             <Plus className="w-4 h-4" /> Invite a team member
           </h2>
           <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
@@ -120,6 +140,10 @@ export function UserManagerClient({
       </Card>
 
       <Card className="overflow-hidden">
+        <div className="border-b border-ink-100 p-5">
+          <h2 className="text-xl font-semibold text-ink-900">Team members</h2>
+          <p className="mt-1 text-sm text-ink-500">{users.length} active accounts</p>
+        </div>
         <Table minWidth="560px">
           <thead>
             <tr>
@@ -130,9 +154,9 @@ export function UserManagerClient({
               <th className="text-right" scope="col">Actions</th>
             </tr>
           </thead>
-          <tbody className="divide-y divide-ink-100">
+          <tbody>
             {users.map((user) => (
-              <tr key={user.id} className="hover:bg-ink-50/50 transition-colors">
+              <tr key={user.id} className="transition-colors hover:bg-ink-50/70">
                 <td className="font-medium text-ink-900">
                   <span className="inline-flex items-center gap-2">
                     {user.name}
@@ -157,14 +181,17 @@ export function UserManagerClient({
                       label={`Reset password for ${user.name}`}
                       variant="secondary"
                       size="sm"
-                      onClick={() => resetPassword(user.id)}
+                      onClick={() => {
+                        setResetTarget(user);
+                        setNewPassword("");
+                      }}
                     />
                     <IconButton
                       icon={Trash2}
                       label={`Delete user ${user.name}`}
                       variant="danger"
                       size="sm"
-                      onClick={() => deleteUser(user.id, user.name)}
+                      onClick={() => setDeleteTarget(user)}
                       disabled={user.id === currentUserId}
                     />
                   </div>
@@ -174,6 +201,64 @@ export function UserManagerClient({
           </tbody>
         </Table>
       </Card>
+
+      <Dialog
+        open={Boolean(resetTarget)}
+        title={`Set a new password for ${resetTarget?.name ?? "this user"}`}
+        description="Enter a temporary password with at least eight characters. Share it through an approved secure channel."
+        onClose={() => {
+          if (resetting) return;
+          setResetTarget(null);
+          setNewPassword("");
+        }}
+        footer={
+          <>
+            <Button
+              variant="secondary"
+              onClick={() => {
+                setResetTarget(null);
+                setNewPassword("");
+              }}
+              disabled={resetting}
+            >
+              Cancel
+            </Button>
+            <Button
+              variant="primary"
+              onClick={() => resetTarget && resetPassword(resetTarget.id, newPassword)}
+              disabled={newPassword.length < 8}
+              isLoading={resetting}
+            >
+              Update password
+            </Button>
+          </>
+        }
+      >
+        <FormField htmlFor="reset-password" label="New temporary password" hint="Minimum 8 characters">
+          <Input
+            id="reset-password"
+            type="password"
+            autoFocus
+            autoComplete="new-password"
+            minLength={8}
+            value={newPassword}
+            onChange={(event) => setNewPassword(event.target.value)}
+          />
+        </FormField>
+      </Dialog>
+
+      <ConfirmDialog
+        open={Boolean(deleteTarget)}
+        title={`Delete ${deleteTarget?.name ?? "this user"}?`}
+        description="This removes the account and immediately revokes access. The action cannot be undone."
+        confirmLabel="Delete user"
+        onClose={() => setDeleteTarget(null)}
+        onConfirm={async () => {
+          const target = deleteTarget;
+          setDeleteTarget(null);
+          if (target) await deleteUser(target.id, target.name);
+        }}
+      />
     </div>
   );
 }

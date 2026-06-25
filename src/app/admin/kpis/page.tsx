@@ -12,7 +12,7 @@ export default async function KPIManagerPage() {
   if (session.user.role !== "admin") redirect("/dashboard/overview");
 
   return (
-    <AppShell active="/admin/kpis">
+    <AppShell user={session.user}>
       <KPIManagerClient kpis={listKPIs()} categories={listCategories()} />
     </AppShell>
   );

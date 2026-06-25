@@ -2,7 +2,19 @@
 
 import { useState } from "react";
 import { Plus, Trash2 } from "lucide-react";
-import { Button, Card, FormField, Input, Select, Tabs, IconButton, PageHeader, StatusBanner, Table } from "@/components/ui";
+import {
+  Button,
+  Card,
+  ConfirmDialog,
+  FormField,
+  IconButton,
+  Input,
+  PageHeader,
+  Select,
+  StatusBanner,
+  Table,
+  Tabs,
+} from "@/components/ui";
 import type { Category, KPIWithCategory, UnitType, ReportingFrequency, Direction } from "@/lib/types";
 
 type Tab = "kpis" | "categories";
@@ -22,6 +34,12 @@ export function KPIManagerClient({
   const [kpis, setKpis] = useState(initialKpis);
   const [categories, setCategories] = useState(initialCategories);
   const [feedback, setFeedback] = useState<{ message: string; variant: "success" | "error" } | null>(null);
+  const [confirmation, setConfirmation] = useState<{
+    title: string;
+    description: string;
+    confirmLabel: string;
+    action: () => void | Promise<void>;
+  } | null>(null);
 
   async function refresh() {
     const [kpiRes, catRes] = await Promise.all([
@@ -58,7 +76,6 @@ export function KPIManagerClient({
   }
 
   async function deleteKPI(id: number, name: string) {
-    if (!confirm(`Delete KPI "${name}"? This will also remove all its entries.`)) return;
     const res = await fetch("/api/kpis", {
       method: "DELETE",
       headers: { "Content-Type": "application/json" },
@@ -94,7 +111,6 @@ export function KPIManagerClient({
   }
 
   async function deleteCategory(id: number, name: string) {
-    if (!confirm(`Delete category "${name}"? This will also remove all its KPIs and entries.`)) return;
     const res = await fetch("/api/categories", {
       method: "DELETE",
       headers: { "Content-Type": "application/json" },
@@ -109,8 +125,26 @@ export function KPIManagerClient({
     await refresh();
   }
 
+  function requestDeleteKPI(id: number, name: string) {
+    setConfirmation({
+      title: `Delete “${name}”?`,
+      description: "This also removes every entry associated with this KPI. The action cannot be undone.",
+      confirmLabel: "Delete KPI",
+      action: () => deleteKPI(id, name),
+    });
+  }
+
+  function requestDeleteCategory(id: number, name: string) {
+    setConfirmation({
+      title: `Delete “${name}”?`,
+      description: "This also removes the category’s KPIs and all associated entries. The action cannot be undone.",
+      confirmLabel: "Delete category",
+      action: () => deleteCategory(id, name),
+    });
+  }
+
   return (
-    <div className="px-6 py-6 lg:px-8 lg:py-8 max-w-[1200px] mx-auto">
+    <div className="page-content page-enter">
       <PageHeader
         eyebrow="Admin · KPIs & Categories"
         title="Define what gets measured"
@@ -135,7 +169,7 @@ export function KPIManagerClient({
 
       {tab === "kpis" ? (
         <div className="space-y-6">
-          <Card className="p-5">
+          <Card className="p-5 lg:p-6">
             <form
               onSubmit={async (e) => {
                 e.preventDefault();
@@ -143,7 +177,7 @@ export function KPIManagerClient({
                 (e.currentTarget as HTMLFormElement).reset();
               }}
             >
-              <h2 className="text-sm font-semibold text-ink-900 mb-4 flex items-center gap-2">
+              <h2 className="mb-5 flex items-center gap-2 text-xl font-semibold text-ink-900">
                 <Plus className="w-4 h-4" /> Add a new KPI
               </h2>
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
@@ -196,8 +230,11 @@ export function KPIManagerClient({
             </form>
           </Card>
 
-          <Card className="p-5 overflow-hidden">
-            <h2 className="text-sm font-semibold text-ink-900 mb-4">Existing KPIs ({kpis.length})</h2>
+          <Card className="overflow-hidden">
+            <div className="border-b border-ink-100 p-5">
+              <h2 className="text-xl font-semibold text-ink-900">Existing KPIs</h2>
+              <p className="mt-1 text-sm text-ink-500">{kpis.length} measures across {categories.length} categories</p>
+            </div>
             <Table minWidth="640px">
               <thead>
                 <tr>
@@ -211,7 +248,7 @@ export function KPIManagerClient({
               </thead>
               <tbody>
                 {kpis.map((k) => (
-                  <tr key={k.id} className="hover:bg-ink-50/50 transition-colors">
+                  <tr key={k.id} className="transition-colors hover:bg-ink-50/70">
                     <td className="py-3 pr-4">
                       <span className="font-medium text-ink-900">{k.name}</span>
                       <span className="block text-xs text-ink-400">{k.slug} · {k.unit}</span>
@@ -226,7 +263,7 @@ export function KPIManagerClient({
                         label={`Delete KPI ${k.name}`}
                         variant="danger"
                         size="sm"
-                        onClick={() => deleteKPI(k.id, k.name)}
+                        onClick={() => requestDeleteKPI(k.id, k.name)}
                       />
                     </td>
                   </tr>
@@ -237,7 +274,7 @@ export function KPIManagerClient({
         </div>
       ) : (
         <div className="space-y-6">
-          <Card className="p-5">
+          <Card className="p-5 lg:p-6">
             <form
               onSubmit={async (e) => {
                 e.preventDefault();
@@ -245,7 +282,7 @@ export function KPIManagerClient({
                 (e.currentTarget as HTMLFormElement).reset();
               }}
             >
-              <h2 className="text-sm font-semibold text-ink-900 mb-4 flex items-center gap-2">
+              <h2 className="mb-5 flex items-center gap-2 text-xl font-semibold text-ink-900">
                 <Plus className="w-4 h-4" /> Add a new category
               </h2>
               <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
@@ -265,11 +302,14 @@ export function KPIManagerClient({
             </form>
           </Card>
 
-          <Card className="p-5">
-            <h2 className="text-sm font-semibold text-ink-900 mb-4">Existing categories ({categories.length})</h2>
+          <Card className="overflow-hidden">
+            <div className="border-b border-ink-100 p-5">
+              <h2 className="text-xl font-semibold text-ink-900">Existing categories</h2>
+              <p className="mt-1 text-sm text-ink-500">{categories.length} reporting areas</p>
+            </div>
             <div className="space-y-2">
               {categories.map((c) => (
-                <div key={c.id} className="flex items-start justify-between rounded-xl hover:bg-ink-50/50 transition-colors p-3">
+                <div key={c.id} className="flex items-start justify-between border-b border-ink-100 p-4 transition-colors last:border-b-0 hover:bg-ink-50/70">
                   <div className="min-w-0">
                     <span className="font-medium text-ink-900">{c.name}</span>
                     <span className="ml-2 text-xs text-ink-400">{c.slug}</span>
@@ -280,7 +320,7 @@ export function KPIManagerClient({
                     label={`Delete category ${c.name}`}
                     variant="danger"
                     size="sm"
-                    onClick={() => deleteCategory(c.id, c.name)}
+                    onClick={() => requestDeleteCategory(c.id, c.name)}
                     className="shrink-0 ml-3"
                   />
                 </div>
@@ -289,6 +329,19 @@ export function KPIManagerClient({
           </Card>
         </div>
       )}
+
+      <ConfirmDialog
+        open={Boolean(confirmation)}
+        title={confirmation?.title ?? ""}
+        description={confirmation?.description ?? ""}
+        confirmLabel={confirmation?.confirmLabel}
+        onClose={() => setConfirmation(null)}
+        onConfirm={async () => {
+          const action = confirmation?.action;
+          setConfirmation(null);
+          await action?.();
+        }}
+      />
     </div>
   );
 }

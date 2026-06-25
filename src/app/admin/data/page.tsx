@@ -2,7 +2,13 @@ import { redirect } from "next/navigation";
 import { getSession } from "@/lib/session";
 import { AppShell } from "@/components/AppShell";
 import { AdminDataClient } from "./AdminDataClient";
-import { listCategories, listEntries, listKPIs } from "@/lib/repository";
+import {
+  listBreakdowns,
+  listCategories,
+  listEntries,
+  listKPIs,
+} from "@/lib/repository";
+import { getDb } from "@/lib/db";
 
 export const dynamic = "force-dynamic";
 
@@ -11,13 +17,24 @@ export default async function AdminDataPage() {
   if (!session.user) redirect("/login");
   if (session.user.role !== "admin") redirect("/dashboard/overview");
 
+  const db = getDb();
+  const metaRow = db.prepare("SELECT value FROM meta WHERE key = 'sample_data'").get() as
+    | { value?: string }
+    | undefined;
+  const entries = listEntries();
+  const breakdowns = listBreakdowns();
+
   return (
-    <AppShell active="/admin/data">
+    <AppShell user={session.user}>
       <AdminDataClient
         kpis={listKPIs()}
         categories={listCategories()}
-        entries={listEntries()}
-        years={Array.from(new Set(listEntries().map((e) => e.year))).sort()}
+        entries={entries}
+        breakdowns={breakdowns}
+        years={Array.from(
+          new Set([...entries.map((e) => e.year), ...breakdowns.map((b) => b.year)]),
+        ).sort()}
+        sampleData={metaRow?.value === "1"}
       />
     </AppShell>
   );

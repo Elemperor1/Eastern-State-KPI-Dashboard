@@ -2,9 +2,22 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { Save, Trash2, FileSpreadsheet } from "lucide-react";
-import { Button, Card, FormField, Input, Select, EmptyState, IconButton, PageHeader, StatusBanner } from "@/components/ui";
+import {
+  Button,
+  Card,
+  ConfirmDialog,
+  EmptyState,
+  FilterToolbar,
+  FormField,
+  IconButton,
+  Input,
+  PageHeader,
+  Select,
+  StatusBanner,
+} from "@/components/ui";
 import { MONTH_FULL, MONTH_LABELS, formatValue } from "@/lib/analytics";
 import { SampleDataBadge } from "@/components/SampleDataBadge";
+import { cn } from "@/lib/utils";
 import type {
   BreakdownEntryWithMeta,
   Category,
@@ -51,6 +64,12 @@ export function AdminDataClient({
   const [drafts, setDrafts] = useState<Record<string, DraftEntry>>({});
   const [brkDrafts, setBrkDrafts] = useState<DraftBreakdown[]>([]);
   const [feedback, setFeedback] = useState<{ message: string; variant: "success" | "error" } | null>(null);
+  const [confirmation, setConfirmation] = useState<{
+    title: string;
+    description: string;
+    confirmLabel: string;
+    action: () => void | Promise<void>;
+  } | null>(null);
 
   const filteredKpis = useMemo(
     () => (categorySlug === "all" ? kpis : kpis.filter((k) => k.category_slug === categorySlug)),
@@ -159,7 +178,6 @@ export function AdminDataClient({
     if (!kpi) return;
     const draft = drafts[String(month)];
     if (!draft || draft.saved === null) return;
-    if (!confirm(`Clear ${labelFor(month)} ${year}?`)) return;
     setDrafts((prev) => ({ ...prev, [String(month)]: { ...prev[String(month)], saving: true } }));
     try {
       const res = await fetch("/api/entries", {
@@ -272,7 +290,6 @@ export function AdminDataClient({
     if (!kpi) return;
     const d = brkDrafts[idx];
     if (!d) return;
-    if (d.id !== null && !confirm(`Delete "${d.label}"?`)) return;
     if (d.id !== null) {
       const res = await fetch("/api/breakdowns", {
         method: "DELETE",
@@ -299,8 +316,32 @@ export function AdminDataClient({
     return month === 0 ? `${year}` : MONTH_FULL[month - 1];
   }
 
+  function requestClearMonth(month: number) {
+    setConfirmation({
+      title: `Clear ${labelFor(month)} ${year}?`,
+      description: "This removes the saved value and notes for this period. The action cannot be undone.",
+      confirmLabel: "Clear value",
+      action: () => clearMonth(month),
+    });
+  }
+
+  function requestDeleteBreakdown(idx: number) {
+    const row = brkDrafts[idx];
+    if (!row) return;
+    if (row.id === null) {
+      void deleteBrk(idx);
+      return;
+    }
+    setConfirmation({
+      title: `Delete “${row.label}”?`,
+      description: `This removes the breakdown row from ${year}. The action cannot be undone.`,
+      confirmLabel: "Delete row",
+      action: () => deleteBrk(idx),
+    });
+  }
+
   return (
-    <div className="px-6 py-6 lg:px-8 lg:py-8 max-w-[1200px] mx-auto">
+    <div className="page-content page-enter">
       <PageHeader
         eyebrow="Admin · Data Entry"
         title="Enter monthly, annual, and breakdown values"
@@ -314,8 +355,8 @@ export function AdminDataClient({
         </StatusBanner>
       ) : null}
 
-      <div className="flex flex-wrap items-end gap-4 mb-6 no-print">
-        <FormField htmlFor="admin-category" label="Category" className="min-w-[180px]">
+      <FilterToolbar className="mb-6">
+        <FormField htmlFor="admin-category" label="Category" className="w-full md:w-auto md:min-w-[180px]">
           <Select
             id="admin-category"
             value={categorySlug}
@@ -331,7 +372,7 @@ export function AdminDataClient({
           </Select>
         </FormField>
 
-        <FormField htmlFor="admin-kpi" label="Metric" className="min-w-[220px]">
+        <FormField htmlFor="admin-kpi" label="Metric" className="w-full md:min-w-[220px] md:flex-1">
           <Select
             id="admin-kpi"
             value={kpiSlug}
@@ -346,7 +387,7 @@ export function AdminDataClient({
           </Select>
         </FormField>
 
-        <FormField htmlFor="admin-year" label="Year" className="min-w-[120px]">
+        <FormField htmlFor="admin-year" label="Year" className="w-full md:w-auto md:min-w-[120px]">
           <Select
             id="admin-year"
             value={year}
@@ -357,7 +398,7 @@ export function AdminDataClient({
             ))}
           </Select>
         </FormField>
-      </div>
+      </FilterToolbar>
 
       {!kpi ? (
         <Card className="p-8">
@@ -368,19 +409,25 @@ export function AdminDataClient({
           />
         </Card>
       ) : kpi.unit_type === "breakdown" ? (
-        <Card className="p-5 lg:p-6">
-          <div className="flex items-center justify-between mb-4">
+        <Card className="overflow-hidden">
+          <div className="flex flex-wrap items-center justify-between gap-4 border-b border-ink-100 p-5">
             <div>
-              <h2 className="text-lg font-semibold text-ink-900">{kpi.name}</h2>
-              <p className="text-xs text-ink-500 mt-0.5">
+              <h2 className="text-xl font-semibold text-ink-900">{kpi.name}</h2>
+              <p className="mt-1 text-sm text-ink-500">
                 Breakdown · {year} · {kpi.unit}
               </p>
             </div>
-            <Button variant="secondary" size="sm" onClick={addBrkRow}>+ Add row</Button>
+            <Button variant="secondary" size="sm" onClick={addBrkRow}>Add row</Button>
           </div>
-          <div className="space-y-3">
+          <div>
             {brkDrafts.map((d, idx) => (
-              <div key={idx} className="grid grid-cols-1 md:grid-cols-[1fr_140px_1fr_auto_auto] gap-3 items-center">
+              <div
+                key={idx}
+                className={cn(
+                  "grid grid-cols-1 items-center gap-3 border-b border-ink-100 p-4 last:border-b-0 md:grid-cols-[minmax(180px,1fr)_140px_minmax(180px,1fr)_auto]",
+                  d.dirty && "bg-brand-50/50 shadow-[inset_3px_0_0_var(--color-violet)]",
+                )}
+              >
                 <Input
                   placeholder="Label (e.g. Foundation funders)"
                   value={d.label}
@@ -398,53 +445,70 @@ export function AdminDataClient({
                   value={d.notes}
                   onChange={(e) => updateBrk(idx, { notes: e.target.value })}
                 />
-                <Button
-                  variant="primary"
-                  size="sm"
-                  onClick={() => saveBrk(idx)}
-                  isLoading={d.saving}
-                  icon={Save}
-                  disabled={!d.dirty}
-                >
-                  Save
-                </Button>
-                <IconButton
-                  icon={Trash2}
-                  label={`Delete ${d.label || "row"}`}
-                  variant="danger"
-                  size="sm"
-                  onClick={() => deleteBrk(idx)}
-                />
+                <div className="flex items-center justify-end gap-2">
+                  <Button
+                    variant={d.dirty ? "primary" : "secondary"}
+                    size="sm"
+                    onClick={() => saveBrk(idx)}
+                    isLoading={d.saving}
+                    icon={Save}
+                    disabled={!d.dirty}
+                  >
+                    Save
+                  </Button>
+                  <IconButton
+                    icon={Trash2}
+                    label={`Delete ${d.label || "row"}`}
+                    variant="danger"
+                    size="sm"
+                    onClick={() => requestDeleteBreakdown(idx)}
+                  />
+                </div>
               </div>
             ))}
             {brkDrafts.length === 0 ? (
-              <p className="text-sm text-ink-500 text-center py-4">No breakdown rows yet for {year}. Click “Add row” to begin.</p>
+              <div className="p-8">
+                <EmptyState
+                  icon={FileSpreadsheet}
+                  title={`No breakdown rows for ${year}`}
+                  description="Add the first row to begin entering the composition for this metric."
+                  action={<Button variant="secondary" onClick={addBrkRow}>Add row</Button>}
+                />
+              </div>
             ) : null}
           </div>
         </Card>
       ) : kpi.reporting_frequency === "annual" ? (
-        <Card className="p-5 lg:p-6 max-w-xl">
-          <h2 className="text-lg font-semibold text-ink-900 mb-1">{kpi.name}</h2>
-          <p className="text-xs text-ink-500 mb-4">
+        <Card className="max-w-2xl p-5 lg:p-6">
+          <h2 className="text-xl font-semibold text-ink-900">{kpi.name}</h2>
+          <p className="mb-5 mt-1 text-sm text-ink-500">
             Annual metric · {year} · {kpi.unit} ({kpi.unit_type})
           </p>
           <AnnualEntryRow
             draft={drafts["0"]}
             onChange={(patch) => setField(0, patch)}
             onSave={() => saveMonth(0)}
-            onClear={() => clearMonth(0)}
+            onClear={() => requestClearMonth(0)}
             year={year}
             unit={kpi.unit}
             unitType={kpi.unit_type}
           />
         </Card>
       ) : (
-        <Card className="p-5 lg:p-6">
-          <h2 className="text-lg font-semibold text-ink-900 mb-1">{kpi.name}</h2>
-          <p className="text-xs text-ink-500 mb-4">
-            Monthly metric · {year} · {kpi.unit} ({kpi.unit_type})
-          </p>
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+        <Card className="overflow-hidden">
+          <div className="border-b border-ink-100 p-5">
+            <h2 className="text-xl font-semibold text-ink-900">{kpi.name}</h2>
+            <p className="mt-1 text-sm text-ink-500">
+              Monthly metric · {year} · {kpi.unit} ({kpi.unit_type})
+            </p>
+          </div>
+          <div className="hidden grid-cols-[minmax(56px,0.55fr)_minmax(140px,1fr)_minmax(180px,1.5fr)_auto] gap-3 border-b border-ink-100 bg-ink-50 px-4 py-2.5 text-[10px] font-semibold uppercase tracking-[0.08em] text-ink-500 md:grid">
+            <span>Period</span>
+            <span>Value</span>
+            <span>Notes</span>
+            <span className="text-right">Actions</span>
+          </div>
+          <div>
             {MONTH_LABELS.map((m, i) => {
               const month = i + 1;
               const draft = drafts[String(month)];
@@ -458,13 +522,26 @@ export function AdminDataClient({
                   unitType={kpi.unit_type}
                   onChange={(patch) => setField(month, patch)}
                   onSave={() => saveMonth(month)}
-                  onClear={() => clearMonth(month)}
+                  onClear={() => requestClearMonth(month)}
                 />
               );
             })}
           </div>
         </Card>
       )}
+
+      <ConfirmDialog
+        open={Boolean(confirmation)}
+        title={confirmation?.title ?? ""}
+        description={confirmation?.description ?? ""}
+        confirmLabel={confirmation?.confirmLabel}
+        onClose={() => setConfirmation(null)}
+        onConfirm={async () => {
+          const action = confirmation?.action;
+          setConfirmation(null);
+          await action?.();
+        }}
+      />
     </div>
   );
 }
@@ -488,44 +565,40 @@ function MonthCell({
 }) {
   return (
     <div
-      className={`
-        rounded-xl border p-4 transition-[border-color,background-color,box-shadow] duration-150
-        ${draft.dirty ? "border-brand-400 bg-brand-50/30 shadow-sm" : "border-ink-200 bg-white"}
-      `}
+      className={cn("entry-row", draft.dirty && "entry-row-dirty")}
     >
-      <div className="flex items-center justify-between mb-3">
-        <span className="text-xs font-semibold text-ink-800">{label}</span>
+      <div>
+        <span className="block text-sm font-semibold text-ink-900">{label}</span>
         {draft.saved !== null ? (
-          <span className="text-xs text-ink-400 tabular">
-            saved {formatValue(draft.saved, unitType)}
+          <span className="mt-1 block text-xs tabular text-ink-500">
+            Saved {formatValue(draft.saved, unitType)}
           </span>
         ) : null}
       </div>
-      <div className="flex items-center gap-2 mb-3">
+      <div className="flex min-w-0 items-center gap-2">
         <Input
-          className="tabular flex-1"
+          className="min-w-0 flex-1 tabular"
           inputMode="decimal"
           placeholder="0"
           value={draft.value}
           onChange={(e) => onChange({ value: e.target.value })}
         />
-        <span className="text-xs text-ink-400 w-14 truncate text-right">{unit}</span>
+        <span className="w-14 truncate text-right text-xs text-ink-500">{unit}</span>
       </div>
       <Input
-        className="text-xs mb-3"
+        className="entry-notes text-sm"
         placeholder="Notes…"
         value={draft.notes}
         onChange={(e) => onChange({ notes: e.target.value })}
       />
-      <div className="flex items-center gap-2">
+      <div className="flex items-center justify-end gap-2">
         <Button
-          variant="primary"
+          variant={draft.dirty ? "primary" : "secondary"}
           size="sm"
           onClick={onSave}
           isLoading={draft.saving}
           icon={Save}
           disabled={!draft.dirty}
-          className="flex-1"
         >
           Save
         </Button>
@@ -585,7 +658,7 @@ function AnnualEntryRow({
       />
       <div className="flex items-center gap-2">
         <Button
-          variant="primary"
+          variant={draft.dirty ? "primary" : "secondary"}
           size="sm"
           onClick={onSave}
           isLoading={draft.saving}
