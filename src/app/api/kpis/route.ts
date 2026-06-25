@@ -8,6 +8,10 @@ import {
   updateKPI,
 } from "@/lib/repository";
 
+const UnitTypeEnum = z.enum(["count", "percent", "currency", "attendance", "note", "breakdown"]);
+const FrequencyEnum = z.enum(["monthly", "annual", "flexible"]);
+const DirectionEnum = z.enum(["higher", "lower", "neutral"]);
+
 export async function GET() {
   try {
     await requireSession();
@@ -19,10 +23,13 @@ export async function GET() {
 
 const CreateSchema = z.object({
   category_id: z.number().int().positive(),
+  parent_id: z.number().int().positive().nullable().optional(),
   slug: z.string().min(1).regex(/^[a-z0-9-]+$/),
   name: z.string().min(1),
   unit: z.string().optional(),
-  format: z.enum(["number", "currency", "percent"]).optional(),
+  unit_type: UnitTypeEnum.optional(),
+  reporting_frequency: FrequencyEnum.optional(),
+  direction: DirectionEnum.optional(),
   description: z.string().nullable().optional(),
   sort_order: z.number().int().optional(),
 });
@@ -49,9 +56,12 @@ export async function POST(req: NextRequest) {
 const UpdateSchema = z.object({
   id: z.number().int().positive(),
   category_id: z.number().int().positive().optional(),
+  parent_id: z.number().int().positive().nullable().optional(),
   name: z.string().min(1).optional(),
   unit: z.string().optional(),
-  format: z.enum(["number", "currency", "percent"]).optional(),
+  unit_type: UnitTypeEnum.optional(),
+  reporting_frequency: FrequencyEnum.optional(),
+  direction: DirectionEnum.optional(),
   description: z.string().nullable().optional(),
   sort_order: z.number().int().optional(),
   is_active: z.union([z.literal(0), z.literal(1)]).optional(),
