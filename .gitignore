@@ -4,6 +4,8 @@ out/
 build/
 data/*.db
 data/*.db-journal
+data/*.db-shm
+data/*.db-wal
 .env*.local
 *.log
 .DS_Store

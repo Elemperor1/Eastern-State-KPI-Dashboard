@@ -83,3 +83,50 @@ The project is structured to deploy to Vercel. Because `node:sqlite` is part of 
 - **kpis** — name, slug, unit, format (`number`/`currency`/`percent`), category, sort order, active flag
 - **monthly_entries** — KPI × year × month = value (with notes, last-updated user/timestamp), unique per (kpi, year, month)
 - **users** — name, email, bcrypt-hashed password, role
+
+## Verification
+
+A repeatable smoke harness lives at `scripts/smoke.sh`. It boots up nothing of its own — point it at a running server.
+
+```bash
+# Build + start
+npm run build
+PORT=3200 node_modules/.bin/next start -p 3200 > /tmp/kpi.log 2>&1 &
+
+# Wait for the listener
+lsof -nP -iTCP:3200 -sTCP:LISTEN >/dev/null
+
+# Run the smoke harness (32 checks)
+PORT=3200 BASE=http://127.0.0.1:3200 npm run smoke
+```
+
+The harness verifies, against a live server:
+
+- public login renders
+- anonymous dashboard requests redirect (307) and API requests are rejected (401)
+- admin login + session round-trip
+- KPIs API returns the seven seeded KPIs
+- overview renders every seeded KPI, the new YTD rollup, and the category strip
+- all three comparison modes (`monthly`, `ytd`, `trend`) render
+- the URL `currentMonth` parameter is honored end-to-end (March and November each render the correct title)
+- admin pages render for admins
+- monthly entries round-trip via POST then DELETE
+
+Latest local run (verified via `npm run smoke`): **32 passed, 0 failed**.
+
+### Manual proof — June 2026 vs June 2025
+
+After seeding and starting the server:
+
+```bash
+# Log in as the seeded admin
+curl -sk -c cookies.txt -X POST http://localhost:3000/api/auth/login \
+  -H "Content-Type: application/json" \
+  --data \'{"email":"kerry@easternstate.org","password":"KerryAdmin!2026"}'
+
+# Inspect any KPI by category and year
+curl -sk -b cookies.txt 'http://localhost:3000/api/entries?kpi_id=9&year=2026'
+# Returns the Website Traffic monthly values for 2026
+```
+
+The seeded Website Traffic KPI for June 2026 is **97,200 sessions** versus **88,400 in June 2025** (+9.95% YoY). The dashboard's summary card surfaces that comparison directly under "Website Traffic".

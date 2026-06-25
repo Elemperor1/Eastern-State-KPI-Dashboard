@@ -221,7 +221,8 @@ function main() {
 
   ensureSeedAdmin();
   const kpis = listKPIs();
-  console.log(`\nSeed complete. ${kpis.length} KPIs ready.`);
+  const allYears = Array.from(new Set(SEEDS.flatMap((s) => Object.keys(s.monthly).map(Number)))).sort();
+  console.log(`\nSeed complete. ${kpis.length} KPIs ready across ${allYears[0]}–${allYears[allYears.length - 1]}.`);
 }
 
 main();

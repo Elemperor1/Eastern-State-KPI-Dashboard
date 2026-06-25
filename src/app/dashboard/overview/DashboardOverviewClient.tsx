@@ -16,6 +16,7 @@ import { ComparisonChart } from "@/components/ComparisonChart";
 import { TrendChart } from "@/components/TrendChart";
 import { YTDChart } from "@/components/YTDChart";
 import { CategorySummaryStrip } from "@/components/CategorySummaryStrip";
+import { HeadlineRollup } from "@/components/HeadlineRollup";
 import {
   buildKPIAnalytics,
   buildTrendPoints,
@@ -246,6 +247,18 @@ export function DashboardOverviewClient({
               />
             )}
           </div>
+        </section>
+
+
+        {/* Headline YTD rollup of every KPI */}
+        <section aria-label="Headline rollup">
+          <HeadlineRollup
+            kpis={kpis}
+            entries={entries}
+            currentYear={state.currentYear}
+            compareYear={state.compareYear}
+            currentMonth={state.currentMonth}
+          />
         </section>
 
         {/* Per-category rollup */}

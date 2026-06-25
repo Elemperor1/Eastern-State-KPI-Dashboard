@@ -22,9 +22,19 @@ export function TrendExplorerClient({
   years: number[];
 }) {
   const [categorySlug, setCategorySlug] = useState<string>("all");
-  const [kpiSlugs, setKpiSlugs] = useState<string[]>(
-    kpis.slice(0, Math.min(3, kpis.length)).map((k) => k.slug),
-  );
+  const initialKpiSlugs = (() => {
+    // Start with the first KPI from each category, capped at 3.
+    const seen = new Set<string>();
+    const picks: string[] = [];
+    for (const kpi of kpis) {
+      if (seen.has(kpi.category_slug)) continue;
+      seen.add(kpi.category_slug);
+      picks.push(kpi.slug);
+      if (picks.length >= 3) break;
+    }
+    return picks;
+  })();
+  const [kpiSlugs, setKpiSlugs] = useState<string[]>(initialKpiSlugs);
   const [selectedYears, setSelectedYears] = useState<number[]>(years.slice(-3));
 
   const visibleKPIs = useMemo(() => {
