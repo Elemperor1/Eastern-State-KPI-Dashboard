@@ -3,6 +3,7 @@ import type {
   KPIAnalytics,
   KPIWithCategory,
   MonthlyEntryWithMeta,
+  UnitType,
   YearSummary,
 } from "./types";
 
@@ -36,35 +37,75 @@ export const MONTH_FULL = [
   "December",
 ] as const;
 
-/** Format a number according to its KPI format. */
+/** Map any unit_type to one of the three numeric formats the formatter understands. */
+function numericFormat(unitType: UnitType): "number" | "currency" | "percent" {
+  if (unitType === "currency") return "currency";
+  if (unitType === "percent") return "percent";
+  return "number"; // count, attendance, note, breakdown
+}
+
+/** Format a number according to its KPI unit type. */
 export function formatValue(
   value: number | null | undefined,
-  format: "number" | "currency" | "percent" = "number",
+  unitType: UnitType | "number" | "currency" | "percent" = "number",
   options: { compact?: boolean; signed?: boolean } = {},
 ): string {
   if (value === null || value === undefined || Number.isNaN(value)) {
     return "—";
   }
+  const fmt = (typeof unitType === "string" && ["count", "percent", "currency", "attendance", "note", "breakdown"].includes(unitType))
+    ? numericFormat(unitType as UnitType)
+    : (unitType as "number" | "currency" | "percent");
   const { compact = false, signed = false } = options;
   const formatter = new Intl.NumberFormat("en-US", {
-    style: format === "currency" ? "currency" : format === "percent" ? "percent" : "decimal",
-    currency: format === "currency" ? "USD" : undefined,
+    style: fmt === "currency" ? "currency" : fmt === "percent" ? "percent" : "decimal",
+    currency: fmt === "currency" ? "USD" : undefined,
     notation: compact ? "compact" : "standard",
-    maximumFractionDigits: format === "percent" ? 1 : compact ? 1 : 0,
+    maximumFractionDigits: fmt === "percent" ? 1 : compact ? 1 : 0,
     signDisplay: signed ? "exceptZero" : "auto",
   });
-  return formatter.format(format === "percent" ? value / 100 : value);
+  return formatter.format(fmt === "percent" ? value / 100 : value);
 }
 
-export function formatDelta(value: number, format: "number" | "currency" | "percent" = "number"): string {
-  if (format === "percent") {
+export function formatDelta(
+  value: number,
+  unitType: UnitType | "number" | "currency" | "percent" = "number",
+): string {
+  const fmt = (typeof unitType === "string" && ["count", "percent", "currency", "attendance", "note", "breakdown"].includes(unitType))
+    ? numericFormat(unitType as UnitType)
+    : (unitType as "number" | "currency" | "percent");
+  if (fmt === "percent") {
     return `${value > 0 ? "+" : ""}${value.toFixed(1)} pts`;
   }
-  return formatValue(value, format, { signed: true });
+  return formatValue(value, unitType, { signed: true });
+}
+
+/**
+ * Decide whether a change is "good" given the metric's direction.
+ * Returns "up" | "down" | "flat" — purely the numeric direction.
+ */
+export function numericDirection(delta: number): "up" | "down" | "flat" {
+  return delta > 0 ? "up" : delta < 0 ? "down" : "flat";
+}
+
+/** Returns true when an upward delta is favorable for this KPI. */
+export function isFavorable(direction: string, delta: number): boolean {
+  if (delta === 0) return true;
+  if (direction === "lower") return delta < 0;
+  return delta > 0;
 }
 
 /** Color tokens for charts — keep aligned with brand palette in tailwind config. */
-export const CHART_COLORS = ["#3b4f89", "#cf841f", "#0e9f6e", "#9333ea", "#dc2626", "#0891b2"];
+export const CHART_COLORS = [
+  "var(--chart-primary)",
+  "var(--chart-violet)",
+  "var(--chart-pink)",
+  "var(--chart-violet-deep)",
+  "var(--chart-violet-mid)",
+  "var(--chart-violet-soft)",
+  "var(--chart-pink-soft)",
+  "var(--chart-ink-soft)",
+];
 
 interface BuildAnalyticsArgs {
   kpi: KPIWithCategory;
@@ -74,8 +115,13 @@ interface BuildAnalyticsArgs {
   currentMonth: number;
 }
 
+function isAnnual(kpi: KPIWithCategory): boolean {
+  return kpi.reporting_frequency === "annual";
+}
+
 export function buildKPIAnalytics(args: BuildAnalyticsArgs): KPIAnalytics {
   const { kpi, entries, currentYear, compareYear, currentMonth } = args;
+  const annual = isAnnual(kpi);
   const years = Array.from(new Set([currentYear, compareYear, ...entries.map((e) => e.year)])).sort();
 
   const yearSummaries: YearSummary[] = years.map((year) => {
@@ -83,11 +129,21 @@ export function buildKPIAnalytics(args: BuildAnalyticsArgs): KPIAnalytics {
     const monthlyValues: Record<number, number> = {};
     let ytdValue = 0;
     let fullYearValue = 0;
-    for (const entry of yearEntries) {
-      monthlyValues[entry.month] = entry.value;
-      fullYearValue += entry.value;
-      if (entry.month <= currentMonth) {
-        ytdValue += entry.value;
+    if (annual) {
+      // Annual metrics store one full-year value at month 0.
+      const annualEntry = yearEntries.find((e) => e.month === 0);
+      const v = annualEntry?.value ?? 0;
+      monthlyValues[0] = v;
+      ytdValue = v;
+      fullYearValue = v;
+    } else {
+      for (const entry of yearEntries) {
+        if (entry.month === 0) continue; // ignore stray annual rows for monthly kpis
+        monthlyValues[entry.month] = entry.value;
+        fullYearValue += entry.value;
+        if (entry.month <= currentMonth) {
+          ytdValue += entry.value;
+        }
       }
     }
     return { year, ytdValue, fullYearValue, monthlyValues };
@@ -96,15 +152,31 @@ export function buildKPIAnalytics(args: BuildAnalyticsArgs): KPIAnalytics {
   const currentSummary = yearSummaries.find((y) => y.year === currentYear);
   const compareSummary = yearSummaries.find((y) => y.year === compareYear);
 
-  const currentValue = currentSummary?.monthlyValues[currentMonth] ?? 0;
-  const compareValue = compareSummary?.monthlyValues[currentMonth] ?? 0;
+  let currentValue: number;
+  let compareValue: number;
+  if (annual) {
+    currentValue = currentSummary?.monthlyValues[0] ?? 0;
+    compareValue = compareSummary?.monthlyValues[0] ?? 0;
+  } else {
+    currentValue = currentSummary?.monthlyValues[currentMonth] ?? 0;
+    compareValue = compareSummary?.monthlyValues[currentMonth] ?? 0;
+  }
   const delta = currentValue - compareValue;
-  const pctChange = compareValue !== 0 ? (delta / compareValue) * 100 : null;
+  const pctChange = compareValue !== 0 ? (delta / Math.abs(compareValue)) * 100 : null;
+  const ptsChange = kpi.unit_type === "percent" ? delta : null;
 
-  const ytdCurrent = currentSummary?.ytdValue ?? 0;
-  const ytdCompare = compareSummary?.ytdValue ?? 0;
+  let ytdCurrent: number;
+  let ytdCompare: number;
+  if (annual) {
+    ytdCurrent = currentSummary?.ytdValue ?? 0;
+    ytdCompare = compareSummary?.ytdValue ?? 0;
+  } else {
+    ytdCurrent = currentSummary?.ytdValue ?? 0;
+    ytdCompare = compareSummary?.ytdValue ?? 0;
+  }
   const ytdDelta = ytdCurrent - ytdCompare;
-  const ytdPctChange = ytdCompare !== 0 ? (ytdDelta / ytdCompare) * 100 : null;
+  const ytdPctChange = ytdCompare !== 0 ? (ytdDelta / Math.abs(ytdCompare)) * 100 : null;
+  const ytdPtsChange = kpi.unit_type === "percent" ? ytdDelta : null;
 
   return {
     kpi,
@@ -114,23 +186,27 @@ export function buildKPIAnalytics(args: BuildAnalyticsArgs): KPIAnalytics {
       compareValue,
       delta,
       pctChange,
+      ptsChange,
       currentYear,
       compareYear,
       currentMonth,
+      isAnnual: annual,
     },
     ytdComparison: {
       currentValue: ytdCurrent,
       compareValue: ytdCompare,
       delta: ytdDelta,
       pctChange: ytdPctChange,
+      ptsChange: ytdPtsChange,
       currentYear,
       compareYear,
       throughMonth: currentMonth,
+      isAnnual: annual,
     },
   };
 }
 
-/** Build chart-friendly data points for the trend view. */
+/** Build chart-friendly data points for the trend view (monthly metrics only). */
 export function buildTrendPoints(
   entries: MonthlyEntryWithMeta[],
   years: number[],
