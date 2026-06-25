@@ -13,11 +13,13 @@ interface Props {
 
 export function ExportPDFButton({ targetId, fileName = "eastern-state-kpi.pdf" }: Props) {
   const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
   async function handleExport() {
     const target = document.getElementById(targetId);
     if (!target) return;
     setBusy(true);
+    setError(null);
     try {
       const sections = Array.from(target.querySelectorAll<HTMLElement>("section, header, footer")) as HTMLElement[];
       const blocks = sections.length ? sections : [target];
@@ -26,12 +28,14 @@ export function ExportPDFButton({ targetId, fileName = "eastern-state-kpi.pdf" }
       const pageWidth = pdf.internal.pageSize.getWidth();
       const pageHeight = pdf.internal.pageSize.getHeight();
       const margin = 24;
+      const pageBackground =
+        getComputedStyle(document.documentElement).getPropertyValue("--color-page").trim() || "white";
 
       for (let i = 0; i < blocks.length; i++) {
         const block = blocks[i];
         const canvas = await html2canvas(block, {
           scale: 2,
-          backgroundColor: "var(--color-page)",
+          backgroundColor: pageBackground,
           logging: false,
           useCORS: true,
           windowWidth: block.scrollWidth,
@@ -77,21 +81,31 @@ export function ExportPDFButton({ targetId, fileName = "eastern-state-kpi.pdf" }
       pdf.save(fileName);
     } catch (err) {
       console.error("PDF export failed", err);
-      alert("Could not export PDF. Please try again or use your browser's Print → Save as PDF.");
+      setError("Export failed. Use Print → Save as PDF.");
     } finally {
       setBusy(false);
     }
   }
 
   return (
-    <Button
-      variant="secondary"
-      onClick={handleExport}
-      isLoading={busy}
-      icon={busy ? Loader2 : Download}
-      aria-label="Export current dashboard view as PDF"
-    >
-      {busy ? "Exporting…" : "Export PDF"}
-    </Button>
+    <div className="relative">
+      <Button
+        variant="secondary"
+        onClick={handleExport}
+        isLoading={busy}
+        icon={busy ? Loader2 : Download}
+        aria-label="Export current dashboard view as PDF"
+      >
+        {busy ? "Exporting" : "Export PDF"}
+      </Button>
+      {error ? (
+        <div
+          role="alert"
+          className="absolute right-0 top-[calc(100%+8px)] z-20 w-64 rounded-lg bg-[var(--color-danger-bg)] px-3 py-2 text-xs normal-case leading-5 tracking-normal text-[var(--color-danger-text)] shadow-floating"
+        >
+          {error}
+        </div>
+      ) : null}
+    </div>
   );
 }

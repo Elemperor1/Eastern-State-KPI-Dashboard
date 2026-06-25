@@ -10,73 +10,63 @@ import {
   XAxis,
   YAxis,
 } from "recharts";
-import { CHART_COLORS, formatValue, MONTH_LABELS } from "@/lib/analytics";
-import type { ComparisonPoint } from "@/lib/types";
+import { formatValue } from "@/lib/analytics";
+import type { ComparisonPoint, UnitType } from "@/lib/types";
 
 interface Props {
   data: ComparisonPoint[];
   years: number[];
-  format?: "number" | "currency" | "percent";
+  unitType: UnitType;
   unit?: string;
 }
 
-export function TrendChart({ data, years, format = "number", unit = "" }: Props) {
+const HISTORIC_COLORS = [
+  "var(--chart-ink-soft)",
+  "var(--chart-violet-mid)",
+  "var(--chart-violet)",
+  "var(--chart-pink-soft)",
+];
+
+export function TrendChart({ data, years, unitType, unit }: Props) {
   return (
-    <div>
-      <div className="flex items-end justify-between mb-4">
-        <div>
-          <p className="text-[11px] uppercase tracking-wider text-ink-500 font-semibold">
-            Trend
-          </p>
-          <p className="text-sm text-ink-700 mt-1">
-            Monthly progression across {years.join(" and ")} {unit ? `(${unit})` : ""}
-          </p>
-        </div>
-      </div>
-      <div className="h-[360px]">
-        <ResponsiveContainer width="100%" height="100%">
-          <LineChart data={data} margin={{ top: 8, right: 16, left: 8, bottom: 8 }}>
-            <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" vertical={false} />
-            <XAxis
-              dataKey="label"
-              tickLine={false}
-              axisLine={false}
-              tick={{ fontSize: 11, fill: "#475569" }}
-            />
-            <YAxis
-              tickFormatter={(v) => formatValue(Number(v), format, { compact: true })}
-              tickLine={false}
-              axisLine={false}
-              tick={{ fontSize: 11, fill: "#475569" }}
-              width={70}
-            />
-            <Tooltip
-              formatter={(value, name) => {
-                if (value === null || value === undefined) return ["—", String(name ?? "")];
-                return [formatValue(Number(value), format), String(name ?? "")];
-              }}
-            />
-            <Legend wrapperStyle={{ fontSize: 12, color: "#475569" }} iconType="circle" />
-            {years.map((year, idx) => (
+    <div className="h-80">
+      <ResponsiveContainer width="100%" height="100%">
+        <LineChart data={data} margin={{ top: 8, right: 16, left: 0, bottom: 8 }}>
+          <CartesianGrid strokeDasharray="3 3" stroke="var(--chart-grid)" vertical={false} />
+          <XAxis dataKey="label" tickLine={false} axisLine={false} tick={{ fontSize: 11, fill: "var(--chart-axis)" }} />
+          <YAxis
+            tickFormatter={(v) => formatValue(Number(v), unitType, { compact: true })}
+            tickLine={false}
+            axisLine={false}
+            tick={{ fontSize: 11, fill: "var(--chart-axis)" }}
+            width={70}
+          />
+          <Tooltip
+            formatter={(value) => {
+              if (value === null || value === undefined) return ["—", ""];
+              return [formatValue(Number(value), unitType), unit ?? ""];
+            }}
+          />
+          <Legend wrapperStyle={{ fontSize: 12 }} iconType="circle" />
+          {years.map((year, idx) => {
+            const isRecent = idx === years.length - 1;
+            return (
               <Line
                 key={year}
                 type="monotone"
                 dataKey={String(year)}
                 name={String(year)}
-                stroke={idx === years.length - 1 ? CHART_COLORS[0] : "#94a3b8"}
-                strokeWidth={idx === years.length - 1 ? 2.5 : 2}
-                strokeDasharray={idx === years.length - 1 ? undefined : "4 4"}
-                dot={{ r: idx === years.length - 1 ? 4 : 3, strokeWidth: 0 }}
+                stroke={isRecent ? "var(--chart-lime)" : HISTORIC_COLORS[idx % HISTORIC_COLORS.length]}
+                strokeWidth={isRecent ? 3 : 1.75}
+                strokeDasharray={isRecent ? undefined : "4 4"}
+                dot={{ r: isRecent ? 4 : 3, strokeWidth: 0 }}
                 activeDot={{ r: 6 }}
                 connectNulls={false}
               />
-            ))}
-          </LineChart>
-        </ResponsiveContainer>
-      </div>
-      <p className="text-[11px] text-ink-400 mt-2 text-center">
-        Solid line: most recent year · Dashed: comparison year
-      </p>
+            );
+          })}
+        </LineChart>
+      </ResponsiveContainer>
     </div>
   );
 }

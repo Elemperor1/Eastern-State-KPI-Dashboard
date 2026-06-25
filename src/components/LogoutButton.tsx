@@ -12,8 +12,7 @@ export function LogoutButton() {
     router.refresh();
   }
   return (
-    <Button variant="ghost" fullWidth onClick={logout} className="justify-start text-ink-700">
-      <LogOut className="w-4 h-4" />
+    <Button variant="darkGhost" fullWidth onClick={logout} className="justify-start" icon={LogOut}>
       Sign out
     </Button>
   );

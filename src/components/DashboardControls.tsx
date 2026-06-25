@@ -1,7 +1,7 @@
 "use client";
 
 import { Calendar, Layers } from "lucide-react";
-import { FormField, Select } from "@/components/ui";
+import { FilterToolbar, FormField, Select } from "@/components/ui";
 import { MONTH_LABELS } from "@/lib/analytics";
 
 export interface CompareState {
@@ -24,12 +24,12 @@ export function DashboardControls({
   const otherYears = availableYears.filter((y) => y !== state.currentYear);
 
   return (
-    <div className="flex flex-wrap items-end gap-4 mb-8 no-print">
+    <FilterToolbar className="mb-8">
       <FormField
         htmlFor="currentYear"
         label={
           <>
-            <Calendar className="inline w-3 h-3 mr-1 -mt-0.5" aria-hidden />
+            <Calendar className="mr-1 inline size-3 -translate-y-px" aria-hidden />
             Current year
           </>
         }
@@ -62,7 +62,7 @@ export function DashboardControls({
           htmlFor="currentMonth"
           label={
             <>
-              <Layers className="inline w-3 h-3 mr-1 -mt-0.5" aria-hidden />
+              <Layers className="mr-1 inline size-3 -translate-y-px" aria-hidden />
               Through month
             </>
           }
@@ -78,6 +78,6 @@ export function DashboardControls({
           </Select>
         </FormField>
       ) : null}
-    </div>
+    </FilterToolbar>
   );
 }

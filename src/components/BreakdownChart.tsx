@@ -45,24 +45,29 @@ export function BreakdownChart({ kpi, breakdowns, currentYear, compareYear }: Pr
 
   return (
     <div>
-      <div className="flex flex-wrap items-end justify-between gap-4 mb-5">
+      <div className="mb-5 flex flex-wrap items-end justify-between gap-4">
         <div className="max-w-xl">
-          <p className="text-xs font-semibold uppercase tracking-wider text-ink-500 mb-1">
+          <p className="section-eyebrow">
             Breakdown
           </p>
-          <p className="text-sm text-ink-600 text-pretty">
-            {kpi.name} — {currentYear} vs {compareYear}
+          <h2 className="text-xl font-semibold text-ink-900">{kpi.name}</h2>
+          <p className="mt-1 text-sm text-ink-600 text-pretty">
+            Component comparison · {currentYear} vs {compareYear}
           </p>
         </div>
         <div className="text-right">
-          <p className="text-xs text-ink-500">Total {currentYear}</p>
-          <p className="text-xl font-semibold tabular text-ink-900">
+          <p className="text-[10px] font-semibold uppercase tracking-[0.08em] text-ink-500">Total {currentYear}</p>
+          <p className="mt-1 text-2xl font-medium tabular text-ink-900">
             {formatValue(totalCurrent, fmt)}
           </p>
           {pctChange !== null ? (
             <p
               className={`text-xs tabular font-medium ${
-                pctChange > 0 ? "text-emerald-700" : pctChange < 0 ? "text-red-700" : "text-ink-500"
+                pctChange > 0
+                  ? "text-[var(--color-success-text)]"
+                  : pctChange < 0
+                    ? "text-[var(--color-danger-text)]"
+                    : "text-ink-500"
               }`}
             >
               {pctChange > 0 ? "+" : ""}
@@ -72,24 +77,31 @@ export function BreakdownChart({ kpi, breakdowns, currentYear, compareYear }: Pr
         </div>
       </div>
 
-      <div className="h-72">
+      <div style={{ height: Math.max(280, data.length * 48) }}>
         <ResponsiveContainer width="100%" height="100%">
-          <BarChart data={data} margin={{ top: 10, right: 12, left: 0, bottom: 0 }}>
-            <CartesianGrid strokeDasharray="3 3" stroke="var(--chart-grid)" vertical={false} />
+          <BarChart data={data} layout="vertical" margin={{ top: 8, right: 16, left: 0, bottom: 8 }}>
+            <CartesianGrid strokeDasharray="3 3" stroke="var(--chart-grid)" horizontal={false} />
             <XAxis
+              type="number"
+              tick={{ fontSize: 11, fill: "var(--chart-axis)" }}
+              tickLine={false}
+              axisLine={false}
+            />
+            <YAxis
+              type="category"
               dataKey="label"
               tick={{ fontSize: 11, fill: "var(--chart-axis)" }}
-              interval={0}
-              height={48}
+              tickLine={false}
+              axisLine={false}
+              width={142}
             />
-            <YAxis tick={{ fontSize: 11, fill: "var(--chart-axis)" }} width={48} />
             <Tooltip
               formatter={(v: number) => formatValue(v, fmt)}
               cursor={{ fill: "var(--chart-cursor)" }}
             />
             <Legend wrapperStyle={{ fontSize: 12 }} />
-            <Bar dataKey={String(compareYear)} fill="var(--chart-muted)" radius={[4, 4, 0, 0]} />
-            <Bar dataKey={String(currentYear)} fill="var(--chart-brand)" radius={[4, 4, 0, 0]} />
+            <Bar dataKey={String(compareYear)} fill="var(--chart-violet-mid)" radius={[0, 4, 4, 0]} maxBarSize={16} />
+            <Bar dataKey={String(currentYear)} fill="var(--chart-primary)" radius={[0, 4, 4, 0]} maxBarSize={16} />
           </BarChart>
         </ResponsiveContainer>
       </div>
@@ -110,13 +122,17 @@ export function BreakdownChart({ kpi, breakdowns, currentYear, compareYear }: Pr
               const p = d[compareYear] as number;
               const change = c - p;
               return (
-                <tr key={d.label} className="hover:bg-ink-50/50 transition-colors">
+                <tr key={d.label} className="transition-colors hover:bg-ink-50/70">
                   <td className="font-medium text-ink-900">{d.label}</td>
                   <td className="tabular text-ink-600">{formatValue(p, fmt)}</td>
                   <td className="tabular text-ink-900 font-medium">{formatValue(c, fmt)}</td>
                   <td
                     className={`tabular font-medium ${
-                      change > 0 ? "text-emerald-700" : change < 0 ? "text-red-700" : "text-ink-500"
+                      change > 0
+                        ? "text-[var(--color-success-text)]"
+                        : change < 0
+                          ? "text-[var(--color-danger-text)]"
+                          : "text-ink-500"
                     }`}
                   >
                     {change > 0 ? "+" : ""}

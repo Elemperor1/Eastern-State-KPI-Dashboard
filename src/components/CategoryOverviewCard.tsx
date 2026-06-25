@@ -79,58 +79,65 @@ export function CategoryOverviewCard({
   const topMover = sorted.find((r) => r.favorable && r.pct !== null) ?? sorted[0];
 
   return (
-    <CardAction as="a" href={`/dashboard/category/${category.slug}`}>
-      <div className="flex items-start justify-between gap-3 mb-4">
-        <div className="flex items-center gap-3 min-w-0">
+    <CardAction as="a" href={`/dashboard/category/${category.slug}`} className="relative overflow-hidden p-5">
+      <span
+        className="absolute inset-x-0 top-0 h-[3px]"
+        style={{ backgroundColor: accent }}
+        aria-hidden
+      />
+      <div className="mb-4 flex items-start justify-between gap-3">
+        <div className="flex min-w-0 items-start gap-3">
           <span
-            className="inline-block w-1.5 h-9 rounded-full shrink-0"
+            className="mt-1 inline-block size-2 shrink-0 rounded-sm"
             style={{ backgroundColor: accent }}
             aria-hidden
           />
           <div className="min-w-0">
-            <h3 className="text-base font-semibold text-ink-900 leading-tight truncate">
+            <h3 className="truncate text-lg font-semibold leading-tight text-ink-900">
               {category.name}
             </h3>
-            <p className="text-xs text-ink-500 mt-0.5">{total} metrics</p>
+            <p className="mt-1 text-sm text-ink-500">{total} metrics</p>
           </div>
         </div>
-        <ChevronRight className="w-4 h-4 text-ink-400 group-hover:text-ink-700 transition-colors shrink-0 mt-1" aria-hidden />
+        <ChevronRight className="mt-1 size-4 shrink-0 text-ink-400 transition-colors group-hover:text-ink-900" aria-hidden />
       </div>
 
       {category.description ? (
-        <p className="text-sm text-ink-600 mb-5 line-clamp-2 text-pretty">{category.description}</p>
+        <p className="mb-5 hidden min-h-12 text-sm leading-6 text-ink-600 text-pretty sm:line-clamp-2">
+          {category.description}
+        </p>
       ) : null}
 
-      <div className="mb-5">
-        <div className="flex items-center justify-between mb-1.5">
-          <span className="text-xs font-semibold uppercase tracking-wider text-ink-500">
+      <div className="mb-4">
+        <div className="mb-2 flex items-center justify-between">
+          <span className="text-[10px] font-semibold uppercase tracking-[0.08em] text-ink-500">
             Improving YoY
           </span>
-          <span className="text-xs font-semibold tabular text-ink-800">{pctImproving}% improved</span>
+          <span className="text-sm font-semibold tabular text-ink-900">{pctImproving}%</span>
         </div>
         <Progress value={pctImproving} color={accent} />
       </div>
 
-      <div className="flex items-center gap-4 text-xs">
-        <span className="inline-flex items-center gap-1.5 text-emerald-700 font-medium">
+      <div className="flex items-center gap-4 text-sm">
+        <span className="inline-flex items-center gap-1.5 font-medium text-[var(--color-success-text)]" aria-label={`${improving} improving`}>
           <TrendingUp className="w-3.5 h-3.5" aria-hidden /> {improving}
         </span>
-        <span className="inline-flex items-center gap-1.5 text-red-700 font-medium">
+        <span className="inline-flex items-center gap-1.5 font-medium text-[var(--color-danger-text)]" aria-label={`${declining} declining`}>
           <TrendingDown className="w-3.5 h-3.5" aria-hidden /> {declining}
         </span>
-        <span className="inline-flex items-center gap-1.5 text-ink-500 font-medium">
+        <span className="inline-flex items-center gap-1.5 font-medium text-ink-500" aria-label={`${flat} unchanged`}>
           <Minus className="w-3.5 h-3.5" aria-hidden /> {flat}
         </span>
       </div>
 
       {topMover && topMover.pct !== null ? (
-        <div className="mt-5 pt-4 text-sm">
-          <span className="text-ink-500">Top mover: </span>
-          <span className="font-medium text-ink-900">{topMover.kpi.name}</span>
+        <div className="mt-5 hidden items-baseline gap-1 text-sm sm:flex">
+          <span className="shrink-0 whitespace-nowrap text-ink-500">Top mover: </span>
+          <span className="min-w-0 truncate font-medium text-ink-900">{topMover.kpi.name}</span>
           <span
             className={clsx(
-              "tabular ml-1.5 font-medium",
-              topMover.favorable ? "text-emerald-700" : "text-red-700",
+              "tabular ml-auto shrink-0 font-medium",
+              topMover.favorable ? "text-[var(--color-success-text)]" : "text-[var(--color-danger-text)]",
             )}
           >
             {topMover.kpi.unit_type === "percent"

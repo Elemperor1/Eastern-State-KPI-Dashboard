@@ -39,39 +39,35 @@ export function MetricCard({ analytics, accentColor, onSelect, selected, basis =
     direction === "flat" ? "default" : favorable ? "success" : "error";
 
   return (
-    <CardAction onClick={onSelect} selected={selected}>
-      <div className="flex items-start justify-between gap-3 mb-4">
+    <CardAction onClick={onSelect} selected={selected} className="relative overflow-hidden p-5">
+      {accentColor ? (
+        <span className="absolute inset-x-0 top-0 h-[3px]" style={{ backgroundColor: accentColor }} aria-hidden />
+      ) : null}
+      <div className="mb-5 flex items-start justify-between gap-3">
         <div className="min-w-0">
-          <p className="text-xs font-semibold uppercase tracking-wider text-ink-500 mb-1">
+          <p className="mb-1 text-[10px] font-semibold uppercase tracking-[0.08em] text-brand-700">
             {kpi.category_name}
           </p>
-          <h3 className="text-base font-semibold text-ink-900 leading-snug">{kpi.name}</h3>
+          <h3 className="text-lg font-semibold leading-snug text-ink-900">{kpi.name}</h3>
         </div>
-        {accentColor ? (
-          <span
-            className="inline-block w-1.5 h-10 rounded-full shrink-0"
-            style={{ backgroundColor: accentColor }}
-            aria-hidden
-          />
-        ) : null}
       </div>
 
-      <div className="flex items-baseline gap-2 mb-1">
-        <span className="text-3xl font-semibold tabular text-ink-900">
+      <div className="mb-1 flex items-baseline gap-2">
+        <span className="text-[30px] font-medium leading-none tracking-[-0.025em] tabular text-ink-900">
           {formatValue(comp.currentValue, kpi.unit_type, { compact: kpi.unit_type === "currency" })}
         </span>
-        <span className="text-xs text-ink-500">{kpi.unit}</span>
+        <span className="text-sm text-ink-500">{kpi.unit}</span>
       </div>
-      <p className="text-xs text-ink-500 mb-5">{periodLabel}</p>
+      <p className="mb-5 text-sm text-ink-500">{periodLabel}</p>
 
-      <div className="flex items-center justify-between pt-4">
-        <div className="flex items-center gap-2">
+      <div className="flex items-center justify-between gap-3">
+        <div className="flex min-w-0 items-center gap-2">
           <Badge variant={badgeVariant} icon={DirectionIcon} className="tabular">
             {changeText}
           </Badge>
-          <span className="text-xs text-ink-500">vs {comp.compareYear}</span>
+          <span className="truncate text-sm text-ink-500">vs {comp.compareYear}</span>
         </div>
-        <div className="text-xs text-ink-700 tabular font-medium">
+        <div className="shrink-0 text-sm font-medium tabular text-ink-700">
           {formatDelta(comp.delta, kpi.unit_type)}
         </div>
       </div>
