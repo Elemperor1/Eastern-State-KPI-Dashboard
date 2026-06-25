@@ -1,60 +1,78 @@
-# Eastern State KPI — Design System
+# Eastern State KPI — Product Design System
 
-This project uses a single shared component library in [`src/components/ui/`](/src/components/ui/). All new UI must be composed from library components and tokens; direct use of primitive classes or elements outside the library is blocked by the design-system guard.
+`DESIGN.md` is the authority for the application’s visual language. This document translates it into implementation rules for the KPI product.
 
-## Quick reference
+## Canvas model
 
-```tsx
-import { Button, Card, FormField, Input, Select, Table, Badge, Tabs } from "@/components/ui";
-```
-
-## Library inventory
-
-| Category | Components | Purpose |
-|---|---|---|
-| Primitives | `Button`, `IconButton`, `Input`, `Select` | Action and form controls |
-| Surfaces | `Card`, `CardAction`, `ChartContainer` | Containers, clickable cards, chart wrappers |
-| Feedback | `StatusBanner`, `Alert`, `EmptyState`, `Skeleton`, `Progress` | Loading, empty, success/error, progress |
-| Navigation | `Breadcrumb`, `Tabs` | Page-level navigation |
-| Data | `Badge`, `Table` | Tags, lists, tables |
-| Page | `PageHeader`, `Avatar`, `FormField` | Header blocks, avatars, labeled form fields |
-| Tokens | `globals.css` | Colors, radius, shadow, typography, chart palette |
+- Dark canvas: navigation, identity, and high-emphasis brand moments.
+- Light canvas: dashboards, charts, tables, data entry, and administration.
+- Do not blend dark and light treatments inside a single surface. Use a clean boundary between the two worlds.
 
 ## Tokens
 
-Design tokens live in `src/app/globals.css` as CSS custom properties and Tailwind `@layer components` classes:
+Tokens live in `src/app/globals.css` and are exposed through Tailwind in `tailwind.config.ts`.
 
-- `--radius-*` — corner radius
-- `--shadow-*` — elevation shadows
-- `--color-*` — semantic surface/text colors
-- `--chart-*` — chart palette (single source for all chart colors)
-- Component classes: `.btn`, `.btn-primary`, `.input`, `.surface`, `.pill`, `.chip`, `.data-table`, `.scroll-hint`, `.section-eyebrow`, `.section-title`
+- Colors: midnight violet, ink violet, white, lime, pink, violet support tones, semantic tonal derivatives.
+- Type: Rubik for all product UI; Monaco/Menlo for code-like data where needed.
+- Spacing: 4, 8, 12, 16, 24, 32, 48, 64, 96.
+- Radius: 4, 6, 8, 12, 18, full.
+- Motion: 150 ms controls, 220 ms navigation/dialogs.
+- Elevation: flat dark surfaces, restrained light-card and floating-dialog shadows.
 
-**Rule:** app code should not reference these classes directly. Use the React components that consume them.
+## Shared-library rule
 
-## No-bypass enforcement
+Application code must compose controls from `src/components/ui/`. Do not hand-roll buttons, inputs, selects, checkboxes, tables, status messages, dialogs, or reusable surfaces outside the library.
 
-```bash
-npm run design-system:guard   # scan for bypasses
-npm run design-system:test    # guard + typecheck + build
-npm run lint                  # runs the guard before next lint
+```tsx
+import {
+  Badge,
+  Button,
+  Card,
+  Checkbox,
+  ConfirmDialog,
+  EmptyState,
+  FilterToolbar,
+  FormField,
+  IconButton,
+  Input,
+  PageHeader,
+  Select,
+  StatusBanner,
+  Table,
+  Tabs,
+} from "@/components/ui";
 ```
 
-The guard (`scripts/design-system-guard.sh`) fails if any file outside `src/components/ui/` uses:
+## Component principles
 
-- `surface`, `btn-*`, `input`, `pill`, `chip-active/inactive`, `scroll-hint`, `data-table` classes
-- raw `<button>`, `<input>`, `<select>`, `<table>` elements
+- One visually dominant action per screen or workflow region.
+- Button labels use the tracked uppercase DESIGN.md treatment.
+- Inputs are 44 px high on touch layouts and never below 40 px.
+- Icon-only actions have an accessible label and a minimum 40 px hit area.
+- Cards exist only when a region must read as an independent surface.
+- Tables use whitespace and hairlines, not boxed cells.
+- Badges are squared status tokens, not generic pills.
+- Destructive actions require `ConfirmDialog`; never use browser `confirm()`.
+- Errors and success states use `StatusBanner`; never use browser `alert()`.
+- Loading states mirror the final page structure with skeletons.
 
-When the guard fails, refactor the violation into a library component or use an existing one.
+## Design-detail rules
 
-## Adding a new component
+- Use `text-wrap: balance` for headings and `text-wrap: pretty` for short body copy.
+- Use tabular numerals for KPIs, chart axes, dates, counts, and financial values.
+- Nested rounded surfaces must use concentric radii.
+- Use optical icon alignment where geometric centering looks wrong.
+- Use exact transition properties; never `transition: all`.
+- Use `scale(0.96)` for tactile press feedback.
+- Respect `prefers-reduced-motion`.
+- Keep lime scarce: no more than one signature lime focal treatment in a normal viewport.
 
-1. Place it in `src/components/ui/`.
-2. Export it from `src/components/ui/index.ts`.
-3. Prefer tokens from `globals.css` over literal values.
-4. Update this doc and the review skill if the new component changes patterns.
-5. Run `npm run design-system:test` before committing.
+## Enforcement
 
-## Migration status
+```bash
+npm run design-system:guard
+npm run design-system:test
+npm run smoke
+```
 
-All existing dashboard, admin, and login components have been migrated to the library. Domain chart components (`BreakdownChart`, `TrendChart`) remain domain-specific but consume chart tokens via CSS custom properties.
+The guard is a floor, not the definition of quality. A screen can pass the guard and still fail the system if it overuses cards, ignores canvas polarity, introduces new accent colors, or weakens hierarchy.
