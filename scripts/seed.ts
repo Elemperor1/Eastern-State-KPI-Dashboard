@@ -1,9 +1,10 @@
 /**
- * Seeds the SQLite database with realistic Eastern State Penitentiary KPI data.
+ * Seeds the SQLite database with the finalized Eastern State Penitentiary KPI set.
  * Run with:  npm run db:seed
  *
- * Idempotent: drops all KPI-related rows and re-creates them. Users are left
- * untouched (use auth.ts to seed the default admin/viewer on first request).
+ * Idempotent: drops all KPI/category/entry rows and re-creates them. Users are left
+ * untouched (use auth.ts to seed the default admin/viewer on first request). All data
+ * is realistic SAMPLE data for 2024–2026, clearly flagged via the meta key 'sample_data'.
  */
 import { getDb } from "../src/lib/db";
 import { ensureSeedAdmin } from "../src/lib/auth";
@@ -11,218 +12,599 @@ import {
   createCategory,
   createKPI,
   upsertEntry,
+  upsertBreakdown,
   listKPIs,
 } from "../src/lib/repository";
+import type { Direction, ReportingFrequency, UnitType } from "../src/lib/types";
 
-interface SeedConfig {
-  category: { slug: string; name: string; description: string; sort_order: number };
-  kpi: {
-    slug: string;
-    name: string;
-    unit: string;
-    format: "number" | "currency" | "percent";
-    description: string;
-  };
-  monthly: Record<number, Record<number, number>>; // year -> { month: value }
-  ytdAdd?: Record<number, number>; // year -> add to YTD aggregation
+const CURRENT_YEAR = 2026;
+const THROUGH_MONTH = 6; // data is complete through June 2026
+
+interface KpiSpec {
+  slug: string;
+  name: string;
+  unit: string;
+  unit_type: UnitType;
+  reporting_frequency: ReportingFrequency;
+  direction: Direction;
+  description: string;
+  sort_order: number;
 }
 
-const SEEDS: SeedConfig[] = [
+interface MonthlyKpi extends KpiSpec {
+  base2024: number[]; // 12 monthly values for 2024
+  factor2025: number;
+  factor2026: number;
+}
+
+interface AnnualKpi extends KpiSpec {
+  annual: Record<number, number>; // year -> value
+}
+
+interface BreakdownKpi extends KpiSpec {
+  labels: string[];
+  breakdown: Record<number, Record<string, number>>; // year -> { label: value }
+}
+
+interface CategorySpec {
+  slug: string;
+  name: string;
+  description: string;
+  sort_order: number;
+  monthly: MonthlyKpi[];
+  annual: AnnualKpi[];
+  breakdown?: BreakdownKpi[];
+}
+
+function grow(base: number[], factor: number): number[] {
+  return base.map((v) => Math.round(v * factor));
+}
+
+// 2026 only has data through June (months 1–6).
+function monthsFor(year: number): number[] {
+  return year === CURRENT_YEAR
+    ? [1, 2, 3, 4, 5, 6]
+    : [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12];
+}
+
+const CATEGORIES: CategorySpec[] = [
   {
-    category: {
-      slug: "engagement",
-      name: "Audience Engagement",
-      description: "How people discover, visit, and connect with the site.",
-      sort_order: 10,
-    },
-    kpi: {
-      slug: "website-traffic",
-      name: "Website Traffic",
-      unit: "sessions",
-      format: "number",
-      description: "Total website sessions per month (Google Analytics 4).",
-    },
-    monthly: {
-      2023: { 1: 41200, 2: 39800, 3: 47500, 4: 52100, 5: 60800, 6: 71400, 7: 68900, 8: 64300, 9: 58200, 10: 63500, 11: 48900, 12: 39700 },
-      2024: { 1: 43800, 2: 42200, 3: 51400, 4: 56800, 5: 66200, 6: 78900, 7: 75600, 8: 71200, 9: 64500, 10: 69800, 11: 54100, 12: 44200 },
-      2025: { 1: 47200, 2: 45600, 3: 56800, 4: 62400, 5: 73100, 6: 88400, 7: 84200, 8: 79600, 9: 71300, 10: 77200, 11: 60800, 12: 48900 },
-      2026: { 1: 52400, 2: 51300, 3: 63100, 4: 69700, 5: 81400, 6: 97200 },
-    },
+    slug: "education",
+    name: "Education",
+    description: "Educational reach, professional development, and program partners.",
+    sort_order: 10,
+    monthly: [
+      {
+        slug: "video-views", name: "Video views", unit: "views", unit_type: "count",
+        reporting_frequency: "monthly", direction: "higher", sort_order: 10,
+        description: "Total views of Eastern State educational videos across platforms.",
+        base2024: [42000, 38000, 55000, 68000, 82000, 95000, 102000, 98000, 86000, 74000, 52000, 45000],
+        factor2025: 1.12, factor2026: 1.1,
+      },
+      {
+        slug: "webpage-views", name: "Webpage views", unit: "views", unit_type: "count",
+        reporting_frequency: "monthly", direction: "higher", sort_order: 20,
+        description: "Total page views on the Eastern State website.",
+        base2024: [120000, 108000, 145000, 178000, 210000, 232000, 245000, 238000, 198000, 176000, 138000, 118000],
+        factor2025: 1.09, factor2026: 1.11,
+      },
+      {
+        slug: "lesson-downloads", name: "Lesson downloads", unit: "downloads", unit_type: "count",
+        reporting_frequency: "monthly", direction: "higher", sort_order: 30,
+        description: "Downloads of Eastern State curriculum and lesson resources.",
+        base2024: [1800, 1600, 2400, 3100, 3800, 4200, 4400, 4100, 3600, 2900, 2100, 1700],
+        factor2025: 1.15, factor2026: 1.18,
+      },
+      {
+        slug: "virtual-program-attendees", name: "Virtual program attendees", unit: "attendees", unit_type: "attendance",
+        reporting_frequency: "monthly", direction: "higher", sort_order: 40,
+        description: "Attendees of live virtual education programs.",
+        base2024: [620, 560, 840, 1100, 1380, 1520, 1600, 1480, 1240, 980, 720, 580],
+        factor2025: 1.14, factor2026: 1.16,
+      },
+      {
+        slug: "states-countries-represented", name: "States and countries represented", unit: "regions", unit_type: "count",
+        reporting_frequency: "monthly", direction: "higher", sort_order: 50,
+        description: "Distinct U.S. states and countries represented among program participants.",
+        base2024: [18, 16, 22, 28, 34, 38, 40, 37, 32, 27, 21, 17],
+        factor2025: 1.08, factor2026: 1.1,
+      },
+      {
+        slug: "teachers-in-person-pd", name: "Teachers attending in-person PDs", unit: "teachers", unit_type: "count",
+        reporting_frequency: "monthly", direction: "higher", sort_order: 60,
+        description: "Teachers attending in-person professional development sessions.",
+        base2024: [35, 30, 48, 62, 75, 82, 78, 70, 58, 44, 32, 28],
+        factor2025: 1.1, factor2026: 1.12,
+      },
+      {
+        slug: "teachers-online-pd", name: "Teachers attending online PDs", unit: "teachers", unit_type: "count",
+        reporting_frequency: "monthly", direction: "higher", sort_order: 70,
+        description: "Teachers attending online professional development sessions.",
+        base2024: [120, 110, 150, 190, 230, 250, 240, 220, 180, 150, 130, 115],
+        factor2025: 1.13, factor2026: 1.15,
+      },
+      {
+        slug: "conferences-es-presence", name: "State/national conferences with ES presence", unit: "conferences", unit_type: "count",
+        reporting_frequency: "monthly", direction: "higher", sort_order: 80,
+        description: "State and national conferences where Eastern State presented or exhibited.",
+        base2024: [2, 1, 3, 4, 5, 6, 6, 5, 4, 3, 2, 1],
+        factor2025: 1.12, factor2026: 1.1,
+      },
+      {
+        slug: "education-overall-attendance", name: "Overall attendance in education programs", unit: "attendees", unit_type: "attendance",
+        reporting_frequency: "monthly", direction: "higher", sort_order: 90,
+        description: "Total attendance across all on-site and virtual education programs.",
+        base2024: [2100, 1900, 2800, 3600, 4400, 4900, 5100, 4700, 3900, 3100, 2400, 2000],
+        factor2025: 1.1, factor2026: 1.12,
+      },
+    ],
+    annual: [
+      {
+        slug: "educational-program-partners", name: "Educational/program partners", unit: "partners", unit_type: "count",
+        reporting_frequency: "annual", direction: "higher", sort_order: 85,
+        description: "Active educational and program partner organizations.",
+        annual: { 2024: 42, 2025: 48, 2026: 53 },
+      },
+    ],
   },
+
   {
-    category: {
-      slug: "programs",
-      name: "Programs & Education",
-      description: "On-site programming and educational reach.",
-      sort_order: 20,
-    },
-    kpi: {
-      slug: "program-attendance",
-      name: "Program Attendance",
-      unit: "attendees",
-      format: "number",
-      description: "Total attendees across all public programs (talks, tours, after-hours events).",
-    },
-    monthly: {
-      2023: { 1: 380, 2: 460, 3: 720, 4: 980, 5: 1450, 6: 1980, 7: 2240, 8: 2150, 9: 1620, 10: 1380, 11: 720, 12: 480 },
-      2024: { 1: 420, 2: 510, 3: 810, 4: 1120, 5: 1640, 6: 2280, 7: 2580, 8: 2480, 9: 1870, 10: 1560, 11: 820, 12: 540 },
-      2025: { 1: 470, 2: 580, 3: 920, 4: 1280, 5: 1860, 6: 2580, 7: 2920, 8: 2810, 9: 2110, 10: 1760, 11: 920, 12: 610 },
-      2026: { 1: 530, 2: 650, 3: 1040, 4: 1440, 5: 2080, 6: 2860 },
-    },
+    slug: "adult-programs",
+    name: "Adult Programs",
+    description: "Speaker programs and digital content for adult audiences.",
+    sort_order: 20,
+    monthly: [
+      {
+        slug: "speaker-onsite", name: "Speaker program attendance onsite", unit: "attendees", unit_type: "attendance",
+        reporting_frequency: "monthly", direction: "higher", sort_order: 10,
+        description: "Attendance at on-site speaker programs.",
+        base2024: [180, 160, 240, 320, 400, 460, 480, 440, 360, 280, 210, 170],
+        factor2025: 1.08, factor2026: 1.1,
+      },
+      {
+        slug: "speaker-online", name: "Speaker program attendance online", unit: "attendees", unit_type: "attendance",
+        reporting_frequency: "monthly", direction: "higher", sort_order: 20,
+        description: "Attendance at online/virtual speaker programs.",
+        base2024: [320, 300, 420, 540, 640, 720, 760, 700, 580, 460, 360, 310],
+        factor2025: 1.15, factor2026: 1.2,
+      },
+      {
+        slug: "youtube-views", name: "YouTube views of videos", unit: "views", unit_type: "count",
+        reporting_frequency: "monthly", direction: "higher", sort_order: 30,
+        description: "Views of Eastern State videos on YouTube.",
+        base2024: [28000, 25000, 36000, 44000, 54000, 62000, 66000, 60000, 50000, 42000, 32000, 27000],
+        factor2025: 1.18, factor2026: 1.22,
+      },
+    ],
+    annual: [],
   },
+
   {
-    category: {
-      slug: "programs",
-      name: "Programs & Education",
-      description: "On-site programming and educational reach.",
-      sort_order: 21,
-    },
-    kpi: {
-      slug: "justice-101-participants",
-      name: "Justice 101 Participation",
-      unit: "students",
-      format: "number",
-      description: "Students served by Justice 101 — Eastern State's civic-education program.",
-    },
-    monthly: {
-      2023: { 1: 0, 2: 180, 3: 340, 4: 420, 5: 280, 6: 0, 7: 0, 8: 0, 9: 380, 10: 460, 11: 220, 12: 0 },
-      2024: { 1: 0, 2: 220, 3: 410, 4: 510, 5: 340, 6: 0, 7: 0, 8: 0, 9: 460, 10: 550, 11: 260, 12: 0 },
-      2025: { 1: 0, 2: 260, 3: 480, 4: 600, 5: 410, 6: 0, 7: 0, 8: 0, 9: 540, 10: 640, 11: 310, 12: 0 },
-      2026: { 1: 0, 2: 310, 3: 560, 4: 690, 5: 480, 6: 0 },
-    },
+    slug: "workforce-development",
+    name: "Workforce Development",
+    description: "Workforce training cohorts, outcomes, and community partnerships.",
+    sort_order: 30,
+    monthly: [
+      {
+        slug: "open-call-participants", name: "Participants in open call event", unit: "participants", unit_type: "count",
+        reporting_frequency: "monthly", direction: "higher", sort_order: 10,
+        description: "Participants in workforce open call events.",
+        base2024: [45, 40, 60, 78, 92, 100, 96, 84, 68, 52, 40, 38],
+        factor2025: 1.12, factor2026: 1.15,
+      },
+    ],
+    annual: [
+      {
+        slug: "percent-completing", name: "Percent of participants completing program", unit: "%", unit_type: "percent",
+        reporting_frequency: "annual", direction: "higher", sort_order: 20,
+        description: "Share of enrolled participants who complete the workforce program.",
+        annual: { 2024: 78, 2025: 82, 2026: 84 },
+      },
+      {
+        slug: "programs-offered", name: "Programs offered", unit: "programs", unit_type: "count",
+        reporting_frequency: "annual", direction: "higher", sort_order: 25,
+        description: "Number of distinct workforce programs offered in the year.",
+        annual: { 2024: 6, 2025: 7, 2026: 8 },
+      },
+      {
+        slug: "percent-job-placement-completion", name: "Percent job placement at program completion", unit: "%", unit_type: "percent",
+        reporting_frequency: "annual", direction: "higher", sort_order: 30,
+        description: "Share of graduates placed in jobs at program completion.",
+        annual: { 2024: 62, 2025: 68, 2026: 71 },
+      },
+      {
+        slug: "percent-job-placement-1yr", name: "Percent job placement 1 year post-graduation", unit: "%", unit_type: "percent",
+        reporting_frequency: "annual", direction: "higher", sort_order: 40,
+        description: "Share of graduates still employed one year after graduation.",
+        annual: { 2024: 55, 2025: 60, 2026: 63 },
+      },
+      {
+        slug: "percent-female", name: "Percent female", unit: "%", unit_type: "percent",
+        reporting_frequency: "annual", direction: "neutral", sort_order: 50,
+        description: "Share of program participants who identify as female.",
+        annual: { 2024: 34, 2025: 36, 2026: 37 },
+      },
+      {
+        slug: "percent-justice-impacted", name: "Percent justice impacted", unit: "%", unit_type: "percent",
+        reporting_frequency: "annual", direction: "neutral", sort_order: 60,
+        description: "Share of participants who are justice-impacted.",
+        annual: { 2024: 58, 2025: 60, 2026: 61 },
+      },
+      {
+        slug: "workforce-community-partners", name: "Community partners", unit: "partners", unit_type: "count",
+        reporting_frequency: "annual", direction: "higher", sort_order: 70,
+        description: "Active community partner organizations in workforce programs.",
+        annual: { 2024: 14, 2025: 17, 2026: 19 },
+      },
+      {
+        slug: "workforce-awareness", name: "Awareness of workforce programs", unit: "%", unit_type: "percent",
+        reporting_frequency: "annual", direction: "higher", sort_order: 80,
+        description: "Surveyed awareness of Eastern State workforce programs in the community.",
+        annual: { 2024: 22, 2025: 28, 2026: 31 },
+      },
+    ],
   },
+
   {
-    category: {
-      slug: "visits",
-      name: "Visitation",
-      description: "On-site visitation metrics across all tour formats.",
-      sort_order: 30,
-    },
-    kpi: {
-      slug: "tour-attendance",
-      name: "Tour Attendance",
-      unit: "visitors",
-      format: "number",
-      description: "Total visitors served via guided and self-guided tours.",
-    },
-    monthly: {
-      2023: { 1: 0, 2: 0, 3: 1820, 4: 3240, 5: 5680, 6: 7820, 7: 9120, 8: 8940, 9: 6120, 10: 4380, 11: 1620, 12: 0 },
-      2024: { 1: 0, 2: 0, 3: 2080, 4: 3720, 5: 6480, 6: 8920, 7: 10420, 8: 10180, 9: 6940, 10: 4980, 11: 1840, 12: 0 },
-      2025: { 1: 0, 2: 0, 3: 2360, 4: 4220, 5: 7340, 6: 10120, 7: 11820, 8: 11520, 9: 7860, 10: 5640, 11: 2080, 12: 0 },
-      2026: { 1: 0, 2: 0, 3: 2640, 4: 4720, 5: 8240, 6: 11320 },
-    },
+    slug: "preservation",
+    name: "Preservation",
+    description: "Site preservation, collection stewardship, and field leadership.",
+    sort_order: 40,
+    monthly: [
+      {
+        slug: "preservation-articles", name: "Articles on Eastern State preservation work", unit: "articles", unit_type: "count",
+        reporting_frequency: "monthly", direction: "higher", sort_order: 10,
+        description: "Articles and features about Eastern State preservation work.",
+        base2024: [4, 3, 6, 8, 9, 10, 11, 9, 7, 6, 5, 4],
+        factor2025: 1.14, factor2026: 1.18,
+      },
+    ],
+    annual: [
+      {
+        slug: "percent-site-triage", name: "Percent of site in triage", unit: "%", unit_type: "percent",
+        reporting_frequency: "annual", direction: "lower", sort_order: 20,
+        description: "Share of the historic site requiring triage-level stabilization. Lower is better.",
+        annual: { 2024: 38, 2025: 34, 2026: 31 },
+      },
+      {
+        slug: "preservation-conferences", name: "Conferences presented", unit: "conferences", unit_type: "count",
+        reporting_frequency: "annual", direction: "higher", sort_order: 30,
+        description: "Preservation conferences where Eastern State staff presented.",
+        annual: { 2024: 5, 2025: 7, 2026: 8 },
+      },
+      {
+        slug: "collection-items", name: "Items in collection", unit: "items", unit_type: "count",
+        reporting_frequency: "annual", direction: "higher", sort_order: 40,
+        description: "Total cataloged items in the Eastern State collection.",
+        annual: { 2024: 8400, 2025: 9100, 2026: 9600 },
+      },
+      {
+        slug: "percent-collection-online", name: "Percent of items in collection available online", unit: "%", unit_type: "percent",
+        reporting_frequency: "annual", direction: "higher", sort_order: 50,
+        description: "Share of collection items accessible through the online catalog.",
+        annual: { 2024: 42, 2025: 48, 2026: 53 },
+      },
+    ],
   },
+
   {
-    category: {
-      slug: "development",
-      name: "Development & Membership",
-      description: "Fundraising and membership health.",
-      sort_order: 40,
-    },
-    kpi: {
-      slug: "membership-growth",
-      name: "Active Memberships",
-      unit: "members",
-      format: "number",
-      description: "Active memberships at end of month (rolling total).",
-    },
-    monthly: {
-      2023: { 1: 1820, 2: 1840, 3: 1870, 4: 1920, 5: 1980, 6: 2050, 7: 2090, 8: 2110, 9: 2120, 10: 2150, 11: 2180, 12: 2220 },
-      2024: { 1: 2240, 2: 2270, 3: 2310, 4: 2380, 5: 2460, 6: 2540, 7: 2590, 8: 2620, 9: 2640, 10: 2680, 11: 2720, 12: 2780 },
-      2025: { 1: 2810, 2: 2850, 3: 2900, 4: 2980, 5: 3080, 6: 3170, 7: 3230, 8: 3270, 9: 3300, 10: 3340, 11: 3390, 12: 3450 },
-      2026: { 1: 3510, 2: 3580, 3: 3660, 4: 3750, 5: 3860, 6: 3960 },
-    },
+    slug: "museum",
+    name: "Museum",
+    description: "On-site visitation, school programming, and festival reach.",
+    sort_order: 50,
+    monthly: [
+      {
+        slug: "museum-attendance", name: "Overall museum attendance", unit: "visitors", unit_type: "attendance",
+        reporting_frequency: "monthly", direction: "higher", sort_order: 10,
+        description: "Total on-site museum visitation.",
+        base2024: [3200, 2800, 5200, 8400, 11200, 12800, 13400, 12600, 9800, 7400, 4200, 3000],
+        factor2025: 1.06, factor2026: 1.08,
+      },
+      {
+        slug: "school-groups-attendance", name: "School groups attendance", unit: "students", unit_type: "attendance",
+        reporting_frequency: "monthly", direction: "higher", sort_order: 20,
+        description: "Students visiting with school groups.",
+        base2024: [800, 650, 2400, 3800, 4800, 5200, 5400, 4900, 4200, 3100, 1200, 700],
+        factor2025: 1.05, factor2026: 1.07,
+      },
+      {
+        slug: "virtual-exhibit-participants", name: "Virtual exhibit participants", unit: "participants", unit_type: "attendance",
+        reporting_frequency: "monthly", direction: "higher", sort_order: 30,
+        description: "Participants in virtual exhibits and online tours.",
+        base2024: [1200, 1100, 1600, 2100, 2600, 2900, 3000, 2700, 2200, 1800, 1400, 1150],
+        factor2025: 1.12, factor2026: 1.15,
+      },
+      {
+        slug: "festival-attendees", name: "Festival attendees", unit: "attendees", unit_type: "attendance",
+        reporting_frequency: "monthly", direction: "higher", sort_order: 40,
+        description: "Attendance at Eastern State festivals (summer and fall).",
+        base2024: [0, 0, 0, 0, 0, 5400, 0, 0, 0, 4200, 0, 0],
+        factor2025: 1.1, factor2026: 1.12,
+      },
+      {
+        slug: "media-mentions-festival", name: "Media mentions during festival", unit: "mentions", unit_type: "count",
+        reporting_frequency: "monthly", direction: "higher", sort_order: 50,
+        description: "Media mentions generated during festival periods.",
+        base2024: [0, 0, 0, 0, 0, 48, 0, 0, 0, 36, 0, 0],
+        factor2025: 1.15, factor2026: 1.18,
+      },
+    ],
+    annual: [
+      {
+        slug: "festivals-partner-sponsors", name: "Festivals with partner sponsors", unit: "festivals", unit_type: "count",
+        reporting_frequency: "annual", direction: "higher", sort_order: 60,
+        description: "Festivals that secured at least one partner sponsor.",
+        annual: { 2024: 3, 2025: 4, 2026: 5 },
+      },
+    ],
   },
+
   {
-    category: {
-      slug: "development",
-      name: "Development & Membership",
-      description: "Fundraising and membership health.",
-      sort_order: 41,
-    },
-    kpi: {
-      slug: "donations",
-      name: "Donations Received",
-      unit: "USD",
-      format: "currency",
-      description: "Total charitable contributions received in month (cash + pledges).",
-    },
-    monthly: {
-      2023: { 1: 18400, 2: 22100, 3: 31800, 4: 41200, 5: 38600, 6: 52400, 7: 48700, 8: 39600, 9: 44800, 10: 38200, 11: 86400, 12: 142800 },
-      2024: { 1: 21200, 2: 24800, 3: 36400, 4: 47800, 5: 44200, 6: 60800, 7: 56200, 8: 45600, 9: 51400, 10: 44800, 11: 99400, 12: 162400 },
-      2025: { 1: 24600, 2: 28200, 3: 41200, 4: 54400, 5: 50600, 6: 69200, 7: 64800, 8: 52400, 9: 58400, 10: 51200, 11: 114200, 12: 188400 },
-      2026: { 1: 28200, 2: 32400, 3: 47800, 4: 62800, 5: 58400, 6: 79400 },
-    },
+    slug: "general-awareness",
+    name: "General Awareness",
+    description: "Public presence, media coverage, and speaking engagements.",
+    sort_order: 60,
+    monthly: [
+      {
+        slug: "public-events-speaker", name: "Public events team participated in as speaker", unit: "events", unit_type: "count",
+        reporting_frequency: "monthly", direction: "higher", sort_order: 10,
+        description: "Public events where Eastern State staff spoke or presented.",
+        base2024: [6, 5, 8, 10, 12, 13, 12, 11, 10, 9, 7, 6],
+        factor2025: 1.1, factor2026: 1.12,
+      },
+      {
+        slug: "broadcast-interviews", name: "Broadcast/streaming/radio/podcast interviews", unit: "interviews", unit_type: "count",
+        reporting_frequency: "monthly", direction: "higher", sort_order: 20,
+        description: "Broadcast, streaming, radio, and podcast interviews featuring Eastern State.",
+        base2024: [9, 8, 11, 13, 15, 16, 15, 14, 12, 11, 9, 8],
+        factor2025: 1.12, factor2026: 1.14,
+      },
+      {
+        slug: "print-online-mentions", name: "Print/online mentions of Eastern State", unit: "mentions", unit_type: "count",
+        reporting_frequency: "monthly", direction: "higher", sort_order: 30,
+        description: "Print and online media mentions of Eastern State.",
+        base2024: [22, 20, 28, 34, 40, 44, 42, 38, 32, 28, 24, 21],
+        factor2025: 1.1, factor2026: 1.12,
+      },
+      {
+        slug: "overall-media-hits", name: "Overall media hits", unit: "hits", unit_type: "count",
+        reporting_frequency: "monthly", direction: "higher", sort_order: 40,
+        description: "Total media hits across all channels.",
+        base2024: [38, 34, 46, 56, 66, 72, 68, 62, 52, 46, 40, 36],
+        factor2025: 1.11, factor2026: 1.13,
+      },
+    ],
+    annual: [],
   },
+
   {
-    category: {
-      slug: "engagement",
-      name: "Audience Engagement",
-      description: "How people discover, visit, and connect with the site.",
-      sort_order: 11,
-    },
-    kpi: {
-      slug: "social-media-engagement",
-      name: "Social Media Engagement",
-      unit: "interactions",
-      format: "number",
-      description: "Total reactions, comments, shares, and saves across all social platforms.",
-    },
-    monthly: {
-      2023: { 1: 8400, 2: 9100, 3: 12400, 4: 14600, 5: 18200, 6: 21800, 7: 22400, 8: 21200, 9: 18800, 10: 17400, 11: 12800, 12: 9800 },
-      2024: { 1: 10200, 2: 11100, 3: 15200, 4: 17800, 5: 22400, 6: 26800, 7: 27600, 8: 26200, 9: 23200, 10: 21400, 11: 15800, 12: 12100 },
-      2025: { 1: 12400, 2: 13400, 3: 18400, 4: 21800, 5: 27400, 6: 32800, 7: 33800, 8: 32200, 9: 28400, 10: 26200, 11: 19400, 12: 14800 },
-      2026: { 1: 14600, 2: 15800, 3: 21800, 4: 25800, 5: 32400, 6: 38400 },
-    },
+    slug: "fundraising",
+    name: "Fundraising",
+    description: "Donor cultivation, board engagement, and funder breakdowns.",
+    sort_order: 70,
+    monthly: [],
+    annual: [
+      {
+        slug: "percent-cultivated-donors", name: "Percent of people/orgs referred to development cultivated as donors", unit: "%", unit_type: "percent",
+        reporting_frequency: "annual", direction: "higher", sort_order: 10,
+        description: "Share of referrals to development that are cultivated into donors.",
+        annual: { 2024: 41, 2025: 46, 2026: 49 },
+      },
+      {
+        slug: "individual-donors", name: "Number of overall individual donors", unit: "donors", unit_type: "count",
+        reporting_frequency: "annual", direction: "higher", sort_order: 20,
+        description: "Total individual donors in the year.",
+        annual: { 2024: 1820, 2025: 2140, 2026: 2380 },
+      },
+      {
+        slug: "percent-revenue-development", name: "Percent of overall revenue from development", unit: "%", unit_type: "percent",
+        reporting_frequency: "annual", direction: "higher", sort_order: 30,
+        description: "Share of total organizational revenue from development.",
+        annual: { 2024: 54, 2025: 58, 2026: 61 },
+      },
+      {
+        slug: "percent-board-engagement", name: "Percent of board engagement", unit: "%", unit_type: "percent",
+        reporting_frequency: "annual", direction: "higher", sort_order: 60,
+        description: "Share of board members actively engaged.",
+        annual: { 2024: 72, 2025: 78, 2026: 81 },
+      },
+      {
+        slug: "percent-board-giving", name: "Percent of board giving", unit: "%", unit_type: "percent",
+        reporting_frequency: "annual", direction: "higher", sort_order: 70,
+        description: "Share of board members who made a financial contribution.",
+        annual: { 2024: 88, 2025: 92, 2026: 94 },
+      },
+      {
+        slug: "corporate-sponsorships", name: "Number of corporate sponsorships", unit: "sponsorships", unit_type: "count",
+        reporting_frequency: "annual", direction: "higher", sort_order: 80,
+        description: "Corporate sponsorships secured in the year.",
+        annual: { 2024: 18, 2025: 22, 2026: 25 },
+      },
+      {
+        slug: "percent-donors-retained", name: "Percent of donors retained from prior year, all categories", unit: "%", unit_type: "percent",
+        reporting_frequency: "annual", direction: "higher", sort_order: 90,
+        description: "Donor retention rate across all donor categories.",
+        annual: { 2024: 68, 2025: 72, 2026: 75 },
+      },
+      {
+        slug: "percent-members-to-donors", name: "Percent of members converted to donors", unit: "%", unit_type: "percent",
+        reporting_frequency: "annual", direction: "higher", sort_order: 100,
+        description: "Share of members who became donors.",
+        annual: { 2024: 14, 2025: 17, 2026: 19 },
+      },
+      {
+        slug: "percent-donors-to-members", name: "Percent of donors converted to members", unit: "%", unit_type: "percent",
+        reporting_frequency: "annual", direction: "higher", sort_order: 110,
+        description: "Share of donors who became members.",
+        annual: { 2024: 11, 2025: 13, 2026: 15 },
+      },
+    ],
+    breakdown: [
+      {
+        slug: "funders-by-breakdown", name: "Number of funders by breakdown", unit: "funders", unit_type: "breakdown",
+        reporting_frequency: "annual", direction: "higher", sort_order: 40,
+        description: "Total funders broken down by funder type.",
+        labels: ["Foundation funders", "Government funders", "Corporate sponsors", "Individual/other funders"],
+        breakdown: {
+          2024: { "Foundation funders": 38, "Government funders": 12, "Corporate sponsors": 24, "Individual/other funders": 31 },
+          2025: { "Foundation funders": 44, "Government funders": 14, "Corporate sponsors": 28, "Individual/other funders": 36 },
+          2026: { "Foundation funders": 49, "Government funders": 15, "Corporate sponsors": 31, "Individual/other funders": 40 },
+        },
+      },
+      {
+        slug: "donor-categories", name: "First-time, returning, and lapsed donors", unit: "donors", unit_type: "breakdown",
+        reporting_frequency: "annual", direction: "neutral", sort_order: 120,
+        description: "Donor counts split into first-time, returning, and lapsed categories.",
+        labels: ["First-time donors", "Returning donors", "Lapsed donors"],
+        breakdown: {
+          2024: { "First-time donors": 620, "Returning donors": 980, "Lapsed donors": 380 },
+          2025: { "First-time donors": 740, "Returning donors": 1180, "Lapsed donors": 410 },
+          2026: { "First-time donors": 820, "Returning donors": 1340, "Lapsed donors": 440 },
+        },
+      },
+    ],
+  },
+
+  {
+    slug: "economic-impact",
+    name: "Economic Impact",
+    description: "Budget, economic footprint, and employment.",
+    sort_order: 80,
+    monthly: [],
+    annual: [
+      {
+        slug: "total-annual-budget", name: "Total annual budget", unit: "USD", unit_type: "currency",
+        reporting_frequency: "annual", direction: "neutral", sort_order: 10,
+        description: "Total organizational annual operating budget.",
+        annual: { 2024: 8400000, 2025: 9100000, 2026: 9800000 },
+      },
+      {
+        slug: "economic-impact", name: "Economic impact", unit: "USD", unit_type: "currency",
+        reporting_frequency: "annual", direction: "higher", sort_order: 20,
+        description: "Estimated total economic impact of Eastern State on the region.",
+        annual: { 2024: 14200000, 2025: 15800000, 2026: 17400000 },
+      },
+      {
+        slug: "jobs-held-es", name: "Jobs held at ES", unit: "jobs", unit_type: "count",
+        reporting_frequency: "annual", direction: "higher", sort_order: 30,
+        description: "Direct jobs held at Eastern State.",
+        annual: { 2024: 62, 2025: 66, 2026: 71 },
+      },
+      {
+        slug: "indirect-jobs-vendors", name: "Indirect jobs held at ES via vendors", unit: "jobs", unit_type: "count",
+        reporting_frequency: "annual", direction: "higher", sort_order: 40,
+        description: "Indirect jobs supported through Eastern State vendors.",
+        annual: { 2024: 148, 2025: 162, 2026: 175 },
+      },
+    ],
   },
 ];
 
 function main() {
   const db = getDb();
   console.log("Resetting KPI data...");
+  db.exec("DELETE FROM breakdown_entries;");
   db.exec("DELETE FROM monthly_entries;");
   db.exec("DELETE FROM kpis;");
   db.exec("DELETE FROM categories;");
+  db.exec("INSERT OR REPLACE INTO meta (key, value) VALUES ('sample_data', '1');");
 
-  // Deduplicate categories by slug — multiple KPIs may share a category.
-  const categoryBySlug = new Map<string, { id: number }>();
-  for (const seed of SEEDS) {
-    let cat = categoryBySlug.get(seed.category.slug);
-    if (!cat) {
-      const created = createCategory(seed.category);
-      cat = { id: created.id };
-      categoryBySlug.set(seed.category.slug, cat);
-    }
-    const kpi = createKPI({
-      category_id: cat.id,
-      slug: seed.kpi.slug,
-      name: seed.kpi.name,
-      unit: seed.kpi.unit,
-      format: seed.kpi.format,
-      description: seed.kpi.description,
+  const years = [2024, 2025, 2026];
+  let kpiCount = 0;
+  let entryCount = 0;
+
+  for (const cat of CATEGORIES) {
+    const created = createCategory({
+      slug: cat.slug,
+      name: cat.name,
+      description: cat.description,
+      sort_order: cat.sort_order,
     });
-    let entryCount = 0;
-    for (const [yearStr, monthly] of Object.entries(seed.monthly)) {
-      const year = Number(yearStr);
-      for (const [monthStr, value] of Object.entries(monthly)) {
-        const month = Number(monthStr);
-        upsertEntry({
-          kpi_id: kpi.id,
-          year,
-          month,
-          value,
-          notes: null,
-        });
+
+    // Monthly KPIs
+    for (const k of cat.monthly) {
+      const kpi = createKPI({
+        category_id: created.id,
+        slug: k.slug,
+        name: k.name,
+        unit: k.unit,
+        unit_type: k.unit_type,
+        reporting_frequency: k.reporting_frequency,
+        direction: k.direction,
+        description: k.description,
+        sort_order: k.sort_order,
+      });
+      kpiCount++;
+      const v2024 = k.base2024;
+      const v2025 = grow(k.base2024, k.factor2025);
+      const v2026 = grow(k.base2024, k.factor2025 * k.factor2026);
+      for (const year of years) {
+        const series = year === 2024 ? v2024 : year === 2025 ? v2025 : v2026;
+        for (const month of monthsFor(year)) {
+          upsertEntry({ kpi_id: kpi.id, year, month, value: series[month - 1], notes: null });
+          entryCount++;
+        }
+      }
+      console.log(`  - ${k.name}: monthly ${years.join(",")}`);
+    }
+
+    // Annual KPIs
+    for (const k of cat.annual) {
+      const kpi = createKPI({
+        category_id: created.id,
+        slug: k.slug,
+        name: k.name,
+        unit: k.unit,
+        unit_type: k.unit_type,
+        reporting_frequency: k.reporting_frequency,
+        direction: k.direction,
+        description: k.description,
+        sort_order: k.sort_order,
+      });
+      kpiCount++;
+      for (const year of years) {
+        upsertEntry({ kpi_id: kpi.id, year, month: 0, value: k.annual[year], notes: null });
         entryCount++;
       }
+      console.log(`  - ${k.name}: annual ${years.join(",")}`);
     }
-    console.log(`  - ${seed.kpi.name}: ${entryCount} entries across ${Object.keys(seed.monthly).length} years`);
+
+    // Breakdown KPIs
+    for (const k of cat.breakdown ?? []) {
+      const kpi = createKPI({
+        category_id: created.id,
+        slug: k.slug,
+        name: k.name,
+        unit: k.unit,
+        unit_type: "breakdown",
+        reporting_frequency: k.reporting_frequency,
+        direction: k.direction,
+        description: k.description,
+        sort_order: k.sort_order,
+      });
+      kpiCount++;
+      for (const year of years) {
+        const yearMap = k.breakdown[year];
+        let order = 0;
+        for (const label of k.labels) {
+          upsertBreakdown({
+            kpi_id: kpi.id,
+            year,
+            label,
+            value: yearMap[label] ?? 0,
+            sort_order: order++,
+            notes: null,
+          });
+          entryCount++;
+        }
+      }
+      console.log(`  - ${k.name}: breakdown ${years.join(",")}`);
+    }
   }
 
   ensureSeedAdmin();
   const kpis = listKPIs();
-  const allYears = Array.from(new Set(SEEDS.flatMap((s) => Object.keys(s.monthly).map(Number)))).sort();
-  console.log(`\nSeed complete. ${kpis.length} KPIs ready across ${allYears[0]}–${allYears[allYears.length - 1]}.`);
+  console.log(`\nSeed complete. ${kpis.length} KPIs ready across ${years[0]}–${years[years.length - 1]} (${entryCount} values).`);
 }
 
 main();

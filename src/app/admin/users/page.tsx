@@ -12,7 +12,7 @@ export default async function UsersPage() {
   if (session.user.role !== "admin") redirect("/dashboard/overview");
 
   return (
-    <AppShell active="/admin/users">
+    <AppShell user={session.user}>
       <UserManagerClient currentUserId={session.user.id} users={listUsers()} />
     </AppShell>
   );

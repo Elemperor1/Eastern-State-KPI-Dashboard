@@ -1,0 +1,25 @@
+"use client";
+
+import Link from "next/link";
+import { ArrowLeft } from "lucide-react";
+import { cn } from "@/lib/utils";
+
+export interface BreadcrumbProps {
+  href: string;
+  label: string;
+  className?: string;
+}
+
+export function Breadcrumb({ href, label, className }: BreadcrumbProps) {
+  return (
+    <div className={cn("mb-4 no-print", className)}>
+      <Link
+        href={href}
+        className="inline-flex min-h-10 items-center gap-2 rounded-lg pr-3 text-sm font-medium text-ink-600 transition-[color,background-color] duration-150 hover:text-ink-950 focus:outline-none"
+      >
+        <ArrowLeft className="size-4" aria-hidden />
+        {label}
+      </Link>
+    </div>
+  );
+}

@@ -11,7 +11,6 @@ interface DB {
   exec(sql: string): void;
   prepare(sql: string): StatementLike;
   close(): void;
-  pragma?(source: string): unknown;
 }
 
 interface StatementLike {
@@ -22,22 +21,15 @@ interface StatementLike {
 
 let _db: DB | null = null;
 
+/** Bump when the KPI/category/entry schema changes; old DBs are reset cleanly. */
+const SCHEMA_VERSION = 3;
+
 function resolveDbPath(): string {
   const fromEnv = process.env.DATABASE_PATH;
   if (fromEnv) return fromEnv;
-  // Default: <projectRoot>/data/kpi.db
   return path.resolve(process.cwd(), "data", "kpi.db");
 }
 
-/**
- * Wrap a node:sqlite DatabaseSync so that:
- *  - `lastInsertRowid` is always a Number (node:sqlite returns BigInt for some versions).
- *  - `.all(...)` rows are plain objects (not null-prototype), so JSON serialization and
- *    property access match the better-sqlite3 ergonomics we depend on.
- *
- * The underlying StatementSync types from node:sqlite are loose — we re-cast to keep
- * our call sites clean.
- */
 function wrapDatabase(raw: DatabaseSync): DB {
   const db = raw as unknown as {
     exec(sql: string): void;
@@ -85,19 +77,19 @@ export function getDb(): DB {
     fs.mkdirSync(dir, { recursive: true });
   }
   const raw = new DatabaseSync(dbPath);
-  // node:sqlite has WAL too, but pragma syntax is identical.
   try {
     raw.exec("PRAGMA journal_mode = WAL;");
     raw.exec("PRAGMA foreign_keys = ON;");
   } catch {
     // Some sandbox environments disallow pragmas; ignore.
   }
-  initializeSchema(raw);
+  migrateSchema(raw);
   _db = wrapDatabase(raw);
   return _db;
 }
 
-function initializeSchema(raw: DatabaseSync): void {
+/** Users table is stable and never reset by version bumps. */
+function ensureUsersTable(raw: DatabaseSync): void {
   raw.exec(`
     CREATE TABLE IF NOT EXISTS users (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -107,7 +99,48 @@ function initializeSchema(raw: DatabaseSync): void {
       role TEXT NOT NULL CHECK (role IN ('admin','viewer')),
       created_at TEXT NOT NULL DEFAULT (datetime('now'))
     );
+  `);
+}
 
+function currentSchemaVersion(raw: DatabaseSync): number {
+  try {
+    const row = raw.prepare("SELECT value FROM meta WHERE key = 'schema_version'").get() as
+      | { value?: string }
+      | undefined;
+    return Number(row?.value ?? 0);
+  } catch {
+    return 0;
+  }
+}
+
+function migrateSchema(raw: DatabaseSync): void {
+  ensureUsersTable(raw);
+  ensureMetaTable(raw);
+  const version = currentSchemaVersion(raw);
+  if (version === SCHEMA_VERSION) {
+    return;
+  }
+  // Schema changed (or fresh): drop KPI data tables and recreate cleanly.
+  // Users are preserved; the seed script repopulates metrics + entries.
+  raw.exec("DROP TABLE IF EXISTS breakdown_entries;");
+  raw.exec("DROP TABLE IF EXISTS monthly_entries;");
+  raw.exec("DROP TABLE IF EXISTS kpis;");
+  raw.exec("DROP TABLE IF EXISTS categories;");
+  initializeSchema(raw);
+  raw.exec(`INSERT OR REPLACE INTO meta (key, value) VALUES ('schema_version', ${SCHEMA_VERSION});`);
+}
+
+function ensureMetaTable(raw: DatabaseSync): void {
+  raw.exec(`
+    CREATE TABLE IF NOT EXISTS meta (
+      key TEXT PRIMARY KEY,
+      value TEXT NOT NULL
+    );
+  `);
+}
+
+function initializeSchema(raw: DatabaseSync): void {
+  raw.exec(`
     CREATE TABLE IF NOT EXISTS categories (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       slug TEXT UNIQUE NOT NULL,
@@ -119,10 +152,16 @@ function initializeSchema(raw: DatabaseSync): void {
     CREATE TABLE IF NOT EXISTS kpis (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       category_id INTEGER NOT NULL REFERENCES categories(id) ON DELETE CASCADE,
+      parent_id INTEGER REFERENCES kpis(id) ON DELETE CASCADE,
       slug TEXT UNIQUE NOT NULL,
       name TEXT NOT NULL,
       unit TEXT NOT NULL DEFAULT '',
-      format TEXT NOT NULL DEFAULT 'number' CHECK (format IN ('number','currency','percent')),
+      unit_type TEXT NOT NULL DEFAULT 'count'
+        CHECK (unit_type IN ('count','percent','currency','attendance','note','breakdown')),
+      reporting_frequency TEXT NOT NULL DEFAULT 'monthly'
+        CHECK (reporting_frequency IN ('monthly','annual','flexible')),
+      direction TEXT NOT NULL DEFAULT 'higher'
+        CHECK (direction IN ('higher','lower','neutral')),
       description TEXT,
       sort_order INTEGER NOT NULL DEFAULT 0,
       is_active INTEGER NOT NULL DEFAULT 1,
@@ -130,12 +169,13 @@ function initializeSchema(raw: DatabaseSync): void {
     );
 
     CREATE INDEX IF NOT EXISTS idx_kpis_category ON kpis(category_id);
+    CREATE INDEX IF NOT EXISTS idx_kpis_parent ON kpis(parent_id);
 
     CREATE TABLE IF NOT EXISTS monthly_entries (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       kpi_id INTEGER NOT NULL REFERENCES kpis(id) ON DELETE CASCADE,
       year INTEGER NOT NULL,
-      month INTEGER NOT NULL CHECK (month BETWEEN 1 AND 12),
+      month INTEGER NOT NULL CHECK (month BETWEEN 0 AND 12),
       value REAL NOT NULL,
       notes TEXT,
       updated_by INTEGER REFERENCES users(id) ON DELETE SET NULL,
@@ -144,6 +184,21 @@ function initializeSchema(raw: DatabaseSync): void {
     );
 
     CREATE INDEX IF NOT EXISTS idx_entries_kpi_year ON monthly_entries(kpi_id, year);
+
+    CREATE TABLE IF NOT EXISTS breakdown_entries (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      kpi_id INTEGER NOT NULL REFERENCES kpis(id) ON DELETE CASCADE,
+      year INTEGER NOT NULL,
+      label TEXT NOT NULL,
+      value REAL NOT NULL DEFAULT 0,
+      sort_order INTEGER NOT NULL DEFAULT 0,
+      notes TEXT,
+      updated_by INTEGER REFERENCES users(id) ON DELETE SET NULL,
+      updated_at TEXT NOT NULL DEFAULT (datetime('now')),
+      UNIQUE (kpi_id, year, label)
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_breakdown_kpi_year ON breakdown_entries(kpi_id, year);
   `);
 }
 

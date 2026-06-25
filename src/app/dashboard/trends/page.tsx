@@ -11,7 +11,7 @@ export default async function TrendsPage() {
   if (!session.user) redirect("/login");
 
   return (
-    <AppShell active="/dashboard/trends">
+    <AppShell user={session.user}>
       <TrendExplorerClient
         kpis={listKPIs()}
         categories={listCategories()}

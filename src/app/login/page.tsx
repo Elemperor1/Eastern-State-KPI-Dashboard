@@ -2,7 +2,8 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import { LockKeyhole, ShieldCheck } from "lucide-react";
+import { ArrowRight } from "lucide-react";
+import { Alert, BrandMark, Button, FormField, Input } from "@/components/ui";
 
 export default function LoginPage() {
   const router = useRouter();
@@ -11,103 +12,126 @@ export default function LoginPage() {
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
 
-  async function handleSubmit(e: React.FormEvent) {
-    e.preventDefault();
+  async function handleSubmit(event: React.FormEvent) {
+    event.preventDefault();
     setLoading(true);
     setError(null);
     try {
-      const res = await fetch("/api/auth/login", {
+      const response = await fetch("/api/auth/login", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ email, password }),
       });
-      if (!res.ok) {
-        const data = await res.json().catch(() => ({}));
+      if (!response.ok) {
+        const data = await response.json().catch(() => ({}));
         setError(data.error ?? "Login failed.");
         setLoading(false);
         return;
       }
       router.push("/dashboard");
       router.refresh();
-    } catch (err) {
-      console.error(err);
-      setError("Unexpected error. Try again.");
+    } catch (caught) {
+      console.error(caught);
+      setError("Connection failed. Please try again.");
       setLoading(false);
     }
   }
 
   return (
-    <main className="min-h-screen flex items-center justify-center px-6 py-12 bg-gradient-to-br from-ink-50 via-white to-brand-50">
-      <div className="w-full max-w-md">
-        <div className="text-center mb-8">
-          <div className="inline-flex items-center justify-center w-14 h-14 rounded-2xl bg-brand-700 text-white shadow-soft mb-4">
-            <ShieldCheck className="w-7 h-7" />
+    <main className="grid min-h-[100dvh] bg-white lg:grid-cols-[minmax(0,1.08fr)_minmax(28rem,0.92fr)]">
+      <section
+        className="relative hidden overflow-hidden bg-ink-900 px-12 py-10 text-white lg:flex lg:flex-col lg:justify-between"
+        style={{ backgroundImage: "url('/starfield.svg')", backgroundSize: "640px 640px" }}
+      >
+        <div className="relative z-10 flex items-center gap-3">
+          <BrandMark size="md" inverted />
+          <div>
+            <p className="text-sm font-semibold">Eastern State</p>
+            <p className="text-[10px] uppercase tracking-[0.12em] text-white/55">KPI Intelligence</p>
           </div>
-          <h1 className="text-2xl font-display font-semibold text-ink-900">
-            Eastern State KPI Intelligence
+        </div>
+
+        <div className="relative z-10 max-w-2xl py-16">
+          <p className="mb-5 text-sm font-medium uppercase tracking-[0.12em] text-white/60">
+            Organizational performance
+          </p>
+          <h1 className="max-w-xl text-[clamp(3.25rem,5vw,5.5rem)] font-semibold leading-[0.98] tracking-[-0.045em]">
+            See the work with more <span className="rounded bg-accent-300 px-2 text-ink-950">clarity.</span>
           </h1>
-          <p className="mt-1 text-sm text-ink-500">
-            Internal decision-support for executive leadership
+          <p className="mt-8 max-w-lg text-base leading-8 text-white/70 text-pretty">
+            A focused view of the measures that help Eastern State’s leadership understand reach, stewardship, and impact.
           </p>
         </div>
 
-        <form
-          onSubmit={handleSubmit}
-          className="surface p-7 space-y-5"
-          aria-label="Sign in to dashboard"
-        >
-          <div>
-            <label htmlFor="email" className="label">
-              Email
-            </label>
-            <input
-              id="email"
-              type="email"
-              autoComplete="email"
-              required
-              className="input"
-              placeholder="you@easternstate.org"
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
-            />
-          </div>
-          <div>
-            <label htmlFor="password" className="label">
-              Password
-            </label>
-            <input
-              id="password"
-              type="password"
-              autoComplete="current-password"
-              required
-              className="input"
-              placeholder="Enter your password"
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-            />
-          </div>
-
-          {error ? (
-            <div
-              role="alert"
-              className="text-sm text-red-700 bg-red-50 border border-red-200 rounded-lg px-3 py-2"
-            >
-              {error}
-            </div>
-          ) : null}
-
-          <button type="submit" disabled={loading} className="btn-primary w-full">
-            <LockKeyhole className="w-4 h-4" />
-            {loading ? "Signing in…" : "Sign in"}
-          </button>
-        </form>
-
-        <p className="mt-6 text-center text-xs text-ink-500 leading-relaxed">
-          Authorized personnel only. Activity is logged for audit purposes.
-          <br />
-          Need access? Contact Kerry Sautner or Zach Palmer.
+        <p className="relative z-10 text-sm text-white/50">
+          Internal reporting · Decision support · Board-ready context
         </p>
-      </div>
+      </section>
+
+      <section className="flex min-h-[100dvh] items-center justify-center px-6 py-12 sm:px-12">
+        <div className="page-enter w-full max-w-md">
+          <div className="mb-10 flex items-center gap-3 lg:hidden">
+            <BrandMark size="md" />
+            <div>
+              <p className="text-sm font-semibold text-ink-900">Eastern State</p>
+              <p className="text-[10px] uppercase tracking-[0.12em] text-ink-500">KPI Intelligence</p>
+            </div>
+          </div>
+
+          <div className="mb-8">
+            <p className="section-eyebrow">Secure access</p>
+            <h2 className="text-[30px] font-medium leading-[1.2] tracking-[-0.02em] text-ink-900">
+              Welcome back
+            </h2>
+            <p className="mt-3 text-base leading-6 text-ink-600 text-pretty">
+              Sign in with your Eastern State account to continue.
+            </p>
+          </div>
+
+          <form onSubmit={handleSubmit} className="space-y-5">
+            <FormField htmlFor="email" label="Email">
+              <Input
+                id="email"
+                type="email"
+                autoComplete="email"
+                required
+                placeholder="you@easternstate.org"
+                value={email}
+                onChange={(event) => setEmail(event.target.value)}
+              />
+            </FormField>
+            <FormField htmlFor="password" label="Password">
+              <Input
+                id="password"
+                type="password"
+                autoComplete="current-password"
+                required
+                placeholder="Enter your password"
+                value={password}
+                onChange={(event) => setPassword(event.target.value)}
+              />
+            </FormField>
+
+            {error ? <Alert variant="error">{error}</Alert> : null}
+
+            <Button
+              type="submit"
+              variant="primary"
+              size="lg"
+              fullWidth
+              isLoading={loading}
+              icon={ArrowRight}
+              iconPosition="right"
+            >
+              {loading ? "Signing in" : "Sign in"}
+            </Button>
+          </form>
+
+          <p className="mt-8 max-w-sm text-sm leading-6 text-ink-500 text-pretty">
+            Authorized personnel only. Activity is logged for audit purposes. Need access? Contact Kerry Sautner or Zach Palmer.
+          </p>
+        </div>
+      </section>
     </main>
   );
 }

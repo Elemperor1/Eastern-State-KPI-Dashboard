@@ -1,0 +1,1 @@
+export const AUTH_DISABLED = process.env.AUTH_DISABLED === "true";

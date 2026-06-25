@@ -8,31 +8,44 @@
     "start": "next start -p 3000",
     "lint": "next lint",
     "smoke": "bash ./scripts/smoke.sh",
-    "db:seed": "tsx scripts/seed.ts"
+    "db:seed": "tsx scripts/seed.ts",
+    "design-system:guard": "bash ./scripts/design-system-guard.sh",
+    "design-system:test": "bash ./scripts/design-system-guard.sh && npx tsc --noEmit && npm run build",
+    "prelint": "npm run design-system:guard"
   },
   "dependencies": {
-    "next": "14.2.15",
-    "react": "^18.3.1",
-    "react-dom": "^18.3.1",
+    "@fontsource-variable/rubik": "^5.2.8",
     "bcryptjs": "^2.4.3",
-    "iron-session": "^8.0.4",
-    "zod": "^3.23.8",
-    "recharts": "^2.13.0",
     "clsx": "^2.1.1",
-    "lucide-react": "^0.453.0",
-    "jspdf": "^2.5.2",
+    "date-fns": "^4.1.0",
     "html2canvas": "^1.4.1",
-    "date-fns": "^4.1.0"
+    "iron-session": "^8.0.4",
+    "jspdf": "^4.2.1",
+    "lucide-react": "^0.453.0",
+    "next": "15.5.19",
+    "react": "^19.0.0",
+    "react-dom": "^19.0.0",
+    "recharts": "^2.13.0",
+    "zod": "^3.23.8"
   },
   "devDependencies": {
-    "@types/node": "^22.7.5",
-    "@types/react": "^18.3.11",
-    "@types/react-dom": "^18.3.0",
     "@types/bcryptjs": "^2.4.6",
+    "@types/node": "^22.7.5",
+    "@types/react": "^19.0.0",
+    "@types/react-dom": "^19.0.0",
     "autoprefixer": "^10.4.20",
-    "postcss": "^8.4.47",
+    "postcss": "^8.5.10",
     "tailwindcss": "^3.4.13",
     "tsx": "^4.19.1",
     "typescript": "^5.6.3"
+  },
+  "allowScripts": {
+    "core-js@3.49.0": true,
+    "esbuild@0.28.1": true,
+    "fsevents@2.3.3": true,
+    "sharp@0.34.5": true
+  },
+  "overrides": {
+    "postcss": "^8.5.10"
   }
 }

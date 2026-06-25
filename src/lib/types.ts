@@ -23,16 +23,33 @@ export interface Category {
   sort_order: number;
 }
 
+/** Unit type drives how a value is stored, formatted, and compared. */
+export type UnitType =
+  | "count"
+  | "percent"
+  | "currency"
+  | "attendance"
+  | "note"
+  | "breakdown";
+
+export type ReportingFrequency = "monthly" | "annual" | "flexible";
+
+/** Whether an increase is good (higher), bad (lower), or neither (neutral). */
+export type Direction = "higher" | "lower" | "neutral";
+
 export interface KPI {
   id: number;
   category_id: number;
+  parent_id: number | null; // set when this KPI is a component of a breakdown parent
   slug: string;
   name: string;
-  unit: string;            // e.g. "visits", "USD", "%", "members"
-  format: "number" | "currency" | "percent";
+  unit: string; // human label, e.g. "views", "USD", "%", "attendees"
+  unit_type: UnitType;
+  reporting_frequency: ReportingFrequency;
+  direction: Direction;
   description: string | null;
   sort_order: number;
-  is_active: number;       // sqlite boolean
+  is_active: number; // sqlite boolean
   created_at: string;
 }
 
@@ -40,7 +57,7 @@ export interface MonthlyEntry {
   id: number;
   kpi_id: number;
   year: number;
-  month: number;           // 1-12
+  month: number; // 1-12 for monthly, 0 for annual full-year snapshot
   value: number;
   notes: string | null;
   updated_by: number | null;
@@ -50,14 +67,34 @@ export interface MonthlyEntry {
 export interface MonthlyEntryWithMeta extends MonthlyEntry {
   kpi_name: string;
   kpi_unit: string;
-  kpi_format: "number" | "currency" | "percent";
+  kpi_unit_type: UnitType;
+  category_id: number;
+  category_name: string;
+  category_slug: string;
+}
+
+export interface BreakdownEntry {
+  id: number;
+  kpi_id: number;
+  year: number;
+  label: string;
+  value: number;
+  sort_order: number;
+  notes: string | null;
+  updated_by: number | null;
+  updated_at: string;
+}
+
+export interface BreakdownEntryWithMeta extends BreakdownEntry {
+  kpi_name: string;
+  kpi_unit: string;
   category_id: number;
   category_name: string;
   category_slug: string;
 }
 
 export interface ComparisonPoint {
-  label: string;           // e.g. "Jan", "Feb"
+  label: string;
   month: number;
   value?: number;
   [yearKey: string]: number | string | null | undefined;
@@ -66,6 +103,7 @@ export interface ComparisonPoint {
 export interface KPIWithCategory extends KPI {
   category_name: string;
   category_slug: string;
+  children?: KPIWithCategory[]; // populated for breakdown parents
 }
 
 export interface YearSummary {
@@ -83,17 +121,21 @@ export interface KPIAnalytics {
     compareValue: number;
     delta: number;
     pctChange: number | null;
+    ptsChange: number | null; // for percent unit types
     currentYear: number;
     compareYear: number;
     currentMonth: number;
+    isAnnual: boolean;
   };
   ytdComparison: {
     currentValue: number;
     compareValue: number;
     delta: number;
     pctChange: number | null;
+    ptsChange: number | null;
     currentYear: number;
     compareYear: number;
     throughMonth: number;
+    isAnnual: boolean;
   };
 }

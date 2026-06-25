@@ -1,10 +1,25 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { ChevronDown, Save, Trash2 } from "lucide-react";
-import clsx from "clsx";
+import { Save, Trash2, FileSpreadsheet } from "lucide-react";
+import {
+  Button,
+  Card,
+  ConfirmDialog,
+  EmptyState,
+  FilterToolbar,
+  FormField,
+  IconButton,
+  Input,
+  PageHeader,
+  Select,
+  StatusBanner,
+} from "@/components/ui";
 import { MONTH_FULL, MONTH_LABELS, formatValue } from "@/lib/analytics";
+import { SampleDataBadge } from "@/components/SampleDataBadge";
+import { cn } from "@/lib/utils";
 import type {
+  BreakdownEntryWithMeta,
   Category,
   KPIWithCategory,
   MonthlyEntryWithMeta,
@@ -18,22 +33,43 @@ interface DraftEntry {
   saving?: boolean;
 }
 
+interface DraftBreakdown {
+  id: number | null;
+  label: string;
+  value: string;
+  notes: string;
+  savedValue: number | null;
+  dirty: boolean;
+  saving?: boolean;
+}
+
 export function AdminDataClient({
   kpis,
   categories,
   entries,
+  breakdowns,
   years,
+  sampleData,
 }: {
   kpis: KPIWithCategory[];
   categories: Category[];
   entries: MonthlyEntryWithMeta[];
+  breakdowns: BreakdownEntryWithMeta[];
   years: number[];
+  sampleData: boolean;
 }) {
   const [categorySlug, setCategorySlug] = useState<string>("all");
   const [kpiSlug, setKpiSlug] = useState<string>(kpis[0]?.slug ?? "");
   const [year, setYear] = useState<number>(years[years.length - 1] ?? new Date().getFullYear());
   const [drafts, setDrafts] = useState<Record<string, DraftEntry>>({});
-  const [feedback, setFeedback] = useState<string | null>(null);
+  const [brkDrafts, setBrkDrafts] = useState<DraftBreakdown[]>([]);
+  const [feedback, setFeedback] = useState<{ message: string; variant: "success" | "error" } | null>(null);
+  const [confirmation, setConfirmation] = useState<{
+    title: string;
+    description: string;
+    confirmLabel: string;
+    action: () => void | Promise<void>;
+  } | null>(null);
 
   const filteredKpis = useMemo(
     () => (categorySlug === "all" ? kpis : kpis.filter((k) => k.category_slug === categorySlug)),
@@ -42,23 +78,47 @@ export function AdminDataClient({
 
   const kpi = kpis.find((k) => k.slug === kpiSlug) ?? null;
 
-  // Load drafts whenever KPI/year changes.
   useEffect(() => {
     if (!kpi) return;
+    setFeedback(null);
+    if (kpi.unit_type === "breakdown") {
+      const yearBrks = breakdowns.filter((b) => b.kpi_id === kpi.id && b.year === year);
+      const drafts: DraftBreakdown[] = yearBrks.map((b) => ({
+        id: b.id,
+        label: b.label,
+        value: String(b.value),
+        notes: b.notes ?? "",
+        savedValue: b.value,
+        dirty: false,
+      }));
+      setBrkDrafts(drafts);
+      setDrafts({});
+      return;
+    }
+
     const next: Record<string, DraftEntry> = {};
-    for (let month = 1; month <= 12; month++) {
-      const existing = entries.find((e) => e.kpi_id === kpi.id && e.year === year && e.month === month);
-      const key = `${month}`;
-      next[key] = {
+    if (kpi.reporting_frequency === "annual") {
+      const existing = entries.find((e) => e.kpi_id === kpi.id && e.year === year && e.month === 0);
+      next["0"] = {
         value: existing ? String(existing.value) : "",
         notes: existing?.notes ?? "",
         saved: existing?.value ?? null,
         dirty: false,
       };
+    } else {
+      for (let month = 1; month <= 12; month++) {
+        const existing = entries.find((e) => e.kpi_id === kpi.id && e.year === year && e.month === month);
+        next[String(month)] = {
+          value: existing ? String(existing.value) : "",
+          notes: existing?.notes ?? "",
+          saved: existing?.value ?? null,
+          dirty: false,
+        };
+      }
     }
     setDrafts(next);
-    setFeedback(null);
-  }, [kpi, year, entries]);
+    setBrkDrafts([]);
+  }, [kpi, year, entries, breakdowns]);
 
   function setField(month: number, patch: Partial<Omit<DraftEntry, "saved" | "dirty" | "saving">>) {
     setDrafts((prev) => {
@@ -91,7 +151,7 @@ export function AdminDataClient({
       });
       if (!res.ok) {
         const data = await res.json().catch(() => ({}));
-        setFeedback(`Could not save ${MONTH_LABELS[month - 1]}: ${data.error ?? "unknown error"}`);
+        setFeedback({ message: `Could not save: ${data.error ?? "unknown error"}`, variant: "error" });
         setDrafts((prev) => ({ ...prev, [String(month)]: { ...prev[String(month)], saving: false } }));
         return;
       }
@@ -106,10 +166,10 @@ export function AdminDataClient({
           saving: false,
         },
       }));
-      setFeedback(`Saved ${MONTH_LABELS[month - 1]} ${year}.`);
+      setFeedback({ message: `Saved ${labelFor(month)} ${year}.`, variant: "success" });
     } catch (err) {
       console.error(err);
-      setFeedback("Network error while saving.");
+      setFeedback({ message: "Network error. Try again.", variant: "error" });
       setDrafts((prev) => ({ ...prev, [String(month)]: { ...prev[String(month)], saving: false } }));
     }
   }
@@ -117,209 +177,505 @@ export function AdminDataClient({
   async function clearMonth(month: number) {
     if (!kpi) return;
     const draft = drafts[String(month)];
-    if (!draft?.saved) return;
-    if (!confirm(`Delete the ${MONTH_LABELS[month - 1]} ${year} entry for ${kpi.name}?`)) return;
+    if (!draft || draft.saved === null) return;
+    setDrafts((prev) => ({ ...prev, [String(month)]: { ...prev[String(month)], saving: true } }));
     try {
-      // To keep the contract simple we use the POST endpoint with empty value
-      // through a DELETE on the row id — but our API uses id-based delete.
-      const existing = entries.find(
-        (e) => e.kpi_id === kpi.id && e.year === year && e.month === month,
-      );
-      if (!existing) return;
       const res = await fetch("/api/entries", {
         method: "DELETE",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ id: existing.id }),
+        body: JSON.stringify({
+          kpi_id: kpi.id,
+          year,
+          month,
+        }),
       });
       if (!res.ok) {
-        setFeedback("Could not delete entry.");
+        const data = await res.json().catch(() => ({}));
+        setFeedback({ message: `Could not clear: ${data.error ?? "unknown error"}`, variant: "error" });
+        setDrafts((prev) => ({ ...prev, [String(month)]: { ...prev[String(month)], saving: false } }));
         return;
       }
       setDrafts((prev) => ({
         ...prev,
-        [String(month)]: { value: "", notes: "", saved: null, dirty: false },
+        [String(month)]: {
+          value: "",
+          notes: "",
+          saved: null,
+          dirty: false,
+          saving: false,
+        },
       }));
-      setFeedback(`Deleted ${MONTH_LABELS[month - 1]} ${year}.`);
+      setFeedback({ message: `Cleared ${labelFor(month)} ${year}.`, variant: "success" });
     } catch (err) {
       console.error(err);
-      setFeedback("Network error while deleting.");
+      setFeedback({ message: "Network error. Try again.", variant: "error" });
+      setDrafts((prev) => ({ ...prev, [String(month)]: { ...prev[String(month)], saving: false } }));
     }
   }
 
-  async function saveAll() {
-    const months = Object.entries(drafts)
-      .filter(([, d]) => d.dirty)
-      .map(([m]) => Number(m));
-    for (const m of months) {
-      // eslint-disable-next-line no-await-in-loop
-      await saveMonth(m);
+  function updateBrk(idx: number, patch: Partial<Omit<DraftBreakdown, "savedValue" | "dirty" | "saving">>) {
+    setBrkDrafts((prev) => {
+      const current = prev[idx];
+      if (!current) return prev;
+      const next = { ...current, ...patch };
+      next.dirty =
+        next.label !== (current.savedValue !== null ? current.label : "") ||
+        next.value !== String(current.savedValue ?? "") ||
+        next.notes !== current.notes;
+      const copy = [...prev];
+      copy[idx] = next;
+      return copy;
+    });
+  }
+
+  async function saveBrk(idx: number) {
+    if (!kpi) return;
+    const d = brkDrafts[idx];
+    if (!d || d.value === "" || Number.isNaN(Number(d.value)) || !d.label.trim()) return;
+    setBrkDrafts((prev) => {
+      const copy = [...prev];
+      copy[idx] = { ...copy[idx], saving: true };
+      return copy;
+    });
+    try {
+      const res = await fetch("/api/breakdowns", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          id: d.id,
+          kpi_id: kpi.id,
+          year,
+          label: d.label.trim(),
+          value: Number(d.value),
+          notes: d.notes || null,
+        }),
+      });
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        setFeedback({ message: `Could not save: ${data.error ?? "unknown error"}`, variant: "error" });
+        setBrkDrafts((prev) => {
+          const copy = [...prev];
+          copy[idx] = { ...copy[idx], saving: false };
+          return copy;
+        });
+        return;
+      }
+      const { entry } = await res.json();
+      setBrkDrafts((prev) => {
+        const copy = [...prev];
+        copy[idx] = {
+          id: entry.id,
+          label: entry.label,
+          value: String(entry.value),
+          notes: entry.notes ?? "",
+          savedValue: entry.value,
+          dirty: false,
+          saving: false,
+        };
+        return copy;
+      });
+      setFeedback({ message: `Saved "${entry.label}" for ${year}.`, variant: "success" });
+    } catch (err) {
+      console.error(err);
+      setFeedback({ message: "Network error. Try again.", variant: "error" });
+      setBrkDrafts((prev) => {
+        const copy = [...prev];
+        copy[idx] = { ...copy[idx], saving: false };
+        return copy;
+      });
     }
   }
 
-  const dirtyCount = Object.values(drafts).filter((d) => d.dirty).length;
+  async function deleteBrk(idx: number) {
+    if (!kpi) return;
+    const d = brkDrafts[idx];
+    if (!d) return;
+    if (d.id !== null) {
+      const res = await fetch("/api/breakdowns", {
+        method: "DELETE",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ id: d.id }),
+      });
+      if (!res.ok) {
+        setFeedback({ message: "Could not delete row.", variant: "error" });
+        return;
+      }
+    }
+    setBrkDrafts((prev) => prev.filter((_, i) => i !== idx));
+    setFeedback({ message: "Row removed.", variant: "success" });
+  }
+
+  function addBrkRow() {
+    setBrkDrafts((prev) => [
+      ...prev,
+      { id: null, label: "", value: "", notes: "", savedValue: null, dirty: true },
+    ]);
+  }
+
+  function labelFor(month: number) {
+    return month === 0 ? `${year}` : MONTH_FULL[month - 1];
+  }
+
+  function requestClearMonth(month: number) {
+    setConfirmation({
+      title: `Clear ${labelFor(month)} ${year}?`,
+      description: "This removes the saved value and notes for this period. The action cannot be undone.",
+      confirmLabel: "Clear value",
+      action: () => clearMonth(month),
+    });
+  }
+
+  function requestDeleteBreakdown(idx: number) {
+    const row = brkDrafts[idx];
+    if (!row) return;
+    if (row.id === null) {
+      void deleteBrk(idx);
+      return;
+    }
+    setConfirmation({
+      title: `Delete “${row.label}”?`,
+      description: `This removes the breakdown row from ${year}. The action cannot be undone.`,
+      confirmLabel: "Delete row",
+      action: () => deleteBrk(idx),
+    });
+  }
 
   return (
-    <div className="px-8 py-8 max-w-[1400px] mx-auto">
-      <header className="mb-6">
-        <p className="text-xs uppercase tracking-[0.18em] text-ink-500 mb-2">Admin · Data Entry</p>
-        <h1 className="text-3xl font-display font-semibold text-ink-900">
-          Monthly KPI Values
-        </h1>
-        <p className="text-sm text-ink-500 mt-1">
-          Enter or edit values. Changes are saved per cell — your work is preserved if you switch KPIs.
-        </p>
-      </header>
+    <div className="page-content page-enter">
+      <PageHeader
+        eyebrow="Admin · Data Entry"
+        title="Enter monthly, annual, and breakdown values"
+        subtitle="Pick a metric and year, then fill in the values. Changes are saved per field."
+        actions={<SampleDataBadge sample={sampleData} />}
+      />
 
-      <div className="surface p-5 mb-6">
-        <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-          <div>
-            <label className="label">Category</label>
-            <select
-              className="input"
-              value={categorySlug}
-              onChange={(e) => {
-                setCategorySlug(e.target.value);
-                setKpiSlug("");
-              }}
-            >
-              <option value="all">All categories</option>
-              {categories.map((c) => (
-                <option key={c.id} value={c.slug}>
-                  {c.name}
-                </option>
-              ))}
-            </select>
-          </div>
-          <div>
-            <label className="label">KPI</label>
-            <select
-              className="input"
-              value={kpiSlug}
-              onChange={(e) => setKpiSlug(e.target.value)}
-            >
-              <option value="" disabled>
-                Select a KPI
+      {feedback ? (
+        <StatusBanner variant={feedback.variant} onDismiss={() => setFeedback(null)}>
+          {feedback.message}
+        </StatusBanner>
+      ) : null}
+
+      <FilterToolbar className="mb-6">
+        <FormField htmlFor="admin-category" label="Category" className="w-full md:w-auto md:min-w-[180px]">
+          <Select
+            id="admin-category"
+            value={categorySlug}
+            onChange={(e) => {
+              setCategorySlug(e.target.value);
+              setKpiSlug("");
+            }}
+          >
+            <option value="all">All categories</option>
+            {categories.map((c) => (
+              <option key={c.id} value={c.slug}>{c.name}</option>
+            ))}
+          </Select>
+        </FormField>
+
+        <FormField htmlFor="admin-kpi" label="Metric" className="w-full md:min-w-[220px] md:flex-1">
+          <Select
+            id="admin-kpi"
+            value={kpiSlug}
+            onChange={(e) => setKpiSlug(e.target.value)}
+          >
+            <option value="">Select a metric…</option>
+            {filteredKpis.map((k) => (
+              <option key={k.slug} value={k.slug}>
+                {k.name} ({k.unit_type})
               </option>
-              {filteredKpis.map((k) => (
-                <option key={k.id} value={k.slug}>
-                  {k.name}
-                </option>
-              ))}
-            </select>
-          </div>
-          <div>
-            <label className="label">Year</label>
-            <select
-              className="input"
-              value={year}
-              onChange={(e) => setYear(Number(e.target.value))}
-            >
-              {years.map((y) => (
-                <option key={y} value={y}>
-                  {y}
-                </option>
-              ))}
-              <option value={new Date().getFullYear() + 1}>
-                {new Date().getFullYear() + 1} (new)
-              </option>
-            </select>
-          </div>
-          <div className="flex items-end">
-            <button
-              onClick={saveAll}
-              disabled={!kpi || dirtyCount === 0}
-              className="btn-primary w-full"
-            >
-              <Save className="w-4 h-4" />
-              Save {dirtyCount > 0 ? `${dirtyCount} change${dirtyCount === 1 ? "" : "s"}` : "all"}
-            </button>
-          </div>
-        </div>
-        {kpi ? (
-          <p className="text-xs text-ink-500 mt-3">
-            <span className="font-semibold text-ink-700">{kpi.name}</span> · {kpi.category_name} ·{" "}
-            {kpi.unit || "no unit"} · format: {kpi.format}
-          </p>
-        ) : null}
-        {feedback ? (
-          <p className="mt-3 text-xs text-emerald-700 bg-emerald-50 border border-emerald-200 rounded px-3 py-1.5 inline-block">
-            {feedback}
-          </p>
-        ) : null}
-      </div>
+            ))}
+          </Select>
+        </FormField>
+
+        <FormField htmlFor="admin-year" label="Year" className="w-full md:w-auto md:min-w-[120px]">
+          <Select
+            id="admin-year"
+            value={year}
+            onChange={(e) => setYear(Number(e.target.value))}
+          >
+            {years.map((y) => (
+              <option key={y} value={y}>{y}</option>
+            ))}
+          </Select>
+        </FormField>
+      </FilterToolbar>
 
       {!kpi ? (
-        <div className="surface p-12 text-center text-sm text-ink-500">
-          Select a category and KPI to begin entering data.
-        </div>
-      ) : (
-        <div className="surface overflow-hidden">
-          <div className="grid grid-cols-12 text-[11px] uppercase tracking-wider font-semibold text-ink-500 bg-ink-50 border-b border-ink-200 px-5 py-3">
-            <div className="col-span-3">Month</div>
-            <div className="col-span-3">Value</div>
-            <div className="col-span-4">Notes (optional)</div>
-            <div className="col-span-2 text-right">Actions</div>
+        <Card className="p-8">
+          <EmptyState
+            icon={FileSpreadsheet}
+            title="Select a metric"
+            description="Choose a category, metric, and year from the controls above to begin entering data."
+          />
+        </Card>
+      ) : kpi.unit_type === "breakdown" ? (
+        <Card className="overflow-hidden">
+          <div className="flex flex-wrap items-center justify-between gap-4 border-b border-ink-100 p-5">
+            <div>
+              <h2 className="text-xl font-semibold text-ink-900">{kpi.name}</h2>
+              <p className="mt-1 text-sm text-ink-500">
+                Breakdown · {year} · {kpi.unit}
+              </p>
+            </div>
+            <Button variant="secondary" size="sm" onClick={addBrkRow}>Add row</Button>
           </div>
-          <div className="divide-y divide-ink-100">
-            {Array.from({ length: 12 }, (_, i) => i + 1).map((month) => {
-              const draft = drafts[String(month)] ?? { value: "", notes: "", saved: null, dirty: false };
-              return (
-                <div
-                  key={month}
-                  className={clsx(
-                    "grid grid-cols-12 items-center px-5 py-3",
-                    draft.dirty && "bg-amber-50/50",
-                  )}
-                >
-                  <div className="col-span-3 text-sm text-ink-700 font-medium">
-                    {MONTH_FULL[month - 1]}
-                  </div>
-                  <div className="col-span-3 pr-3">
-                    <input
-                      className="input tabular"
-                      inputMode="decimal"
-                      placeholder="—"
-                      value={draft.value}
-                      onChange={(e) => setField(month, { value: e.target.value })}
-                    />
-                    {draft.saved !== null ? (
-                      <p className="text-[10px] text-ink-400 mt-1 tabular">
-                        Last saved: {formatValue(draft.saved, kpi.format)}
-                      </p>
-                    ) : null}
-                  </div>
-                  <div className="col-span-4 pr-3">
-                    <input
-                      className="input"
-                      placeholder="Context or notes for the editor…"
-                      value={draft.notes}
-                      onChange={(e) => setField(month, { notes: e.target.value })}
-                    />
-                  </div>
-                  <div className="col-span-2 flex items-center justify-end gap-2">
-                    <button
-                      onClick={() => saveMonth(month)}
-                      disabled={!draft.dirty || draft.saving}
-                      className="btn-secondary px-2.5 py-1.5"
-                      title="Save this month"
-                    >
-                      <Save className="w-3.5 h-3.5" />
-                    </button>
-                    <button
-                      onClick={() => clearMonth(month)}
-                      disabled={!draft.saved}
-                      className="btn-danger px-2.5 py-1.5"
-                      title="Delete this entry"
-                    >
-                      <Trash2 className="w-3.5 h-3.5" />
-                    </button>
-                  </div>
+          <div>
+            {brkDrafts.map((d, idx) => (
+              <div
+                key={idx}
+                className={cn(
+                  "grid grid-cols-1 items-center gap-3 border-b border-ink-100 p-4 last:border-b-0 md:grid-cols-[minmax(180px,1fr)_140px_minmax(180px,1fr)_auto]",
+                  d.dirty && "bg-brand-50/50 shadow-[inset_3px_0_0_var(--color-violet)]",
+                )}
+              >
+                <Input
+                  placeholder="Label (e.g. Foundation funders)"
+                  value={d.label}
+                  onChange={(e) => updateBrk(idx, { label: e.target.value })}
+                />
+                <Input
+                  className="tabular"
+                  inputMode="decimal"
+                  placeholder="Value"
+                  value={d.value}
+                  onChange={(e) => updateBrk(idx, { value: e.target.value })}
+                />
+                <Input
+                  placeholder="Notes (optional)"
+                  value={d.notes}
+                  onChange={(e) => updateBrk(idx, { notes: e.target.value })}
+                />
+                <div className="flex items-center justify-end gap-2">
+                  <Button
+                    variant={d.dirty ? "primary" : "secondary"}
+                    size="sm"
+                    onClick={() => saveBrk(idx)}
+                    isLoading={d.saving}
+                    icon={Save}
+                    disabled={!d.dirty}
+                  >
+                    Save
+                  </Button>
+                  <IconButton
+                    icon={Trash2}
+                    label={`Delete ${d.label || "row"}`}
+                    variant="danger"
+                    size="sm"
+                    onClick={() => requestDeleteBreakdown(idx)}
+                  />
                 </div>
+              </div>
+            ))}
+            {brkDrafts.length === 0 ? (
+              <div className="p-8">
+                <EmptyState
+                  icon={FileSpreadsheet}
+                  title={`No breakdown rows for ${year}`}
+                  description="Add the first row to begin entering the composition for this metric."
+                  action={<Button variant="secondary" onClick={addBrkRow}>Add row</Button>}
+                />
+              </div>
+            ) : null}
+          </div>
+        </Card>
+      ) : kpi.reporting_frequency === "annual" ? (
+        <Card className="max-w-2xl p-5 lg:p-6">
+          <h2 className="text-xl font-semibold text-ink-900">{kpi.name}</h2>
+          <p className="mb-5 mt-1 text-sm text-ink-500">
+            Annual metric · {year} · {kpi.unit} ({kpi.unit_type})
+          </p>
+          <AnnualEntryRow
+            draft={drafts["0"]}
+            onChange={(patch) => setField(0, patch)}
+            onSave={() => saveMonth(0)}
+            onClear={() => requestClearMonth(0)}
+            year={year}
+            unit={kpi.unit}
+            unitType={kpi.unit_type}
+          />
+        </Card>
+      ) : (
+        <Card className="overflow-hidden">
+          <div className="border-b border-ink-100 p-5">
+            <h2 className="text-xl font-semibold text-ink-900">{kpi.name}</h2>
+            <p className="mt-1 text-sm text-ink-500">
+              Monthly metric · {year} · {kpi.unit} ({kpi.unit_type})
+            </p>
+          </div>
+          <div className="hidden grid-cols-[minmax(56px,0.55fr)_minmax(140px,1fr)_minmax(180px,1.5fr)_auto] gap-3 border-b border-ink-100 bg-ink-50 px-4 py-2.5 text-[10px] font-semibold uppercase tracking-[0.08em] text-ink-500 md:grid">
+            <span>Period</span>
+            <span>Value</span>
+            <span>Notes</span>
+            <span className="text-right">Actions</span>
+          </div>
+          <div>
+            {MONTH_LABELS.map((m, i) => {
+              const month = i + 1;
+              const draft = drafts[String(month)];
+              if (!draft) return null;
+              return (
+                <MonthCell
+                  key={month}
+                  label={m}
+                  draft={draft}
+                  unit={kpi.unit}
+                  unitType={kpi.unit_type}
+                  onChange={(patch) => setField(month, patch)}
+                  onSave={() => saveMonth(month)}
+                  onClear={() => requestClearMonth(month)}
+                />
               );
             })}
           </div>
-        </div>
+        </Card>
       )}
+
+      <ConfirmDialog
+        open={Boolean(confirmation)}
+        title={confirmation?.title ?? ""}
+        description={confirmation?.description ?? ""}
+        confirmLabel={confirmation?.confirmLabel}
+        onClose={() => setConfirmation(null)}
+        onConfirm={async () => {
+          const action = confirmation?.action;
+          setConfirmation(null);
+          await action?.();
+        }}
+      />
+    </div>
+  );
+}
+
+function MonthCell({
+  label,
+  draft,
+  unit,
+  unitType,
+  onChange,
+  onSave,
+  onClear,
+}: {
+  label: string;
+  draft: DraftEntry;
+  unit: string;
+  unitType: KPIWithCategory["unit_type"];
+  onChange: (patch: Partial<Omit<DraftEntry, "saved" | "dirty" | "saving">>) => void;
+  onSave: () => void;
+  onClear: () => void;
+}) {
+  return (
+    <div
+      className={cn("entry-row", draft.dirty && "entry-row-dirty")}
+    >
+      <div>
+        <span className="block text-sm font-semibold text-ink-900">{label}</span>
+        {draft.saved !== null ? (
+          <span className="mt-1 block text-xs tabular text-ink-500">
+            Saved {formatValue(draft.saved, unitType)}
+          </span>
+        ) : null}
+      </div>
+      <div className="flex min-w-0 items-center gap-2">
+        <Input
+          className="min-w-0 flex-1 tabular"
+          inputMode="decimal"
+          placeholder="0"
+          value={draft.value}
+          onChange={(e) => onChange({ value: e.target.value })}
+        />
+        <span className="w-14 truncate text-right text-xs text-ink-500">{unit}</span>
+      </div>
+      <Input
+        className="entry-notes text-sm"
+        placeholder="Notes…"
+        value={draft.notes}
+        onChange={(e) => onChange({ notes: e.target.value })}
+      />
+      <div className="flex items-center justify-end gap-2">
+        <Button
+          variant={draft.dirty ? "primary" : "secondary"}
+          size="sm"
+          onClick={onSave}
+          isLoading={draft.saving}
+          icon={Save}
+          disabled={!draft.dirty}
+        >
+          Save
+        </Button>
+        <IconButton
+          icon={Trash2}
+          label={`Clear ${label}`}
+          variant="danger"
+          size="sm"
+          onClick={onClear}
+          disabled={draft.saved === null}
+        />
+      </div>
+    </div>
+  );
+}
+
+function AnnualEntryRow({
+  draft,
+  onChange,
+  onSave,
+  onClear,
+  year,
+  unit,
+  unitType,
+}: {
+  draft: DraftEntry;
+  onChange: (patch: Partial<Omit<DraftEntry, "saved" | "dirty" | "saving">>) => void;
+  onSave: () => void;
+  onClear: () => void;
+  year: number;
+  unit: string;
+  unitType: KPIWithCategory["unit_type"];
+}) {
+  if (!draft) return <p className="text-sm text-ink-500">No draft.</p>;
+  return (
+    <div className="space-y-4">
+      <div className="flex items-center gap-2">
+        <Input
+          className="tabular max-w-[240px]"
+          inputMode="decimal"
+          placeholder={`Enter ${year} value`}
+          value={draft.value}
+          onChange={(e) => onChange({ value: e.target.value })}
+        />
+        <span className="text-xs text-ink-400">{unit}</span>
+        {draft.saved !== null ? (
+          <span className="text-xs text-ink-400 tabular">
+            saved {formatValue(draft.saved, unitType)}
+          </span>
+        ) : null}
+      </div>
+      <Input
+        className="text-sm"
+        placeholder="Notes (optional)"
+        value={draft.notes}
+        onChange={(e) => onChange({ notes: e.target.value })}
+      />
+      <div className="flex items-center gap-2">
+        <Button
+          variant={draft.dirty ? "primary" : "secondary"}
+          size="sm"
+          onClick={onSave}
+          isLoading={draft.saving}
+          icon={Save}
+          disabled={!draft.dirty}
+        >
+          Save {year} value
+        </Button>
+        <IconButton
+          icon={Trash2}
+          label={`Clear ${year} value`}
+          variant="danger"
+          size="sm"
+          onClick={onClear}
+          disabled={draft.saved === null}
+        />
+      </div>
     </div>
   );
 }

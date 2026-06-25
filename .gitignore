@@ -9,3 +9,6 @@ data/*.db-wal
 .env*.local
 *.log
 .DS_Store
+tsconfig.tsbuildinfo
+.playwright-cli/
+output/playwright/
