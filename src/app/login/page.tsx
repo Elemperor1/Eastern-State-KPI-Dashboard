@@ -2,8 +2,8 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import { LockKeyhole } from "lucide-react";
-import { Alert, Avatar, Button, Card, FormField, Input } from "@/components/ui";
+import { ArrowRight } from "lucide-react";
+import { Alert, BrandMark, Button, FormField, Input } from "@/components/ui";
 
 export default function LoginPage() {
   const router = useRouter();
@@ -12,41 +12,78 @@ export default function LoginPage() {
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
 
-  async function handleSubmit(e: React.FormEvent) {
-    e.preventDefault();
+  async function handleSubmit(event: React.FormEvent) {
+    event.preventDefault();
     setLoading(true);
     setError(null);
     try {
-      const res = await fetch("/api/auth/login", {
+      const response = await fetch("/api/auth/login", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ email, password }),
       });
-      if (!res.ok) {
-        const data = await res.json().catch(() => ({}));
+      if (!response.ok) {
+        const data = await response.json().catch(() => ({}));
         setError(data.error ?? "Login failed.");
         setLoading(false);
         return;
       }
       router.push("/dashboard");
       router.refresh();
-    } catch (err) {
-      console.error(err);
-      setError("Unexpected error. Try again.");
+    } catch (caught) {
+      console.error(caught);
+      setError("Connection failed. Please try again.");
       setLoading(false);
     }
   }
 
   return (
-    <main className="min-h-screen flex items-center justify-center px-6 py-12 bg-ink-50">
-      <div className="w-full max-w-[420px]">
-        <Card variant="elevated" className="p-8 md:p-10">
-          <div className="text-center mb-8">
-            <Avatar initials="ES" size="lg" variant="brand" className="mb-5 mx-auto" />
-            <h1 className="text-2xl font-semibold text-ink-900 text-balance">
-              Eastern State KPI Intelligence
-            </h1>
-            <p className="text-sm text-ink-500 mt-2 text-pretty">
+    <main className="grid min-h-[100dvh] bg-white lg:grid-cols-[minmax(0,1.08fr)_minmax(28rem,0.92fr)]">
+      <section
+        className="relative hidden overflow-hidden bg-ink-900 px-12 py-10 text-white lg:flex lg:flex-col lg:justify-between"
+        style={{ backgroundImage: "url('/starfield.svg')", backgroundSize: "640px 640px" }}
+      >
+        <div className="relative z-10 flex items-center gap-3">
+          <BrandMark size="md" inverted />
+          <div>
+            <p className="text-sm font-semibold">Eastern State</p>
+            <p className="text-[10px] uppercase tracking-[0.12em] text-white/55">KPI Intelligence</p>
+          </div>
+        </div>
+
+        <div className="relative z-10 max-w-2xl py-16">
+          <p className="mb-5 text-sm font-medium uppercase tracking-[0.12em] text-white/60">
+            Organizational performance
+          </p>
+          <h1 className="max-w-xl text-[clamp(3.25rem,5vw,5.5rem)] font-semibold leading-[0.98] tracking-[-0.045em]">
+            See the work with more <span className="rounded bg-accent-300 px-2 text-ink-950">clarity.</span>
+          </h1>
+          <p className="mt-8 max-w-lg text-base leading-8 text-white/70 text-pretty">
+            A focused view of the measures that help Eastern State’s leadership understand reach, stewardship, and impact.
+          </p>
+        </div>
+
+        <p className="relative z-10 text-sm text-white/50">
+          Internal reporting · Decision support · Board-ready context
+        </p>
+      </section>
+
+      <section className="flex min-h-[100dvh] items-center justify-center px-6 py-12 sm:px-12">
+        <div className="page-enter w-full max-w-md">
+          <div className="mb-10 flex items-center gap-3 lg:hidden">
+            <BrandMark size="md" />
+            <div>
+              <p className="text-sm font-semibold text-ink-900">Eastern State</p>
+              <p className="text-[10px] uppercase tracking-[0.12em] text-ink-500">KPI Intelligence</p>
+            </div>
+          </div>
+
+          <div className="mb-8">
+            <p className="section-eyebrow">Secure access</p>
+            <h2 className="text-[30px] font-medium leading-[1.2] tracking-[-0.02em] text-ink-900">
+              Welcome back
+            </h2>
+            <p className="mt-3 text-base leading-6 text-ink-600 text-pretty">
               Sign in with your Eastern State account to continue.
             </p>
           </div>
@@ -60,7 +97,7 @@ export default function LoginPage() {
                 required
                 placeholder="you@easternstate.org"
                 value={email}
-                onChange={(e) => setEmail(e.target.value)}
+                onChange={(event) => setEmail(event.target.value)}
               />
             </FormField>
             <FormField htmlFor="password" label="Password">
@@ -71,24 +108,30 @@ export default function LoginPage() {
                 required
                 placeholder="Enter your password"
                 value={password}
-                onChange={(e) => setPassword(e.target.value)}
+                onChange={(event) => setPassword(event.target.value)}
               />
             </FormField>
 
-            {error ? (
-              <Alert variant="error">{error}</Alert>
-            ) : null}
+            {error ? <Alert variant="error">{error}</Alert> : null}
 
-            <Button type="submit" variant="primary" fullWidth isLoading={loading} icon={LockKeyhole}>
-              {loading ? "Signing in…" : "Sign in"}
+            <Button
+              type="submit"
+              variant="primary"
+              size="lg"
+              fullWidth
+              isLoading={loading}
+              icon={ArrowRight}
+              iconPosition="right"
+            >
+              {loading ? "Signing in" : "Sign in"}
             </Button>
           </form>
-        </Card>
 
-        <p className="mt-6 text-center text-xs text-ink-500 leading-relaxed text-pretty">
-          Authorized personnel only. Activity is logged for audit purposes. Need access? Contact Kerry Sautner or Zach Palmer.
-        </p>
-      </div>
+          <p className="mt-8 max-w-sm text-sm leading-6 text-ink-500 text-pretty">
+            Authorized personnel only. Activity is logged for audit purposes. Need access? Contact Kerry Sautner or Zach Palmer.
+          </p>
+        </div>
+      </section>
     </main>
   );
 }
