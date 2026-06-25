@@ -15,6 +15,7 @@
   },
   "dependencies": {
     "@fontsource-variable/rubik": "^5.2.8",
+    "@vercel/analytics": "^2.0.1",
     "bcryptjs": "^2.4.3",
     "clsx": "^2.1.1",
     "date-fns": "^4.1.0",
