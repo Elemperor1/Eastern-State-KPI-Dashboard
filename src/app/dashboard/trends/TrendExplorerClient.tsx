@@ -2,7 +2,10 @@
 
 import { useMemo, useState } from "react";
 import { Line, LineChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis, Legend } from "recharts";
+import { BarChart3 } from "lucide-react";
+import { Card, FormField, Select, Badge, EmptyState, Chip } from "@/components/ui";
 import { CHART_COLORS, formatValue, MONTH_LABELS } from "@/lib/analytics";
+import { PageHeader } from "@/components/ui/PageHeader";
 import type {
   Category,
   ComparisonPoint,
@@ -21,9 +24,7 @@ export function TrendExplorerClient({
   entries: MonthlyEntryWithMeta[];
   years: number[];
 }) {
-  const [categorySlug, setCategorySlug] = useState<string>("all");
   const initialKpiSlugs = (() => {
-    // Start with the first KPI from each category, capped at 3.
     const seen = new Set<string>();
     const picks: string[] = [];
     for (const kpi of kpis) {
@@ -34,13 +35,15 @@ export function TrendExplorerClient({
     }
     return picks;
   })();
+  const [categorySlug, setCategorySlug] = useState<string>("all");
   const [kpiSlugs, setKpiSlugs] = useState<string[]>(initialKpiSlugs);
   const [selectedYears, setSelectedYears] = useState<number[]>(years.slice(-3));
 
   const visibleKPIs = useMemo(() => {
-    return categorySlug === "all"
+    const base = categorySlug === "all"
       ? kpis
       : kpis.filter((k) => k.category_slug === categorySlug);
+    return base.filter((k) => k.reporting_frequency === "monthly" && k.unit_type !== "breakdown");
   }, [kpis, categorySlug]);
 
   const trendData: ComparisonPoint[] = useMemo(() => {
@@ -67,9 +70,9 @@ export function TrendExplorerClient({
     return points;
   }, [kpis, entries, kpiSlugs, selectedYears]);
 
-  const sampleFormat = kpiSlugs[0]
-    ? kpis.find((k) => k.slug === kpiSlugs[0])?.format ?? "number"
-    : "number";
+  const sampleUnitType = kpiSlugs[0]
+    ? kpis.find((k) => k.slug === kpiSlugs[0])?.unit_type ?? "count"
+    : "count";
 
   function toggleKpi(slug: string) {
     setKpiSlugs((prev) => (prev.includes(slug) ? prev.filter((s) => s !== slug) : [...prev, slug]));
@@ -79,101 +82,106 @@ export function TrendExplorerClient({
   }
 
   return (
-    <div className="px-8 py-8 max-w-[1400px] mx-auto">
-      <header className="mb-6">
-        <p className="text-xs uppercase tracking-[0.18em] text-ink-500 mb-2">Trend Explorer</p>
-        <h1 className="text-3xl font-display font-semibold text-ink-900">
-          Multi-KPI · Multi-Year Trends
-        </h1>
-        <p className="text-sm text-ink-500 mt-1">
-          Compare any combination of KPIs and years to see how the site is moving.
-        </p>
-      </header>
+    <div className="px-6 py-6 lg:px-8 lg:py-8 max-w-[1400px] mx-auto">
+      <PageHeader
+        eyebrow="Trend Explorer"
+        title="Multi-KPI · Multi-Year Trends"
+        subtitle="Compare any combination of KPIs and years to see how the site is moving."
+      />
 
       <div className="grid grid-cols-1 lg:grid-cols-[280px_1fr] gap-6">
         <aside className="space-y-4 no-print">
-          <div className="surface p-4">
-            <p className="label">Category</p>
-            <select
-              className="input"
-              value={categorySlug}
-              onChange={(e) => {
-                setCategorySlug(e.target.value);
-                setKpiSlugs([]);
-              }}
-            >
-              <option value="all">All categories</option>
-              {categories.map((c) => (
-                <option key={c.id} value={c.slug}>
-                  {c.name}
-                </option>
-              ))}
-            </select>
-          </div>
+          <Card className="p-4">
+            <FormField htmlFor="trend-category" label="Category">
+              <Select
+                id="trend-category"
+                value={categorySlug}
+                onChange={(e) => {
+                  setCategorySlug(e.target.value);
+                  setKpiSlugs([]);
+                }}
+              >
+                <option value="all">All categories</option>
+                {categories.map((c) => (
+                  <option key={c.id} value={c.slug}>{c.name}</option>
+                ))}
+              </Select>
+            </FormField>
+          </Card>
 
-          <div className="surface p-4">
-            <p className="label">KPIs</p>
-            <div className="space-y-1.5 max-h-72 overflow-auto pr-1">
+          <Card className="p-4">
+            <div className="flex items-center justify-between mb-2">
+              <p className="label mb-0">KPIs</p>
+              <Badge variant="default" className="tabular">{kpiSlugs.length} selected</Badge>
+            </div>
+            <div className="space-y-2 max-h-72 overflow-auto pr-1">
               {visibleKPIs.map((kpi) => {
                 const checked = kpiSlugs.includes(kpi.slug);
                 return (
-                  <label key={kpi.id} className="flex items-start gap-2 text-sm text-ink-700 cursor-pointer">
+                  <label
+                    key={kpi.id}
+                    className="flex items-start gap-2.5 text-sm text-ink-700 cursor-pointer p-1.5 rounded-lg hover:bg-ink-50 transition-colors"
+                  >
                     <input
                       type="checkbox"
                       checked={checked}
                       onChange={() => toggleKpi(kpi.slug)}
-                      className="mt-0.5"
+                      className="mt-0.5 w-4 h-4 accent-brand-700"
                     />
-                    <span className="flex-1">{kpi.name}</span>
+                    <span className="flex-1 text-pretty">{kpi.name}</span>
                   </label>
                 );
               })}
+              {visibleKPIs.length === 0 && (
+                <p className="text-xs text-ink-500">No monthly KPIs in this category.</p>
+              )}
             </div>
-          </div>
+          </Card>
 
-          <div className="surface p-4">
-            <p className="label">Years</p>
-            <div className="flex flex-wrap gap-1.5">
+          <Card className="p-4">
+            <p className="label mb-2">Years</p>
+            <div className="flex flex-wrap gap-2">
               {years.map((year) => {
                 const checked = selectedYears.includes(year);
                 return (
-                  <button
-                    key={year}
-                    onClick={() => toggleYear(year)}
-                    className={`px-3 py-1 rounded-md text-sm font-medium border ${
-                      checked
-                        ? "bg-brand-700 text-white border-brand-700"
-                        : "bg-white text-ink-700 border-ink-200 hover:bg-ink-50"
-                    }`}
-                  >
-                    {year}
-                  </button>
+                  <Chip
+                  key={year}
+                  active={checked}
+                  onClick={() => toggleYear(year)}
+                  aria-pressed={checked}
+                >
+                  {year}
+                </Chip>
                 );
               })}
             </div>
-          </div>
+          </Card>
         </aside>
 
-        <div className="surface p-6 min-h-[420px]">
+        <Card className="p-5 lg:p-6 min-h-[420px] flex flex-col">
           {kpiSlugs.length === 0 ? (
-            <p className="text-sm text-ink-500">Select at least one KPI to view the trend.</p>
+            <EmptyState
+              icon={BarChart3}
+              title="Select a KPI"
+              description="Use the sidebar to choose a category, then pick KPIs and years to see the trend."
+            />
           ) : (
             <div className="h-[520px]">
               <ResponsiveContainer width="100%" height="100%">
                 <LineChart data={trendData} margin={{ top: 8, right: 16, left: 8, bottom: 8 }}>
-                  <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" vertical={false} />
-                  <XAxis dataKey="label" tickLine={false} axisLine={false} tick={{ fontSize: 11, fill: "#475569" }} />
+                  <CartesianGrid strokeDasharray="3 3" stroke="var(--chart-grid)" vertical={false} />
+                  <XAxis dataKey="label" tickLine={false} axisLine={false} tick={{ fontSize: 11, fill: "var(--chart-axis)" }} />
                   <YAxis
-                    tickFormatter={(v) => formatValue(Number(v), sampleFormat, { compact: true })}
+                    tickFormatter={(v) => formatValue(Number(v), sampleUnitType, { compact: true })}
                     tickLine={false}
                     axisLine={false}
-                    tick={{ fontSize: 11, fill: "#475569" }}
+                    tick={{ fontSize: 11, fill: "var(--chart-axis)" }}
                     width={70}
                   />
                   <Tooltip
                     formatter={(value) => {
                       if (value === null || value === undefined) return ["—", ""];
-                      return [formatValue(Number(value), sampleFormat), ""];
+                      return [formatValue(Number(value), sampleUnitType), ""];
                     }}
                   />
                   <Legend wrapperStyle={{ fontSize: 12 }} iconType="circle" />
@@ -199,7 +207,7 @@ export function TrendExplorerClient({
               </ResponsiveContainer>
             </div>
           )}
-        </div>
+        </Card>
       </div>
     </div>
   );

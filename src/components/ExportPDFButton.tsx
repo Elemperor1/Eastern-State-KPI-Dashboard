@@ -4,6 +4,7 @@ import { useState } from "react";
 import { Download, Loader2 } from "lucide-react";
 import html2canvas from "html2canvas";
 import jsPDF from "jspdf";
+import { Button } from "@/components/ui";
 
 interface Props {
   targetId: string;
@@ -18,7 +19,6 @@ export function ExportPDFButton({ targetId, fileName = "eastern-state-kpi.pdf" }
     if (!target) return;
     setBusy(true);
     try {
-      // Render each direct child to its own page so tall content doesn't get clipped.
       const sections = Array.from(target.querySelectorAll<HTMLElement>("section, header, footer")) as HTMLElement[];
       const blocks = sections.length ? sections : [target];
 
@@ -31,7 +31,7 @@ export function ExportPDFButton({ targetId, fileName = "eastern-state-kpi.pdf" }
         const block = blocks[i];
         const canvas = await html2canvas(block, {
           scale: 2,
-          backgroundColor: "#f8fafc",
+          backgroundColor: "var(--color-page)",
           logging: false,
           useCORS: true,
           windowWidth: block.scrollWidth,
@@ -45,13 +45,11 @@ export function ExportPDFButton({ targetId, fileName = "eastern-state-kpi.pdf" }
         if (imgHeight <= pageHeight - margin * 2) {
           pdf.addImage(imgData, "PNG", margin, margin, imgWidth, imgHeight);
         } else {
-          // Tile the image across multiple pages if very tall.
           let remaining = imgHeight;
           let yOffset = 0;
           const pageContent = pageHeight - margin * 2;
           while (remaining > 0) {
             const sliceHeight = Math.min(pageContent, remaining);
-            // Create a slice canvas.
             const sliceCanvas = document.createElement("canvas");
             sliceCanvas.width = canvas.width;
             sliceCanvas.height = (sliceHeight / imgWidth) * canvas.width;
@@ -86,14 +84,14 @@ export function ExportPDFButton({ targetId, fileName = "eastern-state-kpi.pdf" }
   }
 
   return (
-    <button
+    <Button
+      variant="secondary"
       onClick={handleExport}
-      disabled={busy}
-      className="btn-secondary"
+      isLoading={busy}
+      icon={busy ? Loader2 : Download}
       aria-label="Export current dashboard view as PDF"
     >
-      {busy ? <Loader2 className="w-4 h-4 animate-spin" /> : <Download className="w-4 h-4" />}
       {busy ? "Exporting…" : "Export PDF"}
-    </button>
+    </Button>
   );
 }

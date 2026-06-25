@@ -1,99 +1,172 @@
+"use client";
+
 import Link from "next/link";
-import { redirect } from "next/navigation";
-import { getSession } from "@/lib/session";
-import { LogoutButton } from "./LogoutButton";
+import { usePathname } from "next/navigation";
+import { useState } from "react";
 import {
+  BarChart3,
+  Building2,
+  ChevronRight,
   LayoutDashboard,
-  LineChart,
-  Database,
-  Tag,
+  Menu,
+  Settings,
+  TrendingUp,
   Users,
+  X,
 } from "lucide-react";
-import type { ReactNode } from "react";
+import { Avatar, Button } from "@/components/ui";
+import { LogoutButton } from "./LogoutButton";
 import type { SessionUser } from "@/lib/types";
 
-interface NavItem {
-  href: string;
-  label: string;
-  icon: ReactNode;
-  adminOnly?: boolean;
-}
-
-const NAV: NavItem[] = [
-  { href: "/dashboard", label: "Dashboard", icon: <LayoutDashboard className="w-4 h-4" /> },
-  { href: "/dashboard/trends", label: "Trend Explorer", icon: <LineChart className="w-4 h-4" /> },
-  { href: "/admin/data", label: "Data Entry", icon: <Database className="w-4 h-4" />, adminOnly: true },
-  { href: "/admin/kpis", label: "KPIs & Categories", icon: <Tag className="w-4 h-4" />, adminOnly: true },
-  { href: "/admin/users", label: "Users", icon: <Users className="w-4 h-4" />, adminOnly: true },
+const NAV = [
+  { href: "/dashboard/overview", label: "Overview", icon: LayoutDashboard },
+  { href: "/dashboard/trends", label: "Trends", icon: TrendingUp },
+  { href: "/admin/data", label: "Data entry", icon: BarChart3, adminOnly: true },
+  { href: "/admin/kpis", label: "KPIs", icon: Settings, adminOnly: true },
+  { href: "/admin/users", label: "Team", icon: Users, adminOnly: true },
 ];
 
-export async function AppShell({
-  children,
+function NavItem({
+  item,
   active,
+  onClick,
 }: {
-  children: ReactNode;
-  active: string;
+  item: (typeof NAV)[number];
+  active: boolean;
+  onClick?: () => void;
 }) {
-  const session = await getSession();
-  if (!session.user) {
-    redirect("/login");
-  }
-  const user: SessionUser = session.user;
+  const Icon = item.icon;
+  return (
+    <Link
+      href={item.href}
+      onClick={onClick}
+      className={`nav-link ${active ? "nav-link-active" : ""}`}
+      aria-current={active ? "page" : undefined}
+    >
+      <Icon className="w-4 h-4 shrink-0" aria-hidden />
+      <span className="truncate">{item.label}</span>
+      {active ? <ChevronRight className="w-4 h-4 ml-auto shrink-0 opacity-60" aria-hidden /> : null}
+    </Link>
+  );
+}
+
+export function AppShell({ user, children }: { user: SessionUser; children: React.ReactNode }) {
+  const pathname = usePathname();
+  const [mobileOpen, setMobileOpen] = useState(false);
+  const initials = user.name
+    .split(" ")
+    .map((n) => n[0])
+    .join("")
+    .slice(0, 2)
+    .toUpperCase();
+
+  const visibleNav = NAV.filter((item) => !item.adminOnly || user.role === "admin");
 
   return (
-    <div className="min-h-screen flex bg-ink-50">
-      <aside className="w-64 shrink-0 bg-white border-r border-ink-200 flex flex-col">
-        <div className="px-5 pt-6 pb-5 border-b border-ink-200">
-          <Link href="/dashboard" className="flex items-center gap-2 group">
-            <span className="inline-flex items-center justify-center w-9 h-9 rounded-lg bg-brand-700 text-white">
-              <LayoutDashboard className="w-4 h-4" />
-            </span>
-            <span>
-              <span className="block text-[15px] font-display font-semibold leading-tight text-ink-900">
-                Eastern State
-              </span>
-              <span className="block text-[11px] uppercase tracking-wider text-ink-500 leading-tight">
-                KPI Intelligence
-              </span>
-            </span>
+    <div className="min-h-screen flex">
+      {/* Mobile top bar */}
+      <div className="lg:hidden fixed top-0 inset-x-0 z-40 bg-white/90 backdrop-blur border-b border-ink-200 px-4 h-14 flex items-center justify-between">
+        <Link href="/dashboard/overview" className="flex items-center gap-2.5">
+          <div className="w-8 h-8 rounded-lg bg-brand-700 text-white flex items-center justify-center">
+            <Building2 className="w-4 h-4" aria-hidden />
+          </div>
+          <span className="text-sm font-semibold text-ink-900 truncate">Eastern State KPI</span>
+        </Link>
+        <Button
+          variant="ghost"
+          size="sm"
+          onClick={() => setMobileOpen((v) => !v)}
+          aria-label={mobileOpen ? "Close menu" : "Open menu"}
+          aria-expanded={mobileOpen}
+          className="w-10 h-10 p-0"
+        >
+          {mobileOpen ? <X className="w-5 h-5" /> : <Menu className="w-5 h-5" />}
+        </Button>
+      </div>
+
+      {/* Sidebar: desktop */}
+      <aside className="hidden lg:flex w-64 flex-col border-r border-ink-200 bg-white sticky top-0 h-screen">
+        <div className="p-4">
+          <Link href="/dashboard/overview" className="flex items-center gap-3 px-3 py-2">
+            <div className="w-9 h-9 rounded-xl bg-brand-700 text-white flex items-center justify-center shadow-sm">
+              <Building2 className="w-5 h-5" aria-hidden />
+            </div>
+            <div className="min-w-0">
+              <span className="block text-sm font-semibold text-ink-900 leading-tight truncate">Eastern State</span>
+              <span className="block text-xs text-ink-500 truncate">KPI Intelligence</span>
+            </div>
           </Link>
         </div>
 
-        <nav className="flex-1 px-3 py-5 space-y-1">
-          {NAV.filter((item) => !item.adminOnly || user.role === "admin").map((item) => {
-            const isActive = active === item.href;
-            return (
-              <Link
-                key={item.href}
-                href={item.href}
-                className={`nav-link ${isActive ? "nav-link-active" : ""}`}
-              >
-                {item.icon}
-                <span>{item.label}</span>
-              </Link>
-            );
-          })}
+        <nav className="flex-1 overflow-y-auto px-3 py-2 space-y-1" aria-label="Primary">
+          {visibleNav.map((item) => (
+            <NavItem key={item.href} item={item} active={pathname === item.href || pathname.startsWith(item.href + "/")} />
+          ))}
         </nav>
 
-        <div className="border-t border-ink-200 px-4 py-4">
-          <div className="flex items-center gap-3 mb-3">
-            <div className="w-9 h-9 rounded-full bg-brand-100 text-brand-800 flex items-center justify-center text-sm font-semibold">
-              {user.name
-                .split(" ")
-                .map((p) => p[0])
-                .slice(0, 2)
-                .join("")}
-            </div>
-            <div className="min-w-0">
+        <div className="border-t border-ink-200 p-4 space-y-3">
+          <div className="flex items-center gap-3">
+            <Avatar initials={initials} size="md" variant="neutral" />
+            <div className="min-w-0 flex-1">
               <div className="text-sm font-medium text-ink-900 truncate">{user.name}</div>
-              <div className="text-[11px] text-ink-500 capitalize">{user.role}</div>
+              <div className="text-xs text-ink-500 capitalize font-medium">{user.role}</div>
             </div>
           </div>
           <LogoutButton />
         </div>
       </aside>
 
-      <main className="flex-1 min-w-0">{children}</main>
+      {/* Mobile sidebar overlay */}
+      {mobileOpen ? (
+        <div className="lg:hidden fixed inset-0 z-50 flex">
+          <div
+            className="flex-1 bg-ink-900/20"
+            onClick={() => setMobileOpen(false)}
+            aria-hidden
+          />
+          <aside className="w-64 flex flex-col bg-white border-r border-ink-200 h-full">
+            <div className="p-4 flex items-center justify-between">
+              <Link href="/dashboard/overview" className="flex items-center gap-2.5" onClick={() => setMobileOpen(false)}>
+                <div className="w-8 h-8 rounded-lg bg-brand-700 text-white flex items-center justify-center">
+                  <Building2 className="w-4 h-4" aria-hidden />
+                </div>
+                <span className="text-sm font-semibold text-ink-900">Eastern State KPI</span>
+              </Link>
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => setMobileOpen(false)}
+                aria-label="Close menu"
+                className="w-10 h-10 p-0"
+              >
+                <X className="w-4 h-4" />
+              </Button>
+            </div>
+            <nav className="flex-1 overflow-y-auto px-3 py-2 space-y-1" aria-label="Primary">
+              {visibleNav.map((item) => (
+                <NavItem
+                  key={item.href}
+                  item={item}
+                  active={pathname === item.href || pathname.startsWith(item.href + "/")}
+                  onClick={() => setMobileOpen(false)}
+                />
+              ))}
+            </nav>
+            <div className="border-t border-ink-200 p-4 space-y-3">
+              <div className="flex items-center gap-3">
+                <Avatar initials={initials} size="md" variant="neutral" />
+                <div className="min-w-0 flex-1">
+                  <div className="text-sm font-medium text-ink-900 truncate">{user.name}</div>
+                  <div className="text-xs text-ink-500 capitalize font-medium">{user.role}</div>
+                </div>
+              </div>
+              <LogoutButton />
+            </div>
+          </aside>
+        </div>
+      ) : null}
+
+      <main className="flex-1 min-w-0 pt-14 lg:pt-0">{children}</main>
     </div>
   );
 }

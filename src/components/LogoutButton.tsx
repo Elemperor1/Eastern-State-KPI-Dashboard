@@ -2,6 +2,7 @@
 
 import { useRouter } from "next/navigation";
 import { LogOut } from "lucide-react";
+import { Button } from "@/components/ui";
 
 export function LogoutButton() {
   const router = useRouter();
@@ -11,9 +12,9 @@ export function LogoutButton() {
     router.refresh();
   }
   return (
-    <button onClick={logout} className="btn-ghost w-full justify-start text-ink-700">
+    <Button variant="ghost" fullWidth onClick={logout} className="justify-start text-ink-700">
       <LogOut className="w-4 h-4" />
       Sign out
-    </button>
+    </Button>
   );
 }

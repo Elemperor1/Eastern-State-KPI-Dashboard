@@ -2,7 +2,8 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import { LockKeyhole, ShieldCheck } from "lucide-react";
+import { LockKeyhole } from "lucide-react";
+import { Alert, Avatar, Button, Card, FormField, Input } from "@/components/ui";
 
 export default function LoginPage() {
   const router = useRouter();
@@ -37,75 +38,55 @@ export default function LoginPage() {
   }
 
   return (
-    <main className="min-h-screen flex items-center justify-center px-6 py-12 bg-gradient-to-br from-ink-50 via-white to-brand-50">
-      <div className="w-full max-w-md">
-        <div className="text-center mb-8">
-          <div className="inline-flex items-center justify-center w-14 h-14 rounded-2xl bg-brand-700 text-white shadow-soft mb-4">
-            <ShieldCheck className="w-7 h-7" />
-          </div>
-          <h1 className="text-2xl font-display font-semibold text-ink-900">
-            Eastern State KPI Intelligence
-          </h1>
-          <p className="mt-1 text-sm text-ink-500">
-            Internal decision-support for executive leadership
-          </p>
-        </div>
-
-        <form
-          onSubmit={handleSubmit}
-          className="surface p-7 space-y-5"
-          aria-label="Sign in to dashboard"
-        >
-          <div>
-            <label htmlFor="email" className="label">
-              Email
-            </label>
-            <input
-              id="email"
-              type="email"
-              autoComplete="email"
-              required
-              className="input"
-              placeholder="you@easternstate.org"
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
-            />
-          </div>
-          <div>
-            <label htmlFor="password" className="label">
-              Password
-            </label>
-            <input
-              id="password"
-              type="password"
-              autoComplete="current-password"
-              required
-              className="input"
-              placeholder="Enter your password"
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-            />
+    <main className="min-h-screen flex items-center justify-center px-6 py-12 bg-ink-50">
+      <div className="w-full max-w-[420px]">
+        <Card variant="elevated" className="p-8 md:p-10">
+          <div className="text-center mb-8">
+            <Avatar initials="ES" size="lg" variant="brand" className="mb-5 mx-auto" />
+            <h1 className="text-2xl font-semibold text-ink-900 text-balance">
+              Eastern State KPI Intelligence
+            </h1>
+            <p className="text-sm text-ink-500 mt-2 text-pretty">
+              Sign in with your Eastern State account to continue.
+            </p>
           </div>
 
-          {error ? (
-            <div
-              role="alert"
-              className="text-sm text-red-700 bg-red-50 border border-red-200 rounded-lg px-3 py-2"
-            >
-              {error}
-            </div>
-          ) : null}
+          <form onSubmit={handleSubmit} className="space-y-5">
+            <FormField htmlFor="email" label="Email">
+              <Input
+                id="email"
+                type="email"
+                autoComplete="email"
+                required
+                placeholder="you@easternstate.org"
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+              />
+            </FormField>
+            <FormField htmlFor="password" label="Password">
+              <Input
+                id="password"
+                type="password"
+                autoComplete="current-password"
+                required
+                placeholder="Enter your password"
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+              />
+            </FormField>
 
-          <button type="submit" disabled={loading} className="btn-primary w-full">
-            <LockKeyhole className="w-4 h-4" />
-            {loading ? "Signing in…" : "Sign in"}
-          </button>
-        </form>
+            {error ? (
+              <Alert variant="error">{error}</Alert>
+            ) : null}
 
-        <p className="mt-6 text-center text-xs text-ink-500 leading-relaxed">
-          Authorized personnel only. Activity is logged for audit purposes.
-          <br />
-          Need access? Contact Kerry Sautner or Zach Palmer.
+            <Button type="submit" variant="primary" fullWidth isLoading={loading} icon={LockKeyhole}>
+              {loading ? "Signing in…" : "Sign in"}
+            </Button>
+          </form>
+        </Card>
+
+        <p className="mt-6 text-center text-xs text-ink-500 leading-relaxed text-pretty">
+          Authorized personnel only. Activity is logged for audit purposes. Need access? Contact Kerry Sautner or Zach Palmer.
         </p>
       </div>
     </main>

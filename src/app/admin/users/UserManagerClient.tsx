@@ -1,73 +1,62 @@
 "use client";
 
 import { useState } from "react";
-import { Plus, Trash2 } from "lucide-react";
+import { Plus, Trash2, RotateCcw } from "lucide-react";
+import { Badge, Button, Card, FormField, Input, Select, IconButton, PageHeader, StatusBanner, Table } from "@/components/ui";
 import type { User } from "@/lib/types";
 
 export function UserManagerClient({
-  currentUserId,
   users: initialUsers,
+  currentUserId,
 }: {
-  currentUserId: number;
   users: User[];
+  currentUserId: number;
 }) {
   const [users, setUsers] = useState(initialUsers);
-  const [feedback, setFeedback] = useState<string | null>(null);
+  const [feedback, setFeedback] = useState<{ message: string; variant: "success" | "error" } | null>(null);
 
   async function refresh() {
     const res = await fetch("/api/users");
-    if (res.ok) {
-      const data = await res.json();
-      setUsers(data.users);
-    }
+    const data = await res.json();
+    setUsers(data.users);
   }
 
   async function createUser(form: FormData) {
-    const payload = {
-      email: String(form.get("email") || ""),
-      name: String(form.get("name") || ""),
-      password: String(form.get("password") || ""),
-      role: (form.get("role") as "admin" | "viewer") || "viewer",
-    };
     const res = await fetch("/api/users", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(payload),
+      body: JSON.stringify({
+        name: String(form.get("name")),
+        email: String(form.get("email")),
+        password: String(form.get("password")),
+        role: String(form.get("role")),
+      }),
     });
     const data = await res.json();
     if (!res.ok) {
-      setFeedback(`Could not create user: ${data.error}`);
+      setFeedback({ message: `Could not create user: ${data.error}`, variant: "error" });
       return;
     }
-    setFeedback("User created.");
-    (document.getElementById("create-user-form") as HTMLFormElement)?.reset();
+    setFeedback({ message: "User created.", variant: "success" });
     await refresh();
   }
 
   async function resetPassword(id: number) {
-    const password = prompt("Enter a new password (8+ characters):");
-    if (!password) return;
-    if (password.length < 8) {
-      setFeedback("Password must be at least 8 characters.");
-      return;
-    }
+    if (!confirm("Reset this user’s password to the default?")) return;
     const res = await fetch("/api/users", {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ id, password }),
+      body: JSON.stringify({ id }),
     });
     if (!res.ok) {
-      setFeedback("Could not update password.");
+      setFeedback({ message: "Could not reset password.", variant: "error" });
       return;
     }
-    setFeedback("Password updated.");
+    setFeedback({ message: "Password reset.", variant: "success" });
+    await refresh();
   }
 
   async function deleteUser(id: number, name: string) {
-    if (id === currentUserId) {
-      setFeedback("You cannot delete the account you are currently signed in as.");
-      return;
-    }
     if (!confirm(`Delete user "${name}"?`)) return;
     const res = await fetch("/api/users", {
       method: "DELETE",
@@ -75,124 +64,116 @@ export function UserManagerClient({
       body: JSON.stringify({ id }),
     });
     if (!res.ok) {
-      setFeedback("Could not delete user.");
+      setFeedback({ message: "Could not delete user.", variant: "error" });
       return;
     }
-    setFeedback("User deleted.");
+    setFeedback({ message: "User deleted.", variant: "success" });
     await refresh();
   }
 
   return (
-    <div className="px-8 py-8 max-w-[1000px] mx-auto">
-      <header className="mb-6">
-        <p className="text-xs uppercase tracking-[0.18em] text-ink-500 mb-2">Admin · Users</p>
-        <h1 className="text-3xl font-display font-semibold text-ink-900">Team & Access</h1>
-        <p className="text-sm text-ink-500 mt-1">
-          Admins can edit data; viewers can explore the dashboard.
-        </p>
-      </header>
+    <div className="px-6 py-6 lg:px-8 lg:py-8 max-w-[1000px] mx-auto">
+      <PageHeader
+        eyebrow="Admin · Users"
+        title="Team & Access"
+        subtitle="Admins can edit data; viewers can explore the dashboard."
+      />
 
       {feedback ? (
-        <div className="mb-5 text-sm text-emerald-700 bg-emerald-50 border border-emerald-200 rounded-lg px-3 py-2">
-          {feedback}
-        </div>
+        <StatusBanner variant={feedback.variant} onDismiss={() => setFeedback(null)}>
+          {feedback.message}
+        </StatusBanner>
       ) : null}
 
-      <form
-        id="create-user-form"
-        onSubmit={async (e) => {
-          e.preventDefault();
-          await createUser(new FormData(e.currentTarget));
-        }}
-        className="surface p-5 mb-6"
-      >
-        <h2 className="text-sm font-semibold text-ink-700 mb-4 flex items-center gap-2">
-          <Plus className="w-4 h-4" /> Invite a team member
-        </h2>
-        <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-          <div>
-            <label className="label">Name</label>
-            <input name="name" required className="input" placeholder="Full name" />
+      <Card className="p-5 mb-6">
+        <form
+          id="create-user-form"
+          onSubmit={async (e) => {
+            e.preventDefault();
+            await createUser(new FormData(e.currentTarget));
+          }}
+        >
+          <h2 className="text-sm font-semibold text-ink-900 mb-4 flex items-center gap-2">
+            <Plus className="w-4 h-4" /> Invite a team member
+          </h2>
+          <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+            <FormField label="Name">
+              <Input name="name" required placeholder="Full name" />
+            </FormField>
+            <FormField label="Email">
+              <Input name="email" type="email" required placeholder="name@easternstate.org" />
+            </FormField>
+            <FormField label="Password">
+              <Input name="password" type="password" required minLength={8} placeholder="8+ characters" />
+            </FormField>
+            <FormField label="Role">
+              <Select name="role" defaultValue="viewer">
+                <option value="viewer">Viewer (read-only)</option>
+                <option value="admin">Admin (full access)</option>
+              </Select>
+            </FormField>
           </div>
-          <div>
-            <label className="label">Email</label>
-            <input name="email" type="email" required className="input" placeholder="name@easternstate.org" />
+          <div className="mt-4 flex justify-end">
+            <Button type="submit" variant="primary" icon={Plus}>Create user</Button>
           </div>
-          <div>
-            <label className="label">Password</label>
-            <input name="password" type="password" required minLength={8} className="input" placeholder="8+ characters" />
-          </div>
-          <div>
-            <label className="label">Role</label>
-            <select name="role" className="input" defaultValue="viewer">
-              <option value="viewer">Viewer (read-only)</option>
-              <option value="admin">Admin (full access)</option>
-            </select>
-          </div>
-        </div>
-        <div className="mt-4 flex justify-end">
-          <button type="submit" className="btn-primary">
-            <Plus className="w-4 h-4" /> Create user
-          </button>
-        </div>
-      </form>
+        </form>
+      </Card>
 
-      <div className="surface overflow-hidden">
-        <table className="w-full text-sm">
+      <Card className="overflow-hidden">
+        <Table minWidth="560px">
           <thead>
-            <tr className="text-[11px] uppercase tracking-wider font-semibold text-ink-500 bg-ink-50 border-b border-ink-200">
-              <th className="text-left px-5 py-3">Name</th>
-              <th className="text-left px-5 py-3">Email</th>
-              <th className="text-left px-5 py-3">Role</th>
-              <th className="text-left px-5 py-3">Created</th>
-              <th className="text-right px-5 py-3">Actions</th>
+            <tr>
+              <th className="text-left" scope="col">Name</th>
+              <th className="text-left" scope="col">Email</th>
+              <th className="text-left" scope="col">Role</th>
+              <th className="text-left" scope="col">Created</th>
+              <th className="text-right" scope="col">Actions</th>
             </tr>
           </thead>
           <tbody className="divide-y divide-ink-100">
             {users.map((user) => (
-              <tr key={user.id} className="hover:bg-ink-50/50">
-                <td className="px-5 py-3 font-medium text-ink-900">
-                  {user.name}
-                  {user.id === currentUserId ? (
-                    <span className="ml-2 text-[10px] uppercase font-semibold text-emerald-700 bg-emerald-50 border border-emerald-200 px-1.5 py-0.5 rounded">
-                      You
-                    </span>
-                  ) : null}
-                </td>
-                <td className="px-5 py-3 text-ink-700">{user.email}</td>
-                <td className="px-5 py-3">
-                  <span
-                    className={`pill ${
-                      user.role === "admin"
-                        ? "bg-brand-50 text-brand-800 border border-brand-200"
-                        : "bg-ink-100 text-ink-700"
-                    }`}
-                  >
-                    {user.role}
+              <tr key={user.id} className="hover:bg-ink-50/50 transition-colors">
+                <td className="font-medium text-ink-900">
+                  <span className="inline-flex items-center gap-2">
+                    {user.name}
+                    {user.id === currentUserId ? (
+                      <Badge variant="success">You</Badge>
+                    ) : null}
                   </span>
                 </td>
-                <td className="px-5 py-3 text-ink-500 text-xs">
+                <td className="text-ink-700">{user.email}</td>
+                <td className="">
+                  <Badge variant={user.role === "admin" ? "info" : "default"}>
+                    {user.role}
+                  </Badge>
+                </td>
+                <td className="text-ink-500 text-xs">
                   {new Date(user.created_at).toLocaleDateString()}
                 </td>
-                <td className="px-5 py-3 text-right">
+                <td className="text-right">
                   <div className="inline-flex gap-2">
-                    <button onClick={() => resetPassword(user.id)} className="btn-secondary px-3 py-1.5">
-                      Reset password
-                    </button>
-                    <button
+                    <IconButton
+                      icon={RotateCcw}
+                      label={`Reset password for ${user.name}`}
+                      variant="secondary"
+                      size="sm"
+                      onClick={() => resetPassword(user.id)}
+                    />
+                    <IconButton
+                      icon={Trash2}
+                      label={`Delete user ${user.name}`}
+                      variant="danger"
+                      size="sm"
                       onClick={() => deleteUser(user.id, user.name)}
                       disabled={user.id === currentUserId}
-                      className="btn-danger px-2.5 py-1.5"
-                    >
-                      <Trash2 className="w-3.5 h-3.5" />
-                    </button>
+                    />
                   </div>
                 </td>
               </tr>
             ))}
           </tbody>
-        </table>
-      </div>
+        </Table>
+      </Card>
     </div>
   );
 }
