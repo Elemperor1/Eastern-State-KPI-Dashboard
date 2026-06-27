@@ -1,9 +1,19 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Line, LineChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
 import { BarChart3 } from "lucide-react";
-import { Badge, Card, Checkbox, Chip, EmptyState, FormField, PageHeader, Select } from "@/components/ui";
+import {
+  Badge,
+  Card,
+  Checkbox,
+  Chip,
+  EmptyState,
+  FormField,
+  PageHeader,
+  Select,
+  Tabs,
+} from "@/components/ui";
 import { CHART_COLORS, formatValue, MONTH_LABELS } from "@/lib/analytics";
 import type {
   Category,
@@ -11,6 +21,22 @@ import type {
   KPIWithCategory,
   MonthlyEntryWithMeta,
 } from "@/lib/types";
+
+type AxisMode = "shared" | "log" | "indexed";
+
+const AXIS_MODE_OPTIONS: { value: AxisMode; label: string }[] = [
+  { value: "shared", label: "Shared" },
+  { value: "log", label: "Per-series (log)" },
+  { value: "indexed", label: "Per-series (indexed)" },
+];
+
+const AXIS_MODE_HELP: Record<AxisMode, string> = {
+  shared:
+    "All series share one linear axis; high-volume measures can compress smaller ones.",
+  log: "Each series is plotted on a logarithmic scale so small and large magnitudes coexist.",
+  indexed:
+    "Each line is indexed to its first non-null value = 100, so relative movement is comparable across magnitudes.",
+};
 
 export function TrendExplorerClient({
   kpis,
@@ -45,7 +71,8 @@ export function TrendExplorerClient({
     return base.filter((k) => k.reporting_frequency === "monthly" && k.unit_type !== "breakdown");
   }, [kpis, categorySlug]);
 
-  const trendData: ComparisonPoint[] = useMemo(() => {
+  // Raw, untransformed points: one row per month, one column per (kpi, year).
+  const rawTrendData: ComparisonPoint[] = useMemo(() => {
     const points: ComparisonPoint[] = [];
     for (let month = 1; month <= 12; month++) {
       const point: ComparisonPoint = { label: MONTH_LABELS[month - 1], month };
@@ -68,6 +95,71 @@ export function TrendExplorerClient({
     }
     return points;
   }, [kpis, entries, kpiSlugs, selectedYears]);
+
+  // Default to "indexed" once we have multiple KPIs — that's the value-add of this view.
+  const [axisMode, setAxisMode] = useState<AxisMode>(() =>
+    initialKpiSlugs.length > 1 ? "indexed" : "shared",
+  );
+
+  // Compute per-(kpi, year) baselines for the indexed mode.
+  // Baseline = first non-null value across months (1-12). Series whose baseline is null or
+  // zero are dropped from the indexed chart (their values become null).
+  const indexedBaselines = useMemo(() => {
+    const map: Record<string, number | null> = {};
+    if (axisMode !== "indexed") return map;
+    for (const kpiSlug of kpiSlugs) {
+      for (const year of selectedYears) {
+        const key = `${kpiSlug}__${year}`;
+        const baseline = rawTrendData.find((p) => p[key] != null && (p[key] as number) !== 0)?.[key];
+        map[key] = typeof baseline === "number" ? baseline : null;
+      }
+    }
+    return map;
+  }, [axisMode, kpiSlugs, selectedYears, rawTrendData]);
+
+  // Apply log/indexed transforms on top of the raw data.
+  const trendData: ComparisonPoint[] = useMemo(() => {
+    if (axisMode === "shared") return rawTrendData;
+    return rawTrendData.map((point) => {
+      const next: ComparisonPoint = { label: point.label, month: point.month };
+      for (const kpiSlug of kpiSlugs) {
+        for (const year of selectedYears) {
+          const key = `${kpiSlug}__${year}`;
+          const raw = point[key];
+          if (raw === null || raw === undefined) {
+            next[key] = null;
+            continue;
+          }
+          const v = raw as number;
+          if (axisMode === "log") {
+            // log10 is undefined for <= 0; drop those points instead of producing NaN.
+            if (v <= 0) {
+              next[key] = null;
+            } else {
+              next[key] = Math.log10(v);
+            }
+          } else {
+            // indexed
+            const baseline = indexedBaselines[key];
+            if (!baseline) {
+              next[key] = null;
+            } else {
+              next[key] = (v / baseline) * 100;
+            }
+          }
+        }
+      }
+      return next;
+    });
+  }, [axisMode, rawTrendData, indexedBaselines, kpiSlugs, selectedYears]);
+
+  // When the user toggles a category that changes which KPIs are visible, fall back to a
+  // sensible default if the current mode no longer makes sense (e.g. only 1 KPI left → Shared).
+  useEffect(() => {
+    if (kpiSlugs.length <= 1 && axisMode !== "shared") {
+      setAxisMode("shared");
+    }
+  }, [kpiSlugs.length, axisMode]);
 
   const sampleUnitType = kpiSlugs[0]
     ? kpis.find((k) => k.slug === kpiSlugs[0])?.unit_type ?? "count"
@@ -238,6 +330,7 @@ export function TrendExplorerClient({
                           dot={false}
                           activeDot={{ r: 4, strokeWidth: 0 }}
                           connectNulls={false}
+                          isAnimationActive={false}
                         />
                       );
                     }),
