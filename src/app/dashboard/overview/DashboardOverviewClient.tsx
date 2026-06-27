@@ -18,7 +18,6 @@ export function DashboardOverviewClient({
   initialState: CompareState;
 }) {
   const router = useRouter();
-  const params = useSearchParams();
   const [state, setState] = useState<CompareState>(initialState);
 
   useEffect(() => {
