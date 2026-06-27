@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
-import { requireAdmin } from "@/lib/session";
+import { requireAdmin, requireSession } from "@/lib/session";
 import {
   createCategory,
   deleteCategory,
@@ -16,6 +16,11 @@ const CreateSchema = z.object({
 });
 
 export async function GET() {
+  try {
+    await requireSession();
+  } catch {
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
   return NextResponse.json({ categories: listCategories() });
 }
 
