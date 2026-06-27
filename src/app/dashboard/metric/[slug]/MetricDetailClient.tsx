@@ -12,11 +12,11 @@ import {
   XAxis,
   YAxis,
 } from "recharts";
-import { ExportPDFButton } from "@/components/ExportPDFButton";
+import { LegacyExportPDFButton } from "@/components/LegacyExportPDFButton";
 import { DashboardControls, type CompareState } from "@/components/DashboardControls";
 import { TrendChart } from "@/components/TrendChart";
 import { BreakdownChart } from "@/components/BreakdownChart";
-import { Breadcrumb, Card, PageHeader, Table } from "@/components/ui";
+import { Breadcrumb, Card, ExportCSVButton, PageHeader, PrintButton, Table } from "@/components/ui";
 import { SampleDataBadge } from "@/components/SampleDataBadge";
 import {
   buildKPIAnalytics,
@@ -125,6 +125,29 @@ export function MetricDetailClient({
         ? "Lower is better"
         : "Neutral direction";
 
+  // CSV row construction: same data the on-screen table shows. For monthly
+  // KPIs we include the compare-year column so the export matches what the
+  // user sees; for annual KPIs we emit one row per available year. We
+  // prepend a couple of header rows with KPI context (name, unit, years)
+  // to keep the file self-describing when shared outside the dashboard.
+  type CsvRow = Record<string, string | number | null>;
+  const csvColumns = isAnnual
+    ? ["Year", "Value", "Notes"]
+    : ["Period", `Value (${state.currentYear})`, `Value (${state.compareYear})`, "Notes"];
+  const csvRows: CsvRow[] = isAnnual
+    ? tableRows.map((r) => ({
+        Year: r.period,
+        Value: r.value ?? "",
+        Notes: r.notes ?? "",
+      }))
+    : tableRows.map((r) => ({
+        Period: r.period,
+        [`Value (${state.currentYear})`]: r.value ?? "",
+        [`Value (${state.compareYear})`]: r.compare ?? "",
+        Notes: r.notes ?? "",
+      }));
+  const csvFilename = `eastern-state-${kpiSlug}-${state.currentYear}-vs-${state.compareYear}.csv`;
+
   return (
     <div className="page-content page-enter">
       <div id={printId}>
@@ -142,7 +165,9 @@ export function MetricDetailClient({
           actions={
             <>
               <SampleDataBadge sample={data.sampleData} />
-              <ExportPDFButton
+              <ExportCSVButton rows={csvRows} columns={csvColumns} filename={csvFilename} />
+              <PrintButton />
+              <LegacyExportPDFButton
                 targetId={printId}
                 fileName={`eastern-state-${kpiSlug}.pdf`}
               />
@@ -201,7 +226,11 @@ export function MetricDetailClient({
           <Card className="p-5 lg:p-6 mb-10">
             <BreakdownChart
               kpi={kpi}
-              breakdowns={data.breakdowns}
+              data={data.breakdowns.filter(
+                (b) =>
+                  b.kpi_id === kpi.id &&
+                  (b.year === state.currentYear || b.year === state.compareYear),
+              )}
               currentYear={state.currentYear}
               compareYear={state.compareYear}
             />

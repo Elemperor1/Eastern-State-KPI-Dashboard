@@ -21,6 +21,17 @@ npm run dev
 
 Open <http://localhost:3000> and sign in.
 
+> **Auth bypass (temporary).** `AUTH_DISABLED=true` is set in `.env.local`, so the
+> dashboard is publicly reachable in dev — `/` redirects straight to
+> `/dashboard/overview` and the login form is skipped. The flag is read by
+> `src/lib/auth-flag.ts`; with it on, `getSession()` returns a static admin user
+> (id `0`) and the `AccountBlock` in `AppShell` hides its Logout button. To
+> restore iron-session login, set `AUTH_DISABLED=false` in `.env.local` (or
+> unset it) and revert the four conditional branches in `src/lib/session.ts`,
+> `src/app/page.tsx`, and `src/components/AppShell.tsx`. The `/login` page,
+> `/api/auth/*` routes, seeded accounts, and `requireSession`/`requireAdmin`
+> call sites are all preserved — no other restoration work is needed.
+
 ### Default accounts (seeded on first DB access)
 
 | Name          | Email                       | Password           | Role   |
@@ -83,7 +94,7 @@ Comparison logic adapts to unit type:
 
 | Layer       | Tech                                              |
 | ----------- | ------------------------------------------------- |
-| Framework   | Next.js 14 App Router + TypeScript                |
+| Framework   | Next.js 15 App Router + TypeScript          |
 | Styling     | Tailwind CSS with a custom brand palette          |
 | Database    | SQLite via Node's built-in `node:sqlite` module   |
 | Auth        | `iron-session` (encrypted cookies) + `bcryptjs`   |
@@ -109,18 +120,49 @@ The schema is versioned (`meta.schema_version`); bumping the version cleanly res
 
 ## Verification
 
-A repeatable smoke harness lives at `scripts/smoke.sh`. Point it at a running server:
+A repeatable smoke harness lives at `scripts/smoke.sh`. Invoke it directly (no
+npm wrapper) against a running server. The canonical invocation exercises both
+auth modes end-to-end:
 
 ```bash
+# 1. Build the production server once.
 npm run build
-PORT=3200 node_modules/.bin/next start -p 3200 &
 
-PORT=3200 BASE=http://127.0.0.1:3200 npm run smoke
+# 2. Smoke test the bypass-auth flow (no login required).
+AUTH_DISABLED=true PORT=3290 node_modules/.bin/next start -p 3290 &
+AUTH_DISABLED=true PORT=3290 BASE=http://127.0.0.1:3290 bash ./scripts/smoke.sh
+
+# 3. Restart in normal-auth mode and smoke test login + session handling.
+AUTH_DISABLED=false PORT=3290 node_modules/.bin/next start -p 3290 &
+AUTH_DISABLED=false PORT=3290 BASE=http://127.0.0.1:3290 bash ./scripts/smoke.sh
 ```
 
-It verifies the finalized metric set, all category/metric pages, through-month handling, admin pages, and monthly/annual/breakdown entry round-trips.
+It verifies the finalized metric set, all category/metric pages, through-month handling, admin pages, monthly/annual/breakdown entry round-trips, and the auth-bypass behavior of `POST /api/entries` (401 with no session when auth is enabled; 201 when the bypass is in effect).
 
-Latest local run: **49 passed, 0 failed**.
+### CI gate
+
+`npm run design-system:test` is the **CI gate** and must pass on every PR.
+It chains four checks in order; any failure aborts:
+
+1. `scripts/design-tokens-guard.sh` — fails if any literal hex color, raw `transition: all`, or inline `style={{ ... color: "#…" }}` bypass is introduced in `src/app/**` or `src/components/**` outside the design-system library (`src/components/ui/`) and the source-of-truth `src/app/globals.css`.
+2. `scripts/design-system-guard.sh` — fails if any raw `<button>` / `<input>` / `<select>` / `<table>` element or shared primitive class (`surface`, `btn-*`, `input`, `pill`, `data-table`, …) is used outside `src/components/ui/`.
+3. `npx tsc --noEmit` — typecheck.
+4. `npm run build` — production build.
+
+To verify the gate locally before opening a PR:
+
+```bash
+npm run design-system:test
+```
+
+A **human-readable QA checklist** that exercises every flow the smoke harness
+covers — plus mobile rendering at 390 px, exports, and the self-service
+password change flow — lives at `docs/qa-manual.md`. New engineers should
+walk the checklist end-to-end after their first checkout.
+
+Latest local runs:
+- `AUTH_DISABLED=true` → **47 passed, 0 failed**
+- `AUTH_DISABLED=false` → **51 passed, 0 failed** (login + auth-wall checks included)
 
 ## Data model (schema)
 

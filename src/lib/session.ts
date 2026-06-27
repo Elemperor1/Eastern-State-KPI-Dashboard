@@ -3,17 +3,43 @@ import { getIronSession } from "iron-session";
 import { cookies } from "next/headers";
 import { AUTH_DISABLED } from "./auth-flag";
 import type { SessionUser } from "./types";
+import { ensureSeedAdmin, findUserByEmail } from "./auth";
 
 export interface SessionData {
   user?: SessionUser;
 }
 
-const BYPASS_USER: SessionUser = {
-  id: 0,
-  email: "auth-disabled@local",
-  name: "Auth Disabled",
-  role: "admin",
-};
+/**
+ * Stable identifier for the AUTH_DISABLED bypass user. The matching row is
+ * upserted by ensureSeedAdmin() and used here so FK references on
+ * `monthly_entries.updated_by` and `breakdown_entries.updated_by` resolve to a
+ * real users.id instead of an ad-hoc synthetic placeholder.
+ */
+export const BYPASS_USER_EMAIL = "auth-disabled@local";
+
+/**
+ * Returns the real SessionUser row for the AUTH_DISABLED bypass account, so
+ * downstream FKs (e.g. `entries.updated_by`) resolve to an existing user.
+ * Idempotently upserts the row first so direct hits on dashboard routes
+ * (which never touch the home-page module that calls ensureSeedAdmin) still
+ * find a matching users.id. Cheap on the hot path: the second call is a
+ * single SELECT by the unique email index.
+ */
+export function getBypassUser(): SessionUser {
+  ensureSeedAdmin();
+  const row = findUserByEmail(BYPASS_USER_EMAIL);
+  if (!row) {
+    throw new Error(
+      `Bypass user (${BYPASS_USER_EMAIL}) is missing; ensureSeedAdmin() should have created it.`,
+    );
+  }
+  return {
+    id: row.id,
+    email: row.email,
+    name: row.name,
+    role: row.role,
+  };
+}
 
 function sessionOptions(): SessionOptions {
   const password = process.env.SESSION_SECRET;
@@ -40,7 +66,7 @@ function sessionOptions(): SessionOptions {
 export async function getSession(): Promise<IronSession<SessionData>> {
   if (AUTH_DISABLED) {
     return {
-      user: BYPASS_USER,
+      user: getBypassUser(),
       save: async () => {},
       destroy: async () => {},
     } as unknown as IronSession<SessionData>;
@@ -51,7 +77,7 @@ export async function getSession(): Promise<IronSession<SessionData>> {
 
 /** Throw 401-style helpers for route handlers. */
 export async function requireSession(): Promise<SessionUser> {
-  if (AUTH_DISABLED) return BYPASS_USER;
+  if (AUTH_DISABLED) return getBypassUser();
   const session = await getSession();
   if (!session.user) {
     throw new AuthError("Authentication required", 401);
@@ -60,7 +86,7 @@ export async function requireSession(): Promise<SessionUser> {
 }
 
 export async function requireAdmin(): Promise<SessionUser> {
-  if (AUTH_DISABLED) return BYPASS_USER;
+  if (AUTH_DISABLED) return getBypassUser();
   const user = await requireSession();
   if (user.role !== "admin") {
     throw new AuthError("Admin privileges required", 403);

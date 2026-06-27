@@ -16,12 +16,13 @@ import type { BreakdownEntryWithMeta, KPIWithCategory } from "@/lib/types";
 
 interface Props {
   kpi: KPIWithCategory;
-  breakdowns: BreakdownEntryWithMeta[];
+  /** Caller-supplied, pre-filtered rows. The chart trusts this set as-is. */
+  data: BreakdownEntryWithMeta[];
   currentYear: number;
   compareYear: number;
 }
 
-export function BreakdownChart({ kpi, breakdowns, currentYear, compareYear }: Props) {
+export function BreakdownChart({ kpi, data: breakdowns, currentYear, compareYear }: Props) {
   const labels = Array.from(new Set(breakdowns.map((b) => b.label))).sort(
     (a, b) =>
       (breakdowns.find((d) => d.label === a)?.sort_order ?? 0) -
@@ -42,6 +43,7 @@ export function BreakdownChart({ kpi, breakdowns, currentYear, compareYear }: Pr
   const totalCompare = data.reduce((s, d) => s + (d[compareYear] as number), 0);
   const pctChange = totalCompare !== 0 ? ((totalCurrent - totalCompare) / totalCompare) * 100 : null;
   const fmt = kpi.unit_type === "currency" ? "currency" : "number";
+  const showCompare = breakdowns.some((b) => b.year === compareYear);
 
   return (
     <div>
@@ -100,7 +102,9 @@ export function BreakdownChart({ kpi, breakdowns, currentYear, compareYear }: Pr
               cursor={{ fill: "var(--chart-cursor)" }}
             />
             <Legend wrapperStyle={{ fontSize: 12 }} />
-            <Bar dataKey={String(compareYear)} fill="var(--chart-violet-mid)" radius={[0, 4, 4, 0]} maxBarSize={16} />
+            {showCompare ? (
+              <Bar dataKey={String(compareYear)} fill="var(--chart-violet-mid)" radius={[0, 4, 4, 0]} maxBarSize={16} />
+            ) : null}
             <Bar dataKey={String(currentYear)} fill="var(--chart-primary)" radius={[0, 4, 4, 0]} maxBarSize={16} />
           </BarChart>
         </ResponsiveContainer>
@@ -111,9 +115,9 @@ export function BreakdownChart({ kpi, breakdowns, currentYear, compareYear }: Pr
           <thead>
             <tr>
               <th className="text-left" scope="col">Component</th>
-              <th className="text-right" scope="col">{compareYear}</th>
+              {showCompare ? <th className="text-right" scope="col">{compareYear}</th> : null}
               <th className="text-right" scope="col">{currentYear}</th>
-              <th className="text-right" scope="col">Change</th>
+              {showCompare ? <th className="text-right" scope="col">Change</th> : null}
             </tr>
           </thead>
           <tbody>
@@ -124,20 +128,22 @@ export function BreakdownChart({ kpi, breakdowns, currentYear, compareYear }: Pr
               return (
                 <tr key={d.label} className="transition-colors hover:bg-ink-50/70">
                   <td className="font-medium text-ink-900">{d.label}</td>
-                  <td className="tabular text-ink-600">{formatValue(p, fmt)}</td>
+                  {showCompare ? <td className="tabular text-ink-600">{formatValue(p, fmt)}</td> : null}
                   <td className="tabular text-ink-900 font-medium">{formatValue(c, fmt)}</td>
-                  <td
-                    className={`tabular font-medium ${
-                      change > 0
-                        ? "text-[var(--color-success-text)]"
-                        : change < 0
-                          ? "text-[var(--color-danger-text)]"
-                          : "text-ink-500"
-                    }`}
-                  >
-                    {change > 0 ? "+" : ""}
-                    {formatValue(change, fmt, { signed: true })}
-                  </td>
+                  {showCompare ? (
+                    <td
+                      className={`tabular font-medium ${
+                        change > 0
+                          ? "text-[var(--color-success-text)]"
+                          : change < 0
+                            ? "text-[var(--color-danger-text)]"
+                            : "text-ink-500"
+                      }`}
+                    >
+                      {change > 0 ? "+" : ""}
+                      {formatValue(change, fmt, { signed: true })}
+                    </td>
+                  ) : null}
                 </tr>
               );
             })}

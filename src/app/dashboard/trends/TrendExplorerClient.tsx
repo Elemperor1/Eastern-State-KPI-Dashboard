@@ -1,9 +1,19 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Line, LineChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
 import { BarChart3 } from "lucide-react";
-import { Badge, Card, Checkbox, Chip, EmptyState, FormField, PageHeader, Select } from "@/components/ui";
+import {
+  Badge,
+  Card,
+  Checkbox,
+  Chip,
+  EmptyState,
+  FormField,
+  PageHeader,
+  Select,
+  Tabs,
+} from "@/components/ui";
 import { CHART_COLORS, formatValue, MONTH_LABELS } from "@/lib/analytics";
 import type {
   Category,
@@ -11,6 +21,22 @@ import type {
   KPIWithCategory,
   MonthlyEntryWithMeta,
 } from "@/lib/types";
+
+type AxisMode = "shared" | "log" | "indexed";
+
+const AXIS_MODE_OPTIONS: { value: AxisMode; label: string }[] = [
+  { value: "shared", label: "Shared" },
+  { value: "log", label: "Per-series (log)" },
+  { value: "indexed", label: "Per-series (indexed)" },
+];
+
+const AXIS_MODE_HELP: Record<AxisMode, string> = {
+  shared:
+    "All series share one linear axis; high-volume measures can compress smaller ones.",
+  log: "Each series is plotted on a logarithmic scale so small and large magnitudes coexist.",
+  indexed:
+    "Each line is indexed to its first non-null value = 100, so relative movement is comparable across magnitudes.",
+};
 
 export function TrendExplorerClient({
   kpis,
@@ -45,7 +71,8 @@ export function TrendExplorerClient({
     return base.filter((k) => k.reporting_frequency === "monthly" && k.unit_type !== "breakdown");
   }, [kpis, categorySlug]);
 
-  const trendData: ComparisonPoint[] = useMemo(() => {
+  // Raw, untransformed points: one row per month, one column per (kpi, year).
+  const rawTrendData: ComparisonPoint[] = useMemo(() => {
     const points: ComparisonPoint[] = [];
     for (let month = 1; month <= 12; month++) {
       const point: ComparisonPoint = { label: MONTH_LABELS[month - 1], month };
@@ -68,6 +95,71 @@ export function TrendExplorerClient({
     }
     return points;
   }, [kpis, entries, kpiSlugs, selectedYears]);
+
+  // Default to "indexed" once we have multiple KPIs — that's the value-add of this view.
+  const [axisMode, setAxisMode] = useState<AxisMode>(() =>
+    initialKpiSlugs.length > 1 ? "indexed" : "shared",
+  );
+
+  // Compute per-(kpi, year) baselines for the indexed mode.
+  // Baseline = first non-null value across months (1-12). Series whose baseline is null or
+  // zero are dropped from the indexed chart (their values become null).
+  const indexedBaselines = useMemo(() => {
+    const map: Record<string, number | null> = {};
+    if (axisMode !== "indexed") return map;
+    for (const kpiSlug of kpiSlugs) {
+      for (const year of selectedYears) {
+        const key = `${kpiSlug}__${year}`;
+        const baseline = rawTrendData.find((p) => p[key] != null && (p[key] as number) !== 0)?.[key];
+        map[key] = typeof baseline === "number" ? baseline : null;
+      }
+    }
+    return map;
+  }, [axisMode, kpiSlugs, selectedYears, rawTrendData]);
+
+  // Apply log/indexed transforms on top of the raw data.
+  const trendData: ComparisonPoint[] = useMemo(() => {
+    if (axisMode === "shared") return rawTrendData;
+    return rawTrendData.map((point) => {
+      const next: ComparisonPoint = { label: point.label, month: point.month };
+      for (const kpiSlug of kpiSlugs) {
+        for (const year of selectedYears) {
+          const key = `${kpiSlug}__${year}`;
+          const raw = point[key];
+          if (raw === null || raw === undefined) {
+            next[key] = null;
+            continue;
+          }
+          const v = raw as number;
+          if (axisMode === "log") {
+            // log10 is undefined for <= 0; drop those points instead of producing NaN.
+            if (v <= 0) {
+              next[key] = null;
+            } else {
+              next[key] = Math.log10(v);
+            }
+          } else {
+            // indexed
+            const baseline = indexedBaselines[key];
+            if (!baseline) {
+              next[key] = null;
+            } else {
+              next[key] = (v / baseline) * 100;
+            }
+          }
+        }
+      }
+      return next;
+    });
+  }, [axisMode, rawTrendData, indexedBaselines, kpiSlugs, selectedYears]);
+
+  // When the user toggles a category that changes which KPIs are visible, fall back to a
+  // sensible default if the current mode no longer makes sense (e.g. only 1 KPI left → Shared).
+  useEffect(() => {
+    if (kpiSlugs.length <= 1 && axisMode !== "shared") {
+      setAxisMode("shared");
+    }
+  }, [kpiSlugs.length, axisMode]);
 
   const sampleUnitType = kpiSlugs[0]
     ? kpis.find((k) => k.slug === kpiSlugs[0])?.unit_type ?? "count"
@@ -202,13 +294,32 @@ export function TrendExplorerClient({
                   })}
                 </div>
               </div>
+              <div className="border-b border-ink-100 px-5 py-3 lg:px-6">
+                <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
+                  <span className="label text-ink-700">Y-axis mode</span>
+                  <Tabs
+                    options={AXIS_MODE_OPTIONS}
+                    value={axisMode}
+                    onChange={setAxisMode}
+                  />
+                </div>
+              </div>
               <div className="h-[440px] px-2 pb-4 pt-5 md:h-[560px] md:px-4">
               <ResponsiveContainer width="100%" height="100%">
                 <LineChart data={trendData} margin={{ top: 8, right: 16, left: 8, bottom: 8 }}>
                   <CartesianGrid strokeDasharray="3 3" stroke="var(--chart-grid)" vertical={false} />
                   <XAxis dataKey="label" tickLine={false} axisLine={false} tick={{ fontSize: 11, fill: "var(--chart-axis)" }} />
                   <YAxis
-                    tickFormatter={(v) => formatValue(Number(v), sampleUnitType, { compact: true })}
+                    scale={axisMode === "log" ? "log" : "linear"}
+                    domain={axisMode === "log" ? ["auto", "auto"] : axisMode === "indexed" ? ["auto", "auto"] : ["auto", "auto"]}
+                    allowDataOverflow={axisMode === "log"}
+                    tickFormatter={(v) =>
+                      axisMode === "shared"
+                        ? formatValue(Number(v), sampleUnitType, { compact: true })
+                        : axisMode === "log"
+                          ? `10^${Number(v).toFixed(1)}`
+                          : `${Number(v).toFixed(0)}`
+                    }
                     tickLine={false}
                     axisLine={false}
                     tick={{ fontSize: 11, fill: "var(--chart-axis)" }}
@@ -217,7 +328,14 @@ export function TrendExplorerClient({
                   <Tooltip
                     formatter={(value) => {
                       if (value === null || value === undefined) return ["—", ""];
-                      return [formatValue(Number(value), sampleUnitType), ""];
+                      if (axisMode === "shared") {
+                        return [formatValue(Number(value), sampleUnitType), ""];
+                      }
+                      if (axisMode === "log") {
+                        return [`10^${Number(value).toFixed(2)} (≈ ${formatValue(Math.pow(10, Number(value)), sampleUnitType, { compact: true })})`, ""];
+                      }
+                      // indexed
+                      return [`${Number(value).toFixed(1)} (baseline = 100)`, ""];
                     }}
                   />
                   {kpiSlugs.flatMap((slug, ki) =>
@@ -226,11 +344,17 @@ export function TrendExplorerClient({
                       if (!kpi) return null;
                       const color = CHART_COLORS[ki % CHART_COLORS.length];
                       const isCurrentSelection = yi === selectedYears.length - 1;
+                      const seriesName =
+                        axisMode === "indexed"
+                          ? `${kpi.name} ${year} (idx)`
+                          : axisMode === "log"
+                            ? `${kpi.name} ${year} (log)`
+                            : `${kpi.name} ${year}`;
                       return (
                         <Line
                           key={`${slug}__${year}`}
                           dataKey={`${slug}__${year}`}
-                          name={`${kpi.name} ${year}`}
+                          name={seriesName}
                           stroke={color}
                           strokeWidth={isCurrentSelection ? 2.75 : 1.75}
                           strokeOpacity={isCurrentSelection ? 1 : 0.62}
@@ -238,12 +362,16 @@ export function TrendExplorerClient({
                           dot={false}
                           activeDot={{ r: 4, strokeWidth: 0 }}
                           connectNulls={false}
+                          isAnimationActive={false}
                         />
                       );
                     }),
                   )}
                 </LineChart>
               </ResponsiveContainer>
+              </div>
+              <div className="border-t border-ink-100 px-5 py-2 text-xs leading-5 text-ink-600">
+                {AXIS_MODE_HELP[axisMode]}
               </div>
               <div className="flex flex-wrap gap-4 border-t border-ink-100 px-5 py-3 text-[10px] font-semibold uppercase tracking-[0.08em] text-ink-500">
                 {selectedYears.map((year, index) => {

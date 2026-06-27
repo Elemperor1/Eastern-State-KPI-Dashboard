@@ -1,6 +1,6 @@
 "use client";
 
-import { ArrowDownRight, ArrowUpRight, Minus } from "lucide-react";
+import { AlertTriangle, ArrowDownRight, ArrowUpRight, Minus } from "lucide-react";
 import { Badge, CardAction } from "@/components/ui";
 import type { KPIAnalytics } from "@/lib/types";
 import { formatDelta, formatValue, isFavorable, MONTH_FULL } from "@/lib/analytics";
@@ -16,6 +16,8 @@ interface Props {
 export function MetricCard({ analytics, accentColor, onSelect, selected, basis = "monthly" }: Props) {
   const { kpi } = analytics;
   const comp = basis === "ytd" ? analytics.ytdComparison : analytics.monthlyComparison;
+  const isEmpty = comp.isEmpty;
+
   const direction = comp.delta > 0 ? "up" : comp.delta < 0 ? "down" : "flat";
   const favorable = isFavorable(kpi.direction, comp.delta);
   const DirectionIcon = direction === "up" ? ArrowUpRight : direction === "down" ? ArrowDownRight : Minus;
@@ -26,8 +28,11 @@ export function MetricCard({ analytics, accentColor, onSelect, selected, basis =
       ? `YTD through ${MONTH_FULL[analytics.ytdComparison.throughMonth - 1]} ${comp.currentYear}`
       : `${MONTH_FULL[analytics.monthlyComparison.currentMonth - 1]} ${comp.currentYear}`;
 
-  const changeText =
-    kpi.unit_type === "percent"
+  // When the underlying data is missing for both years, skip the misleading
+  // ±0% and surface a "No data" badge instead.
+  const changeText = isEmpty
+    ? "No data"
+    : kpi.unit_type === "percent"
       ? comp.ptsChange !== null
         ? `${comp.ptsChange > 0 ? "+" : ""}${comp.ptsChange.toFixed(1)} pts`
         : "—"
@@ -35,8 +40,15 @@ export function MetricCard({ analytics, accentColor, onSelect, selected, basis =
         ? `${comp.pctChange > 0 ? "+" : ""}${comp.pctChange.toFixed(1)}%`
         : "—";
 
-  const badgeVariant: React.ComponentProps<typeof Badge>["variant"] =
-    direction === "flat" ? "default" : favorable ? "success" : "error";
+  const badgeVariant: React.ComponentProps<typeof Badge>["variant"] = isEmpty
+    ? "warning"
+    : direction === "flat"
+      ? "default"
+      : favorable
+        ? "success"
+        : "error";
+
+  const badgeIcon = isEmpty ? AlertTriangle : DirectionIcon;
 
   return (
     <CardAction onClick={onSelect} selected={selected} className="relative overflow-hidden p-5">
@@ -62,14 +74,21 @@ export function MetricCard({ analytics, accentColor, onSelect, selected, basis =
 
       <div className="flex items-center justify-between gap-3">
         <div className="flex min-w-0 items-center gap-2">
-          <Badge variant={badgeVariant} icon={DirectionIcon} className="tabular">
+          <Badge
+            variant={badgeVariant}
+            icon={badgeIcon}
+            className="tabular"
+            title={isEmpty ? "No data has been entered for this period in either year." : undefined}
+          >
             {changeText}
           </Badge>
           <span className="truncate text-sm text-ink-500">vs {comp.compareYear}</span>
         </div>
-        <div className="shrink-0 text-sm font-medium tabular text-ink-700">
-          {formatDelta(comp.delta, kpi.unit_type)}
-        </div>
+        {!isEmpty ? (
+          <div className="shrink-0 text-sm font-medium tabular text-ink-700">
+            {formatDelta(comp.delta, kpi.unit_type)}
+          </div>
+        ) : null}
       </div>
     </CardAction>
   );

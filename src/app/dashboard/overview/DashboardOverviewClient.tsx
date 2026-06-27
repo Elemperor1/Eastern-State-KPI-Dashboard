@@ -1,11 +1,11 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { useRouter, useSearchParams } from "next/navigation";
+import { useRouter } from "next/navigation";
 import { ExportPDFButton } from "@/components/ExportPDFButton";
 import { DashboardControls, type CompareState } from "@/components/DashboardControls";
 import { CategoryOverviewCard } from "@/components/CategoryOverviewCard";
-import { PageHeader } from "@/components/ui";
+import { ExportCSVButton, PageHeader, PrintButton } from "@/components/ui";
 import { SampleDataBadge } from "@/components/SampleDataBadge";
 import { CHART_COLORS, MONTH_FULL } from "@/lib/analytics";
 import type { DashboardData } from "@/lib/dashboard-data";
@@ -18,7 +18,6 @@ export function DashboardOverviewClient({
   initialState: CompareState;
 }) {
   const router = useRouter();
-  const params = useSearchParams();
   const [state, setState] = useState<CompareState>(initialState);
 
   useEffect(() => {
@@ -38,6 +37,88 @@ export function DashboardOverviewClient({
 
   const monthLabel = MONTH_FULL[state.currentMonth - 1];
 
+  // Long-format overview CSV: one row per (category, kpi, period). Execs can
+  // pivot the whole KPI surface in Excel / Sheets. For monthly KPIs we
+  // include both the current year and compare-year values for the active
+  // through-month, so the export is self-contained.
+  type CsvRow = Record<string, string | number | null>;
+  const csvRows: CsvRow[] = [];
+  for (const cat of data.categories) {
+    const catKpis = data.kpis.filter((k) => k.category_id === cat.id);
+    for (const kpi of catKpis) {
+      if (kpi.unit_type === "breakdown") {
+        const rows = data.breakdowns.filter(
+          (b) => b.kpi_id === kpi.id && (b.year === state.currentYear || b.year === state.compareYear),
+        );
+        for (const r of rows) {
+          csvRows.push({
+            Category: cat.name,
+            KPI: kpi.name,
+            Unit: kpi.unit_type,
+            Reporting: "breakdown",
+            Year: r.year,
+            Period: r.label,
+            Value: r.value,
+            Compare_Year: "",
+            Compare_Value: "",
+            Notes: "",
+          });
+        }
+        continue;
+      }
+      const kpiEntries = data.entries.filter((e) => e.kpi_id === kpi.id);
+      if (kpi.reporting_frequency === "annual") {
+        const years = Array.from(new Set(kpiEntries.map((e) => e.year))).sort();
+        for (const y of years) {
+          const ent = kpiEntries.find((e) => e.year === y && e.month === 0);
+          csvRows.push({
+            Category: cat.name,
+            KPI: kpi.name,
+            Unit: kpi.unit_type,
+            Reporting: "annual",
+            Year: y,
+            Period: "full year",
+            Value: ent?.value ?? "",
+            Compare_Year: "",
+            Compare_Value: "",
+            Notes: ent?.notes ?? "",
+          });
+        }
+        continue;
+      }
+      const monthsToShow = Math.min(state.currentMonth, 12);
+      for (let m = 1; m <= monthsToShow; m++) {
+        const cur = kpiEntries.find((e) => e.year === state.currentYear && e.month === m);
+        const cmp = kpiEntries.find((e) => e.year === state.compareYear && e.month === m);
+        csvRows.push({
+          Category: cat.name,
+          KPI: kpi.name,
+          Unit: kpi.unit_type,
+          Reporting: "monthly",
+          Year: state.currentYear,
+          Period: MONTH_FULL[m - 1],
+          Value: cur?.value ?? "",
+          Compare_Year: state.compareYear,
+          Compare_Value: cmp?.value ?? "",
+          Notes: cur?.notes ?? "",
+        });
+      }
+    }
+  }
+  const csvColumns = [
+    "Category",
+    "KPI",
+    "Unit",
+    "Reporting",
+    "Year",
+    "Period",
+    "Value",
+    "Compare_Year",
+    "Compare_Value",
+    "Notes",
+  ];
+  const csvFilename = `eastern-state-overview-${state.currentYear}-vs-${state.compareYear}.csv`;
+
   return (
     <div className="page-content page-content-wide page-enter">
       <div id="dashboard-print-root">
@@ -53,6 +134,8 @@ export function DashboardOverviewClient({
           actions={
             <>
               <SampleDataBadge sample={data.sampleData} />
+              <ExportCSVButton rows={csvRows} columns={csvColumns} filename={csvFilename} />
+              <PrintButton />
               <ExportPDFButton
                 targetId="dashboard-print-root"
                 fileName={`eastern-state-overview-${state.currentYear}.pdf`}

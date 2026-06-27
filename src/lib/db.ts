@@ -22,7 +22,7 @@ interface StatementLike {
 let _db: DB | null = null;
 
 /** Bump when the KPI/category/entry schema changes; old DBs are reset cleanly. */
-const SCHEMA_VERSION = 3;
+const SCHEMA_VERSION = 4;
 
 function resolveDbPath(): string {
   const fromEnv = process.env.DATABASE_PATH;
@@ -122,6 +122,10 @@ function migrateSchema(raw: DatabaseSync): void {
   }
   // Schema changed (or fresh): drop KPI data tables and recreate cleanly.
   // Users are preserved; the seed script repopulates metrics + entries.
+  // entry_history references rows in monthly_entries/breakdown_entries by id,
+  // so it has to be dropped alongside them on a schema bump — the audit
+  // trail for the old shape is no longer meaningful.
+  raw.exec("DROP TABLE IF EXISTS entry_history;");
   raw.exec("DROP TABLE IF EXISTS breakdown_entries;");
   raw.exec("DROP TABLE IF EXISTS monthly_entries;");
   raw.exec("DROP TABLE IF EXISTS kpis;");
@@ -199,6 +203,30 @@ function initializeSchema(raw: DatabaseSync): void {
     );
 
     CREATE INDEX IF NOT EXISTS idx_breakdown_kpi_year ON breakdown_entries(kpi_id, year);
+
+    -- Audit trail for KPI admin actions. One row per change (create / update /
+    -- delete) on monthly_entries and breakdown_entries. prev_value / new_value
+    -- capture the before / after so admins can audit or undo a bad write.
+    -- entry_id and entry_type refer to the source table — entry_id may refer
+    -- to a row that no longer exists after a delete (NULL new_value) or after
+    -- a schema bump (the table is dropped). The history itself is durable.
+    CREATE TABLE IF NOT EXISTS entry_history (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      entry_type TEXT NOT NULL CHECK (entry_type IN ('monthly','breakdown')),
+      entry_id INTEGER,
+      kpi_id INTEGER NOT NULL,
+      year INTEGER NOT NULL,
+      month_or_label TEXT NOT NULL,
+      prev_value REAL,
+      new_value REAL,
+      prev_notes TEXT,
+      new_notes TEXT,
+      changed_by INTEGER REFERENCES users(id) ON DELETE SET NULL,
+      changed_at TEXT NOT NULL DEFAULT (datetime('now'))
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_history_kpi_year ON entry_history(kpi_id, year);
+    CREATE INDEX IF NOT EXISTS idx_history_changed_at ON entry_history(changed_at);
   `);
 }
 

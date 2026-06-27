@@ -4,6 +4,7 @@ import type {
   BreakdownEntryWithMeta,
   Category,
   Direction,
+  EntryHistoryWithMeta,
   KPI,
   KPIWithCategory,
   MonthlyEntry,
@@ -388,6 +389,38 @@ export function listEntries(filter?: {
   return rows.map(asEntryWithMeta);
 }
 
+function recordHistory(input: {
+  entry_type: "monthly" | "breakdown";
+  entry_id: number | null;
+  kpi_id: number;
+  year: number;
+  month_or_label: string;
+  prev_value: number | null;
+  new_value: number | null;
+  prev_notes: string | null;
+  new_notes: string | null;
+  changed_by: number | null;
+}): void {
+  const db = getDb();
+  db.prepare(
+    `INSERT INTO entry_history
+       (entry_type, entry_id, kpi_id, year, month_or_label,
+        prev_value, new_value, prev_notes, new_notes, changed_by, changed_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'))`,
+  ).run(
+    input.entry_type,
+    input.entry_id,
+    input.kpi_id,
+    input.year,
+    input.month_or_label,
+    input.prev_value,
+    input.new_value,
+    input.prev_notes,
+    input.new_notes,
+    input.changed_by,
+  );
+}
+
 export function upsertEntry(input: {
   kpi_id: number;
   year: number;
@@ -397,6 +430,14 @@ export function upsertEntry(input: {
   updated_by?: number | null;
 }): MonthlyEntry {
   const db = getDb();
+  // Capture the prior value so we can record it as `prev_*` in the audit log.
+  const prior = db
+    .prepare(
+      "SELECT id, value, notes FROM monthly_entries WHERE kpi_id = ? AND year = ? AND month = ?",
+    )
+    .get(input.kpi_id, input.year, input.month) as
+    | { id: number; value: number; notes: string | null }
+    | undefined;
   const result = db
     .prepare(
       `INSERT INTO monthly_entries (kpi_id, year, month, value, notes, updated_by, updated_at)
@@ -418,12 +459,47 @@ export function upsertEntry(input: {
   const row = db
     .prepare("SELECT * FROM monthly_entries WHERE id = ?")
     .get(Number(result.lastInsertRowid)) as Record<string, unknown>;
-  return asEntry(row);
+  const entry = asEntry(row);
+  recordHistory({
+    entry_type: "monthly",
+    entry_id: entry.id,
+    kpi_id: entry.kpi_id,
+    year: entry.year,
+    month_or_label: String(entry.month),
+    prev_value: prior?.value ?? null,
+    new_value: entry.value,
+    prev_notes: prior?.notes ?? null,
+    new_notes: entry.notes,
+    changed_by: input.updated_by ?? null,
+  });
+  return entry;
 }
 
-export function deleteEntry(id: number): void {
+export function deleteEntry(id: number, changedBy?: number | null): void {
   const db = getDb();
+  // Snapshot before delete so the audit row still has prev_value/notes.
+  const prior = db
+    .prepare(
+      "SELECT id, kpi_id, year, month, value, notes FROM monthly_entries WHERE id = ?",
+    )
+    .get(id) as
+    | { id: number; kpi_id: number; year: number; month: number; value: number; notes: string | null }
+    | undefined;
   db.prepare("DELETE FROM monthly_entries WHERE id = ?").run(id);
+  if (prior) {
+    recordHistory({
+      entry_type: "monthly",
+      entry_id: prior.id,
+      kpi_id: prior.kpi_id,
+      year: prior.year,
+      month_or_label: String(prior.month),
+      prev_value: prior.value,
+      new_value: null,
+      prev_notes: prior.notes,
+      new_notes: null,
+      changed_by: changedBy ?? null,
+    });
+  }
 }
 
 // ---------- Breakdown entries ----------
@@ -502,6 +578,15 @@ export function upsertBreakdown(input: {
   updated_by?: number | null;
 }): BreakdownEntry {
   const db = getDb();
+  const label = input.label.trim();
+  // Capture the prior row (if any) so the history log records the before-state.
+  const prior = db
+    .prepare(
+      "SELECT id, value, notes FROM breakdown_entries WHERE kpi_id = ? AND year = ? AND label = ?",
+    )
+    .get(input.kpi_id, input.year, label) as
+    | { id: number; value: number; notes: string | null }
+    | undefined;
   const result = db
     .prepare(
       `INSERT INTO breakdown_entries (kpi_id, year, label, value, sort_order, notes, updated_by, updated_at)
@@ -516,7 +601,7 @@ export function upsertBreakdown(input: {
     .run(
       input.kpi_id,
       input.year,
-      input.label.trim(),
+      label,
       input.value,
       input.sort_order ?? 0,
       input.notes ?? null,
@@ -525,12 +610,46 @@ export function upsertBreakdown(input: {
   const row = db
     .prepare("SELECT * FROM breakdown_entries WHERE id = ?")
     .get(Number(result.lastInsertRowid)) as Record<string, unknown>;
-  return asBreakdown(row);
+  const entry = asBreakdown(row);
+  recordHistory({
+    entry_type: "breakdown",
+    entry_id: entry.id,
+    kpi_id: entry.kpi_id,
+    year: entry.year,
+    month_or_label: entry.label,
+    prev_value: prior?.value ?? null,
+    new_value: entry.value,
+    prev_notes: prior?.notes ?? null,
+    new_notes: entry.notes,
+    changed_by: input.updated_by ?? null,
+  });
+  return entry;
 }
 
-export function deleteBreakdown(id: number): void {
+export function deleteBreakdown(id: number, changedBy?: number | null): void {
   const db = getDb();
+  const prior = db
+    .prepare(
+      "SELECT id, kpi_id, year, label, value, notes FROM breakdown_entries WHERE id = ?",
+    )
+    .get(id) as
+    | { id: number; kpi_id: number; year: number; label: string; value: number; notes: string | null }
+    | undefined;
   db.prepare("DELETE FROM breakdown_entries WHERE id = ?").run(id);
+  if (prior) {
+    recordHistory({
+      entry_type: "breakdown",
+      entry_id: prior.id,
+      kpi_id: prior.kpi_id,
+      year: prior.year,
+      month_or_label: prior.label,
+      prev_value: prior.value,
+      new_value: null,
+      prev_notes: prior.notes,
+      new_notes: null,
+      changed_by: changedBy ?? null,
+    });
+  }
 }
 
 /** All distinct years present across monthly + breakdown entries. */
@@ -546,4 +665,64 @@ export function listAvailableYears(): number[] {
     )
     .all() as Record<string, unknown>[];
   return rows.map((r) => Number(r.year));
+}
+
+// ---------- Entry history (audit trail) ----------
+
+export function listEntryHistory(filter?: {
+  kpi_id?: number;
+  category_id?: number;
+  year?: number;
+  limit?: number;
+}): EntryHistoryWithMeta[] {
+  const db = getDb();
+  const where: string[] = [];
+  const params: (string | number)[] = [];
+  if (filter?.kpi_id !== undefined) {
+    where.push("h.kpi_id = ?");
+    params.push(filter.kpi_id);
+  }
+  if (filter?.category_id !== undefined) {
+    where.push("k.category_id = ?");
+    params.push(filter.category_id);
+  }
+  if (filter?.year !== undefined) {
+    where.push("h.year = ?");
+    params.push(filter.year);
+  }
+  const limit = Math.min(Math.max(filter?.limit ?? 200, 1), 1000);
+  const sql = `
+    SELECT h.*,
+           k.name as kpi_name, k.slug as kpi_slug,
+           c.id as category_id, c.name as category_name, c.slug as category_slug,
+           u.email as changed_by_email
+    FROM entry_history h
+    JOIN kpis k ON k.id = h.kpi_id
+    JOIN categories c ON c.id = k.category_id
+    LEFT JOIN users u ON u.id = h.changed_by
+    ${where.length ? `WHERE ${where.join(" AND ")}` : ""}
+    ORDER BY h.changed_at DESC, h.id DESC
+    LIMIT ${limit}
+  `;
+  const rows = db.prepare(sql).all(...params) as Record<string, unknown>[];
+  return rows.map((row) => ({
+    id: Number(row.id),
+    entry_type: String(row.entry_type) as "monthly" | "breakdown",
+    entry_id: row.entry_id == null ? null : Number(row.entry_id),
+    kpi_id: Number(row.kpi_id),
+    year: Number(row.year),
+    month_or_label: String(row.month_or_label),
+    prev_value: row.prev_value == null ? null : Number(row.prev_value),
+    new_value: row.new_value == null ? null : Number(row.new_value),
+    prev_notes: row.prev_notes == null ? null : String(row.prev_notes),
+    new_notes: row.new_notes == null ? null : String(row.new_notes),
+    changed_by: row.changed_by == null ? null : Number(row.changed_by),
+    changed_at: String(row.changed_at),
+    kpi_name: String(row.kpi_name),
+    kpi_slug: String(row.kpi_slug),
+    category_id: Number(row.category_id),
+    category_name: String(row.category_name),
+    category_slug: String(row.category_slug),
+    changed_by_email: row.changed_by_email == null ? null : String(row.changed_by_email),
+  }));
 }

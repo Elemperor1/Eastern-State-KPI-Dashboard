@@ -152,6 +152,17 @@ export function buildKPIAnalytics(args: BuildAnalyticsArgs): KPIAnalytics {
   const currentSummary = yearSummaries.find((y) => y.year === currentYear);
   const compareSummary = yearSummaries.find((y) => y.year === compareYear);
 
+  // "No underlying entry" — used to distinguish a true 0 from "no data".
+  // Monthly: did either year have any entry at all in the queried month?
+  // YTD: did either year have any entry at or before the through-month?
+  const hasMonthEntry = (year: number, month: number): boolean => {
+    return entries.some((e) => e.year === year && e.month === month);
+  };
+  const hasYtdEntry = (year: number, through: number): boolean => {
+    if (annual) return hasMonthEntry(year, 0);
+    return entries.some((e) => e.year === year && e.month >= 1 && e.month <= through);
+  };
+
   let currentValue: number;
   let compareValue: number;
   if (annual) {
@@ -164,6 +175,11 @@ export function buildKPIAnalytics(args: BuildAnalyticsArgs): KPIAnalytics {
   const delta = currentValue - compareValue;
   const pctChange = compareValue !== 0 ? (delta / Math.abs(compareValue)) * 100 : null;
   const ptsChange = kpi.unit_type === "percent" ? delta : null;
+  const monthlyIsEmpty =
+    currentValue === 0 &&
+    compareValue === 0 &&
+    !hasMonthEntry(currentYear, annual ? 0 : currentMonth) &&
+    !hasMonthEntry(compareYear, annual ? 0 : currentMonth);
 
   let ytdCurrent: number;
   let ytdCompare: number;
@@ -177,6 +193,11 @@ export function buildKPIAnalytics(args: BuildAnalyticsArgs): KPIAnalytics {
   const ytdDelta = ytdCurrent - ytdCompare;
   const ytdPctChange = ytdCompare !== 0 ? (ytdDelta / Math.abs(ytdCompare)) * 100 : null;
   const ytdPtsChange = kpi.unit_type === "percent" ? ytdDelta : null;
+  const ytdIsEmpty =
+    ytdCurrent === 0 &&
+    ytdCompare === 0 &&
+    !hasYtdEntry(currentYear, currentMonth) &&
+    !hasYtdEntry(compareYear, currentMonth);
 
   return {
     kpi,
@@ -191,6 +212,7 @@ export function buildKPIAnalytics(args: BuildAnalyticsArgs): KPIAnalytics {
       compareYear,
       currentMonth,
       isAnnual: annual,
+      isEmpty: monthlyIsEmpty,
     },
     ytdComparison: {
       currentValue: ytdCurrent,
@@ -202,6 +224,7 @@ export function buildKPIAnalytics(args: BuildAnalyticsArgs): KPIAnalytics {
       compareYear,
       throughMonth: currentMonth,
       isAnnual: annual,
+      isEmpty: ytdIsEmpty,
     },
   };
 }

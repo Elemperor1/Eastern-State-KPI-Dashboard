@@ -1,10 +1,11 @@
 "use client";
 
-import { useState } from "react";
-import { Plus, Trash2 } from "lucide-react";
+import { useMemo, useState } from "react";
+import { Plus, Search, Trash2 } from "lucide-react";
 import {
   Button,
   Card,
+  Chip,
   ConfirmDialog,
   FormField,
   IconButton,
@@ -40,6 +41,26 @@ export function KPIManagerClient({
     confirmLabel: string;
     action: () => void | Promise<void>;
   } | null>(null);
+  const [query, setQuery] = useState("");
+  const [categoryFilter, setCategoryFilter] = useState<number | null>(null);
+
+  const filteredKpis = useMemo(() => {
+    const needle = query.trim().toLowerCase();
+    return kpis.filter((k) => {
+      if (categoryFilter !== null && k.category_id !== categoryFilter) return false;
+      if (!needle) return true;
+      return (
+        k.name.toLowerCase().includes(needle) ||
+        k.slug.toLowerCase().includes(needle)
+      );
+    });
+  }, [kpis, query, categoryFilter]);
+
+  const categoryCounts = useMemo(() => {
+    const counts = new Map<number, number>();
+    for (const k of kpis) counts.set(k.category_id, (counts.get(k.category_id) ?? 0) + 1);
+    return counts;
+  }, [kpis]);
 
   async function refresh() {
     const [kpiRes, catRes] = await Promise.all([
@@ -231,9 +252,50 @@ export function KPIManagerClient({
           </Card>
 
           <Card className="overflow-hidden">
-            <div className="border-b border-ink-100 p-5">
-              <h2 className="text-xl font-semibold text-ink-900">Existing KPIs</h2>
-              <p className="mt-1 text-sm text-ink-500">{kpis.length} measures across {categories.length} categories</p>
+            <div className="space-y-4 border-b border-ink-100 p-5">
+              <div>
+                <h2 className="text-xl font-semibold text-ink-900">Existing KPIs</h2>
+                <p className="mt-1 text-sm text-ink-500">
+                  Showing {filteredKpis.length} of {kpis.length} measures across {categories.length} categories
+                </p>
+              </div>
+              <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+                <div className="relative max-w-sm flex-1">
+                  <Search
+                    className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-ink-400"
+                    aria-hidden="true"
+                  />
+                  <Input
+                    type="search"
+                    value={query}
+                    onChange={(e) => setQuery(e.target.value)}
+                    placeholder="Search by name or slug…"
+                    aria-label="Search KPIs by name or slug"
+                    className="pl-9"
+                  />
+                </div>
+                <div className="flex flex-wrap items-center gap-2">
+                  <Chip
+                    type="button"
+                    active={categoryFilter === null}
+                    onClick={() => setCategoryFilter(null)}
+                  >
+                    All ({kpis.length})
+                  </Chip>
+                  {categories.map((c) => (
+                    <Chip
+                      key={c.id}
+                      type="button"
+                      active={categoryFilter === c.id}
+                      onClick={() =>
+                        setCategoryFilter((prev) => (prev === c.id ? null : c.id))
+                      }
+                    >
+                      {c.name} ({categoryCounts.get(c.id) ?? 0})
+                    </Chip>
+                  ))}
+                </div>
+              </div>
             </div>
             <Table minWidth="640px">
               <thead>
@@ -247,7 +309,14 @@ export function KPIManagerClient({
                 </tr>
               </thead>
               <tbody>
-                {kpis.map((k) => (
+                {filteredKpis.length === 0 ? (
+                  <tr>
+                    <td colSpan={6} className="py-8 text-center text-sm text-ink-500">
+                      No KPIs match the current filters.
+                    </td>
+                  </tr>
+                ) : null}
+                {filteredKpis.map((k) => (
                   <tr key={k.id} className="transition-colors hover:bg-ink-50/70">
                     <td className="py-3 pr-4">
                       <span className="font-medium text-ink-900">{k.name}</span>

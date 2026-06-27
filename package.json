@@ -7,10 +7,11 @@
     "build": "next build",
     "start": "next start -p 3000",
     "lint": "next lint",
-    "smoke": "bash ./scripts/smoke.sh",
     "db:seed": "tsx scripts/seed.ts",
-    "design-system:guard": "bash ./scripts/design-system-guard.sh",
-    "design-system:test": "bash ./scripts/design-system-guard.sh && npx tsc --noEmit && npm run build",
+    "design-system:guard": "bash ./scripts/design-tokens-guard.sh && bash ./scripts/design-system-guard.sh",
+    "design-system:test": "bash ./scripts/design-tokens-guard.sh && bash ./scripts/design-system-guard.sh && npx tsc --noEmit && npm run build",
+    "test": "vitest run",
+    "test:coverage": "vitest run --coverage",
     "prelint": "npm run design-system:guard"
   },
   "dependencies": {
@@ -33,11 +34,13 @@
     "@types/node": "^22.7.5",
     "@types/react": "^19.0.0",
     "@types/react-dom": "^19.0.0",
+    "@vitest/coverage-v8": "^4.1.9",
     "autoprefixer": "^10.4.20",
     "postcss": "^8.5.10",
     "tailwindcss": "^3.4.13",
     "tsx": "^4.19.1",
-    "typescript": "^5.6.3"
+    "typescript": "^5.6.3",
+    "vitest": "^4.1.9"
   },
   "allowScripts": {
     "core-js@3.49.0": true,

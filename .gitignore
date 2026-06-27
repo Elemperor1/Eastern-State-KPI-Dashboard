@@ -12,3 +12,5 @@ data/*.db-wal
 tsconfig.tsbuildinfo
 .playwright-cli/
 output/playwright/
+
+coverage/
