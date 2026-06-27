@@ -2,11 +2,11 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
-import { ExportPDFButton } from "@/components/ExportPDFButton";
+import { LegacyExportPDFButton } from "@/components/LegacyExportPDFButton";
 import { DashboardControls, type CompareState } from "@/components/DashboardControls";
 import { MetricCard } from "@/components/MetricCard";
 import { BreakdownChart } from "@/components/BreakdownChart";
-import { Breadcrumb, Card, PageHeader } from "@/components/ui";
+import { Breadcrumb, Card, ExportCSVButton, PageHeader, PrintButton } from "@/components/ui";
 import { SampleDataBadge } from "@/components/SampleDataBadge";
 import { buildKPIAnalytics, CHART_COLORS, MONTH_FULL } from "@/lib/analytics";
 import type { DashboardData } from "@/lib/dashboard-data";
@@ -60,6 +60,82 @@ export function CategoryPageClient({
     });
   }
 
+  // Long-format CSV: one row per (kpi, period, kind). Keeps the file
+  // pivot-friendly in Excel / Sheets while still matching what the user
+  // can see on the category page (current-vs-compare through the active
+  // month, plus breakdown composition for both years).
+  type CsvRow = Record<string, string | number | null>;
+  const csvRows: CsvRow[] = [];
+  for (const kpi of monthlyKpis) {
+    const a = analyticsFor(kpi);
+    if (kpi.reporting_frequency === "annual") {
+      for (const y of a.years) {
+        csvRows.push({
+          KPI: kpi.name,
+          Unit: kpi.unit_type,
+          Reporting: "annual",
+          Year: y.year,
+          Period: "full year",
+          Value: y.fullYearValue ?? "",
+          Compare_Value: "",
+          Notes: "",
+        });
+      }
+    } else {
+      const monthsToShow = Math.min(state.currentMonth, 12);
+      for (let m = 1; m <= 12; m++) {
+        const cur = data.entries.find(
+          (e) => e.kpi_id === kpi.id && e.year === state.currentYear && e.month === m,
+        );
+        const cmp = data.entries.find(
+          (e) => e.kpi_id === kpi.id && e.year === state.compareYear && e.month === m,
+        );
+        if (cur || cmp || m <= monthsToShow) {
+          csvRows.push({
+            KPI: kpi.name,
+            Unit: kpi.unit_type,
+            Reporting: "monthly",
+            Year: m <= monthsToShow ? state.currentYear : "",
+            Period: MONTH_FULL[m - 1],
+            Value: cur?.value ?? "",
+            Compare_Value: cmp?.value ?? "",
+            Compare_Year: m <= monthsToShow ? state.compareYear : "",
+            Notes: cur?.notes ?? "",
+          });
+        }
+      }
+    }
+  }
+  for (const kpi of breakdownKpis) {
+    const rows = data.breakdowns.filter(
+      (b) => b.kpi_id === kpi.id && (b.year === state.currentYear || b.year === state.compareYear),
+    );
+    for (const r of rows) {
+      csvRows.push({
+        KPI: kpi.name,
+        Unit: kpi.unit_type,
+        Reporting: "breakdown",
+        Year: r.year,
+        Period: r.label,
+        Value: r.value,
+        Compare_Value: "",
+        Notes: "",
+      });
+    }
+  }
+  const csvColumns = [
+    "KPI",
+    "Unit",
+    "Reporting",
+    "Year",
+    "Period",
+    "Value",
+    "Compare_Year",
+    "Compare_Value",
+    "Notes",
+  ];
+  const csvFilename = `eastern-state-${categorySlug}-${state.currentYear}-vs-${state.compareYear}.csv`;
+
   const printId = `category-${categorySlug}-print`;
 
   return (
@@ -74,7 +150,9 @@ export function CategoryPageClient({
           actions={
             <>
               <SampleDataBadge sample={data.sampleData} />
-              <ExportPDFButton
+              <ExportCSVButton rows={csvRows} columns={csvColumns} filename={csvFilename} />
+              <PrintButton />
+              <LegacyExportPDFButton
                 targetId={printId}
                 fileName={`eastern-state-${categorySlug}.pdf`}
               />
