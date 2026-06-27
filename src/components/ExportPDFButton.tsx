@@ -2,8 +2,6 @@
 
 import { useState } from "react";
 import { Download, Loader2 } from "lucide-react";
-import html2canvas from "html2canvas";
-import jsPDF from "jspdf";
 import { Button } from "@/components/ui";
 
 interface Props {
@@ -11,6 +9,16 @@ interface Props {
   fileName?: string;
 }
 
+/**
+ * Lazy PDF export button. The html2canvas + jspdf code lives in
+ * `@/lib/legacy-pdf-export` and is loaded on first click via a dynamic
+ * `import()` so it stays out of the initial page bundle.
+ *
+ * For metric and category pages, prefer the always-on `PrintButton`
+ * (browser-native print → Save as PDF) plus `ExportCSVButton`. This button
+ * remains for the dashboard overview and as a hidden fallback when callers
+ * explicitly want raster output.
+ */
 export function ExportPDFButton({ targetId, fileName = "eastern-state-kpi.pdf" }: Props) {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -21,64 +29,8 @@ export function ExportPDFButton({ targetId, fileName = "eastern-state-kpi.pdf" }
     setBusy(true);
     setError(null);
     try {
-      const sections = Array.from(target.querySelectorAll<HTMLElement>("section, header, footer")) as HTMLElement[];
-      const blocks = sections.length ? sections : [target];
-
-      const pdf = new jsPDF({ orientation: "landscape", unit: "pt", format: "letter" });
-      const pageWidth = pdf.internal.pageSize.getWidth();
-      const pageHeight = pdf.internal.pageSize.getHeight();
-      const margin = 24;
-      const pageBackground =
-        getComputedStyle(document.documentElement).getPropertyValue("--color-page").trim() || "white";
-
-      for (let i = 0; i < blocks.length; i++) {
-        const block = blocks[i];
-        const canvas = await html2canvas(block, {
-          scale: 2,
-          backgroundColor: pageBackground,
-          logging: false,
-          useCORS: true,
-          windowWidth: block.scrollWidth,
-          windowHeight: block.scrollHeight,
-        });
-        const imgData = canvas.toDataURL("image/png");
-        const imgWidth = pageWidth - margin * 2;
-        const imgHeight = (canvas.height * imgWidth) / canvas.width;
-
-        if (i > 0) pdf.addPage();
-        if (imgHeight <= pageHeight - margin * 2) {
-          pdf.addImage(imgData, "PNG", margin, margin, imgWidth, imgHeight);
-        } else {
-          let remaining = imgHeight;
-          let yOffset = 0;
-          const pageContent = pageHeight - margin * 2;
-          while (remaining > 0) {
-            const sliceHeight = Math.min(pageContent, remaining);
-            const sliceCanvas = document.createElement("canvas");
-            sliceCanvas.width = canvas.width;
-            sliceCanvas.height = (sliceHeight / imgWidth) * canvas.width;
-            const ctx = sliceCanvas.getContext("2d");
-            if (ctx) {
-              ctx.drawImage(
-                canvas,
-                0,
-                yOffset,
-                canvas.width,
-                sliceCanvas.height,
-                0,
-                0,
-                canvas.width,
-                sliceCanvas.height,
-              );
-              pdf.addImage(sliceCanvas.toDataURL("image/png"), "PNG", margin, margin, imgWidth, sliceHeight);
-            }
-            remaining -= sliceHeight;
-            yOffset += sliceCanvas.height;
-            if (remaining > 0) pdf.addPage();
-          }
-        }
-      }
-      pdf.save(fileName);
+      const mod = await import("@/lib/legacy-pdf-export");
+      await mod.exportElementToPdf({ targetId, fileName });
     } catch (err) {
       console.error("PDF export failed", err);
       setError("Export failed. Use Print → Save as PDF.");
