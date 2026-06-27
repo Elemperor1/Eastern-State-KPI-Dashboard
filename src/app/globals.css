@@ -499,11 +499,86 @@ blockquote,
 }
 
 @media print {
-  .no-print {
+  /* Universal print-time chrome hider used across pages. */
+  .no-print,
+  aside.fixed,
+  header.fixed,
+  [data-print="hide"] {
     display: none !important;
   }
 
+  /* Lift the main content out from under the hidden sidebar/header. */
+  main#main-content {
+    margin-left: 0 !important;
+    padding-top: 0 !important;
+  }
+
+  /* Compact, ink-friendly background. The default page color is a light
+     lavender; pure white prints cleaner and saves toner. */
+  html,
   body {
-    background: white;
+    background: white !important;
+    color: black !important;
+  }
+
+  /* Page geometry — Letter, generous margins, avoid splits inside cards. */
+  @page {
+    size: letter;
+    margin: 0.5in;
+  }
+  section,
+  [data-print="block"] {
+    break-inside: avoid;
+    page-break-inside: avoid;
+  }
+
+  /* Cards: keep their visual structure but drop the shadow & rounded chrome
+     that look noisy on paper. */
+  .surface-card,
+  [data-card] {
+    box-shadow: none !important;
+    border: 1px solid #d4d4d8 !important;
+    page-break-inside: avoid;
+  }
+
+  /* Tables: print as plain rows, keep full width even when minWidth is set. */
+  table {
+    width: 100% !important;
+    min-width: 0 !important;
+    page-break-inside: auto;
+  }
+  tr,
+  td,
+  th {
+    page-break-inside: avoid;
+  }
+  thead {
+    display: table-header-group; /* repeat headers across pages */
+  }
+
+  /* Recharts SVGs: render the inline SVG directly; avoid the wrapper divs
+     that look like empty boxes on paper. */
+  .recharts-wrapper,
+  .recharts-surface {
+    page-break-inside: avoid;
+  }
+
+  /* Hide the secondary action toolbar (Export CSV / Print / legacy PDF) on
+     paper — they're navigation controls, not page content. */
+  [data-page-header-actions] {
+    display: none !important;
+  }
+
+  /* Make the visible page title the print title too. */
+  h1,
+  h2,
+  h3 {
+    color: black !important;
+  }
+
+  /* Anchor underlines off (PDF readers render them as boxes). */
+  a {
+    color: inherit !important;
+    text-decoration: none !important;
   }
 }
