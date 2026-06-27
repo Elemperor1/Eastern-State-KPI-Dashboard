@@ -100,6 +100,33 @@ export interface ComparisonPoint {
   [yearKey: string]: number | string | null | undefined;
 }
 
+/** Audit-trail row written whenever a monthly or breakdown entry is changed. */
+export interface EntryHistory {
+  id: number;
+  entry_type: "monthly" | "breakdown";
+  entry_id: number | null;
+  kpi_id: number;
+  year: number;
+  /** Month (1-12) for monthly entries; 0 for annual; label text for breakdowns. */
+  month_or_label: string;
+  prev_value: number | null;
+  new_value: number | null;
+  prev_notes: string | null;
+  new_notes: string | null;
+  changed_by: number | null;
+  changed_at: string;
+}
+
+/** A history row joined with the KPI + category for display on /admin/history. */
+export interface EntryHistoryWithMeta extends EntryHistory {
+  kpi_name: string;
+  kpi_slug: string;
+  category_id: number;
+  category_name: string;
+  category_slug: string;
+  changed_by_email: string | null;
+}
+
 export interface KPIWithCategory extends KPI {
   category_name: string;
   category_slug: string;
@@ -126,6 +153,9 @@ export interface KPIAnalytics {
     compareYear: number;
     currentMonth: number;
     isAnnual: boolean;
+    /** True when both years lack any underlying entry for the queried period.
+     *  Surfaces a "No data" badge instead of a misleading ±0% delta. */
+    isEmpty: boolean;
   };
   ytdComparison: {
     currentValue: number;
@@ -137,5 +167,7 @@ export interface KPIAnalytics {
     compareYear: number;
     throughMonth: number;
     isAnnual: boolean;
+    /** True when both years lack any underlying entry at or before the through-month. */
+    isEmpty: boolean;
   };
 }

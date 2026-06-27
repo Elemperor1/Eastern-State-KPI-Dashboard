@@ -115,13 +115,55 @@ export function deleteUser(id: number): void {
   db.prepare("DELETE FROM users WHERE id = ?").run(id);
 }
 
+/**
+ * Bcrypt hash of the synthetic placeholder password "__bypass_disabled_not_a_real_password__".
+ * Kept as a constant so the seed is idempotent without re-hashing at runtime.
+ * The plain-text value is intentionally not a credential anyone can sign in with.
+ */
+const BYPASS_PASSWORD_HASH =
+  "$2a$10$cl80j8yESM1p1sDXfdNqfuoPJg53icrtO6s/Mgoun4KJfUV6ULzgK";
+
+/**
+ * Stable id reserved for the AUTH_DISABLED bypass user. Picked so the row exists
+ * before any seed-admin insert assigns autoincrement ids 1..N — when the bypass
+ * row is upserted with this id, FK references from `monthly_entries.updated_by`
+ * and `breakdown_entries.updated_by` resolve cleanly.
+ */
+export const BYPASS_USER_ID = -1;
+
 export function ensureSeedAdmin(): void {
   const db = getDb();
+
+  // Idempotent bypass-row upsert: a real `users` row whose id we can return
+  // from getSession() while AUTH_DISABLED=true so FK constraints on
+  // `*.updated_by` succeed. The placeholder hash above is bcrypt but not a
+  // real credential — there is no login flow that can use it.
+  const existingBypass = db
+    .prepare("SELECT id FROM users WHERE email = ?")
+    .get("auth-disabled@local") as { id: number } | undefined;
+  if (existingBypass) {
+    db.prepare(
+      "UPDATE users SET password_hash = ?, role = 'admin', name = ? WHERE email = ?",
+    ).run(BYPASS_PASSWORD_HASH, "Auth Disabled", "auth-disabled@local");
+  } else {
+    db.prepare(
+      `INSERT INTO users (id, email, name, password_hash, role)
+       VALUES (?, ?, ?, ?, 'admin')`,
+    ).run(
+      BYPASS_USER_ID,
+      "auth-disabled@local",
+      "Auth Disabled",
+      BYPASS_PASSWORD_HASH,
+    );
+  }
+
   const row = db.prepare("SELECT COUNT(*) as count FROM users").get() as
     | Record<string, unknown>
     | undefined;
   const count = Number(row?.count ?? 0);
-  if (count > 0) return;
+  // The bypass row above is always present; the named seed admins are only
+  // created on a fresh DB (no users at all).
+  if (count > 1) return;
   createUser({
     email: "kerry@easternstate.org",
     name: "Kerry Sautner",

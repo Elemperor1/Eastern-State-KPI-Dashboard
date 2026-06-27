@@ -54,8 +54,9 @@ export async function POST(req: NextRequest) {
 const DeleteSchema = z.object({ id: z.number().int().positive() });
 
 export async function DELETE(req: NextRequest) {
+  let sessionUser;
   try {
-    await requireAdmin();
+    sessionUser = await requireAdmin();
   } catch {
     return NextResponse.json({ error: "Forbidden" }, { status: 403 });
   }
@@ -63,6 +64,6 @@ export async function DELETE(req: NextRequest) {
   if (!parsed.success) {
     return NextResponse.json({ error: "Invalid input" }, { status: 400 });
   }
-  deleteBreakdown(parsed.data.id);
+  deleteBreakdown(parsed.data.id, sessionUser.id);
   return NextResponse.json({ ok: true });
 }
