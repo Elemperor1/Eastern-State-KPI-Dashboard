@@ -83,7 +83,7 @@ Comparison logic adapts to unit type:
 
 | Layer       | Tech                                              |
 | ----------- | ------------------------------------------------- |
-| Framework   | Next.js 14 App Router + TypeScript                |
+| Framework   | Next.js 15 App Router + TypeScript          |
 | Styling     | Tailwind CSS with a custom brand palette          |
 | Database    | SQLite via Node's built-in `node:sqlite` module   |
 | Auth        | `iron-session` (encrypted cookies) + `bcryptjs`   |
