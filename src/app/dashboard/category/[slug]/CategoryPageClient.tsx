@@ -196,7 +196,11 @@ export function CategoryPageClient({
               <Card key={kpi.id} className="p-5 lg:p-6">
                 <BreakdownChart
                   kpi={kpi}
-                  breakdowns={data.breakdowns}
+                  data={data.breakdowns.filter(
+                    (b) =>
+                      b.kpi_id === kpi.id &&
+                      (b.year === state.currentYear || b.year === state.compareYear),
+                  )}
                   currentYear={state.currentYear}
                   compareYear={state.compareYear}
                 />
