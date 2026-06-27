@@ -294,13 +294,32 @@ export function TrendExplorerClient({
                   })}
                 </div>
               </div>
+              <div className="border-b border-ink-100 px-5 py-3 lg:px-6">
+                <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
+                  <span className="label text-ink-700">Y-axis mode</span>
+                  <Tabs
+                    options={AXIS_MODE_OPTIONS}
+                    value={axisMode}
+                    onChange={setAxisMode}
+                  />
+                </div>
+              </div>
               <div className="h-[440px] px-2 pb-4 pt-5 md:h-[560px] md:px-4">
               <ResponsiveContainer width="100%" height="100%">
                 <LineChart data={trendData} margin={{ top: 8, right: 16, left: 8, bottom: 8 }}>
                   <CartesianGrid strokeDasharray="3 3" stroke="var(--chart-grid)" vertical={false} />
                   <XAxis dataKey="label" tickLine={false} axisLine={false} tick={{ fontSize: 11, fill: "var(--chart-axis)" }} />
                   <YAxis
-                    tickFormatter={(v) => formatValue(Number(v), sampleUnitType, { compact: true })}
+                    scale={axisMode === "log" ? "log" : "linear"}
+                    domain={axisMode === "log" ? ["auto", "auto"] : axisMode === "indexed" ? ["auto", "auto"] : ["auto", "auto"]}
+                    allowDataOverflow={axisMode === "log"}
+                    tickFormatter={(v) =>
+                      axisMode === "shared"
+                        ? formatValue(Number(v), sampleUnitType, { compact: true })
+                        : axisMode === "log"
+                          ? `10^${Number(v).toFixed(1)}`
+                          : `${Number(v).toFixed(0)}`
+                    }
                     tickLine={false}
                     axisLine={false}
                     tick={{ fontSize: 11, fill: "var(--chart-axis)" }}
@@ -309,7 +328,14 @@ export function TrendExplorerClient({
                   <Tooltip
                     formatter={(value) => {
                       if (value === null || value === undefined) return ["—", ""];
-                      return [formatValue(Number(value), sampleUnitType), ""];
+                      if (axisMode === "shared") {
+                        return [formatValue(Number(value), sampleUnitType), ""];
+                      }
+                      if (axisMode === "log") {
+                        return [`10^${Number(value).toFixed(2)} (≈ ${formatValue(Math.pow(10, Number(value)), sampleUnitType, { compact: true })})`, ""];
+                      }
+                      // indexed
+                      return [`${Number(value).toFixed(1)} (baseline = 100)`, ""];
                     }}
                   />
                   {kpiSlugs.flatMap((slug, ki) =>
@@ -318,11 +344,17 @@ export function TrendExplorerClient({
                       if (!kpi) return null;
                       const color = CHART_COLORS[ki % CHART_COLORS.length];
                       const isCurrentSelection = yi === selectedYears.length - 1;
+                      const seriesName =
+                        axisMode === "indexed"
+                          ? `${kpi.name} ${year} (idx)`
+                          : axisMode === "log"
+                            ? `${kpi.name} ${year} (log)`
+                            : `${kpi.name} ${year}`;
                       return (
                         <Line
                           key={`${slug}__${year}`}
                           dataKey={`${slug}__${year}`}
-                          name={`${kpi.name} ${year}`}
+                          name={seriesName}
                           stroke={color}
                           strokeWidth={isCurrentSelection ? 2.75 : 1.75}
                           strokeOpacity={isCurrentSelection ? 1 : 0.62}
@@ -337,6 +369,9 @@ export function TrendExplorerClient({
                   )}
                 </LineChart>
               </ResponsiveContainer>
+              </div>
+              <div className="border-t border-ink-100 px-5 py-2 text-xs leading-5 text-ink-600">
+                {AXIS_MODE_HELP[axisMode]}
               </div>
               <div className="flex flex-wrap gap-4 border-t border-ink-100 px-5 py-3 text-[10px] font-semibold uppercase tracking-[0.08em] text-ink-500">
                 {selectedYears.map((year, index) => {
