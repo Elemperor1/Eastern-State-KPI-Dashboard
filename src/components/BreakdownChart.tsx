@@ -103,7 +103,7 @@ export function BreakdownChart({ kpi, data: breakdowns, currentYear, compareYear
             />
             <Legend wrapperStyle={{ fontSize: 12 }} />
             {showCompare ? (
-              <Bar dataKey={String(compareYear)} fill="var(--chart-violet-mid)" radius={[0, 4, 4, 0]} maxBarSize={16} />
+              <Bar dataKey={String(compareYear)} fill="var(--chart-secondary)" radius={[0, 4, 4, 0]} maxBarSize={16} />
             ) : null}
             <Bar dataKey={String(currentYear)} fill="var(--chart-primary)" radius={[0, 4, 4, 0]} maxBarSize={16} />
           </BarChart>

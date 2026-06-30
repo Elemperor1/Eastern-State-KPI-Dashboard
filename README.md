@@ -34,12 +34,9 @@ Open <http://localhost:3000> and sign in.
 
 ### Default accounts (seeded on first DB access)
 
-| Name          | Email                       | Password           | Role   |
-| ------------- | --------------------------- | ------------------ | ------ |
-| Kerry Sautern | `kerry@easternstate.org`    | `KerryAdmin!2026`  | admin  |
-| Zach Palmer   | `zach@easternstate.org`     | `ZachView!2026`    | viewer |
+On the first run against a fresh database, `ensureSeedAdmin()` creates `kerry@easternstate.org` (admin) and `zach@easternstate.org` (viewer) with **per-install random passwords**. The plaintexts are printed to the server's stdout exactly once and are never stored in source or docs. Read the password line at first startup, rotate it through `/admin/users`, and the seed is done.
 
-Change these in production.
+The default development workflow runs with `AUTH_DISABLED=true` and never reads the password line, so it stays out of your way.
 
 ## What you get
 

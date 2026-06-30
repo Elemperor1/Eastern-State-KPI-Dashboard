@@ -4,20 +4,20 @@
 
 ## Canvas model
 
-- Dark canvas: navigation, identity, and high-emphasis brand moments.
-- Light canvas: dashboards, charts, tables, data entry, and administration.
-- Do not blend dark and light treatments inside a single surface. Use a clean boundary between the two worlds.
+- Dark canvas: only the persistent sidebar, the mobile header, and code blocks. Reserved for chrome, never for content surfaces.
+- Light canvas: every dashboard, chart, table, data-entry form, and admin surface. The default for the entire product.
+- Do not blend dark and light treatments inside a single content surface. Sidebar/header code blocks may sit on dark, but the page they live in is always light.
 
 ## Tokens
 
 Tokens live in `src/app/globals.css` and are exposed through Tailwind in `tailwind.config.ts`.
 
-- Colors: midnight violet, ink violet, white, lime, pink, violet support tones, semantic tonal derivatives.
-- Type: Rubik for all product UI; Monaco/Menlo for code-like data where needed.
+- Colors: three teals (tertiary navy `#003649`, secondary dark teal `#005f6f`, primary medium teal `#209ba5`), one bright yellow accent (`#f7f242`), white, and a small set of semantic tonal derivatives (success/danger/info/warning). The full chart palette mirrors the same three teals plus a single yellow accent.
+- Type: Galano Grotesque (licensed brand face, © 2014 René Bieder) for every product UI role; Monaco for code-like data values where the user reads a number the way they would read a log line.
 - Spacing: 4, 8, 12, 16, 24, 32, 48, 64, 96.
 - Radius: 4, 6, 8, 12, 18, full.
 - Motion: 150 ms controls, 220 ms navigation/dialogs.
-- Elevation: flat dark surfaces, restrained light-card and floating-dialog shadows.
+- Elevation: flat light surfaces, restrained navy-tinted light-card and floating-dialog shadows. The navy tints root shadows in the brand instead of using off-the-shelf greyscale.
 
 ## Shared-library rule
 
@@ -65,7 +65,7 @@ import {
 - Use exact transition properties; never `transition: all`.
 - Use `scale(0.96)` for tactile press feedback.
 - Respect `prefers-reduced-motion`.
-- Keep lime scarce: no more than one signature lime focal treatment in a normal viewport.
+- Keep the yellow accent scarce: at most one signature yellow focal treatment in a normal viewport. The brand gradient (tertiary → secondary → primary) is the more common structural accent; the yellow is reserved for a single high-attention moment per region.
 
 ## Enforcement
 
@@ -75,4 +75,4 @@ npm run design-system:test
 npm run smoke
 ```
 
-The guard is a floor, not the definition of quality. A screen can pass the guard and still fail the system if it overuses cards, ignores canvas polarity, introduces new accent colors, or weakens hierarchy.
+The guard is a floor, not the definition of quality. A screen can pass the guard and still fail the system if it overuses cards, ignores canvas polarity, introduces colors outside the teal/navy/yellow family, or weakens hierarchy.

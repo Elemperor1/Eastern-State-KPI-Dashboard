@@ -74,8 +74,8 @@ Before starting, complete these one-time steps:
 
 1. Visit `/`.
 2. If `AUTH_DISABLED=true`: observe the redirect.
-3. If `AUTH_DISABLED=false`: visit `/login`, enter
-   `kerry@easternstate.org` / `KerryAdmin!2026`, submit.
+3. If `AUTH_DISABLED=false`: visit `/login`, enter the admin credentials
+   printed by `ensureSeedAdmin()` to stdout on first run, submit.
 
 **Expected outcome.**
 
@@ -342,8 +342,8 @@ known gap if it doesn't appear). If `AUTH_DISABLED=true` is active, the
 
 **Action.**
 
-1. With `AUTH_DISABLED=false`, log in as `kerry@easternstate.org` /
-   `KerryAdmin!2026`.
+1. With `AUTH_DISABLED=false`, log in as the admin whose password
+   `ensureSeedAdmin()` printed to stdout on first run.
 2. Look in the side nav `AccountBlock` for a "Change password" affordance.
 3. If present: enter current password + new password (8+ chars). Submit.
 4. Log out, log back in with the new password. Confirm success.

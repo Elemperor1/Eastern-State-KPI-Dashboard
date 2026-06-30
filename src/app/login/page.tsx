@@ -128,7 +128,7 @@ export default function LoginPage() {
           </form>
 
           <p className="mt-8 max-w-sm text-sm leading-6 text-ink-500 text-pretty">
-            Authorized personnel only. Activity is logged for audit purposes. Need access? Contact Kerry Sautner or Zach Palmer.
+            Authorized personnel only. Activity is logged for audit purposes. Need access? Contact your administrator — credentials are issued out-of-band and never published.
           </p>
         </div>
       </section>

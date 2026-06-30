@@ -1,5 +1,4 @@
 import type { Metadata } from "next";
-import "@fontsource-variable/rubik";
 import "./globals.css";
 
 export const metadata: Metadata = {
@@ -8,9 +7,13 @@ export const metadata: Metadata = {
     "Internal KPI intelligence dashboard for Eastern State Penitentiary Historic Site.",
   robots: { index: false, follow: false },
   icons: {
+    // Multi-size .ico (16/32/48/64/128/256) for legacy browsers — generated
+    // from public/logos/eastern-state-mark.png via magick. The .ico is the
+    // authoritative favicon; modern browsers that prefer the SVG/PNG version
+    // get the same raster via the second entry.
     icon: [
-      { url: "/favicon.ico", sizes: "16x16 32x32 48x48 64x64", type: "image/x-icon" },
-      { url: "/icon.svg", type: "image/svg+xml" },
+      { url: "/favicon.ico", sizes: "16x16 32x32 48x48 64x64 128x128 256x256", type: "image/x-icon" },
+      { url: "/logos/eastern-state-mark.png", sizes: "256x256", type: "image/png" },
     ],
     shortcut: "/favicon.ico",
   },

@@ -4,7 +4,13 @@ Internal KPI dashboard for Eastern State Penitentiary Historic Site. Next.js 15 
 
 ## Auth status (temporary)
 
-Login is **currently disabled** via `AUTH_DISABLED=true` in `.env.local`. The flag is read by `src/lib/auth-flag.ts`; when true, `getSession()` / `requireSession()` / `requireAdmin()` return a static admin user instead of consulting cookies, and `/` redirects straight to `/dashboard/overview`. The `AccountBlock` (and its Logout button) is hidden in `src/components/AppShell.tsx` when the bypass user is detected (`user.id === 0`).
+Login is **currently disabled** via `AUTH_DISABLED=true` in `.env.local`. The flag is read by `src/lib/auth-flag.ts`; when true (and `NODE_ENV !== "production"`), `getSession()` / `requireSession()` / `requireAdmin()` return a real `users` row (`auth-disabled@local`) instead of consulting cookies, and `/` redirects straight to `/dashboard/overview`. The `AccountBlock` (and its Logout button) is hidden in `src/components/AppShell.tsx` when the bypass user is detected (`user.email === "auth-disabled@local"`).
+
+**Production guard:** `src/lib/auth-flag.ts` forces `AUTH_DISABLED=false` whenever `NODE_ENV` is `production` or `test`, and throws at module load if the env var is explicitly set in those modes. A reachable production deployment therefore cannot be misconfigured into fail-open admin mode — `next build` and `next start` will refuse to start with `AUTH_DISABLED=*** in the environment. The bypass only works in dev (`npm run dev`, `NODE_ENV=development`).
+
+The CI gate (`npm run design-system:test`) runs `next build` with `AUTH_DISABLED` explicitly cleared so the production build path is verified on every PR.
+
+**Bypass row is not a login credential:** the `auth-disabled@local` row exists in `users` so FK references (`monthly_entries.updated_by`, `breakdown_entries.updated_by`) resolve to a real `users.id`, and so the dev bypass has a stable identity. `src/lib/auth.ts` lists the email in a `RESERVED_EMAILS` set and `verifyCredentials()` short-circuits to `null` for any reserved email — the row is unreachable through `/api/auth/login` regardless of the stored hash. The stored hash is also rotated to `bcrypt(crypto.randomBytes(64))` on every `ensureSeedAdmin()` call, so the previous documented plaintext is no longer a valid credential and the hash never appears in source control. `src/lib/auth.test.ts` asserts both the reserved-email rejection and the hash rotation.
 
 To restore login: set `AUTH_DISABLED=false` in `.env.local`, then revert the four conditional branches in `src/lib/session.ts`, `src/app/page.tsx`, and `src/components/AppShell.tsx`. The `/login` page, `/api/auth/*` routes, seeded accounts, and `requireSession`/`requireAdmin` call sites are all preserved — no other restoration work is needed.
 
@@ -18,8 +24,7 @@ npm run dev       # http://localhost:3000
 
 Seeded accounts (first DB access only, via `ensureSeedAdmin` in `src/lib/auth.ts`; unused while auth is disabled):
 
-- `kerry@easternstate.org` / `KerryAdmin!2026` — admin
-- `zach@easternstate.org` / `ZachView!2026` — viewer
+On the first run against a fresh database, the seed creates `kerry@easternstate.org` (admin) and `zach@easternstate.org` (viewer) with **per-install random passwords** that are printed to the server's stdout exactly once. No plaintext is stored in source or docs. Operators read the password line at first startup, rotate it through `/admin/users`, and the seed is done. The default development workflow runs with `AUTH_DISABLED=true` and never reads the password line, so it stays out of your way.
 
 ## Commands
 
@@ -50,10 +55,7 @@ data is fetched:
 - `src/app/admin/data/loading.tsx`, `src/app/admin/kpis/loading.tsx`, `src/app/admin/users/loading.tsx`
 - `src/app/login/loading.tsx` — two-column split (marketing panel + form panel)
 
-Favicon is served at `/favicon.ico` (a 4-resolution multi-size `.ico` generated
-from `public/icon.svg` via `rsvg-convert` + `magick`) and is also registered via
-`metadata.icons` in `src/app/layout.tsx` so the SVG version ships for browsers
-that prefer it.
+Favicon is served at `/favicon.ico` (a 6-resolution multi-size `.ico` — 16/32/48/64/128/256 — generated from `public/logos/eastern-state-mark.png` via `magick`) and is also registered via `metadata.icons` in `src/app/layout.tsx` (which lists both the `.ico` and the 256×256 PNG so modern browsers can pick the PNG). The in-app `BrandMark` component (`src/components/ui/BrandMark.tsx`) renders the same source-of-truth PNG via `next/image` at sidebar/header/login sizes.
 
 ## Verification (smoke harness)
 
@@ -97,6 +99,7 @@ Unit tests live in `src/lib/analytics.test.ts` (Vitest, coverage ≥ 90% line co
 - `SESSION_SECURE=false` is set in `.env.local` for HTTP dev. Production must omit it (default `true`).
 - `DATABASE_PATH` defaults to `./data/kpi.db`; `data/` is gitignored.
 - `src/app/page.tsx` runs `ensureSeedAdmin()` at module load — keep that import even if it looks unused.
+- **Login throttle.** `src/app/api/auth/login/route.ts` throttles failed attempts per source IP and per account via `src/lib/login-throttle.ts`. Defaults: 10 failures inside 5 minutes → 5-minute lockout (HTTP 429 with `Retry-After`). Tunable via `LOGIN_LOCKOUT_THRESHOLD`, `LOGIN_LOCKOUT_WINDOW_MS`, `LOGIN_LOCKOUT_DURATION_MS`. State is in-process; if you scale horizontally, move the counters to a shared store. **Set `TRUST_PROXY=*** when running behind a reverse proxy** so the throttle can read the real client IP from `x-forwarded-for`. Without it, the route collapses every request to a single `unknown` IP key (a defensive default against header spoofing), which is correct for internet-facing deployments without a proxy but too aggressive when the app is behind one.
 
 ## Conventions specific to this repo
 

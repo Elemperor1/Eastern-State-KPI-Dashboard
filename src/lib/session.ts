@@ -3,19 +3,11 @@ import { getIronSession } from "iron-session";
 import { cookies } from "next/headers";
 import { AUTH_DISABLED } from "./auth-flag";
 import type { SessionUser } from "./types";
-import { ensureSeedAdmin, findUserByEmail } from "./auth";
+import { BYPASS_USER_EMAIL, ensureSeedAdmin, findUserByEmail } from "./auth";
 
 export interface SessionData {
   user?: SessionUser;
 }
-
-/**
- * Stable identifier for the AUTH_DISABLED bypass user. The matching row is
- * upserted by ensureSeedAdmin() and used here so FK references on
- * `monthly_entries.updated_by` and `breakdown_entries.updated_by` resolve to a
- * real users.id instead of an ad-hoc synthetic placeholder.
- */
-export const BYPASS_USER_EMAIL = "auth-disabled@local";
 
 /**
  * Returns the real SessionUser row for the AUTH_DISABLED bypass account, so
@@ -24,6 +16,11 @@ export const BYPASS_USER_EMAIL = "auth-disabled@local";
  * (which never touch the home-page module that calls ensureSeedAdmin) still
  * find a matching users.id. Cheap on the hot path: the second call is a
  * single SELECT by the unique email index.
+ *
+ * Note: this account's password_hash is rotated to an unguessable random
+ * value on every ensureSeedAdmin() call. The login flow is blocked from
+ * reaching it by a reserved-email check in verifyCredentials(), so the
+ * stored hash is a defense-in-depth measure, not the only barrier.
  */
 export function getBypassUser(): SessionUser {
   ensureSeedAdmin();

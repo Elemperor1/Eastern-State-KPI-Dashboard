@@ -20,11 +20,14 @@ interface Props {
   unit?: string;
 }
 
+// Historic year series cycle through the teal/navy family so the chart
+// stays inside the brand palette. Order is "deeper → softer" so older
+// years read as a fade rather than a hue shift.
 const HISTORIC_COLORS = [
   "var(--chart-ink-soft)",
-  "var(--chart-violet-mid)",
-  "var(--chart-violet)",
-  "var(--chart-pink-soft)",
+  "var(--chart-brand-mid)",
+  "var(--chart-secondary)",
+  "var(--chart-brand-soft)",
 ];
 
 export function TrendChart({ data, years, unitType, unit }: Props) {
@@ -56,7 +59,7 @@ export function TrendChart({ data, years, unitType, unit }: Props) {
                 type="monotone"
                 dataKey={String(year)}
                 name={String(year)}
-                stroke={isRecent ? "var(--chart-lime)" : HISTORIC_COLORS[idx % HISTORIC_COLORS.length]}
+                stroke={isRecent ? "var(--chart-tertiary)" : HISTORIC_COLORS[idx % HISTORIC_COLORS.length]}
                 strokeWidth={isRecent ? 3 : 1.75}
                 strokeDasharray={isRecent ? undefined : "4 4"}
                 dot={{ r: isRecent ? 4 : 3, strokeWidth: 0 }}

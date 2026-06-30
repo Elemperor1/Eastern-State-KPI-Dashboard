@@ -1,22 +1,58 @@
-<svg xmlns="http://www.w3.org/2000/svg" width="640" height="640" viewBox="0 0 640 640">
-  <g fill="#fff">
-    <circle cx="52" cy="74" r="1.4" opacity=".34"/>
-    <circle cx="178" cy="42" r="1" opacity=".22"/>
-    <circle cx="326" cy="92" r="1.6" opacity=".3"/>
-    <circle cx="514" cy="58" r="1.2" opacity=".24"/>
-    <circle cx="604" cy="144" r="1.5" opacity=".3"/>
-    <circle cx="112" cy="206" r="1" opacity=".26"/>
-    <circle cx="254" cy="174" r="1.4" opacity=".2"/>
-    <circle cx="438" cy="224" r="1" opacity=".34"/>
-    <circle cx="572" cy="286" r="1.7" opacity=".24"/>
-    <circle cx="68" cy="354" r="1.3" opacity=".3"/>
-    <circle cx="214" cy="326" r="1" opacity=".2"/>
-    <circle cx="346" cy="406" r="1.5" opacity=".32"/>
-    <circle cx="492" cy="366" r="1.1" opacity=".24"/>
-    <circle cx="608" cy="478" r="1.4" opacity=".28"/>
-    <circle cx="136" cy="526" r="1.6" opacity=".24"/>
-    <circle cx="286" cy="574" r="1" opacity=".3"/>
-    <circle cx="426" cy="518" r="1.5" opacity=".22"/>
-    <circle cx="548" cy="602" r="1.2" opacity=".3"/>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 640 640" width="640" height="640">
+  <!--
+    Eastern State KPI — login panel decorative texture.
+    A subtle teal pinprick overlay on the dark navy ({colors.tertiary}) panel
+    used by /login and /login/loading. Each star is a tiny teal circle at
+    low opacity so the texture is felt rather than seen — atmospheric depth
+    on the dark side of the split-screen login layout.
+
+    Replaces the older Sentry-flavored "starfield" with a teal/navy variant
+    that matches the current brand palette. The base background of the panel
+    is the parent's bg-ink-900 class (which is {colors.tertiary} = #003649);
+    this texture sits on top of that, not instead of it.
+  -->
+  <g fill="#209ba5" opacity="0.08">
+    <circle cx="32" cy="48" r="0.8"/>
+    <circle cx="120" cy="92" r="0.6"/>
+    <circle cx="208" cy="36" r="0.7"/>
+    <circle cx="296" cy="80" r="0.5"/>
+    <circle cx="384" cy="44" r="0.8"/>
+    <circle cx="472" cy="100" r="0.6"/>
+    <circle cx="560" cy="56" r="0.7"/>
+    <circle cx="64" cy="172" r="0.5"/>
+    <circle cx="152" cy="208" r="0.8"/>
+    <circle cx="240" cy="164" r="0.6"/>
+    <circle cx="328" cy="220" r="0.7"/>
+    <circle cx="416" cy="176" r="0.5"/>
+    <circle cx="504" cy="228" r="0.8"/>
+    <circle cx="592" cy="184" r="0.6"/>
+    <circle cx="28" cy="284" r="0.7"/>
+    <circle cx="116" cy="320" r="0.5"/>
+    <circle cx="204" cy="276" r="0.8"/>
+    <circle cx="292" cy="332" r="0.6"/>
+    <circle cx="380" cy="288" r="0.7"/>
+    <circle cx="468" cy="344" r="0.5"/>
+    <circle cx="556" cy="300" r="0.8"/>
+    <circle cx="48" cy="396" r="0.6"/>
+    <circle cx="136" cy="432" r="0.7"/>
+    <circle cx="224" cy="388" r="0.5"/>
+    <circle cx="312" cy="444" r="0.8"/>
+    <circle cx="400" cy="400" r="0.6"/>
+    <circle cx="488" cy="456" r="0.7"/>
+    <circle cx="576" cy="412" r="0.5"/>
+    <circle cx="20" cy="508" r="0.8"/>
+    <circle cx="108" cy="544" r="0.6"/>
+    <circle cx="196" cy="500" r="0.7"/>
+    <circle cx="284" cy="556" r="0.5"/>
+    <circle cx="372" cy="512" r="0.8"/>
+    <circle cx="460" cy="568" r="0.6"/>
+    <circle cx="548" cy="524" r="0.7"/>
+    <circle cx="72" cy="620" r="0.5"/>
+    <circle cx="160" cy="600" r="0.8"/>
+    <circle cx="248" cy="616" r="0.6"/>
+    <circle cx="336" cy="592" r="0.7"/>
+    <circle cx="424" cy="624" r="0.5"/>
+    <circle cx="512" cy="596" r="0.8"/>
+    <circle cx="600" cy="628" r="0.6"/>
   </g>
 </svg>

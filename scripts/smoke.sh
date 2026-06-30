@@ -20,9 +20,24 @@ set -euo pipefail
 
 PORT="${PORT:-3100}"
 BASE="${BASE:-http://127.0.0.1:$PORT}"
-EMAIL="${SMOKE_EMAIL:-kerry@easternstate.org}"
-PASSWORD="${SMOKE_PASSWORD:-KerryAdmin!2026}"
 AUTH_DISABLED="${AUTH_DISABLED:-false}"
+
+# Auth-enabled runs require the caller to supply a credential pair via
+# the environment. The named seed accounts use per-install random
+# passwords (see src/lib/auth.ts::ensureSeedAdmin), so the harness
+# cannot fall back to a documented default. CI passes these explicitly
+# after reading the password from the seed's stdout line; local dev
+# runs typically use AUTH_DISABLED=true to skip this section.
+if [ -z "${SMOKE_EMAIL:-}" ] || [ -z "${SMOKE_PASSWORD:-}" ]; then
+  if [ "$AUTH_DISABLED" != "true" ]; then
+    echo "ERROR: SMOKE_EMAIL and SMOKE_PASSWORD are required for an auth-enabled smoke run." >&2
+    echo "       The seed no longer publishes a default password; supply the credential pair" >&2
+    echo "       printed by ensureSeedAdmin() at first startup, or run with AUTH_DISABLED=true." >&2
+    exit 1
+  fi
+fi
+EMAIL="${SMOKE_EMAIL:-}"
+PASSWORD="${SMOKE_PASSWORD:-}"
 
 PASS=0
 FAIL=0

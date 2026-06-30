@@ -95,16 +95,21 @@ export function isFavorable(direction: string, delta: number): boolean {
   return delta > 0;
 }
 
-/** Color tokens for charts — keep aligned with brand palette in tailwind config. */
+/**
+ * Color tokens for charts — keep aligned with the teal/navy brand
+ * palette in `globals.css` and `tailwind.config.ts`. Order is
+ * "loudest → quietest" so the first entry always wins visual weight
+ * when callers index by position.
+ */
 export const CHART_COLORS = [
-  "var(--chart-primary)",
-  "var(--chart-violet)",
-  "var(--chart-pink)",
-  "var(--chart-violet-deep)",
-  "var(--chart-violet-mid)",
-  "var(--chart-violet-soft)",
-  "var(--chart-pink-soft)",
-  "var(--chart-ink-soft)",
+  "var(--chart-primary)",      // medium teal — current year
+  "var(--chart-secondary)",    // dark teal — compare year
+  "var(--chart-tertiary)",     // navy — recent trend line
+  "var(--chart-brand-mid)",    // mid teal — stacked series
+  "var(--chart-brand-soft)",   // soft teal — area fills
+  "var(--chart-accent)",       // yellow — single high-attention point
+  "var(--chart-ink-soft)",     // grey teal — 3rd historic year
+  "var(--chart-muted)",        // disabled / null data
 ];
 
 interface BuildAnalyticsArgs {

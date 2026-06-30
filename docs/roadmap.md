@@ -10,7 +10,7 @@
 | --- | --- | --- |
 | Stack | Next.js 15.5.19 App Router + TS + Tailwind + `node:sqlite` + iron-session | `package.json`, `tsconfig.json` |
 | Finalized metric set | 8 categories · 52 KPIs · 2024–2026 (2026 partial through June) | `scripts/seed.ts` |
-| Design language | Violet/lime/pink + Rubik per `DESIGN.md` | `src/app/globals.css`, `tailwind.config.ts` |
+| Design language | Teal/navy/yellow + Galano Grotesque per `DESIGN.md` | `src/app/globals.css`, `tailwind.config.ts` |
 | Design-system library | 24 primitives in `src/components/ui/`, enforced by `scripts/design-system-guard.sh` | `src/components/ui/index.ts` |
 | Build | `npm run build` — green, 21 routes | local run |
 | Lint | `npm run design-system:guard` — green | local run |

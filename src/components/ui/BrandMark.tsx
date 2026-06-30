@@ -1,35 +1,70 @@
 "use client";
 
+import Image from "next/image";
 import { cn } from "@/lib/utils";
 
-interface BrandMarkProps extends React.HTMLAttributes<HTMLDivElement> {
+/**
+ * Eastern State brand mark.
+ *
+ * Uses the official PNG asset shipped at `public/logos/eastern-state-mark.png`
+ * (cropped from the full "Logo - ES - Stacked - Color White Type" master
+ * delivered by the Eastern State brand team). We render the raster directly
+ * because the mark is a detailed two-bar prison gate with a central locking
+ * mechanism — too much detail to hand-trace, and the official raster is the
+ * source of truth the brand team provided.
+ *
+ * Color match: the mark uses `{colors.primary}` (#209ba5) for the teal faces
+ * and `{colors.secondary}` (#005f6f) for the navy extrusion faces, both of
+ * which match the dashboard palette exactly. The mark renders identically
+ * on light and dark surfaces because the teal/navy palette works on both.
+ *
+ * The `size` prop drives the rendered pixel size, matching the previous
+ * square-frame BrandMark so existing call sites (AppShell sidebar 40px,
+ * mobile header 32px, login page 40px) continue to look right.
+ *
+ * The `inverted` prop is preserved for API compatibility with the previous
+ * square-container version of the mark but is a no-op — the new design
+ * renders identically on light and dark surfaces.
+ */
+
+interface BrandMarkProps {
   size?: "sm" | "md" | "lg";
+  /** @deprecated No-op; the mark renders identically on light and dark surfaces. */
   inverted?: boolean;
+  className?: string;
 }
 
-const sizes = {
-  sm: "size-8 rounded-lg",
-  md: "size-10 rounded-xl",
-  lg: "size-14 rounded-[18px]",
-};
+const sizeMap = {
+  sm: { px: 32, className: "size-8" },
+  md: { px: 40, className: "size-10" },
+  lg: { px: 56, className: "size-14" },
+} as const;
 
-export function BrandMark({ size = "md", inverted = false, className, ...props }: BrandMarkProps) {
+export function BrandMark({
+  size = "md",
+  // `inverted` is accepted but unused — see the deprecation note above.
+  inverted: _inverted,
+  className,
+}: BrandMarkProps) {
+  const { px, className: sizeClass } = sizeMap[size];
   return (
     <div
       className={cn(
-        "inline-flex shrink-0 items-center justify-center",
-        inverted ? "bg-white text-ink-950" : "bg-ink-950 text-white",
-        sizes[size],
+        "relative inline-block shrink-0 overflow-hidden",
+        sizeClass,
         className,
       )}
-      aria-hidden
-      {...props}
     >
-      <svg viewBox="0 0 32 32" className="size-[62%]" fill="none">
-        <path d="M7 25V12l9-6 9 6v13" stroke="currentColor" strokeWidth="2.2" strokeLinejoin="round" />
-        <path d="M11 25V14h10v11M14 14v11M18 14v11" stroke="var(--color-lime)" strokeWidth="1.8" strokeLinecap="round" />
-        <path d="M5 26.5h22" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" />
-      </svg>
+      <Image
+        src="/logos/eastern-state-mark.png"
+        alt="Eastern State Penitentiary"
+        width={px}
+        height={px}
+        // The cropped mark is 0.943:1 (slightly taller than wide). object-contain
+        // preserves that aspect inside the square frame.
+        className="h-full w-full object-contain"
+        priority
+      />
     </div>
   );
 }
