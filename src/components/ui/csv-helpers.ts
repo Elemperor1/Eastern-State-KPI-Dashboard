@@ -18,7 +18,8 @@ const CRLF = "\r\n";
  * would otherwise slip through. A tab or carriage return in the
  * whitespace is itself a formula trigger and is matched directly.
  */
-const FORMULA_LEADING = /^[=+\-@\t\r\s]/;
+const FORMULA_LEADING = /^[=+\-@\t\r]/;
+const FORMULA_LEADING_AFTER_SPACES = /^ +[=+\-@]/;
 
 /**
  * Prefix a string that begins with a spreadsheet-formula trigger so
@@ -27,16 +28,15 @@ const FORMULA_LEADING = /^[=+\-@\t\r\s]/;
  * Sheets; the prefix is hidden on display but the value is preserved
  * verbatim on round-trip.
  *
- * The check looks at `value[0]` only — but the FORMULA_LEADING regex
- * includes `\s` in its character class, so a leading space/tab/CR
- * still triggers the prefix and the original whitespace is preserved
- * in the output (e.g. `"  =cmd"` becomes `"'  =cmd"`). Numbers that
- * happen to start with a minus sign (e.g. -3.14) are not affected
+ * We treat a leading tab (\t) or carriage return (\r) as an immediate trigger,
+ * and we also neutralize when the first non-space character is a trigger
+ * (some spreadsheets ignore leading spaces before evaluating).
+ * Numbers that happen to start with a minus sign (e.g. -3.14) are not affected
  * because this helper is only called on string values.
  */
 export function neutralizeFormulaPrefix(value: string): string {
   if (value.length === 0) return value;
-  if (FORMULA_LEADING.test(value[0])) {
+  if (FORMULA_LEADING.test(value) || FORMULA_LEADING_AFTER_SPACES.test(value)) {
     return `'${value}`;
   }
   return value;
