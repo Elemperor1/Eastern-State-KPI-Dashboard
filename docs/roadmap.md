@@ -10,7 +10,7 @@
 | --- | --- | --- |
 | Stack | Next.js 15.5.19 App Router + TS + Tailwind + `node:sqlite` + iron-session | `package.json`, `tsconfig.json` |
 | Finalized metric set | 8 categories · 52 KPIs · 2024–2026 (2026 partial through June) | `scripts/seed.ts` |
-| Design language | Violet/lime/pink + Rubik per `DESIGN.md` | `src/app/globals.css`, `tailwind.config.ts` |
+| Design language | Teal/navy/yellow + Galano Grotesque per `DESIGN.md` | `src/app/globals.css`, `tailwind.config.ts` |
 | Design-system library | 24 primitives in `src/components/ui/`, enforced by `scripts/design-system-guard.sh` | `src/components/ui/index.ts` |
 | Build | `npm run build` — green, 21 routes | local run |
 | Lint | `npm run design-system:guard` — green | local run |
@@ -34,7 +34,7 @@ The seven `/goal` prompts at the bottom of this file each fix a coherent, verifi
 **Evidence (reproduce):**
 
 ```bash
-AUTH_DISABLED=true PORT=3290 node_modules/.bin/next start -p 3290 &
+AUTH_DISABLED=true node_modules/.bin/next dev -p 3290 &
 curl -sk -X POST http://127.0.0.1:3290/api/entries \
   -H 'Content-Type: application/json' \
   --data '{"kpi_id":1,"year":2099,"month":1,"value":12345}'
@@ -48,7 +48,7 @@ curl -sk -X POST http://127.0.0.1:3290/api/entries \
 - **Approach A (preferred):** in `src/lib/auth.ts`, change `ensureSeedAdmin()` so it also seeds a deterministic "auth-disabled@local" admin row with a known bcrypt hash. Then in `src/lib/session.ts`, look up that row and return its real `users.id` instead of the synthetic `{id: 0}`. AppShell's `user.id === 0` bypass check becomes a check on `user.email === "auth-disabled@local"` (or a new explicit `user.isBypass` flag).
 - **Approach B:** drop the FK constraint on `updated_by` (or add `ON DELETE SET NULL` and set `updated_by = null` when bypassing). Loses the audit trail and is not preferred.
 
-**Verification:** `npm run build` green; `AUTH_DISABLED=true PORT=3290 next start` + `scripts/smoke.sh` reports `49 passed, 0 failed` end-to-end with `AUTH_DISABLED=true` exported; manual `POST/DELETE /api/entries?year=2099&value=12345` returns 201/200, no FK error in `next start` logs.
+**Verification:** `npm run build` green; `AUTH_DISABLED=true node_modules/.bin/next dev -p 3290` + `scripts/smoke.sh` reports the current bypass pass count (`56 passed, 0 failed` as of this update) end-to-end with `AUTH_DISABLED=true` exported; manual `POST/DELETE /api/entries?year=2099&value=12345` returns 201/200, no FK error in server logs. Bypass verification must use `next dev`; `next start` runs in production mode and cannot serve app routes with `AUTH_DISABLED=true`.
 
 ### 1.2 `scripts/smoke.sh` doesn't propagate `AUTH_DISABLED` into `npm run smoke`
 
@@ -134,7 +134,7 @@ curl -sk -X POST http://127.0.0.1:3290/api/entries \
 
 **Evidence:** `monthly_entries` and `breakdown_entries` track `updated_by` and `updated_at` but never persist what the value was *before*. Admin users cannot undo a bad data entry; they have to remember what they overwrote. The login page advertises "Activity is logged for audit purposes" (`src/app/login/page.tsx:131`) but no log exists.
 
-**Fix shape:** add `entry_history` table (`id, entry_type, entry_id, kpi_id, year, month_or_label, prev_value, new_value, prev_notes, new_notes, changed_by, changed_at`). On any `upsert*` or `delete*` in `repository.ts`, write the before/after row. Add a `GET /api/entries/history?kpi_id=…&year=…` endpoint (admin-only) that renders a read-only `/admin/history` page. `SCHEMA_VERSION` bump to 4 will trigger a clean reset for first-time deploys.
+**Fix shape:** add `entry_history` table (`id, entry_type, entry_id, kpi_id, year, month_or_label, prev_value, new_value, prev_notes, new_notes, changed_by, changed_at`). On any `upsert*` or `delete*` in `repository.ts`, write the before/after row. Add a `GET /api/entries/history?kpi_id=…&year=…` endpoint (admin-only) that renders a read-only `/admin/history` page. Bumping `src/lib/schema-version.json` to 4 will trigger a clean reset for first-time deploys.
 
 **Verification:** editing an entry creates a history row visible at `/admin/history?kpi_id=…`; deleting it creates one with `new_value=NULL`; existing 49/49 smoke harness still passes.
 
@@ -232,7 +232,7 @@ These came up while reading the code and the design audit but aren't blocking. T
 - **KPI parent_id.** `parent_id` is in the schema and repository but never rendered. The two breakdown KPIs ("Number of funders by breakdown", "First-time/returning/lapsed donors") currently store their labels directly in `breakdown_entries`, which works. If we ever need child KPIs (e.g. a parent "Total Funders" with children by category), revisit.
 - **Annualization toggle for monthly metrics on the metric detail page.** Some execs want "annualized run-rate" (`monthly_current × 12`) for KPIs like "Video views." Cheap to compute in `analytics.ts`; just a UI toggle.
 - **Per-user "favorite" KPIs.** Persist in a small `user_kpi_favorites` table; show favorites first on `/dashboard/overview`. Improves the daily-driver experience.
-- **Schema migration testing.** Bumping `SCHEMA_VERSION` in `src/lib/db.ts:25` resets KPI tables on every first access. Test the migration path on a populated DB before any future bump.
+- **Schema migration testing.** Bumping `src/lib/schema-version.json` resets KPI tables on every first access. Test the migration path on a populated DB before any future bump.
 - **Stable design-tokens linter.** Add an ESLint rule (or a custom `scripts/design-tokens-guard.sh`) that fails the build if any literal hex color, raw `transition: all`, or literal `style={{ ... }}` color appears in `src/app/**` or `src/components/**` outside `src/components/ui/`.
 
 ---
@@ -243,7 +243,7 @@ Every `/goal` prompt below should treat the following as its completion gate, on
 
 1. `npm run design-system:guard` passes.
 2. `npm run design-system:test` passes (guard + `tsc --noEmit` + `next build`).
-3. `AUTH_DISABLED=true PORT=3290 BASE=http://127.0.0.1:3290 bash ./scripts/smoke.sh` reports `49 passed, 0 failed` *or the new higher number if §3.2 unit tests are added*.
+3. With a dev server started by `AUTH_DISABLED=true node_modules/.bin/next dev -p 3290`, `AUTH_DISABLED=true PORT=3290 BASE=http://127.0.0.1:3290 bash ./scripts/smoke.sh` reports `56 passed, 0 failed` *or the new higher number if smoke coverage is added*.
 4. The visual changes are screenshotted at desktop (1440px) and mobile (390px) into `output/playwright/` and reviewed against `DESIGN.md`.
 5. The relevant section(s) of `docs/design-audit.md` are updated or replaced.
 6. Any new env vars or config keys are added to `AGENTS.md` under "Setup" and "Gotchas."
@@ -292,7 +292,7 @@ Each prompt below is sized for one focused session. They are ordered. Tackle 7.1
 2. Port the test cases listed in §3.2 from this doc. Aim for ≥ 90 % line coverage on `src/lib/analytics.ts`.
 3. `src/lib/analytics.ts` — add `monthlyComparison.isEmpty` and `ytdComparison.isEmpty` when both `currentValue === 0 && compareValue === 0` *and* both years lack any underlying entry.
 4. `src/components/MetricCard.tsx` — when `comparison.isEmpty`, render a `Badge variant="warning"` saying "No data" and skip the percent change.
-5. `src/lib/db.ts` — bump `SCHEMA_VERSION` to 4 and create `entry_history` table (`id, entry_type, entry_id, kpi_id, year, month_or_label, prev_value, new_value, prev_notes, new_notes, changed_by, changed_at`).
+5. `src/lib/schema-version.json` + `src/lib/db.ts` — bump the schema version to 4 and create `entry_history` table (`id, entry_type, entry_id, kpi_id, year, month_or_label, prev_value, new_value, prev_notes, new_notes, changed_by, changed_at`).
 6. `src/lib/repository.ts` — wrap `upsertEntry`, `deleteEntry`, `upsertBreakdown`, `deleteBreakdown` to write history rows before/after.
 7. `src/app/api/entries/history/route.ts` (admin-only) — read endpoint.
 8. `src/app/admin/history/page.tsx` — read-only history browser.

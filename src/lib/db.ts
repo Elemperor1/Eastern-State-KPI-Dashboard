@@ -1,6 +1,7 @@
 import { DatabaseSync, type StatementSync } from "node:sqlite";
 import path from "node:path";
 import fs from "node:fs";
+import schemaVersionConfig from "./schema-version.json";
 
 interface RunResult {
   changes: number;
@@ -22,7 +23,7 @@ interface StatementLike {
 let _db: DB | null = null;
 
 /** Bump when the KPI/category/entry schema changes; old DBs are reset cleanly. */
-const SCHEMA_VERSION = 4;
+export const SCHEMA_VERSION = schemaVersionConfig.schemaVersion;
 
 function resolveDbPath(): string {
   const fromEnv = process.env.DATABASE_PATH;
@@ -235,5 +236,68 @@ export function resetDb(): void {
   if (_db) {
     _db.close();
     _db = null;
+  }
+}
+
+/**
+ * Run `fn` inside a SQLite transaction. Commits on normal return, rolls back
+ * on any thrown error. Use this for any sequence of writes that must be
+ * atomic — e.g. an upsert + audit history insert, where a torn write would
+ * silently produce an audit row that does not describe the actual change.
+ *
+ * Supports nested calls: an inner transaction opens a SAVEPOINT instead of
+ * a top-level BEGIN, and the outer transaction's COMMIT (or ROLLBACK)
+ * resolves the whole stack. This lets callers compose transactional
+ * helpers (e.g. `upsertEntry`) inside a larger unit of work without
+ * hitting `cannot start a transaction within a transaction`.
+ *
+ * Synchronous only: `fn` must be a sync function. If `fn` returns a
+ * Promise the COMMIT runs *immediately* after the synchronous return,
+ * before any awaited work in `fn` has completed — which would commit
+ * a half-finished transaction. None of the current callers use async
+ * `fn`, but the constraint is worth documenting so a future caller
+ * doesn't introduce a silent torn-write bug.
+ */
+export function transaction<T>(fn: () => T): T {
+  const db = getDb();
+  const txDb = db as unknown as DB & { __txStack?: number[] };
+  const stack = txDb.__txStack ?? (txDb.__txStack = []);
+  const myDepth = stack.length; // 0 = outermost, 1+ = nested savepoint
+  const savepoint = `sp_${myDepth}`;
+  if (myDepth === 0) {
+    db.exec("BEGIN");
+  } else {
+    db.exec(`SAVEPOINT ${savepoint}`);
+  }
+  stack.push(myDepth);
+  try {
+    const result = fn();
+    if (myDepth === 0) {
+      db.exec("COMMIT");
+    } else {
+      db.exec(`RELEASE SAVEPOINT ${savepoint}`);
+    }
+    return result;
+  } catch (err) {
+    try {
+      if (myDepth === 0) {
+        db.exec("ROLLBACK");
+      } else {
+        db.exec(`ROLLBACK TO SAVEPOINT ${savepoint}`);
+        db.exec(`RELEASE SAVEPOINT ${savepoint}`);
+      }
+    } catch {
+      // Best-effort: surface the original error.
+    }
+    throw err;
+  } finally {
+    const popped = stack.pop();
+    if (popped !== myDepth) {
+      const idx = stack.lastIndexOf(myDepth);
+      if (idx >= 0) stack.splice(idx, 1);
+    }
+    if (stack.length === 0) {
+      delete txDb.__txStack;
+    }
   }
 }

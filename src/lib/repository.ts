@@ -1,4 +1,4 @@
-import { getDb } from "./db";
+import { getDb, transaction } from "./db";
 import type {
   BreakdownEntry,
   BreakdownEntryWithMeta,
@@ -158,23 +158,27 @@ export function createCategory(input: {
   sort_order?: number;
 }): Category {
   const db = getDb();
-  const result = db
-    .prepare(
-      `INSERT INTO categories (slug, name, description, sort_order)
-       VALUES (?, ?, ?, ?)`,
-    )
-    .run(
-      input.slug.trim(),
-      input.name.trim(),
-      input.description ?? null,
-      input.sort_order ?? 0,
-    );
+  const slug = input.slug.trim();
+  const name = input.name.trim();
+  // Re-read by the natural unique key (slug) rather than trusting
+  // `result.lastInsertRowid`. See the upsert path for the rationale;
+  // the same robustness argument applies here.
+  db.prepare(
+    `INSERT INTO categories (slug, name, description, sort_order)
+     VALUES (?, ?, ?, ?)`,
+  ).run(slug, name, input.description ?? null, input.sort_order ?? 0);
+  const row = db
+    .prepare("SELECT * FROM categories WHERE slug = ?")
+    .get(slug) as Record<string, unknown> | undefined;
+  if (!row) {
+    throw new Error(`createCategory: row not found after insert for slug=${slug}`);
+  }
   return {
-    id: Number(result.lastInsertRowid),
-    slug: input.slug.trim(),
-    name: input.name.trim(),
-    description: input.description ?? null,
-    sort_order: input.sort_order ?? 0,
+    id: Number(row.id),
+    slug: String(row.slug),
+    name: String(row.name),
+    description: row.description == null ? null : String(row.description),
+    sort_order: Number(row.sort_order),
   };
 }
 
@@ -280,37 +284,46 @@ export function createKPI(input: {
   sort_order?: number;
 }): KPI {
   const db = getDb();
-  const result = db
-    .prepare(
-      `INSERT INTO kpis (category_id, parent_id, slug, name, unit, unit_type, reporting_frequency, direction, description, sort_order)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-    )
-    .run(
-      input.category_id,
-      input.parent_id ?? null,
-      input.slug.trim(),
-      input.name.trim(),
-      input.unit ?? "",
-      input.unit_type ?? "count",
-      input.reporting_frequency ?? "monthly",
-      input.direction ?? "higher",
-      input.description ?? null,
-      input.sort_order ?? 0,
-    );
+  const slug = input.slug.trim();
+  const name = input.name.trim();
+  // Re-read by the natural unique key (slug) rather than trusting
+  // `result.lastInsertRowid`. See the upsert path for the rationale;
+  // the same robustness argument applies here.
+  db.prepare(
+    `INSERT INTO kpis (category_id, parent_id, slug, name, unit, unit_type, reporting_frequency, direction, description, sort_order)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+  ).run(
+    input.category_id,
+    input.parent_id ?? null,
+    slug,
+    name,
+    input.unit ?? "",
+    input.unit_type ?? "count",
+    input.reporting_frequency ?? "monthly",
+    input.direction ?? "higher",
+    input.description ?? null,
+    input.sort_order ?? 0,
+  );
+  const row = db
+    .prepare("SELECT * FROM kpis WHERE slug = ?")
+    .get(slug) as Record<string, unknown> | undefined;
+  if (!row) {
+    throw new Error(`createKPI: row not found after insert for slug=${slug}`);
+  }
   return {
-    id: Number(result.lastInsertRowid),
-    category_id: input.category_id,
-    parent_id: input.parent_id ?? null,
-    slug: input.slug.trim(),
-    name: input.name.trim(),
-    unit: input.unit ?? "",
-    unit_type: input.unit_type ?? "count",
-    reporting_frequency: input.reporting_frequency ?? "monthly",
-    direction: input.direction ?? "higher",
-    description: input.description ?? null,
-    sort_order: input.sort_order ?? 0,
-    is_active: 1,
-    created_at: new Date().toISOString(),
+    id: Number(row.id),
+    category_id: Number(row.category_id),
+    parent_id: row.parent_id == null ? null : Number(row.parent_id),
+    slug: String(row.slug),
+    name: String(row.name),
+    unit: String(row.unit ?? ""),
+    unit_type: String(row.unit_type) as UnitType,
+    reporting_frequency: String(row.reporting_frequency) as ReportingFrequency,
+    direction: String(row.direction) as Direction,
+    description: row.description == null ? null : String(row.description),
+    sort_order: Number(row.sort_order),
+    is_active: Number(row.is_active ?? 1),
+    created_at: String(row.created_at),
   };
 }
 
@@ -429,17 +442,23 @@ export function upsertEntry(input: {
   notes?: string | null;
   updated_by?: number | null;
 }): MonthlyEntry {
-  const db = getDb();
-  // Capture the prior value so we can record it as `prev_*` in the audit log.
-  const prior = db
-    .prepare(
-      "SELECT id, value, notes FROM monthly_entries WHERE kpi_id = ? AND year = ? AND month = ?",
-    )
-    .get(input.kpi_id, input.year, input.month) as
-    | { id: number; value: number; notes: string | null }
-    | undefined;
-  const result = db
-    .prepare(
+  // The whole upsert+readback+history sequence runs in a single transaction
+  // so a crash or concurrent writer cannot produce a torn audit row. The
+  // post-write read uses the natural unique key (kpi_id, year, month), not
+  // `result.lastInsertRowid` — that id is connection-level and on
+  // ON CONFLICT DO UPDATE it is not guaranteed to point at the row we just
+  // changed. A key match is asserted before the history row is recorded.
+  return transaction(() => {
+    const db = getDb();
+    // Capture the prior value so we can record it as `prev_*` in the audit log.
+    const prior = db
+      .prepare(
+        "SELECT id, value, notes FROM monthly_entries WHERE kpi_id = ? AND year = ? AND month = ?",
+      )
+      .get(input.kpi_id, input.year, input.month) as
+      | { id: number; value: number; notes: string | null }
+      | undefined;
+    db.prepare(
       `INSERT INTO monthly_entries (kpi_id, year, month, value, notes, updated_by, updated_at)
        VALUES (?, ?, ?, ?, ?, ?, datetime('now'))
        ON CONFLICT(kpi_id, year, month) DO UPDATE SET
@@ -447,8 +466,7 @@ export function upsertEntry(input: {
          notes = excluded.notes,
          updated_by = excluded.updated_by,
          updated_at = datetime('now')`,
-    )
-    .run(
+    ).run(
       input.kpi_id,
       input.year,
       input.month,
@@ -456,23 +474,52 @@ export function upsertEntry(input: {
       input.notes ?? null,
       input.updated_by ?? null,
     );
-  const row = db
-    .prepare("SELECT * FROM monthly_entries WHERE id = ?")
-    .get(Number(result.lastInsertRowid)) as Record<string, unknown>;
-  const entry = asEntry(row);
-  recordHistory({
-    entry_type: "monthly",
-    entry_id: entry.id,
-    kpi_id: entry.kpi_id,
-    year: entry.year,
-    month_or_label: String(entry.month),
-    prev_value: prior?.value ?? null,
-    new_value: entry.value,
-    prev_notes: prior?.notes ?? null,
-    new_notes: entry.notes,
-    changed_by: input.updated_by ?? null,
+    // Read back by the natural key, not by `lastInsertRowid`. After an
+    // ON CONFLICT update, `lastInsertRowid` may still point at a different
+    // row that the connection inserted earlier — a silent wrong-row bug
+    // that would corrupt the audit history.
+    const row = db
+      .prepare(
+        "SELECT * FROM monthly_entries WHERE kpi_id = ? AND year = ? AND month = ?",
+      )
+      .get(input.kpi_id, input.year, input.month) as
+      | Record<string, unknown>
+      | undefined;
+    if (!row) {
+      // Defensive: a successful UPSERT must produce a row, so a missing
+      // read-back indicates either a schema mismatch or a connection-level
+      // failure. Refuse to write history for a row we cannot prove exists.
+      throw new Error(
+        `upsertEntry: row not found after upsert for kpi_id=${input.kpi_id} year=${input.year} month=${input.month}`,
+      );
+    }
+    if (
+      Number(row.kpi_id) !== input.kpi_id ||
+      Number(row.year) !== input.year ||
+      Number(row.month) !== input.month
+    ) {
+      // Key mismatch would mean a concurrent writer swapped the row out
+      // from under us. The transaction is still open; rolling back keeps
+      // the audit trail honest.
+      throw new Error(
+        `upsertEntry: read-back key mismatch (expected kpi=${input.kpi_id} year=${input.year} month=${input.month}, got kpi=${row.kpi_id} year=${row.year} month=${row.month})`,
+      );
+    }
+    const entry = asEntry(row);
+    recordHistory({
+      entry_type: "monthly",
+      entry_id: entry.id,
+      kpi_id: entry.kpi_id,
+      year: entry.year,
+      month_or_label: String(entry.month),
+      prev_value: prior?.value ?? null,
+      new_value: entry.value,
+      prev_notes: prior?.notes ?? null,
+      new_notes: entry.notes,
+      changed_by: input.updated_by ?? null,
+    });
+    return entry;
   });
-  return entry;
 }
 
 export function deleteEntry(id: number, changedBy?: number | null): void {
@@ -577,18 +624,23 @@ export function upsertBreakdown(input: {
   notes?: string | null;
   updated_by?: number | null;
 }): BreakdownEntry {
-  const db = getDb();
-  const label = input.label.trim();
-  // Capture the prior row (if any) so the history log records the before-state.
-  const prior = db
-    .prepare(
-      "SELECT id, value, notes FROM breakdown_entries WHERE kpi_id = ? AND year = ? AND label = ?",
-    )
-    .get(input.kpi_id, input.year, label) as
-    | { id: number; value: number; notes: string | null }
-    | undefined;
-  const result = db
-    .prepare(
+  // See upsertEntry for the rationale: the upsert + readback + history is
+  // wrapped in a transaction, the post-write read uses the natural unique
+  // key (kpi_id, year, label) instead of `lastInsertRowid`, and a key
+  // mismatch throws so a wrong-row bug cannot silently corrupt the audit
+  // trail.
+  return transaction(() => {
+    const db = getDb();
+    const label = input.label.trim();
+    // Capture the prior row (if any) so the history log records the before-state.
+    const prior = db
+      .prepare(
+        "SELECT id, value, notes FROM breakdown_entries WHERE kpi_id = ? AND year = ? AND label = ?",
+      )
+      .get(input.kpi_id, input.year, label) as
+      | { id: number; value: number; notes: string | null }
+      | undefined;
+    db.prepare(
       `INSERT INTO breakdown_entries (kpi_id, year, label, value, sort_order, notes, updated_by, updated_at)
        VALUES (?, ?, ?, ?, ?, ?, ?, datetime('now'))
        ON CONFLICT(kpi_id, year, label) DO UPDATE SET
@@ -597,8 +649,7 @@ export function upsertBreakdown(input: {
          notes = excluded.notes,
          updated_by = excluded.updated_by,
          updated_at = datetime('now')`,
-    )
-    .run(
+    ).run(
       input.kpi_id,
       input.year,
       label,
@@ -607,23 +658,42 @@ export function upsertBreakdown(input: {
       input.notes ?? null,
       input.updated_by ?? null,
     );
-  const row = db
-    .prepare("SELECT * FROM breakdown_entries WHERE id = ?")
-    .get(Number(result.lastInsertRowid)) as Record<string, unknown>;
-  const entry = asBreakdown(row);
-  recordHistory({
-    entry_type: "breakdown",
-    entry_id: entry.id,
-    kpi_id: entry.kpi_id,
-    year: entry.year,
-    month_or_label: entry.label,
-    prev_value: prior?.value ?? null,
-    new_value: entry.value,
-    prev_notes: prior?.notes ?? null,
-    new_notes: entry.notes,
-    changed_by: input.updated_by ?? null,
+    const row = db
+      .prepare(
+        "SELECT * FROM breakdown_entries WHERE kpi_id = ? AND year = ? AND label = ?",
+      )
+      .get(input.kpi_id, input.year, label) as
+      | Record<string, unknown>
+      | undefined;
+    if (!row) {
+      throw new Error(
+        `upsertBreakdown: row not found after upsert for kpi_id=${input.kpi_id} year=${input.year} label=${label}`,
+      );
+    }
+    if (
+      Number(row.kpi_id) !== input.kpi_id ||
+      Number(row.year) !== input.year ||
+      String(row.label) !== label
+    ) {
+      throw new Error(
+        `upsertBreakdown: read-back key mismatch (expected kpi=${input.kpi_id} year=${input.year} label=${label}, got kpi=${row.kpi_id} year=${row.year} label=${row.label})`,
+      );
+    }
+    const entry = asBreakdown(row);
+    recordHistory({
+      entry_type: "breakdown",
+      entry_id: entry.id,
+      kpi_id: entry.kpi_id,
+      year: entry.year,
+      month_or_label: entry.label,
+      prev_value: prior?.value ?? null,
+      new_value: entry.value,
+      prev_notes: prior?.notes ?? null,
+      new_notes: entry.notes,
+      changed_by: input.updated_by ?? null,
+    });
+    return entry;
   });
-  return entry;
 }
 
 export function deleteBreakdown(id: number, changedBy?: number | null): void {

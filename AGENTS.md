@@ -4,7 +4,13 @@ Internal KPI dashboard for Eastern State Penitentiary Historic Site. Next.js 15 
 
 ## Auth status (temporary)
 
-Login is **currently disabled** via `AUTH_DISABLED=true` in `.env.local`. The flag is read by `src/lib/auth-flag.ts`; when true, `getSession()` / `requireSession()` / `requireAdmin()` return a static admin user instead of consulting cookies, and `/` redirects straight to `/dashboard/overview`. The `AccountBlock` (and its Logout button) is hidden in `src/components/AppShell.tsx` when the bypass user is detected (`user.id === 0`).
+Login is **currently disabled** via `AUTH_DISABLED=true` in `.env.local`. The flag is read by `src/lib/auth-flag.ts`; when true (and `NODE_ENV !== "production"`), `getSession()` / `requireSession()` / `requireAdmin()` return a real `users` row (`auth-disabled@local`) instead of consulting cookies, and `/` redirects straight to `/dashboard/overview`. The `AccountBlock` (and its Logout button) is hidden in `src/components/AppShell.tsx` when the bypass user is detected (`user.email === "auth-disabled@local"`).
+
+**Production guard:** `src/lib/auth-flag.ts` forces `AUTH_DISABLED=false` whenever `NODE_ENV` is `production` or `test`, and throws at module load if the env var is explicitly set in those modes. A reachable production deployment therefore cannot be misconfigured into fail-open admin mode — `next build` fails with `AUTH_DISABLED=true`, and `next start` cannot serve app routes when the flag is set. The bypass only works in dev (`npm run dev`, `NODE_ENV=development`).
+
+The CI gate (`npm run design-system:test`) runs `next build` with `AUTH_DISABLED` explicitly cleared so the production build path is verified on every PR.
+
+**Bypass row is not a login credential:** the `auth-disabled@local` row exists in `users` so FK references (`monthly_entries.updated_by`, `breakdown_entries.updated_by`) resolve to a real `users.id`, and so the dev bypass has a stable identity. `src/lib/auth.ts` lists the email in a `RESERVED_EMAILS` set and `verifyCredentials()` short-circuits to `null` for any reserved email — the row is unreachable through `/api/auth/login` regardless of the stored hash. The stored hash is also rotated to `bcrypt(crypto.randomBytes(64))` on every `ensureSeedAdmin()` call, so the previous documented plaintext is no longer a valid credential and the hash never appears in source control. `src/lib/auth.test.ts` asserts both the reserved-email rejection and the hash rotation.
 
 To restore login: set `AUTH_DISABLED=false` in `.env.local`, then revert the four conditional branches in `src/lib/session.ts`, `src/app/page.tsx`, and `src/components/AppShell.tsx`. The `/login` page, `/api/auth/*` routes, seeded accounts, and `requireSession`/`requireAdmin` call sites are all preserved — no other restoration work is needed.
 
@@ -18,8 +24,7 @@ npm run dev       # http://localhost:3000
 
 Seeded accounts (first DB access only, via `ensureSeedAdmin` in `src/lib/auth.ts`; unused while auth is disabled):
 
-- `kerry@easternstate.org` / `KerryAdmin!2026` — admin
-- `zach@easternstate.org` / `ZachView!2026` — viewer
+On the first run against a fresh database, the seed creates `kerry@easternstate.org` (admin) and `zach@easternstate.org` (viewer) with **per-install random passwords** that are printed to the server's stdout exactly once. No plaintext is stored in source or docs. Operators read the password line at first startup, rotate it through `/admin/users`, and the seed is done. The default development workflow runs with `AUTH_DISABLED=true` and never reads the password line, so it stays out of your way.
 
 ## Commands
 
@@ -50,25 +55,25 @@ data is fetched:
 - `src/app/admin/data/loading.tsx`, `src/app/admin/kpis/loading.tsx`, `src/app/admin/users/loading.tsx`
 - `src/app/login/loading.tsx` — two-column split (marketing panel + form panel)
 
-Favicon is served at `/favicon.ico` (a 4-resolution multi-size `.ico` generated
-from `public/icon.svg` via `rsvg-convert` + `magick`) and is also registered via
-`metadata.icons` in `src/app/layout.tsx` so the SVG version ships for browsers
-that prefer it.
+Favicon is served at `/favicon.ico` (a 6-resolution multi-size `.ico` — 16/32/48/64/128/256 — generated from `public/logos/eastern-state-mark.png` via `magick`) and is also registered via `metadata.icons` in `src/app/layout.tsx` (which lists both the `.ico` and the 256×256 PNG so modern browsers can pick the PNG). The in-app `BrandMark` component (`src/components/ui/BrandMark.tsx`) renders the same source-of-truth PNG via `next/image` at sidebar/header/login sizes.
 
 ## Verification (smoke harness)
 
-Requires a running server. Invoke `scripts/smoke.sh` directly (no npm wrapper) so the `AUTH_DISABLED` env var reaches the script:
+Requires a running server. Invoke `scripts/smoke.sh` directly (no npm wrapper) so the `AUTH_DISABLED` env var reaches the script. The bypass smoke path is development-only; `next start` always runs with `NODE_ENV=production` and cannot serve app routes with `AUTH_DISABLED=true`.
 
 ```bash
-npm run build
-AUTH_DISABLED=true PORT=3290 node_modules/.bin/next start -p 3290 &
+# Bypass-auth smoke (dev server only).
+AUTH_DISABLED=true node_modules/.bin/next dev -p 3290 &
 AUTH_DISABLED=true PORT=3290 BASE=http://127.0.0.1:3290 bash ./scripts/smoke.sh
 
+# Stop the dev server before reusing :3290 for production/auth-enabled smoke.
+npm run build
 AUTH_DISABLED=false PORT=3290 node_modules/.bin/next start -p 3290 &
-AUTH_DISABLED=false PORT=3290 BASE=http://127.0.0.1:3290 bash ./scripts/smoke.sh
+SMOKE_EMAIL=kerry@easternstate.org SMOKE_PASSWORD='<printed first-run password>' \
+  AUTH_DISABLED=false PORT=3290 BASE=http://127.0.0.1:3290 bash ./scripts/smoke.sh
 ```
 
-Tests login, all 8 category pages, monthly/annual/breakdown metric pages, through-month URL params, POST/DELETE round-trips on `/api/entries` and `/api/breakdowns`, the auth-bypass flow on `POST /api/entries` (401 when auth is enabled, 201 when bypassed), the no-data badge on the category page when both years lack entries, and the read-only `/admin/history` audit-trail browser + `/api/entries/history` endpoint. Expects 52 KPIs and the exact category names listed in `scripts/smoke.sh`. Reports `52 passed, 0 failed` on a clean checkout under `AUTH_DISABLED=true`.
+Tests login, all 8 category pages, monthly/annual/breakdown metric pages, through-month URL params, POST/DELETE round-trips on `/api/entries` and `/api/breakdowns`, the auth-bypass flow on `POST /api/entries` (401 when auth is enabled, 201 when bypassed), the no-data badge on the category page when both years lack entries, and the read-only `/admin/history` audit-trail browser + `/api/entries/history` endpoint. Expects 52 KPIs and the exact category names listed in `scripts/smoke.sh`. Reports `56 passed, 0 failed` under `AUTH_DISABLED=true` and `60 passed, 0 failed` under `AUTH_DISABLED=false` on a clean checkout.
 
 Unit tests live in `src/lib/analytics.test.ts` (Vitest, coverage ≥ 90% line coverage on `analytics.ts`). Run with `npm test`; the smoke harness does not exercise this code path.
 
@@ -79,7 +84,7 @@ Unit tests live in `src/lib/analytics.test.ts` (Vitest, coverage ≥ 90% line co
 - `src/components/ui/` — **shared design-system library**. Import via `@/components/ui`; never hand-roll buttons/inputs/selects/tables outside this folder (`design-system:guard` enforces it).
 - `src/components/` — feature components (AppShell, MetricCard, TrendChart, etc.).
 - `src/lib/` — `db.ts` (sqlite singleton + migrations), `repository.ts` (CRUD), `session.ts` (iron-session helpers), `auth.ts` (bcrypt), `analytics.ts` (comparison/YTD math), `dashboard-data.ts` (loader for server components), `types.ts`.
-- `scripts/seed.ts` — sample data definition; bumping `SCHEMA_VERSION` in `src/lib/db.ts` resets all KPI tables (users preserved).
+- `scripts/seed.ts` — sample data definition; bumping `src/lib/schema-version.json` resets all KPI tables (users preserved).
 - `DESIGN.md` (root) — visual language authority. `docs/design-system.md` translates it into component rules.
 
 ## Data model quirks
@@ -87,7 +92,7 @@ Unit tests live in `src/lib/analytics.test.ts` (Vitest, coverage ≥ 90% line co
 - Annual-only metrics are stored with `month = 0` in `monthly_entries` (single full-year value). See `src/lib/types.ts:60`.
 - `unit_type` ∈ `count | percent | currency | attendance | note | breakdown`. Breakdown KPIs write to `breakdown_entries` (label × year), not `monthly_entries`.
 - Direction (`higher | lower | neutral`) drives good/bad coloring — read it instead of hardcoding sign.
-- Schema bump: edit `SCHEMA_VERSION` in `src/lib/db.ts:25`. Old DBs drop KPI tables + `entry_history` on next access; rerun `npm run db:seed`.
+- Schema bump: edit `src/lib/schema-version.json`. Old DBs drop KPI tables + `entry_history` on next access; rerun `npm run db:seed`. Production startup uses `scripts/ensure-seeded.mjs` to compare the mounted DB's `meta.schema_version` with that same file before deciding whether seeding can be skipped.
 - Every `upsertEntry` / `deleteEntry` / `upsertBreakdown` / `deleteBreakdown` call writes a row to `entry_history` (before/after values, changed_by, changed_at). The audit trail survives deletes of the source entry — `entry_id` may refer to a row that no longer exists. Browsable at `/admin/history`; admin-only endpoint at `/api/entries/history`.
 - `analytics.monthlyComparison.isEmpty` and `analytics.ytdComparison.isEmpty` are true only when both years lack any underlying entry for the queried period. `MetricCard` renders a "No data" `Badge variant="warning"` (with an `AlertTriangle` icon) and skips the percent change when either flag is set.
 
@@ -97,6 +102,7 @@ Unit tests live in `src/lib/analytics.test.ts` (Vitest, coverage ≥ 90% line co
 - `SESSION_SECURE=false` is set in `.env.local` for HTTP dev. Production must omit it (default `true`).
 - `DATABASE_PATH` defaults to `./data/kpi.db`; `data/` is gitignored.
 - `src/app/page.tsx` runs `ensureSeedAdmin()` at module load — keep that import even if it looks unused.
+- **Login throttle.** `src/app/api/auth/login/route.ts` throttles failed attempts per source IP and per account via `src/lib/login-throttle.ts`. Defaults: 10 failures inside 5 minutes → 5-minute lockout (HTTP 429 with `Retry-After`). Tunable via `LOGIN_LOCKOUT_THRESHOLD`, `LOGIN_LOCKOUT_WINDOW_MS`, `LOGIN_LOCKOUT_DURATION_MS`. State is in-process; if you scale horizontally, move the counters to a shared store. **Set `TRUST_PROXY=true` when running behind a reverse proxy** so the throttle can read the real client IP from Fly's `fly-client-ip` header, then `x-forwarded-for` / `x-real-ip`. Without it, the route collapses every request to a single `unknown` IP key (a defensive default against header spoofing), which is correct for internet-facing deployments without a proxy but too aggressive when the app is behind one.
 
 ## Conventions specific to this repo
 

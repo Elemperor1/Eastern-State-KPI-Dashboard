@@ -425,7 +425,7 @@ export function AdminDataClient({
                 key={idx}
                 className={cn(
                   "grid grid-cols-1 items-center gap-3 border-b border-ink-100 p-4 last:border-b-0 md:grid-cols-[minmax(180px,1fr)_140px_minmax(180px,1fr)_auto]",
-                  d.dirty && "bg-brand-50/50 shadow-[inset_3px_0_0_var(--color-violet)]",
+                  d.dirty && "bg-brand-50/50 shadow-[inset_3px_0_0_var(--color-primary)]",
                 )}
               >
                 <Input

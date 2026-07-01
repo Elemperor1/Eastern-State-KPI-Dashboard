@@ -256,7 +256,7 @@ export function MetricDetailClient({
                     {ytdBar.map((entry, index) => (
                       <Cell
                         key={entry.name}
-                        fill={index === ytdBar.length - 1 ? "var(--chart-primary)" : "var(--chart-violet-mid)"}
+                        fill={index === ytdBar.length - 1 ? "var(--chart-primary)" : "var(--chart-secondary)"}
                       />
                     ))}
                   </Bar>
@@ -301,7 +301,7 @@ export function MetricDetailClient({
                       {ytdBar.map((entry, index) => (
                         <Cell
                           key={entry.name}
-                          fill={index === ytdBar.length - 1 ? "var(--chart-primary)" : "var(--chart-violet-mid)"}
+                          fill={index === ytdBar.length - 1 ? "var(--chart-primary)" : "var(--chart-secondary)"}
                         />
                       ))}
                     </Bar>
