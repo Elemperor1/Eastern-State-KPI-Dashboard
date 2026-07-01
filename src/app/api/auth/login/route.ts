@@ -23,9 +23,9 @@ const LoginSchema = z.object({
  * every request and bypass the throttle entirely.
  *
  * Set TRUST_PROXY=true to indicate the app is behind a reverse proxy
- * that sanitizes the inbound `x-forwarded-for` (e.g. nginx with
- * `proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for`
- * configured to overwrite, not append). Without it, the helper
+ * that sanitizes/overwrites any inbound forwarded-IP headers (e.g. nginx with
+ * `proxy_set_header X-Forwarded-For $remote_addr;` and without passing through
+ * a client-supplied X-Forwarded-For). Without it, the helper
  * returns a constant so all anonymous traffic collapses onto a
  * single throttle key — better to throttle everyone than to let an
  * attacker trivially bypass per-IP throttling.
