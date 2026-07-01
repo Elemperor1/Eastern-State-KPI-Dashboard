@@ -5,6 +5,19 @@ import { DatabaseSync } from "node:sqlite";
 
 const dbPath = process.env.DATABASE_PATH || path.resolve(process.cwd(), "data", "kpi.db");
 const dbDir = path.dirname(dbPath);
+const schemaVersionPath = path.resolve(process.cwd(), "src", "lib", "schema-version.json");
+
+function readExpectedSchemaVersion() {
+  const raw = fs.readFileSync(schemaVersionPath, "utf8");
+  const parsed = JSON.parse(raw);
+  const version = Number(parsed.schemaVersion);
+  if (!Number.isInteger(version) || version <= 0) {
+    throw new Error(`Invalid schemaVersion in ${schemaVersionPath}`);
+  }
+  return version;
+}
+
+const expectedSchemaVersion = readExpectedSchemaVersion();
 
 function queryExistingDatabase() {
   if (!fs.existsSync(dbPath)) return { needsSeed: true, reason: "database file is missing" };
@@ -12,13 +25,23 @@ function queryExistingDatabase() {
   let db;
   try {
     db = new DatabaseSync(dbPath);
+    const schemaRow = db
+      .prepare("SELECT value FROM meta WHERE key = 'schema_version'")
+      .get();
     const categoryRow = db.prepare("SELECT COUNT(*) AS count FROM categories").get();
     const sampleRow = db
       .prepare("SELECT value FROM meta WHERE key = 'sample_data'")
       .get();
+    const schemaVersion = Number(schemaRow?.value ?? 0);
     const categoryCount = Number(categoryRow?.count ?? 0);
     const hasSampleFlag = String(sampleRow?.value ?? "") === "1";
 
+    if (schemaVersion !== expectedSchemaVersion) {
+      return {
+        needsSeed: true,
+        reason: `schema_version is ${schemaVersion || "missing"}; expected ${expectedSchemaVersion}`,
+      };
+    }
     if (categoryCount === 0) {
       return { needsSeed: true, reason: "database has no categories" };
     }

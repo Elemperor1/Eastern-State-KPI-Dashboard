@@ -116,6 +116,19 @@ function makeLoginRequest(body: object, ip: string): NextRequest {
   return req;
 }
 
+function makeFlyLoginRequest(body: object, flyClientIp: string): NextRequest {
+  return new NextRequest(
+    new Request("http://localhost/api/auth/login", {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+        "fly-client-ip": flyClientIp,
+      },
+      body: JSON.stringify(body),
+    }),
+  );
+}
+
 describe("POST /api/auth/login throttle integration", () => {
   it("returns 400 for malformed input and does not consume a failure slot", async () => {
     const req = makeLoginRequest({ email: "not-an-email", password: "" }, "10.0.0.1");
@@ -192,6 +205,35 @@ describe("POST /api/auth/login throttle integration", () => {
     );
     expect(okNewAcct.status).toBe(401);
     expect(okNewAcct.headers.get("Retry-After")).toBeNull();
+  });
+
+  it("uses Fly's client IP header when trusted proxy mode is enabled", async () => {
+    vi.mocked(verifyCredentials).mockResolvedValue(null);
+    for (let i = 0; i < 3; i++) {
+      const res = await POST(
+        makeFlyLoginRequest(
+          { email: `fly-${i}@example.com`, password: "wrong" },
+          "203.0.113.9",
+        ),
+      );
+      expect(res.status).toBe(401);
+    }
+
+    const blocked = await POST(
+      makeFlyLoginRequest(
+        { email: "fly-new@example.com", password: "wrong" },
+        "203.0.113.9",
+      ),
+    );
+    expect(blocked.status).toBe(429);
+
+    const differentFlyIp = await POST(
+      makeFlyLoginRequest(
+        { email: "fly-new@example.com", password: "wrong" },
+        "203.0.113.10",
+      ),
+    );
+    expect(differentFlyIp.status).toBe(401);
   });
 
   it("clears counters on a successful login so a stale failure does not lock a user out", async () => {

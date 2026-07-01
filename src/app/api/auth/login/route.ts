@@ -22,7 +22,7 @@ const LoginSchema = z.object({
  * per-IP throttle key — an attacker could spoof a different IP on
  * every request and bypass the throttle entirely.
  *
- * Set TRUST_PROXY=*** to indicate the app is behind a reverse proxy
+ * Set TRUST_PROXY=true to indicate the app is behind a reverse proxy
  * that sanitizes the inbound `x-forwarded-for` (e.g. nginx with
  * `proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for`
  * configured to overwrite, not append). Without it, the helper
@@ -33,6 +33,9 @@ const LoginSchema = z.object({
 function clientIp(req: NextRequest): string {
   const trustProxy = process.env.TRUST_PROXY === "true";
   if (trustProxy) {
+    const flyClientIp = req.headers.get("fly-client-ip")?.trim();
+    if (flyClientIp) return flyClientIp;
+
     const xff = req.headers.get("x-forwarded-for");
     if (xff) {
       const first = xff.split(",")[0]?.trim();

@@ -7,7 +7,9 @@ RUN npm ci
 FROM deps AS builder
 
 COPY . .
-RUN npm run build
+RUN DATABASE_PATH=/tmp/eastern-state-kpi-build.db npm run build \
+  && rm -f /tmp/eastern-state-kpi-build.db* \
+  && rm -rf /app/data
 
 FROM node:24-bookworm-slim AS runner
 

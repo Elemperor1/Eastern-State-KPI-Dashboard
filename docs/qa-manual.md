@@ -31,20 +31,20 @@ Before starting, complete these one-time steps:
    npm run build
    ```
 
-3. **Run the server.** Two modes are documented — the dashboard currently
-   defaults to `AUTH_DISABLED=true` in `.env.local` (login bypassed), so the
-   "logged in as admin" flow happens automatically.
+3. **Run the server.** Two modes are documented. Bypass mode is development-only:
+   `next start` runs with `NODE_ENV=production` and cannot serve app routes with
+   `AUTH_DISABLED=true`.
 
    ```bash
-   # Bypass mode (current default)
-   AUTH_DISABLED=true PORT=3290 node_modules/.bin/next start -p 3290 &
+   # Bypass mode (current default, dev server only)
+   AUTH_DISABLED=true node_modules/.bin/next dev -p 3290 &
 
    # Normal-auth mode (login form appears)
    AUTH_DISABLED=false PORT=3290 node_modules/.bin/next start -p 3290 &
    ```
 
-   In bypass mode, `getSession()` returns a static admin user (`id: 0`,
-   `email: auth-disabled@local`) so `/` redirects straight to
+   In bypass mode, `getSession()` returns the real `auth-disabled@local` admin
+   row from `users` so `/` redirects straight to
    `/dashboard/overview` and the `AccountBlock` is hidden. Every step below
    assumes bypass mode unless explicitly tagged **#auth-wall**.
 
@@ -435,7 +435,7 @@ to confirm the build is still green:
 
 ```bash
 npm run design-system:test
-bash ./scripts/smoke.sh
+AUTH_DISABLED=true PORT=3290 BASE=http://127.0.0.1:3290 bash ./scripts/smoke.sh
 ```
 
 If any step's expected outcome diverged from what you observed, file an

@@ -1,6 +1,7 @@
 import { DatabaseSync, type StatementSync } from "node:sqlite";
 import path from "node:path";
 import fs from "node:fs";
+import schemaVersionConfig from "./schema-version.json";
 
 interface RunResult {
   changes: number;
@@ -22,7 +23,7 @@ interface StatementLike {
 let _db: DB | null = null;
 
 /** Bump when the KPI/category/entry schema changes; old DBs are reset cleanly. */
-const SCHEMA_VERSION = 4;
+export const SCHEMA_VERSION = schemaVersionConfig.schemaVersion;
 
 function resolveDbPath(): string {
   const fromEnv = process.env.DATABASE_PATH;
@@ -259,36 +260,44 @@ export function resetDb(): void {
  */
 export function transaction<T>(fn: () => T): T {
   const db = getDb();
-  const stack =
-    ((db as unknown as { __txStack?: number[] }).__txStack ?? []).slice();
+  const txDb = db as unknown as DB & { __txStack?: number[] };
+  const stack = txDb.__txStack ?? (txDb.__txStack = []);
   const myDepth = stack.length; // 0 = outermost, 1+ = nested savepoint
+  const savepoint = `sp_${myDepth}`;
   if (myDepth === 0) {
     db.exec("BEGIN");
   } else {
-    db.exec(`SAVEPOINT sp_${myDepth}`);
+    db.exec(`SAVEPOINT ${savepoint}`);
   }
   stack.push(myDepth);
-  (db as unknown as { __txStack?: number[] }).__txStack = stack;
   try {
     const result = fn();
     if (myDepth === 0) {
       db.exec("COMMIT");
     } else {
-      db.exec(`RELEASE SAVEPOINT sp_${myDepth}`);
+      db.exec(`RELEASE SAVEPOINT ${savepoint}`);
     }
-    stack.pop();
     return result;
   } catch (err) {
     try {
       if (myDepth === 0) {
         db.exec("ROLLBACK");
       } else {
-        db.exec(`ROLLBACK TO SAVEPOINT sp_${myDepth}`);
+        db.exec(`ROLLBACK TO SAVEPOINT ${savepoint}`);
+        db.exec(`RELEASE SAVEPOINT ${savepoint}`);
       }
     } catch {
       // Best-effort: surface the original error.
     }
-    stack.pop();
     throw err;
+  } finally {
+    const popped = stack.pop();
+    if (popped !== myDepth) {
+      const idx = stack.lastIndexOf(myDepth);
+      if (idx >= 0) stack.splice(idx, 1);
+    }
+    if (stack.length === 0) {
+      delete txDb.__txStack;
+    }
   }
 }

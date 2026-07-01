@@ -24,13 +24,16 @@ Open <http://localhost:3000> and sign in.
 > **Auth bypass (temporary).** `AUTH_DISABLED=true` is set in `.env.local`, so the
 > dashboard is publicly reachable in dev — `/` redirects straight to
 > `/dashboard/overview` and the login form is skipped. The flag is read by
-> `src/lib/auth-flag.ts`; with it on, `getSession()` returns a static admin user
-> (id `0`) and the `AccountBlock` in `AppShell` hides its Logout button. To
-> restore iron-session login, set `AUTH_DISABLED=false` in `.env.local` (or
-> unset it) and revert the four conditional branches in `src/lib/session.ts`,
-> `src/app/page.tsx`, and `src/components/AppShell.tsx`. The `/login` page,
-> `/api/auth/*` routes, seeded accounts, and `requireSession`/`requireAdmin`
-> call sites are all preserved — no other restoration work is needed.
+> `src/lib/auth-flag.ts`; with it on, `getSession()` returns the real
+> `auth-disabled@local` users row and the `AccountBlock` in `AppShell` hides its
+> Logout button. The bypass is blocked in production/test: `next build` fails
+> with `AUTH_DISABLED=true`, and `next start` cannot serve app routes with the
+> flag set. To restore iron-session
+> login, set `AUTH_DISABLED=false` in `.env.local` (or unset it) and revert the
+> four conditional branches in `src/lib/session.ts`, `src/app/page.tsx`, and
+> `src/components/AppShell.tsx`. The `/login` page, `/api/auth/*` routes, seeded
+> accounts, and `requireSession`/`requireAdmin` call sites are all preserved — no
+> other restoration work is needed.
 
 ### Default accounts (seeded on first DB access)
 
@@ -100,7 +103,7 @@ Comparison logic adapts to unit type:
 | PDF export  | `html2canvas` + `jspdf` (client-side)             |
 | Icons       | `lucide-react`                                    |
 
-The schema is versioned (`meta.schema_version`); bumping the version cleanly resets KPI tables while preserving users. All sample data is flagged via `meta.sample_data` and surfaced as a "Sample data" badge throughout the UI.
+The schema is versioned (`src/lib/schema-version.json` mirrored into `meta.schema_version`); bumping the version cleanly resets KPI tables while preserving users. All sample data is flagged via `meta.sample_data` and surfaced as a "Sample data" badge throughout the UI.
 
 ## Routes
 
@@ -118,23 +121,35 @@ The schema is versioned (`meta.schema_version`); bumping the version cleanly res
 ## Verification
 
 A repeatable smoke harness lives at `scripts/smoke.sh`. Invoke it directly (no
-npm wrapper) against a running server. The canonical invocation exercises both
-auth modes end-to-end:
+npm wrapper) against a running server. The bypass path is dev-only because
+`next start` runs with `NODE_ENV=production` and cannot serve app routes with
+`AUTH_DISABLED=true`.
 
 ```bash
-# 1. Build the production server once.
-npm run build
-
-# 2. Smoke test the bypass-auth flow (no login required).
-AUTH_DISABLED=true PORT=3290 node_modules/.bin/next start -p 3290 &
+# Smoke test the bypass-auth flow (no login required).
+AUTH_DISABLED=true node_modules/.bin/next dev -p 3290 &
 AUTH_DISABLED=true PORT=3290 BASE=http://127.0.0.1:3290 bash ./scripts/smoke.sh
 
-# 3. Restart in normal-auth mode and smoke test login + session handling.
+# Stop the dev server before reusing :3290 for the production/auth-enabled flow.
+npm run build
 AUTH_DISABLED=false PORT=3290 node_modules/.bin/next start -p 3290 &
-AUTH_DISABLED=false PORT=3290 BASE=http://127.0.0.1:3290 bash ./scripts/smoke.sh
+SMOKE_EMAIL=kerry@easternstate.org SMOKE_PASSWORD='<printed first-run password>' \
+  AUTH_DISABLED=false PORT=3290 BASE=http://127.0.0.1:3290 bash ./scripts/smoke.sh
 ```
 
 It verifies the finalized metric set, all category/metric pages, through-month handling, admin pages, monthly/annual/breakdown entry round-trips, and the auth-bypass behavior of `POST /api/entries` (401 with no session when auth is enabled; 201 when the bypass is in effect).
+
+## Deployment Notes
+
+Fly deploys through `Dockerfile` + `fly.toml` with SQLite mounted at
+`/app/data/kpi.db`. `TRUST_PROXY=true` is set for Fly so the login throttle uses
+the proxy-provided client IP instead of collapsing every failed attempt into the
+`unknown` bucket. The production startup script runs `scripts/ensure-seeded.mjs`;
+that probe compares the mounted database's `meta.schema_version` with
+`src/lib/schema-version.json` before it skips seeding. Docker builds point
+`DATABASE_PATH` at a disposable `/tmp` database and remove `/app/data` before the
+final image copy, so build-time SQLite files and one-time seed passwords are not
+baked into the runtime image.
 
 ### CI gate
 
@@ -158,8 +173,8 @@ password change flow — lives at `docs/qa-manual.md`. New engineers should
 walk the checklist end-to-end after their first checkout.
 
 Latest local runs:
-- `AUTH_DISABLED=true` → **47 passed, 0 failed**
-- `AUTH_DISABLED=false` → **51 passed, 0 failed** (login + auth-wall checks included)
+- `AUTH_DISABLED=true` via `next dev` → **56 passed, 0 failed**
+- `AUTH_DISABLED=false` via `next start` → **60 passed, 0 failed** (login + auth-wall checks included)
 
 ## Data model (schema)
 

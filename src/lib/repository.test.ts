@@ -262,6 +262,35 @@ describe("upsertEntry / upsertBreakdown audit integrity", () => {
     ]);
   });
 
+  it("transaction() clears nested stack state before the next top-level rollback", () => {
+    const db = getDb();
+    db.exec("DELETE FROM monthly_entries;");
+    db.exec("DELETE FROM entry_history;");
+
+    transaction(() => {
+      transaction(() => {
+        upsertEntry({ kpi_id: kpiA, year: 2025, month: 1, value: 1, updated_by: 1 });
+      });
+    });
+
+    expect(() =>
+      transaction(() => {
+        upsertEntry({ kpi_id: kpiA, year: 2025, month: 2, value: 2, updated_by: 1 });
+        throw new Error("top-level failure after nested success");
+      }),
+    ).toThrow("top-level failure after nested success");
+
+    const rows = db
+      .prepare("SELECT month, value FROM monthly_entries ORDER BY month ASC")
+      .all() as { month: number; value: number }[];
+    expect(rows).toEqual([{ month: 1, value: 1 }]);
+
+    expect(() => {
+      db.exec("BEGIN");
+      db.exec("ROLLBACK");
+    }).not.toThrow();
+  });
+
   it("deleteEntry still records a correct history row", () => {
     // The delete path is not the focus of the fix, but a regression
     // guard: the delete history is keyed by id, so it should be stable.
