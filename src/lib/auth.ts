@@ -212,13 +212,14 @@ export function ensureSeedAdmin(): void {
   // fixed `id: -1` row. The first call wins; the second becomes a
   // no-op insert that still triggers the UPDATE branch below and
   // rotates the hash, which is idempotent at the data level.
+  const bypassHash = newBypassHash();
   db.prepare(
     `INSERT OR IGNORE INTO users (id, email, name, password_hash, role)
      VALUES (?, ?, ?, ?, 'admin')`,
-  ).run(BYPASS_USER_ID, BYPASS_USER_EMAIL, "Auth Disabled", newBypassHash());
+  ).run(BYPASS_USER_ID, BYPASS_USER_EMAIL, "Auth Disabled", bypassHash);
   db.prepare(
     "UPDATE users SET password_hash = ?, role = 'admin', name = ? WHERE email = ?",
-  ).run(newBypassHash(), "Auth Disabled", BYPASS_USER_EMAIL);
+  ).run(bypassHash, "Auth Disabled", BYPASS_USER_EMAIL);
 
   const row = db.prepare("SELECT COUNT(*) as count FROM users").get() as
     | Record<string, unknown>
