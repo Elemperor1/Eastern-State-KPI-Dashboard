@@ -25,13 +25,9 @@ describe("auth-flag", () => {
     expect(AUTH_DISABLED).toBe(true);
   });
 
-  it("is force-disabled in production even when AUTH_DISABLED=true", async () => {
-    vi.stubEnv("AUTH_DISABLED", "true");
-    vi.stubEnv("NODE_ENV", "production");
-    // Under production, the module must NOT throw on the safe path —
-    // a misconfiguration with the env var unset must still load fine.
-    // (The throw case is the next test.)
+  it("is false in production when AUTH_DISABLED is unset", async () => {
     vi.stubEnv("AUTH_DISABLED", "");
+    vi.stubEnv("NODE_ENV", "production");
     const { AUTH_DISABLED } = await import("./auth-flag");
     expect(AUTH_DISABLED).toBe(false);
   });
