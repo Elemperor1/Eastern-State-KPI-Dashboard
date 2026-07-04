@@ -22,8 +22,10 @@ set -euo pipefail
 # any non-empty value that isn't false/0/off/no (case-insensitive).
 auth_flag_is_set() {
   local v="${1:-}"
+  # Trim leading/trailing whitespace (match auth-flag.ts envFlagIsSet).
+  v="${v#"${v%%[![:space:]]*}"}"
+  v="${v%"${v##*[![:space:]]}"}"
   v="$(printf '%s' "$v" | tr '[:upper:]' '[:lower:]')"
-  v="${v// /}"
   case "$v" in
     "" | "false" | "0" | "off" | "no") return 1 ;;
     *) return 0 ;;
