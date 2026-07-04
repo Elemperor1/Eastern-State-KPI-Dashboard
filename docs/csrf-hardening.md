@@ -85,12 +85,13 @@ without leaking detail to attackers (req 8).
 - On successful login (`/api/auth/login`) and on every `/api/auth/me`
   call, the server sets a host-only, non-`HttpOnly`, `SameSite=Lax`
   cookie `eastern_state_kpi_csrf` with a 256-bit random value.
-  `/api/auth/me` is a safe read called on every page load, so it
-  bootstraps the cookie for sessions established before this hardening
-  shipped and for the `AUTH_DISABLED` dev bypass (which has no login
-  flow).
+  `/api/auth/me` is a safe read that bootstraps the cookie for sessions
+  established before this hardening shipped and for the `AUTH_DISABLED`
+  dev bypass (which has no login flow).
 - The client (`src/lib/api-client.ts` `apiFetch`) reads that cookie and
-  echoes its value in the `X-CSRF-Token` header on every mutation. The
+  echoes its value in the `X-CSRF-Token` header on every mutation. If
+  the cookie is missing, `apiFetch` first calls `/api/auth/me` once and
+  then retries the cookie read before sending the guarded write. The
   guard compares header to cookie in constant time.
 - A cross-site **or same-site-sibling** attacker cannot read the
   host-only cookie (different origin → no cookie access) and cannot set
@@ -114,12 +115,14 @@ In scope (the guard runs on every state-changing handler):
 | `/api/breakdowns` | POST, DELETE |
 | `/api/kpis` | POST, PATCH, DELETE |
 | `/api/categories` | POST, PATCH, DELETE |
+| `/api/goals` | POST, PATCH, DELETE |
 
 Out of scope (deliberate, documented exclusions):
 
 - `GET` handlers (`/api/users`, `/api/entries`, `/api/breakdowns`,
   `/api/kpis`, `/api/categories`, `/api/meta`, `/api/entries/history`,
-  `/api/entries/years`, `/api/auth/me`) — read-only list/detail reads.
+  `/api/entries/years`, `/api/goals`, `/api/auth/me`) — read-only
+  list/detail reads.
   No state-changing `GET` exists; were one added, it would join the
   in-scope list.
 - `POST /api/auth/login` — the credential entry point; it is not
@@ -185,8 +188,9 @@ Out of scope (deliberate, documented exclusions):
 - `APP_CANONICAL_ORIGIN`: comma-separated list of allowed origins
   (e.g. `https://eastern-state-kpi-dashboard.fly.dev`). Optional but
   recommended for production.
-- `CSRF_COOKIE_NAME`: override the CSRF cookie name (default
-  `eastern_state_kpi_csrf`). Rarely needed.
+- CSRF cookie name: fixed as `eastern_state_kpi_csrf` in both the server
+  guard and browser bundle. Keep it fixed unless the server/client
+  double-submit path is redesigned together.
 - `SESSION_SECURE`: governs the `Secure` flag on both the session and
   CSRF cookies (`true` in production; `false` only for local HTTP
   testing). Orthogonal to `SameSite` and to the guard.
@@ -203,16 +207,20 @@ Out of scope (deliberate, documented exclusions):
 ## Reproducing / testing
 
 - `src/lib/csrf-hardening.test.ts` exercises every in-scope handler
-  (15 handlers) with positive (valid Origin + JSON + token → 2xx) and
+  with positive (valid Origin + JSON + token → 2xx) and
   negative (cross-site Origin, same-site-sibling Origin, `text/plain`,
   urlencoded, multipart, missing/mismatched token, missing/opaque
   Origin, Referer fallback accept/reject) cases, plus unit tests for
-  the guard functions. 200 cases.
+  the guard functions.
 - The existing auth-regression / auth-workflow / session-revocation
   suites send the CSRF-passing headers by default
   (`src/lib/auth-regression-helpers.ts` `dispatch` and the per-file
   `jsonReq` helpers), so the authorization matrix is exercised
   unchanged beneath the guard.
+- `scripts/smoke.sh` fetches the CSRF cookie from `/api/auth/me` and
+  sends `Origin` + `X-CSRF-Token` on every curl POST/DELETE round-trip,
+  including the `AUTH_DISABLED=true` bypass smoke path where there is no
+  session cookie.
 
 ## Remediation summary
 

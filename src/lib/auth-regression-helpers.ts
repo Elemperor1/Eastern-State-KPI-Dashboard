@@ -34,6 +34,10 @@
  *   DELETE /api/entries           requireAdmin     (entries write)
  *   GET    /api/entries/history   requireAdmin     (audit history)
  *   GET    /api/entries/years     requireSession   (entries read)
+ *   GET    /api/goals             requireSession   (goals read)
+ *   POST   /api/goals             requireAdmin     (goals write)
+ *   PATCH  /api/goals             requireAdmin     (goals write)
+ *   DELETE /api/goals             requireAdmin     (goals write)
  *   GET    /api/kpis              requireSession   (KPI definitions read)
  *   POST   /api/kpis              requireAdmin     (KPI definitions write)
  *   PATCH  /api/kpis              requireAdmin     (KPI definitions write)
@@ -89,6 +93,7 @@ import * as categories from "@/app/api/categories/route";
 import * as entries from "@/app/api/entries/route";
 import * as entriesHistory from "@/app/api/entries/history/route";
 import * as entriesYears from "@/app/api/entries/years/route";
+import * as goals from "@/app/api/goals/route";
 import * as kpis from "@/app/api/kpis/route";
 import * as meta from "@/app/api/meta/route";
 import * as users from "@/app/api/users/route";
@@ -110,6 +115,7 @@ export interface ProtectedRoute {
     | "categories"
     | "entries"
     | "breakdowns"
+    | "goals"
     | "users";
   /** Whether the handler signature accepts a NextRequest argument. */
   takesReq: boolean;
@@ -133,6 +139,10 @@ export const PROTECTED_API_ROUTES: ProtectedRoute[] = [
   { method: "DELETE", path: "/api/entries", gate: "requireAdmin", group: "entries", takesReq: true },
   { method: "GET", path: "/api/entries/history", gate: "requireAdmin", group: "history", takesReq: true },
   { method: "GET", path: "/api/entries/years", gate: "requireSession", group: "entries", takesReq: false },
+  { method: "GET", path: "/api/goals", gate: "requireSession", group: "goals", takesReq: false },
+  { method: "POST", path: "/api/goals", gate: "requireAdmin", group: "goals", takesReq: true },
+  { method: "PATCH", path: "/api/goals", gate: "requireAdmin", group: "goals", takesReq: true },
+  { method: "DELETE", path: "/api/goals", gate: "requireAdmin", group: "goals", takesReq: true },
   { method: "GET", path: "/api/kpis", gate: "requireSession", group: "kpis", takesReq: false },
   { method: "POST", path: "/api/kpis", gate: "requireAdmin", group: "kpis", takesReq: true },
   { method: "PATCH", path: "/api/kpis", gate: "requireAdmin", group: "kpis", takesReq: true },
@@ -160,6 +170,10 @@ const HANDLERS: Record<string, Handler> = {
   "DELETE /api/entries": entries.DELETE as Handler,
   "GET /api/entries/history": entriesHistory.GET as Handler,
   "GET /api/entries/years": entriesYears.GET as Handler,
+  "GET /api/goals": goals.GET as Handler,
+  "POST /api/goals": goals.POST as Handler,
+  "PATCH /api/goals": goals.PATCH as Handler,
+  "DELETE /api/goals": goals.DELETE as Handler,
   "GET /api/kpis": kpis.GET as Handler,
   "POST /api/kpis": kpis.POST as Handler,
   "PATCH /api/kpis": kpis.PATCH as Handler,
@@ -181,9 +195,7 @@ const HANDLERS: Record<string, Handler> = {
  */
 export const TEST_CSRF_TOKEN = "test-csrf-token-0123456789abcdef";
 
-export const CSRF_COOKIE_NAME =
-  (typeof process !== "undefined" && process.env?.CSRF_COOKIE_NAME) ||
-  "eastern_state_kpi_csrf";
+export const CSRF_COOKIE_NAME = "eastern_state_kpi_csrf";
 
 /** Default headers that satisfy the request guard for a mutation. */
 function csrfPassHeaders(): Record<string, string> {

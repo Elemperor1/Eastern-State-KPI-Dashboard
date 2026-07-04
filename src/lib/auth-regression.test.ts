@@ -181,9 +181,7 @@ function loginReq(body: unknown, ip: string): NextRequest {
 function jsonReq(url: string, method: "POST" | "PATCH", body: unknown): NextRequest {
   // D8AD-CAN-004: include CSRF-passing headers by default so the
   // shared request guard lets the request through to the authz layer.
-  const csrfCookieName =
-    (typeof process !== "undefined" && process.env?.CSRF_COOKIE_NAME) ||
-    "eastern_state_kpi_csrf";
+  const csrfCookieName = "eastern_state_kpi_csrf";
   const csrfToken = "test-csrf-token-0123456789abcdef";
   return new NextRequest(
     new Request(url, {
@@ -495,11 +493,11 @@ describe("route table coverage", () => {
     const keys = PROTECTED_API_ROUTES.map((r) => `${r.method} ${r.path}`);
     expect(new Set(keys).size).toBe(keys.length);
     // Every functional group named in req 6 (reads, writes, history,
-    // KPI definitions, categories, entries, breakdowns, user
+    // KPI definitions, categories, entries, breakdowns, goals, user
     // management) is represented. "writes" is covered by the presence
     // of mutation methods (POST/PATCH/DELETE) across the groups.
     const groups = new Set(PROTECTED_API_ROUTES.map((r) => r.group));
-    for (const g of ["history", "kpis", "categories", "entries", "breakdowns", "users", "reads"]) {
+    for (const g of ["history", "kpis", "categories", "entries", "breakdowns", "goals", "users", "reads"]) {
       expect(groups.has(g as (typeof PROTECTED_API_ROUTES)[number]["group"])).toBe(true);
     }
     const methods = new Set(PROTECTED_API_ROUTES.map((r) => r.method));

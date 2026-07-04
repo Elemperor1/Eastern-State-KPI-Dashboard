@@ -101,9 +101,7 @@ function jsonReq(
 ): NextRequest {
   // D8AD-CAN-004: include CSRF-passing headers by default (see the
   // matching note in session-revocation.test.ts).
-  const csrfCookieName =
-    (typeof process !== "undefined" && process.env?.CSRF_COOKIE_NAME) ||
-    "eastern_state_kpi_csrf";
+  const csrfCookieName = "eastern_state_kpi_csrf";
   const csrfToken = "test-csrf-token-0123456789abcdef";
   return new NextRequest(
     new Request(url, {

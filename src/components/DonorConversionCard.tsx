@@ -11,7 +11,7 @@ import {
   XAxis,
   YAxis,
 } from "recharts";
-import { Card, Table } from "@/components/ui";
+import { Table } from "@/components/ui";
 import { MONTH_LABELS, formatValue } from "@/lib/analytics";
 import type { BreakdownEntryWithMeta, KPIWithCategory } from "@/lib/types";
 
@@ -250,13 +250,13 @@ export function DonorConversionCard({
             <Tooltip cursor={{ fill: "var(--chart-cursor)" }} />
             <Bar
               dataKey="Referred"
-              fill="#209ba5"
+              fill="var(--chart-primary)"
               radius={[4, 4, 0, 0]}
               maxBarSize={32}
             />
             <Bar
               dataKey="Donors"
-              fill="#f7f242"
+              fill="var(--chart-secondary)"
               radius={[4, 4, 0, 0]}
               maxBarSize={32}
             />

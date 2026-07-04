@@ -30,12 +30,16 @@ export function BreakdownChart({ kpi, data: breakdowns, currentYear, compareYear
   );
 
   const data = labels.map((label) => {
-    const cur = breakdowns.find((d) => d.label === label && d.year === currentYear);
-    const cmp = breakdowns.find((d) => d.label === label && d.year === compareYear);
+    const cur = breakdowns
+      .filter((d) => d.label === label && d.year === currentYear)
+      .reduce((sum, d) => sum + d.value, 0);
+    const cmp = breakdowns
+      .filter((d) => d.label === label && d.year === compareYear)
+      .reduce((sum, d) => sum + d.value, 0);
     return {
       label,
-      [currentYear]: cur?.value ?? 0,
-      [compareYear]: cmp?.value ?? 0,
+      [currentYear]: cur,
+      [compareYear]: cmp,
     };
   });
 

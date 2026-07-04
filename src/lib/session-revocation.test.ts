@@ -104,9 +104,7 @@ function jsonReq(
   // next/headers jar; the CSRF cookie here is read by the guard via
   // req.cookies. Pass a header in `headers` to override for a
   // CSRF-failure case.
-  const csrfCookieName =
-    (typeof process !== "undefined" && process.env?.CSRF_COOKIE_NAME) ||
-    "eastern_state_kpi_csrf";
+  const csrfCookieName = "eastern_state_kpi_csrf";
   const csrfToken = "test-csrf-token-0123456789abcdef";
   return new NextRequest(
     new Request(url, {

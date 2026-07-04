@@ -21,6 +21,8 @@
 #
 # If AUTH_DISABLED=true (login temporarily bypassed), the auth wall + login
 # round-trip checks are skipped, and requests are made without a session cookie.
+# Mutation checks still fetch the non-auth CSRF cookie from /api/auth/me and
+# echo it with a same-origin header, matching the browser-side apiFetch flow.
 #
 # Usage:
 #   PORT=3200 ./scripts/smoke.sh
@@ -30,6 +32,18 @@ set -euo pipefail
 PORT="${PORT:-3100}"
 BASE="${BASE:-http://127.0.0.1:$PORT}"
 AUTH_DISABLED="${AUTH_DISABLED:-false}"
+CSRF_COOKIE_NAME="eastern_state_kpi_csrf"
+
+if [ -n "${SMOKE_ORIGIN:-}" ]; then
+  BASE_ORIGIN="${SMOKE_ORIGIN%/}"
+elif [ -n "${APP_CANONICAL_ORIGIN:-}" ]; then
+  BASE_ORIGIN="${APP_CANONICAL_ORIGIN%%,*}"
+  BASE_ORIGIN="${BASE_ORIGIN%/}"
+elif [[ "$BASE" =~ ^(https?://)127\.0\.0\.1(:[0-9]+)?/?$ ]]; then
+  BASE_ORIGIN="${BASH_REMATCH[1]}localhost${BASH_REMATCH[2]}"
+else
+  BASE_ORIGIN="${BASE%/}"
+fi
 
 # Auth-enabled runs require the caller to supply a credential pair via
 # the environment. Bootstrap accounts are provisioned with either an
@@ -67,6 +81,36 @@ check() {
     printf "  \033[31mFAIL\033[0m  %s\n" "$name"
     FAIL=$((FAIL+1))
   fi
+}
+
+csrf_token_for() {
+  local jar="$1"
+  curl -sk -b "$jar" -c "$jar" -o /dev/null "$BASE/api/auth/me"
+  awk -v name="$CSRF_COOKIE_NAME" '
+    BEGIN { value = "" }
+    $0 !~ /^#/ && $6 == name { value = $7 }
+    END { print value }
+  ' "$jar"
+}
+
+mutation_status() {
+  local jar="$1"
+  local method="$2"
+  local path="$3"
+  local payload="$4"
+  local token
+  token="$(csrf_token_for "$jar")"
+  if [ -z "$token" ]; then
+    printf "ERROR: could not obtain CSRF token for %s %s\n" "$method" "$path" >&2
+    printf "000"
+    return 0
+  fi
+  curl -sk -b "$jar" -c "$jar" -o /dev/null -w '%{http_code}' \
+    -X "$method" "$BASE$path" \
+    -H "Content-Type: application/json" \
+    -H "Origin: $BASE_ORIGIN" \
+    -H "X-CSRF-Token: $token" \
+    --data "$payload"
 }
 
 cookie_jar="$(mktemp)"
@@ -242,7 +286,7 @@ fi
 echo
 echo "Monthly entries round-trip"
 monthly_kpi=$(echo "$kpis" | python3 -c "import sys,json; d=json.load(sys.stdin); print([k['id'] for k in d['kpis'] if k['slug']=='video-views'][0])")
-post=$(curl -sk -b "$cookie_jar" -o /dev/null -w '%{http_code}' -X POST "$BASE/api/entries" -H "Content-Type: application/json" --data "{\"kpi_id\": $monthly_kpi, \"year\": 2099, \"month\": 1, \"value\": 12345}")
+post=$(mutation_status "$cookie_jar" POST "/api/entries" "{\"kpi_id\": $monthly_kpi, \"year\": 2099, \"month\": 1, \"value\": 12345}")
 check "POST /api/entries (monthly) returns 201" test "$post" = "201"
 new_id=$(curl -sk -b "$cookie_jar" "$BASE/api/entries?year=2099" | python3 -c "import sys,json; d=json.load(sys.stdin); e=[x for x in d.get('entries', []) if x['value']==12345]; print(e[0]['id'] if e else '')")
 if [ -n "$new_id" ]; then
@@ -250,13 +294,13 @@ if [ -n "$new_id" ]; then
 else
   check "monthly entry readable" false
 fi
-del=$(curl -sk -b "$cookie_jar" -o /dev/null -w '%{http_code}' -X DELETE "$BASE/api/entries" -H "Content-Type: application/json" --data "{\"id\": $new_id}")
+del=$(mutation_status "$cookie_jar" DELETE "/api/entries" "{\"id\": $new_id}")
 check "DELETE /api/entries returns 200" test "$del" = "200"
 
 echo
 echo "Annual entries round-trip"
 annual_kpi=$(echo "$kpis" | python3 -c "import sys,json; d=json.load(sys.stdin); print([k['id'] for k in d['kpis'] if k['slug']=='programs-offered'][0])")
-post=$(curl -sk -b "$cookie_jar" -o /dev/null -w '%{http_code}' -X POST "$BASE/api/entries" -H "Content-Type: application/json" --data "{\"kpi_id\": $annual_kpi, \"year\": 2099, \"month\": 0, \"value\": 7}")
+post=$(mutation_status "$cookie_jar" POST "/api/entries" "{\"kpi_id\": $annual_kpi, \"year\": 2099, \"month\": 0, \"value\": 7}")
 check "POST /api/entries (annual, month=0) returns 201" test "$post" = "201"
 new_id=$(curl -sk -b "$cookie_jar" "$BASE/api/entries?year=2099" | python3 -c "import sys,json; d=json.load(sys.stdin); e=[x for x in d.get('entries', []) if x['value']==7]; print(e[0]['id'] if e else '')")
 if [ -n "$new_id" ]; then
@@ -264,13 +308,13 @@ if [ -n "$new_id" ]; then
 else
   check "annual entry readable (month=0)" false
 fi
-del=$(curl -sk -b "$cookie_jar" -o /dev/null -w '%{http_code}' -X DELETE "$BASE/api/entries" -H "Content-Type: application/json" --data "{\"id\": $new_id}")
+del=$(mutation_status "$cookie_jar" DELETE "/api/entries" "{\"id\": $new_id}")
 check "DELETE annual entry returns 200" test "$del" = "200"
 
 echo
 echo "Breakdown entries round-trip"
 brk_kpi=$(echo "$kpis" | python3 -c "import sys,json; d=json.load(sys.stdin); print([k['id'] for k in d['kpis'] if k['slug']=='donor-categories'][0])")
-post=$(curl -sk -b "$cookie_jar" -o /dev/null -w '%{http_code}' -X POST "$BASE/api/breakdowns" -H "Content-Type: application/json" --data "{\"kpi_id\": $brk_kpi, \"year\": 2099, \"label\": \"Test row\", \"value\": 99}")
+post=$(mutation_status "$cookie_jar" POST "/api/breakdowns" "{\"kpi_id\": $brk_kpi, \"year\": 2099, \"label\": \"Test row\", \"value\": 99}")
 check "POST /api/breakdowns returns 201" test "$post" = "201"
 new_id=$(curl -sk -b "$cookie_jar" "$BASE/api/breakdowns?year=2099" | python3 -c "import sys,json; d=json.load(sys.stdin); e=[x for x in d.get('breakdowns', []) if x['label']=='Test row']; print(e[0]['id'] if e else '')")
 if [ -n "$new_id" ]; then
@@ -278,14 +322,15 @@ if [ -n "$new_id" ]; then
 else
   check "breakdown entry readable" false
 fi
-del=$(curl -sk -b "$cookie_jar" -o /dev/null -w '%{http_code}' -X DELETE "$BASE/api/breakdowns" -H "Content-Type: application/json" --data "{\"id\": $new_id}")
+del=$(mutation_status "$cookie_jar" DELETE "/api/breakdowns" "{\"id\": $new_id}")
 check "DELETE /api/breakdowns returns 200" test "$del" = "200"
 
 echo
 echo "Auth-bypass flow on POST /api/entries (no cookie)"
-# $noauth_jar was created above and is empty — proves the request has no session.
+# $noauth_jar was created above and starts without a session cookie. The
+# mutation helper may add only the CSRF cookie, which is not an auth credential.
 bypass_kpi=$(echo "$kpis" | python3 -c "import sys,json; d=json.load(sys.stdin); print([k['id'] for k in d['kpis'] if k['slug']=='video-views'][0])")
-bypass_status=$(curl -sk -b "$noauth_jar" -o /dev/null -w '%{http_code}' -X POST "$BASE/api/entries" -H "Content-Type: application/json" --data "{\"kpi_id\": $bypass_kpi, \"year\": 2099, \"month\": 2, \"value\": 54321}")
+bypass_status=$(mutation_status "$noauth_jar" POST "/api/entries" "{\"kpi_id\": $bypass_kpi, \"year\": 2099, \"month\": 2, \"value\": 54321}")
 bypass_id=$(curl -sk -b "$noauth_jar" "$BASE/api/entries?year=2099" | python3 -c "import sys,json; d=json.load(sys.stdin); e=[x for x in d.get('entries', []) if x['value']==54321]; print(e[0]['id'] if e else '')")
 if [ "$AUTH_DISABLED" = "true" ]; then
   check "no-cookie POST succeeds when AUTH_DISABLED=true (201)" test "$bypass_status" = "201"
@@ -296,13 +341,13 @@ if [ "$AUTH_DISABLED" = "true" ]; then
     else
       check "bypass entry has real updated_by FK (no FK error)" false
     fi
-    del=$(curl -sk -b "$noauth_jar" -o /dev/null -w '%{http_code}' -X DELETE "$BASE/api/entries" -H "Content-Type: application/json" --data "{\"id\": $bypass_id}")
+    del=$(mutation_status "$noauth_jar" DELETE "/api/entries" "{\"id\": $bypass_id}")
     check "cleanup DELETE bypass entry returns 200" test "$del" = "200"
   else
     check "bypass entry readable after POST" false
   fi
 else
-  # Without the bypass, no cookie means no session → requireAdmin() fails.
+  # Without the bypass, no session cookie means requireAdmin() fails.
   # The handler returns 403 (forbidden — admin required), which proves the
   # auth wall is up; 401 is acceptable too.
   # D8AD-CAN-008: avoid bash -c here — use inline if/else so that

@@ -35,13 +35,12 @@ export function loadDashboardData(): DashboardData {
       ...listBreakdowns().map((b) => b.year),
     ]),
   ).sort((a, b) => a - b);
-  const latestYear = years.length > 0 ? Math.max(...years) : new Date().getFullYear();
   return {
     categories: listCategories(),
     kpis: listKPIs(),
     entries: listEntries(),
     breakdowns: listBreakdowns(),
-    goals: listGoals({ enabledOnly: true, year: latestYear }),
+    goals: listGoals({ enabledOnly: true }),
     years,
     sampleData: metaRow?.value === "1",
   };

@@ -95,8 +95,10 @@ export function MetricDetailClient({
 
   const favorableMonthly = isFavorable(kpi.direction, comp.delta);
 
-  // Find the goal for this KPI in the current year
-  const goal = data.goals.find((g) => g.kpi_id === kpi.id);
+  // Find the goal for this KPI in the selected year.
+  const goal = data.goals.find(
+    (g) => g.kpi_id === kpi.id && g.target_year === state.currentYear,
+  );
 
   const printId = `metric-${kpiSlug}-print`;
 
@@ -283,6 +285,7 @@ export function MetricDetailClient({
                 data={data.breakdowns.filter(
                   (b) =>
                     b.kpi_id === kpi.id &&
+                    b.month === 0 &&
                     (b.year === state.currentYear || b.year === state.compareYear),
                 )}
                 currentYear={state.currentYear}

@@ -234,35 +234,24 @@ export class DependentEntriesError extends Error {
 }
 
 /** Number of live monthly + breakdown entries for a KPI, including entries
- *  on its child KPIs (deleting a parent cascades to its children). */
+ *  on every descendant KPI (deleting a parent cascades recursively). */
 export function countKPIDependents(id: number): number {
   const db = getDb();
-  const monthly = db
-    .prepare("SELECT COUNT(*) AS n FROM monthly_entries WHERE kpi_id = ?")
-    .get(id) as { n: number };
-  const breakdown = db
-    .prepare("SELECT COUNT(*) AS n FROM breakdown_entries WHERE kpi_id = ?")
-    .get(id) as { n: number };
-  // Child KPIs cascade on parent delete. Count entries on every descendant
-  // too so the guard reflects the full blast radius, not just this row.
-  const childMonthly = db
+  const row = db
     .prepare(
-      `SELECT COUNT(*) AS n FROM monthly_entries
-       WHERE kpi_id IN (SELECT id FROM kpis WHERE parent_id = ?)`,
+      `WITH RECURSIVE descendants(id) AS (
+         SELECT id FROM kpis WHERE id = ?
+         UNION ALL
+         SELECT k.id
+         FROM kpis k
+         JOIN descendants d ON k.parent_id = d.id
+       )
+       SELECT
+         (SELECT COUNT(*) FROM monthly_entries WHERE kpi_id IN (SELECT id FROM descendants)) +
+         (SELECT COUNT(*) FROM breakdown_entries WHERE kpi_id IN (SELECT id FROM descendants)) AS n`,
     )
     .get(id) as { n: number };
-  const childBreakdown = db
-    .prepare(
-      `SELECT COUNT(*) AS n FROM breakdown_entries
-       WHERE kpi_id IN (SELECT id FROM kpis WHERE parent_id = ?)`,
-    )
-    .get(id) as { n: number };
-  return (
-    Number(monthly.n) +
-    Number(breakdown.n) +
-    Number(childMonthly.n) +
-    Number(childBreakdown.n)
-  );
+  return Number(row.n);
 }
 
 /** Total live entries across every KPI in a category (cascade blast radius). */
@@ -1021,28 +1010,57 @@ function asGoal(row: Record<string, unknown>): GoalRow {
   };
 }
 
+function goalActualValue(
+  kpiId: number,
+  year: number,
+  reportingFrequency: ReportingFrequency,
+): number | null {
+  const db = getDb();
+  if (reportingFrequency === "annual") {
+    const row = db
+      .prepare(
+        `SELECT value as total FROM monthly_entries
+         WHERE kpi_id = ? AND year = ? AND month = 0`,
+      )
+      .get(kpiId, year) as { total: number | null } | undefined;
+    return row?.total ?? null;
+  }
+  const row = db
+    .prepare(
+      `SELECT SUM(value) as total FROM monthly_entries
+       WHERE kpi_id = ? AND year = ? AND month > 0`,
+    )
+    .get(kpiId, year) as { total: number | null } | undefined;
+  return row?.total ?? null;
+}
+
 /**
- * Compute the numeric goal target and progress for a KPI goal.
- * For pct goals: target = current_value * (1 + goal.target_value / 100)
- * For number goals: target = current_value + goal.target_value
- * Returns { goal_target, progress_pct } or nulls when current_value is absent.
+ * Compute the numeric goal target and progress for a KPI goal from a fixed
+ * baseline. For pct goals: target = baseline * (1 + target_value / 100).
+ * For number goals: target = baseline + target_value. The baseline is the
+ * prior year's actual, so the target does not move when target-year data
+ * changes.
  */
 function computeGoalProgress(
   goal: { goal_type: "pct" | "number"; target_value: number },
   currentValue: number | null,
+  baselineValue: number | null,
 ): { goal_target: number | null; progress_pct: number | null } {
-  if (currentValue == null) {
+  if (baselineValue == null) {
     return { goal_target: null, progress_pct: null };
   }
   let target: number;
   if (goal.goal_type === "pct") {
-    target = currentValue * (1 + goal.target_value / 100);
+    target = baselineValue * (1 + goal.target_value / 100);
   } else {
-    target = currentValue + goal.target_value;
+    target = baselineValue + goal.target_value;
+  }
+  if (currentValue == null) {
+    return { goal_target: target, progress_pct: null };
   }
   const progress_pct = target === 0
     ? 100
-    : Math.min(Math.round((currentValue / target) * 100), 100);
+    : Math.max(0, Math.min(Math.round((currentValue / target) * 100), 100));
   return { goal_target: target, progress_pct };
 }
 
@@ -1061,7 +1079,8 @@ export function listGoals(opts?: { enabledOnly?: boolean; year?: number }): KpiG
   const rows = db
     .prepare(
       `SELECT g.*, k.name as kpi_name, k.slug as kpi_slug, k.unit as kpi_unit,
-              k.unit_type as kpi_unit_type, c.id as category_id, c.name as category_name,
+              k.unit_type as kpi_unit_type, k.reporting_frequency as kpi_reporting_frequency,
+              c.id as category_id, c.name as category_name,
               c.slug as category_slug
        FROM kpi_goals g
        JOIN kpis k ON k.id = g.kpi_id
@@ -1073,15 +1092,14 @@ export function listGoals(opts?: { enabledOnly?: boolean; year?: number }): KpiG
 
   return rows.map((row) => {
     const g = asGoal(row);
-    // Compute current value from monthly_entries
-    const currentRow = db
-      .prepare(
-        `SELECT SUM(value) as total FROM monthly_entries
-         WHERE kpi_id = ? AND year = ? AND month > 0`,
-      )
-      .get(g.kpi_id, g.target_year) as { total: number | null } | undefined;
-    const currentValue = currentRow?.total ?? null;
-    const { goal_target, progress_pct } = computeGoalProgress(g, currentValue);
+    const frequency = String(row.kpi_reporting_frequency) as ReportingFrequency;
+    const currentValue = goalActualValue(g.kpi_id, g.target_year, frequency);
+    const baselineValue = goalActualValue(g.kpi_id, g.target_year - 1, frequency);
+    const { goal_target, progress_pct } = computeGoalProgress(
+      g,
+      currentValue,
+      baselineValue,
+    );
     return {
       ...g,
       enabled: g.enabled === 1,
@@ -1104,7 +1122,8 @@ export function getGoalByKpiAndYear(kpiId: number, year: number): KpiGoalWithMet
   const row = db
     .prepare(
       `SELECT g.*, k.name as kpi_name, k.slug as kpi_slug, k.unit as kpi_unit,
-              k.unit_type as kpi_unit_type, c.id as category_id, c.name as category_name,
+              k.unit_type as kpi_unit_type, k.reporting_frequency as kpi_reporting_frequency,
+              c.id as category_id, c.name as category_name,
               c.slug as category_slug
        FROM kpi_goals g
        JOIN kpis k ON k.id = g.kpi_id
@@ -1114,14 +1133,14 @@ export function getGoalByKpiAndYear(kpiId: number, year: number): KpiGoalWithMet
     .get(kpiId, year) as Record<string, unknown> | undefined;
   if (!row) return null;
   const g = asGoal(row);
-  const currentRow = db
-    .prepare(
-      `SELECT SUM(value) as total FROM monthly_entries
-       WHERE kpi_id = ? AND year = ? AND month > 0`,
-    )
-    .get(g.kpi_id, g.target_year) as { total: number | null } | undefined;
-  const currentValue = currentRow?.total ?? null;
-  const { goal_target, progress_pct } = computeGoalProgress(g, currentValue);
+  const frequency = String(row.kpi_reporting_frequency) as ReportingFrequency;
+  const currentValue = goalActualValue(g.kpi_id, g.target_year, frequency);
+  const baselineValue = goalActualValue(g.kpi_id, g.target_year - 1, frequency);
+  const { goal_target, progress_pct } = computeGoalProgress(
+    g,
+    currentValue,
+    baselineValue,
+  );
   return {
     ...g,
     enabled: g.enabled === 1,

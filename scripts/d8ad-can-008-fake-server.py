@@ -196,7 +196,10 @@ class SmokeFakeHandler(http.server.BaseHTTPRequestHandler):
         # Auth endpoints (minimal — AUTH_DISABLED mode doesn't hit these,
         # but the fake server needs to return something reasonable)
         if path == "/api/auth/me":
-            return self._json({"user": {"id": 1, "email": "auth-disabled@local", "role": "admin"}})
+            return self._json(
+                {"user": {"id": 1, "email": "auth-disabled@local", "role": "admin"}},
+                headers={"Set-Cookie": "eastern_state_kpi_csrf=fake-csrf-token; Path=/; SameSite=Lax"},
+            )
         if path == "/api/auth/login":
             return self._empty(200)
         if path.startswith("/login"):
@@ -336,11 +339,13 @@ class SmokeFakeHandler(http.server.BaseHTTPRequestHandler):
 
     # ── Response helpers ─────────────────────────────────────────────────
 
-    def _json(self, data: dict):
+    def _json(self, data: dict, headers: dict[str, str] | None = None):
         """Send a JSON response (with shell hook embedded in string values)."""
         body = json.dumps(data, ensure_ascii=False).encode("utf-8")
         self.send_response(200)
         self.send_header("Content-Type", "application/json")
+        for name, value in (headers or {}).items():
+            self.send_header(name, value)
         self.send_header("Content-Length", str(len(body)))
         self.end_headers()
         self.wfile.write(body)

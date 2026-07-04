@@ -49,8 +49,7 @@ import crypto from "node:crypto";
  */
 
 export const CSRF_HEADER = "x-csrf-token";
-export const CSRF_COOKIE_NAME =
-  process.env.CSRF_COOKIE_NAME || "eastern_state_kpi_csrf";
+export const CSRF_COOKIE_NAME = "eastern_state_kpi_csrf";
 
 /** Reasons are for SERVER LOGS ONLY; never serialize them to the client. */
 export type CsrfFailReason =

@@ -142,7 +142,7 @@ SMOKE_EMAIL=kerry@easternstate.org SMOKE_PASSWORD='<printed first-run password>'
   AUTH_DISABLED=false PORT=3290 BASE=http://127.0.0.1:3290 bash ./scripts/smoke.sh
 ```
 
-It verifies the finalized metric set, all category/metric pages, through-month handling, admin pages, monthly/annual/breakdown entry round-trips, and the auth-bypass behavior of `POST /api/entries` (401 with no session when auth is enabled; 201 when the bypass is in effect).
+It verifies the finalized metric set, all category/metric pages, through-month handling, admin pages, monthly/annual/breakdown entry round-trips, and the auth-bypass behavior of `POST /api/entries` (401 with no session when auth is enabled; 201 when the bypass is in effect). For curl mutations, the harness first fetches the `eastern_state_kpi_csrf` cookie from `/api/auth/me` and sends both `Origin` and `X-CSRF-Token`, matching the browser `apiFetch` path. Override the mutation origin with `SMOKE_ORIGIN=...` for production-like runs; otherwise the script uses `APP_CANONICAL_ORIGIN` when set and normalizes local `127.0.0.1` smoke runs to `localhost`.
 
 ## Deployment Notes
 
@@ -186,6 +186,6 @@ Latest local runs:
 - **categories** — slug, name, description, sort order
 - **kpis** — category, optional parent, slug, name, unit label, `unit_type`, `reporting_frequency`, `direction`, description, sort order, active flag
 - **monthly_entries** — KPI × year × month (1–12 monthly, 0 annual) = value + notes; unique per (kpi, year, month)
-- **breakdown_entries** — KPI × year × label = value + notes; unique per (kpi, year, label)
+- **breakdown_entries** — KPI × year × month × label = value + notes; `month = 0` for annual breakdowns, `1–12` for monthly breakdowns; unique per (kpi, year, month, label)
 - **users** — name, email, bcrypt-hashed password, role
 - **meta** — schema version + sample-data flag

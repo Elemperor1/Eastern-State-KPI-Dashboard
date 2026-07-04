@@ -4,7 +4,17 @@ import path from "node:path";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { ensureSeedAdmin } from "./auth";
 import { getDb, resetDb, transaction } from "./db";
-import { deleteBreakdown, deleteEntry, upsertBreakdown, upsertEntry } from "./repository";
+import {
+  countKPIDependents,
+  createKPI,
+  deleteBreakdown,
+  deleteEntry,
+  deleteKPI,
+  listGoals,
+  upsertBreakdown,
+  upsertEntry,
+  upsertGoal,
+} from "./repository";
 
 /**
  * Regression tests for the upsert+audit-history atomicity / lastInsertRowid
@@ -64,6 +74,7 @@ describe("upsertEntry / upsertBreakdown audit integrity", () => {
     db.exec("DELETE FROM entry_history;");
     db.exec("DELETE FROM monthly_entries;");
     db.exec("DELETE FROM breakdown_entries;");
+    db.exec("DELETE FROM kpi_goals;");
   });
 
   afterAll(() => {
@@ -325,5 +336,95 @@ describe("upsertEntry / upsertBreakdown audit integrity", () => {
     expect(h!.kpi_id).toBe(kpiA);
     expect(h!.new_value).toBeNull();
     expect(h!.prev_value).toBe(25);
+  });
+
+  it("counts entries on recursive KPI descendants before parent deletion", () => {
+    const parent = createKPI({
+      category_id: categoryId,
+      slug: "parent-recursive-delete",
+      name: "Parent Recursive Delete",
+      unit: "count",
+      unit_type: "count",
+      reporting_frequency: "monthly",
+      direction: "higher",
+    });
+    const child = createKPI({
+      category_id: categoryId,
+      parent_id: parent.id,
+      slug: "child-recursive-delete",
+      name: "Child Recursive Delete",
+      unit: "count",
+      unit_type: "count",
+      reporting_frequency: "monthly",
+      direction: "higher",
+    });
+    const grandchild = createKPI({
+      category_id: categoryId,
+      parent_id: child.id,
+      slug: "grandchild-recursive-delete",
+      name: "Grandchild Recursive Delete",
+      unit: "count",
+      unit_type: "count",
+      reporting_frequency: "monthly",
+      direction: "higher",
+    });
+
+    upsertEntry({
+      kpi_id: grandchild.id,
+      year: 2025,
+      month: 1,
+      value: 42,
+      updated_by: 1,
+    });
+
+    expect(countKPIDependents(parent.id)).toBe(1);
+    expect(() => deleteKPI(parent.id)).toThrow(/Cannot delete KPI/);
+  });
+
+  it("computes goals from a fixed prior-year baseline, not the target-year actual", () => {
+    upsertEntry({ kpi_id: kpiA, year: 2024, month: 1, value: 100, updated_by: 1 });
+    upsertEntry({ kpi_id: kpiA, year: 2025, month: 1, value: 90, updated_by: 1 });
+    upsertGoal({
+      kpi_id: kpiA,
+      target_year: 2025,
+      goal_type: "pct",
+      target_value: 20,
+      enabled: true,
+      updated_by: 1,
+    });
+
+    const goal = listGoals({ enabledOnly: true, year: 2025 }).find((g) => g.kpi_id === kpiA);
+    expect(goal).toBeDefined();
+    expect(goal!.current_value).toBe(90);
+    expect(goal!.goal_target).toBe(120);
+    expect(goal!.progress_pct).toBe(75);
+  });
+
+  it("includes month-0 annual entries when computing goal progress", () => {
+    const annual = createKPI({
+      category_id: categoryId,
+      slug: "annual-goal-progress",
+      name: "Annual Goal Progress",
+      unit: "count",
+      unit_type: "count",
+      reporting_frequency: "annual",
+      direction: "higher",
+    });
+    upsertEntry({ kpi_id: annual.id, year: 2024, month: 0, value: 1000, updated_by: 1 });
+    upsertEntry({ kpi_id: annual.id, year: 2025, month: 0, value: 1100, updated_by: 1 });
+    upsertGoal({
+      kpi_id: annual.id,
+      target_year: 2025,
+      goal_type: "number",
+      target_value: 100,
+      enabled: true,
+      updated_by: 1,
+    });
+
+    const goal = listGoals({ enabledOnly: true, year: 2025 }).find((g) => g.kpi_id === annual.id);
+    expect(goal).toBeDefined();
+    expect(goal!.current_value).toBe(1100);
+    expect(goal!.goal_target).toBe(1100);
+    expect(goal!.progress_pct).toBe(100);
   });
 });

@@ -38,7 +38,7 @@ function metricYoYPct(
       function conversionRate(year: number): number | null {
         let referred = 0;
         let donors = 0;
-        const months = year === new Date().getFullYear() ? Math.min(currentMonth, 12) : 12;
+        const months = Math.min(currentMonth, 12);
         for (let m = 1; m <= months; m++) {
           const r = breakdowns.find((b) => b.kpi_id === kpi.id && b.year === year && b.month === m && b.label === "Referred");
           const d = breakdowns.find((b) => b.kpi_id === kpi.id && b.year === year && b.month === m && b.label === "Donors");

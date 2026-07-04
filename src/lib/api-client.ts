@@ -7,8 +7,9 @@
  *     guard accepts) for any request with a body.
  *   - Reads the double-submit CSRF cookie (`eastern_state_kpi_csrf`,
  *     set by /api/auth/login and /api/auth/me) and echoes its value
- *     in the `X-CSRF-Token` header. The guard compares header to
- *     cookie in constant time.
+ *     in the `X-CSRF-Token` header. If an existing session predates
+ *     the cookie, the wrapper first calls /api/auth/me to initialize
+ *     it. The guard compares header to cookie in constant time.
  *
  * Read-only GET calls do not need this wrapper; only POST/PATCH/PUT/
  * DELETE to the guarded mutation endpoints do. The wrapper still
@@ -17,9 +18,9 @@
  */
 
 export const CSRF_HEADER = "x-csrf-token";
-export const CSRF_COOKIE_NAME =
-  (typeof process !== "undefined" && process.env?.CSRF_COOKIE_NAME) ||
-  "eastern_state_kpi_csrf";
+export const CSRF_COOKIE_NAME = "eastern_state_kpi_csrf";
+
+const MUTATION_METHODS = new Set(["POST", "PATCH", "PUT", "DELETE"]);
 
 /** Read a cookie value from document.cookie by name (browser only). */
 export function readCsrfToken(): string | null {
@@ -32,6 +33,18 @@ export function readCsrfToken(): string | null {
     }
   }
   return null;
+}
+
+async function ensureCsrfToken(credentials: RequestCredentials): Promise<string | null> {
+  const existing = readCsrfToken();
+  if (existing) return existing;
+  if (typeof window === "undefined") return null;
+  await fetch("/api/auth/me", {
+    method: "GET",
+    credentials,
+    cache: "no-store",
+  }).catch(() => null);
+  return readCsrfToken();
 }
 
 interface ApiFetchInit extends Omit<RequestInit, "body"> {
@@ -50,7 +63,11 @@ export async function apiFetch(
   init: ApiFetchInit = {},
 ): Promise<Response> {
   const headers = new Headers(init.headers);
-  const token = readCsrfToken();
+  const credentials = init.credentials ?? "same-origin";
+  const method = (init.method ?? "GET").toUpperCase();
+  const token = MUTATION_METHODS.has(method)
+    ? await ensureCsrfToken(credentials)
+    : readCsrfToken();
   if (token) headers.set(CSRF_HEADER, token);
 
   let body: BodyInit | undefined;
@@ -75,6 +92,6 @@ export async function apiFetch(
     // browser default for same-origin fetches, but we set it explicitly
     // so a caller who copied an `init` with `credentials: "omit"` does
     // not silently break the authenticated request.
-    credentials: init.credentials ?? "same-origin",
+    credentials,
   });
 }
