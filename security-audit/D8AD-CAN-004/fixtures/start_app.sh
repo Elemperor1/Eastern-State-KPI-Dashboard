@@ -39,7 +39,7 @@ npm run db:seed >/tmp/eskpi-seed.log 2>&1 || { cat /tmp/eskpi-seed.log; exit 1; 
 
 echo "[start_app] setting known admin password deterministically..."
 ADMIN_PASSWORD="${ADMIN_PASSWORD:-CsrfTest-AdminPass-123!}" \
-  node "/Users/jacobcyber/Documents/Eastern State KPI/security-audit/D8AD-CAN-004/fixtures/set_admin_password.mjs" \
+  node "security-audit/D8AD-CAN-004/fixtures/set_admin_password.mjs" \
   >/tmp/eskpi-setpw.log 2>&1 || { cat /tmp/eskpi-setpw.log; exit 1; }
 cat /tmp/eskpi-setpw.log
 
