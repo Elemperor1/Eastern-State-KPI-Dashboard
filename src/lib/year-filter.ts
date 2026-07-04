@@ -46,10 +46,9 @@ export const MAX_YEAR_FILTERS = 50;
  * (rather than as malformed), and rejects every non-integer shape:
  * decimals (`2024.5`), scientific notation (`1e3`), hex (`0x7e8`),
  * empty strings, whitespace, and anything with a `+` sign or
- * non-digit characters. `Number(s)` then `z.number().int().finite()`
- * additionally rejects values whose magnitude exceeds Number.MAX_SAFE_INTEGER
- * (extremely large inputs collapse to Infinity / lossy floats and
- * fail `.int()` / `.finite()`), and the range check rejects the rest.
+ * non-digit characters. `Number(s)` then `z.number().int().finite()` rejects
+ * NaN/Infinity and non-integers; the final range check enforces
+ * [MIN_YEAR, MAX_YEAR], which also rejects extremely large magnitudes.
  */
 const YearString = z
   .string()
