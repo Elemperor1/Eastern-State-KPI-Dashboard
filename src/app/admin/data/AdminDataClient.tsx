@@ -433,8 +433,8 @@ export function AdminDataClient({
             <div className="flex items-center gap-3">
               {breakdowns.some((b) => b.kpi_id === kpi.id && b.month > 0) ? (
                 <div className="min-w-[120px]">
-                  <select
-                    className="w-full rounded-md border border-ink-300 bg-white px-3 py-1.5 text-xs font-medium text-ink-700 focus:outline-none focus:ring-2 focus:ring-brand-400"
+                  <Select
+                    className="w-full"
                     value={brkMonth}
                     onChange={(e) => setBrkMonth(Number(e.target.value))}
                   >
@@ -442,8 +442,7 @@ export function AdminDataClient({
                     {MONTH_LABELS.map((m, i) => (
                       <option key={i} value={i + 1}>{m}</option>
                     ))}
-                  </select>
-                </div>
+                  </Select>
               ) : null}
               <Button variant="secondary" size="sm" onClick={addBrkRow}>Add row</Button>
             </div>
