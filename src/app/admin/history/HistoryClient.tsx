@@ -236,12 +236,14 @@ export function HistoryClient({ history, kpis, categories, activeFilter }: Histo
 
 function describePeriod(row: EntryHistoryWithMeta): string {
   if (row.entry_type === "breakdown") {
-    const parts = row.month_or_label.split("|");
-    const month = Number(parts[0]);
-    if (parts.length === 2 && Number.isFinite(month)) {
-      if (month === 0) return `Label: ${parts[1]}`;
+    const sep = row.month_or_label.indexOf("|");
+    if (sep === -1) return `Label: ${row.month_or_label}`;
+    const month = Number(row.month_or_label.slice(0, sep));
+    const label = row.month_or_label.slice(sep + 1);
+    if (Number.isFinite(month)) {
+      if (month === 0) return `Label: ${label}`;
       const labels = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
-      return `${labels[month - 1] ?? `Month ${month}`} · ${parts[1]}`;
+      return `${labels[month - 1] ?? `Month ${month}`} · ${label}`;
     }
     return `Label: ${row.month_or_label}`;
   }
