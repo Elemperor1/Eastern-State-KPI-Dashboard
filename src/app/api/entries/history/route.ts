@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { requireAdmin } from "@/lib/session";
+import { authErrorResponse, requireAdmin } from "@/lib/session";
 import { listEntryHistory } from "@/lib/repository";
 
 /**
@@ -18,8 +18,8 @@ import { listEntryHistory } from "@/lib/repository";
 export async function GET(req: NextRequest) {
   try {
     await requireAdmin();
-  } catch {
-    return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+  } catch (err) {
+    return authErrorResponse(err);
   }
   const url = new URL(req.url);
   const filter: Parameters<typeof listEntryHistory>[0] = {};

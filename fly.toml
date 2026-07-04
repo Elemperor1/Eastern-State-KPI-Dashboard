@@ -9,6 +9,11 @@ primary_region = "iad"
   DATABASE_PATH = "/app/data/kpi.db"
   NODE_ENV = "production"
   PORT = "3000"
+  # D8AD-CAN-004 CSRF hardening: the canonical origin the request guard
+  # accepts on state-changing requests. Explicit literal so the allowed
+  # origin set is not derived from forwarded headers. See
+  # docs/csrf-hardening.md.
+  APP_CANONICAL_ORIGIN = "https://eastern-state-kpi-dashboard.fly.dev"
   SESSION_SECURE = "true"
   TRUST_PROXY = "true"
 

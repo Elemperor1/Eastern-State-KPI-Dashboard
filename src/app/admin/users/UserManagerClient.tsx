@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { Plus, Trash2, RotateCcw } from "lucide-react";
+import { Ban, Plus, Power, Trash2, RotateCcw } from "lucide-react";
 import {
   Badge,
   Button,
@@ -17,6 +17,7 @@ import {
   Table,
 } from "@/components/ui";
 import type { User } from "@/lib/types";
+import { apiFetch } from "@/lib/api-client";
 
 export function UserManagerClient({
   users: initialUsers,
@@ -29,8 +30,10 @@ export function UserManagerClient({
   const [feedback, setFeedback] = useState<{ message: string; variant: "success" | "error" } | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<User | null>(null);
   const [resetTarget, setResetTarget] = useState<User | null>(null);
+  const [disableTarget, setDisableTarget] = useState<User | null>(null);
   const [newPassword, setNewPassword] = useState("");
   const [resetting, setResetting] = useState(false);
+  const [accountBusy, setAccountBusy] = useState<number | null>(null);
 
   async function refresh() {
     const res = await fetch("/api/users");
@@ -39,15 +42,14 @@ export function UserManagerClient({
   }
 
   async function createUser(form: FormData) {
-    const res = await fetch("/api/users", {
+    const res = await apiFetch("/api/users", {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
+      body: {
         name: String(form.get("name")),
         email: String(form.get("email")),
         password: String(form.get("password")),
         role: String(form.get("role")),
-      }),
+      },
     });
     const data = await res.json();
     if (!res.ok) {
@@ -60,17 +62,16 @@ export function UserManagerClient({
 
   async function resetPassword(id: number, password: string) {
     setResetting(true);
-    const res = await fetch("/api/users", {
+    const res = await apiFetch("/api/users", {
       method: "PATCH",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ id, password }),
+      body: { id, password },
     });
     if (!res.ok) {
       setFeedback({ message: "Could not reset password.", variant: "error" });
       setResetting(false);
       return;
     }
-    setFeedback({ message: "Password updated.", variant: "success" });
+    setFeedback({ message: "Temporary password set. The user must replace it at next login.", variant: "success" });
     setResetTarget(null);
     setNewPassword("");
     setResetting(false);
@@ -78,10 +79,9 @@ export function UserManagerClient({
   }
 
   async function deleteUser(id: number, name: string) {
-    const res = await fetch("/api/users", {
+    const res = await apiFetch("/api/users", {
       method: "DELETE",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ id }),
+      body: { id },
     });
     if (!res.ok) {
       setFeedback({ message: "Could not delete user.", variant: "error" });
@@ -89,6 +89,46 @@ export function UserManagerClient({
     }
     setFeedback({ message: "User deleted.", variant: "success" });
     await refresh();
+  }
+
+  /**
+   * Apply a security-sensitive account change (role change or
+   * disable/enable) via /api/users/account. The endpoint bumps the
+   * user's sessions_valid_after watermark, which immediately
+   * invalidates every session they currently hold (D8AD-CAN-003) —
+   * a downgraded or disabled user is logged out on their next
+   * request. Self-targeted changes are refused by the API.
+   */
+  async function patchAccount(id: number, body: { role?: "admin" | "viewer"; disabled?: boolean }, successMessage: string) {
+    setAccountBusy(id);
+    try {
+      const res = await apiFetch("/api/users/account", {
+        method: "PATCH",
+        body: { id, ...body },
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        setFeedback({ message: `Could not update account: ${data.error ?? res.status}`, variant: "error" });
+        return;
+      }
+      setFeedback({ message: successMessage, variant: "success" });
+      await refresh();
+    } finally {
+      setAccountBusy(null);
+    }
+  }
+
+  async function changeRole(id: number, role: "admin" | "viewer", name: string) {
+    await patchAccount(id, { role }, `Role for ${name} updated to ${role}. Their active sessions were revoked.`);
+  }
+
+  async function disableUser(id: number, name: string) {
+    setDisableTarget(null);
+    await patchAccount(id, { disabled: true }, `${name} was disabled and signed out everywhere.`);
+  }
+
+  async function enableUser(id: number, name: string) {
+    await patchAccount(id, { disabled: false }, `${name} was re-enabled.`);
   }
 
   return (
@@ -142,62 +182,111 @@ export function UserManagerClient({
       <Card className="overflow-hidden">
         <div className="border-b border-ink-100 p-5">
           <h2 className="text-xl font-semibold text-ink-900">Team members</h2>
-          <p className="mt-1 text-sm text-ink-500">{users.length} active accounts</p>
+          <p className="mt-1 text-sm text-ink-500">{users.length} accounts</p>
         </div>
-        <Table minWidth="560px">
+        <Table minWidth="720px">
           <thead>
             <tr>
               <th className="text-left" scope="col">Name</th>
               <th className="text-left" scope="col">Email</th>
               <th className="text-left" scope="col">Role</th>
+              <th className="text-left" scope="col">Status</th>
               <th className="text-left" scope="col">Created</th>
               <th className="text-right" scope="col">Actions</th>
             </tr>
           </thead>
           <tbody>
-            {users.map((user) => (
-              <tr key={user.id} className="transition-colors hover:bg-ink-50/70">
-                <td className="font-medium text-ink-900">
-                  <span className="inline-flex items-center gap-2">
-                    {user.name}
-                    {user.id === currentUserId ? (
-                      <Badge variant="success">You</Badge>
-                    ) : null}
-                  </span>
-                </td>
-                <td className="text-ink-700">{user.email}</td>
-                <td className="">
-                  <Badge variant={user.role === "admin" ? "info" : "default"}>
-                    {user.role}
-                  </Badge>
-                </td>
-                <td className="text-ink-500 text-xs">
-                  {new Date(user.created_at).toLocaleDateString()}
-                </td>
-                <td className="text-right">
-                  <div className="inline-flex gap-2">
-                    <IconButton
-                      icon={RotateCcw}
-                      label={`Reset password for ${user.name}`}
-                      variant="secondary"
-                      size="sm"
-                      onClick={() => {
-                        setResetTarget(user);
-                        setNewPassword("");
-                      }}
-                    />
-                    <IconButton
-                      icon={Trash2}
-                      label={`Delete user ${user.name}`}
-                      variant="danger"
-                      size="sm"
-                      onClick={() => setDeleteTarget(user)}
-                      disabled={user.id === currentUserId}
-                    />
-                  </div>
-                </td>
-              </tr>
-            ))}
+            {users.map((user) => {
+              const isSelf = user.id === currentUserId;
+              return (
+                <tr key={user.id} className={`transition-colors hover:bg-ink-50/70 ${user.disabled ? "opacity-60" : ""}`}>
+                  <td className="font-medium text-ink-900">
+                    <span className="inline-flex items-center gap-2">
+                      {user.name}
+                      {isSelf ? (
+                        <Badge variant="success">You</Badge>
+                      ) : null}
+                    </span>
+                  </td>
+                  <td className="text-ink-700">{user.email}</td>
+                  <td className="">
+                    {isSelf ? (
+                      <Badge variant={user.role === "admin" ? "info" : "default"}>
+                        {user.role}
+                      </Badge>
+                    ) : (
+                      <Select
+                        aria-label={`Role for ${user.name}`}
+                        value={user.role}
+                        disabled={accountBusy === user.id}
+                        onChange={(e) =>
+                          changeRole(
+                            user.id,
+                            e.target.value as "admin" | "viewer",
+                            user.name,
+                          )
+                        }
+                      >
+                        <option value="viewer">viewer</option>
+                        <option value="admin">admin</option>
+                      </Select>
+                    )}
+                  </td>
+                  <td className="">
+                    {user.disabled ? (
+                      <Badge variant="warning">Disabled</Badge>
+                    ) : (
+                      <Badge variant="success">Active</Badge>
+                    )}
+                  </td>
+                  <td className="text-ink-500 text-xs">
+                    {new Date(user.created_at).toLocaleDateString()}
+                  </td>
+                  <td className="text-right">
+                    <div className="inline-flex gap-2">
+                      {user.disabled ? (
+                        <IconButton
+                          icon={Power}
+                          label={`Re-enable ${user.name}`}
+                          variant="secondary"
+                          size="sm"
+                          disabled={isSelf || accountBusy === user.id}
+                          onClick={() => enableUser(user.id, user.name)}
+                        />
+                      ) : (
+                        <IconButton
+                          icon={Ban}
+                          label={`Disable ${user.name}`}
+                          variant="secondary"
+                          size="sm"
+                          disabled={isSelf || accountBusy === user.id}
+                          onClick={() => setDisableTarget(user)}
+                        />
+                      )}
+                      <IconButton
+                        icon={RotateCcw}
+                        label={`Reset password for ${user.name}`}
+                        variant="secondary"
+                        size="sm"
+                        disabled={user.disabled}
+                        onClick={() => {
+                          setResetTarget(user);
+                          setNewPassword("");
+                        }}
+                      />
+                      <IconButton
+                        icon={Trash2}
+                        label={`Delete user ${user.name}`}
+                        variant="danger"
+                        size="sm"
+                        onClick={() => setDeleteTarget(user)}
+                        disabled={isSelf}
+                      />
+                    </div>
+                  </td>
+                </tr>
+              );
+            })}
           </tbody>
         </Table>
       </Card>
@@ -205,7 +294,7 @@ export function UserManagerClient({
       <Dialog
         open={Boolean(resetTarget)}
         title={`Set a new password for ${resetTarget?.name ?? "this user"}`}
-        description="Enter a temporary password with at least eight characters. Share it through an approved secure channel."
+        description="Enter a temporary password with at least eight characters. The user must replace it at their next login before reaching the dashboard. Share it through an approved secure channel."
         onClose={() => {
           if (resetting) return;
           setResetTarget(null);
@@ -257,6 +346,18 @@ export function UserManagerClient({
           const target = deleteTarget;
           setDeleteTarget(null);
           if (target) await deleteUser(target.id, target.name);
+        }}
+      />
+
+      <ConfirmDialog
+        open={Boolean(disableTarget)}
+        title={`Disable ${disableTarget?.name ?? "this user"}?`}
+        description="A disabled account cannot log in and is signed out of every active session immediately. The account can be re-enabled later."
+        confirmLabel="Disable account"
+        onClose={() => setDisableTarget(null)}
+        onConfirm={async () => {
+          const target = disableTarget;
+          if (target) await disableUser(target.id, target.name);
         }}
       />
     </div>

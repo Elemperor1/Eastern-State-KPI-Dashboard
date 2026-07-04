@@ -257,6 +257,7 @@ describe("POST /api/auth/login throttle integration", () => {
       email: "lucky@example.com",
       name: "Lucky",
       role: "admin",
+      must_change_password: false,
     });
     const ok = await POST(
       makeLoginRequest(

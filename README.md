@@ -37,9 +37,14 @@ Open <http://localhost:3000> and sign in.
 
 ### Default accounts (seeded on first DB access)
 
-On the first run against a fresh database, `ensureSeedAdmin()` creates `kerry@easternstate.org` (admin) and `zach@easternstate.org` (viewer) with **per-install random passwords**. The plaintexts are printed to the server's stdout exactly once and are never stored in source or docs. Read the password line at first startup, rotate it through `/admin/users`, and the seed is done.
+On the first run against a fresh database, `ensureSeedAdmin()` creates `kerry@easternstate.org` (admin) and `zach@easternstate.org` (viewer). **No plaintext password is ever written to stdout, stderr, or logs** — the old "read the password from the startup log" flow has been removed (security finding D8AD-CAN-001). Provisioning works as follows:
 
-The default development workflow runs with `AUTH_DISABLED=true` and never reads the password line, so it stays out of your way.
+- **Preferred (operator-provided secret).** Set `BOOTSTRAP_ADMIN_PASSWORD` and `BOOTSTRAP_VIEWER_PASSWORD` in the environment (via `fly secrets set` in production — never in `fly.toml` or a shell command line). The seed hashes those values into the bootstrap accounts and emits only a non-sensitive status line naming the accounts and their credential source.
+- **Fallback (random, unlogged).** If an env var is unset, the account gets a cryptographically-random password that is recorded nowhere — not in source, not in stdout, not in any log. The seed prints a non-sensitive warning pointing the operator at `npm run setup:admin` (see below). The account is effectively locked until the operator provisions a known credential.
+- **Forced rotation.** Every bootstrap account is created with `must_change_password=1`. The login response directs the user to `/setup-password`, every protected page redirects there, and `requireSession`/`requireAdmin` return HTTP 403 until the user replaces the temporary credential. Bootstrap users therefore cannot use the app with a seeded/temporary password.
+- **Operator recovery command.** `SETUP_ADMIN_PASSWORD=... npm run setup:admin` (optionally `SETUP_ADMIN_EMAIL=...`) sets a known password on a bootstrap account and clears the rotation flag. The password is read from the env var only — never from argv, stdout, or a log — so it cannot leak through shell history, `ps`, or CI logs. See `docs/operator-provisioning.md` for the full operator runbook.
+
+The default development workflow runs with `AUTH_DISABLED=true` and never logs in, so provisioning stays out of your way.
 
 ## What you get
 
@@ -64,10 +69,10 @@ Annual-only metrics are stored as a single full-year value (month `0`) so they n
 - **Preservation** — Percent of site in triage, Articles on ES preservation work, Conferences presented, Items in collection, Percent of items in collection available online
 - **Museum** — Overall museum attendance, School groups attendance, Virtual exhibit participants, Festival attendees, Media mentions during festival, Festivals with partner sponsors
 - **General Awareness** — Public events as speaker, Broadcast/streaming/radio/podcast interviews, Print/online mentions, Overall media hits
-- **Fundraising** — Percent cultivated as donors, Number of overall individual donors, Percent of revenue from development, **Number of funders by breakdown**, Percent of board engagement, Percent of board giving, Number of corporate sponsorships, Percent of donors retained, Percent of members converted to donors, Percent of donors converted to members, **First-time/returning/lapsed donors**
+- **Fundraising** — People referred to development who became donors, Number of overall individual donors, Percent of revenue from development, **Number of funders by breakdown**, Percent of board engagement, Percent of board giving, Number of corporate sponsorships, Percent of donors retained, Percent of members converted to donors, Percent of donors converted to members, **First-time/returning/lapsed donors**
 - **Economic Impact** — Total annual budget, Economic impact, Jobs held at ES, Indirect jobs via vendors
 
-Two metrics are **breakdowns** (Number of funders by breakdown; First-time/returning/lapsed donors) and render as grouped comparison bars + tables.
+Three metrics are **breakdowns** (Number of funders by breakdown; First-time/returning/lapsed donors; People referred to development who became donors) and render as group comparison bars + tables; the donor-conversion metric additionally shows a month-by-month referral and conversion table.
 
 ### Dashboard views
 
@@ -137,7 +142,7 @@ SMOKE_EMAIL=kerry@easternstate.org SMOKE_PASSWORD='<printed first-run password>'
   AUTH_DISABLED=false PORT=3290 BASE=http://127.0.0.1:3290 bash ./scripts/smoke.sh
 ```
 
-It verifies the finalized metric set, all category/metric pages, through-month handling, admin pages, monthly/annual/breakdown entry round-trips, and the auth-bypass behavior of `POST /api/entries` (401 with no session when auth is enabled; 201 when the bypass is in effect).
+It verifies the finalized metric set, all category/metric pages, through-month handling, admin pages, monthly/annual/breakdown entry round-trips, and the auth-bypass behavior of `POST /api/entries` (401 with no session when auth is enabled; 201 when the bypass is in effect). For curl mutations, the harness first fetches the `eastern_state_kpi_csrf` cookie from `/api/auth/me` and sends both `Origin` and `X-CSRF-Token`, matching the browser `apiFetch` path. Override the mutation origin with `SMOKE_ORIGIN=...` for production-like runs; otherwise the script uses `APP_CANONICAL_ORIGIN` when set and normalizes local `127.0.0.1` smoke runs to `localhost`.
 
 ## Deployment Notes
 
@@ -181,6 +186,6 @@ Latest local runs:
 - **categories** — slug, name, description, sort order
 - **kpis** — category, optional parent, slug, name, unit label, `unit_type`, `reporting_frequency`, `direction`, description, sort order, active flag
 - **monthly_entries** — KPI × year × month (1–12 monthly, 0 annual) = value + notes; unique per (kpi, year, month)
-- **breakdown_entries** — KPI × year × label = value + notes; unique per (kpi, year, label)
+- **breakdown_entries** — KPI × year × month × label = value + notes; `month = 0` for annual breakdowns, `1–12` for monthly breakdowns; unique per (kpi, year, month, label)
 - **users** — name, email, bcrypt-hashed password, role
 - **meta** — schema version + sample-data flag

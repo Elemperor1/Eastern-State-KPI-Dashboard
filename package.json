@@ -3,14 +3,16 @@
   "version": "0.1.0",
   "private": true,
   "scripts": {
-    "dev": "next dev -p 3000",
+    "dev": "bash ./scripts/dev.sh",
     "build": "next build",
     "start": "next start -p 3000",
     "start:deploy": "bash ./scripts/start-production.sh",
     "lint": "next lint",
     "db:seed": "tsx scripts/seed.ts",
-    "design-system:guard": "bash ./scripts/design-tokens-guard.sh && bash ./scripts/design-system-guard.sh",
-    "design-system:test": "bash ./scripts/design-tokens-guard.sh && bash ./scripts/design-system-guard.sh && npx tsc --noEmit && AUTH_DISABLED= npx next build",
+    "setup:admin": "tsx scripts/setup-admin.ts",
+    "d8ad-can-008:test": "bash ./scripts/d8ad-can-008-ci-gate.sh",
+    "design-system:guard": "bash ./scripts/design-tokens-guard.sh && bash ./scripts/design-system-guard.sh && bash ./scripts/auth-bypass-guard.sh",
+    "design-system:test": "bash ./scripts/design-tokens-guard.sh && bash ./scripts/design-system-guard.sh && bash ./scripts/auth-bypass-guard.sh && bash ./scripts/d8ad-can-008-ci-gate.sh && npx tsc --noEmit && AUTH_DISABLED= npx next build",
     "test": "vitest run",
     "test:coverage": "vitest run --coverage",
     "prelint": "npm run design-system:guard"
@@ -46,7 +48,8 @@
     "core-js@3.49.0": true,
     "esbuild@0.28.1": true,
     "fsevents@2.3.3": true,
-    "sharp@0.34.5": true
+    "sharp@0.34.5": true,
+    "unrs-resolver@1.12.2": true
   },
   "overrides": {
     "postcss": "^8.5.10"

@@ -24,6 +24,7 @@ import type {
   KPIWithCategory,
   MonthlyEntryWithMeta,
 } from "@/lib/types";
+import { apiFetch } from "@/lib/api-client";
 
 interface DraftEntry {
   value: string;
@@ -61,6 +62,7 @@ export function AdminDataClient({
   const [categorySlug, setCategorySlug] = useState<string>("all");
   const [kpiSlug, setKpiSlug] = useState<string>(kpis[0]?.slug ?? "");
   const [year, setYear] = useState<number>(years[years.length - 1] ?? new Date().getFullYear());
+  const [brkMonth, setBrkMonth] = useState<number>(0);
   const [drafts, setDrafts] = useState<Record<string, DraftEntry>>({});
   const [brkDrafts, setBrkDrafts] = useState<DraftBreakdown[]>([]);
   const [feedback, setFeedback] = useState<{ message: string; variant: "success" | "error" } | null>(null);
@@ -77,21 +79,66 @@ export function AdminDataClient({
   );
 
   const kpi = kpis.find((k) => k.slug === kpiSlug) ?? null;
+  const selectedBreakdownIsMonthly = useMemo(
+    () =>
+      kpi?.unit_type === "breakdown" &&
+      breakdowns.some((b) => b.kpi_id === kpi.id && b.month > 0),
+    [breakdowns, kpi?.id, kpi?.unit_type],
+  );
+  const selectedBreakdownMonths = useMemo(() => {
+    if (!kpi || !selectedBreakdownIsMonthly) return [];
+    return Array.from(
+      new Set(
+        breakdowns
+          .filter((b) => b.kpi_id === kpi.id && b.year === year && b.month > 0)
+          .map((b) => b.month),
+      ),
+    ).sort((a, b) => a - b);
+  }, [breakdowns, kpi, selectedBreakdownIsMonthly, year]);
+  const selectedBreakdownPeriod = selectedBreakdownIsMonthly
+    ? `${MONTH_FULL[Math.max(brkMonth, 1) - 1]} ${year}`
+    : `${year}`;
 
   useEffect(() => {
     if (!kpi) return;
     setFeedback(null);
     if (kpi.unit_type === "breakdown") {
-      const yearBrks = breakdowns.filter((b) => b.kpi_id === kpi.id && b.year === year);
-      const drafts: DraftBreakdown[] = yearBrks.map((b) => ({
-        id: b.id,
-        label: b.label,
-        value: String(b.value),
-        notes: b.notes ?? "",
-        savedValue: b.value,
-        dirty: false,
-      }));
-      setBrkDrafts(drafts);
+      if (selectedBreakdownIsMonthly) {
+        const fallbackMonth =
+          selectedBreakdownMonths[0] ?? Math.min(new Date().getMonth() + 1, 12);
+        const nextMonth =
+          selectedBreakdownMonths.length === 0 && brkMonth >= 1 && brkMonth <= 12
+            ? brkMonth
+            : selectedBreakdownMonths.includes(brkMonth)
+              ? brkMonth
+              : fallbackMonth;
+        if (nextMonth !== brkMonth) {
+          setBrkMonth(nextMonth);
+          return;
+        }
+        const monthBrks = breakdowns.filter((b) => b.kpi_id === kpi.id && b.year === year && b.month === brkMonth);
+        const drafts: DraftBreakdown[] = monthBrks.map((b) => ({
+          id: b.id,
+          label: b.label,
+          value: String(b.value),
+          notes: b.notes ?? "",
+          savedValue: b.value,
+          dirty: false,
+        }));
+        setBrkDrafts(drafts);
+      } else {
+        if (brkMonth !== 0) setBrkMonth(0);
+        const yearBrks = breakdowns.filter((b) => b.kpi_id === kpi.id && b.year === year);
+        const drafts: DraftBreakdown[] = yearBrks.map((b) => ({
+          id: b.id,
+          label: b.label,
+          value: String(b.value),
+          notes: b.notes ?? "",
+          savedValue: b.value,
+          dirty: false,
+        }));
+        setBrkDrafts(drafts);
+      }
       setDrafts({});
       return;
     }
@@ -118,7 +165,15 @@ export function AdminDataClient({
     }
     setDrafts(next);
     setBrkDrafts([]);
-  }, [kpi, year, entries, breakdowns]);
+  }, [
+    kpi,
+    year,
+    entries,
+    breakdowns,
+    brkMonth,
+    selectedBreakdownIsMonthly,
+    selectedBreakdownMonths,
+  ]);
 
   function setField(month: number, patch: Partial<Omit<DraftEntry, "saved" | "dirty" | "saving">>) {
     setDrafts((prev) => {
@@ -138,16 +193,15 @@ export function AdminDataClient({
     if (draft.value === "" || Number.isNaN(Number(draft.value))) return;
     setDrafts((prev) => ({ ...prev, [String(month)]: { ...prev[String(month)], saving: true } }));
     try {
-      const res = await fetch("/api/entries", {
+      const res = await apiFetch("/api/entries", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
+        body: {
           kpi_id: kpi.id,
           year,
           month,
           value: Number(draft.value),
           notes: draft.notes || null,
-        }),
+        },
       });
       if (!res.ok) {
         const data = await res.json().catch(() => ({}));
@@ -180,14 +234,13 @@ export function AdminDataClient({
     if (!draft || draft.saved === null) return;
     setDrafts((prev) => ({ ...prev, [String(month)]: { ...prev[String(month)], saving: true } }));
     try {
-      const res = await fetch("/api/entries", {
+      const res = await apiFetch("/api/entries", {
         method: "DELETE",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
+        body: {
           kpi_id: kpi.id,
           year,
           month,
-        }),
+        },
       });
       if (!res.ok) {
         const data = await res.json().catch(() => ({}));
@@ -238,17 +291,17 @@ export function AdminDataClient({
       return copy;
     });
     try {
-      const res = await fetch("/api/breakdowns", {
+      const res = await apiFetch("/api/breakdowns", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
+        body: {
           id: d.id,
           kpi_id: kpi.id,
           year,
+          month: selectedBreakdownIsMonthly ? brkMonth : undefined,
           label: d.label.trim(),
           value: Number(d.value),
           notes: d.notes || null,
-        }),
+        },
       });
       if (!res.ok) {
         const data = await res.json().catch(() => ({}));
@@ -291,10 +344,9 @@ export function AdminDataClient({
     const d = brkDrafts[idx];
     if (!d) return;
     if (d.id !== null) {
-      const res = await fetch("/api/breakdowns", {
+      const res = await apiFetch("/api/breakdowns", {
         method: "DELETE",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ id: d.id }),
+        body: { id: d.id },
       });
       if (!res.ok) {
         setFeedback({ message: "Could not delete row.", variant: "error" });
@@ -414,10 +466,26 @@ export function AdminDataClient({
             <div>
               <h2 className="text-xl font-semibold text-ink-900">{kpi.name}</h2>
               <p className="mt-1 text-sm text-ink-500">
-                Breakdown · {year} · {kpi.unit}
+                Breakdown · {selectedBreakdownPeriod} · {kpi.unit}
               </p>
             </div>
-            <Button variant="secondary" size="sm" onClick={addBrkRow}>Add row</Button>
+            <div className="flex items-center gap-3">
+              {selectedBreakdownIsMonthly ? (
+                <div className="min-w-[120px]">
+                  <Select
+                    id="admin-breakdown-month"
+                    aria-label="Breakdown month"
+                    value={brkMonth}
+                    onChange={(e) => setBrkMonth(Number(e.target.value))}
+                  >
+                    {MONTH_LABELS.map((m, i) => (
+                      <option key={i} value={i + 1}>{m}</option>
+                    ))}
+                  </Select>
+                </div>
+              ) : null}
+              <Button variant="secondary" size="sm" onClick={addBrkRow}>Add row</Button>
+            </div>
           </div>
           <div>
             {brkDrafts.map((d, idx) => (
@@ -470,7 +538,7 @@ export function AdminDataClient({
               <div className="p-8">
                 <EmptyState
                   icon={FileSpreadsheet}
-                  title={`No breakdown rows for ${year}`}
+                  title={`No breakdown rows for ${selectedBreakdownPeriod}`}
                   description="Add the first row to begin entering the composition for this metric."
                   action={<Button variant="secondary" onClick={addBrkRow}>Add row</Button>}
                 />

@@ -1,5 +1,5 @@
 import { redirect } from "next/navigation";
-import { getSession } from "@/lib/session";
+import { getCurrentUserReadOnly } from "@/lib/session";
 import { AppShell } from "@/components/AppShell";
 import { AdminDataClient } from "./AdminDataClient";
 import {
@@ -13,9 +13,10 @@ import { getDb } from "@/lib/db";
 export const dynamic = "force-dynamic";
 
 export default async function AdminDataPage() {
-  const session = await getSession();
-  if (!session.user) redirect("/login");
-  if (session.user.role !== "admin") redirect("/dashboard/overview");
+  const user = await getCurrentUserReadOnly();
+  if (!user) redirect("/login");
+  if (user.must_change_password) redirect("/setup-password");
+  if (user.role !== "admin") redirect("/dashboard/overview");
 
   const db = getDb();
   const metaRow = db.prepare("SELECT value FROM meta WHERE key = 'sample_data'").get() as
@@ -25,7 +26,7 @@ export default async function AdminDataPage() {
   const breakdowns = listBreakdowns();
 
   return (
-    <AppShell user={session.user}>
+    <AppShell user={user}>
       <AdminDataClient
         kpis={listKPIs()}
         categories={listCategories()}

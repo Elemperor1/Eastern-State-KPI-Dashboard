@@ -1,5 +1,5 @@
 import { redirect } from "next/navigation";
-import { getSession } from "@/lib/session";
+import { getCurrentUserReadOnly } from "@/lib/session";
 import { AppShell } from "@/components/AppShell";
 import { CategoryPageClient } from "./CategoryPageClient";
 import { loadDashboardData } from "@/lib/dashboard-data";
@@ -17,8 +17,9 @@ export default async function CategoryPage({
 }) {
   const { slug } = await params;
   const sp = await searchParams;
-  const session = await getSession();
-  if (!session.user) redirect("/login");
+  const user = await getCurrentUserReadOnly();
+  if (!user) redirect("/login");
+  if (user.must_change_password) redirect("/setup-password");
 
   const data = loadDashboardData();
   const category = getCategoryBySlug(slug);
@@ -40,7 +41,7 @@ export default async function CategoryPage({
   };
 
   return (
-    <AppShell user={session.user}>
+    <AppShell user={user}>
       <CategoryPageClient data={data} categorySlug={slug} initialState={initialState} />
     </AppShell>
   );

@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 import { verifyCredentials } from "@/lib/auth";
 import { getSession, AuthError } from "@/lib/session";
+import { ensureCsrfCookie } from "@/lib/request-guard";
 import {
   clearFailures,
   lockedMsRemaining,
@@ -124,8 +125,28 @@ export async function POST(req: NextRequest) {
 
     const session = await getSession();
     session.user = user;
+    // Stamp the issuance time so getCurrentUser() can invalidate this
+    // session when a security-sensitive account change bumps
+    // sessions_valid_after past it (D8AD-CAN-003 req 2 + req 5).
+    // Date.now() >= the user's current sessions_valid_after watermark
+    // by construction (login happens after any prior change), so the
+    // session is valid immediately.
+    session.issuedAt = Date.now();
     await session.save();
-    return NextResponse.json({ user });
+    // Tell the client whether the just-authenticated account still owes
+    // a password rotation. The login page routes the user to the forced
+    // /setup-password page instead of the dashboard when this is true,
+    // so a bootstrap/admin-issued temp credential cannot be used as a
+    // permanent login.
+    const res = NextResponse.json({
+      user,
+      mustChangePassword: user.must_change_password,
+    });
+    // Issue the double-submit CSRF cookie (D8AD-CAN-004 hardening).
+    // The client echoes its value in the X-CSRF-Token header on every
+    // mutation; the request guard compares header to cookie.
+    ensureCsrfCookie(req, res);
+    return res;
   } catch (err) {
     if (err instanceof AuthError) {
       return NextResponse.json({ error: err.message }, { status: err.status });

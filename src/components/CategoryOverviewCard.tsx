@@ -31,6 +31,30 @@ function metricYoYPct(
   currentMonth: number,
 ): { pct: number | null; favorable: boolean; delta: number } {
   if (kpi.unit_type === "breakdown") {
+    const isMonthly = breakdowns.some((b) => b.kpi_id === kpi.id && b.month > 0);
+    if (isMonthly) {
+      // Monthly breakdown (e.g. percent-cultivated-donors): compute
+      // donor conversion rate for YTD months in each year.
+      function conversionRate(year: number): number | null {
+        let referred = 0;
+        let donors = 0;
+        const months = Math.min(currentMonth, 12);
+        for (let m = 1; m <= months; m++) {
+          const r = breakdowns.find((b) => b.kpi_id === kpi.id && b.year === year && b.month === m && b.label === "Referred");
+          const d = breakdowns.find((b) => b.kpi_id === kpi.id && b.year === year && b.month === m && b.label === "Donors");
+          referred += r?.value ?? 0;
+          donors += d?.value ?? 0;
+        }
+        return referred > 0 ? (donors / referred) * 100 : null;
+      }
+      const curPct = conversionRate(currentYear);
+      const cmpPct = conversionRate(compareYear);
+      const delta = curPct !== null && cmpPct !== null ? curPct - cmpPct : null;
+      const pct = delta !== null ? delta : null;
+      const deltaAbs = delta ?? 0;
+      return { pct, favorable: isFavorable(kpi.direction, deltaAbs), delta: deltaAbs };
+    }
+    // Annual breakdown: compare total sum across labels.
     const cur = breakdowns.filter((b) => b.kpi_id === kpi.id && b.year === currentYear);
     const cmp = breakdowns.filter((b) => b.kpi_id === kpi.id && b.year === compareYear);
     const curTotal = cur.reduce((s, b) => s + b.value, 0);

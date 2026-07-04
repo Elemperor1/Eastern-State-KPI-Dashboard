@@ -36,12 +36,17 @@ Before starting, complete these one-time steps:
    `AUTH_DISABLED=true`.
 
    ```bash
-   # Bypass mode (current default, dev server only)
-   AUTH_DISABLED=true node_modules/.bin/next dev -p 3290 &
+   # Bypass mode (current default, dev server only — loopback-bound):
+   AUTH_DISABLED=true PORT=3290 npm run dev &
 
    # Normal-auth mode (login form appears)
    AUTH_DISABLED=false PORT=3290 node_modules/.bin/next start -p 3290 &
    ```
+
+   `npm run dev` (`scripts/dev.sh`) binds `next dev` to `127.0.0.1`
+   automatically when `AUTH_DISABLED` is set, and `src/lib/auth-flag.ts`
+   refuses startup if the bypass is enabled on a non-loopback bind. Do
+   not run `next dev` directly with `AUTH_DISABLED=true` on `0.0.0.0`.
 
    In bypass mode, `getSession()` returns the real `auth-disabled@local` admin
    row from `users` so `/` redirects straight to
@@ -74,20 +79,33 @@ Before starting, complete these one-time steps:
 
 1. Visit `/`.
 2. If `AUTH_DISABLED=true`: observe the redirect.
-3. If `AUTH_DISABLED=false`: visit `/login`, enter the admin credentials
-   printed by `ensureSeedAdmin()` to stdout on first run, submit.
+3. If `AUTH_DISABLED=false`: provision a known admin credential first
+   (`BOOTSTRAP_ADMIN_PASSWORD=... npm run db:seed`, or
+   `SETUP_ADMIN_PASSWORD=... npm run setup:admin` — see
+   `docs/operator-provisioning.md`), then visit `/login` and enter those
+   credentials. **Do not look for a password in the server's stdout** —
+   `ensureSeedAdmin()` no longer prints any plaintext (D8AD-CAN-001). On a
+   fresh bootstrap account the login will redirect to `/setup-password` to
+   force a rotation before reaching the dashboard.
 
 **Expected outcome.**
 
 - Bypass mode: `/` 302-redirects to `/dashboard/overview`; the dashboard renders
   without a login prompt. The `AccountBlock` in the left nav is **not**
   rendered (no Logout button).
-- Normal-auth mode: the form returns the user to `/dashboard/overview` on
-  success; `/api/auth/me` then returns `{ id, email, name, role: "admin" }`.
+- Normal-auth mode (bootstrap account still flagged `must_change_password`):
+  the login succeeds but redirects to `/setup-password`, not the dashboard,
+  until the temporary credential is replaced.
+- Normal-auth mode (credential already rotated): the form returns the user to
+  `/dashboard/overview` on success; `/api/auth/me` then returns
+  `{ id, email, name, role: "admin" }`.
 - A wrong password (normal-auth mode) renders the in-form error: "Invalid
   email or password." (Or whatever the API message is — verify it is
   identical for unknown email vs wrong password, to avoid leaking which
   one matched.)
+- **Secrecy check:** scan the server stdout/stderr from the seed and login
+  for the known credential — it must never appear. (`src/lib/auth-secrecy.test.ts`
+  automates this for `db:seed` and `setup:admin`.)
 
 **Screenshot placeholder.** `[Insert screenshot: dashboard after redirect / login form]`
 
@@ -342,20 +360,28 @@ known gap if it doesn't appear). If `AUTH_DISABLED=true` is active, the
 
 **Action.**
 
-1. With `AUTH_DISABLED=false`, log in as the admin whose password
-   `ensureSeedAdmin()` printed to stdout on first run.
+1. With `AUTH_DISABLED=false`, provision and log in as an admin whose
+   credential you set out-of-band via `BOOTSTRAP_ADMIN_PASSWORD` or
+   `npm run setup:admin` (never via a stdout password line — that flow
+   was removed in D8AD-CAN-001). A freshly seeded bootstrap account will
+   land on `/setup-password`; use that forced-rotation page, or the
+   side-nav affordance below on an already-rotated account.
 2. Look in the side nav `AccountBlock` for a "Change password" affordance.
 3. If present: enter current password + new password (8+ chars). Submit.
 4. Log out, log back in with the new password. Confirm success.
 
 **Expected outcome.**
 
-- **If the self-service change UI is implemented:** current-password check
+- **Forced rotation (`/setup-password`):** on a `must_change_password`
+  account, login and every protected page redirect to `/setup-password`;
+  `requireSession`/`requireAdmin` return HTTP 403 until a new password is
+  set. After a successful change, `must_change_password` clears and the
+  dashboard is reachable.
+- **Self-service change (`AccountBlock`):** current-password check
   passes, new password replaces the bcrypt hash, login works with the new
   password.
-- **If not implemented (current state):** the side nav only offers Logout;
-  note this as a known gap and proceed. Self-service change is a
-  recommended follow-up.
+- **If not implemented:** the side nav only offers Logout; note this as a
+  known gap and proceed.
 
 **Screenshot placeholder.** `[Insert screenshot: AccountBlock showing Change password OR Logout-only]`
 

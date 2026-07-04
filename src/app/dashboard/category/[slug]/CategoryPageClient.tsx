@@ -6,6 +6,7 @@ import { LegacyExportPDFButton } from "@/components/LegacyExportPDFButton";
 import { DashboardControls, type CompareState } from "@/components/DashboardControls";
 import { MetricCard } from "@/components/MetricCard";
 import { BreakdownChart } from "@/components/BreakdownChart";
+import { DonorConversionCard } from "@/components/DonorConversionCard";
 import { Breadcrumb, Card, ExportCSVButton, PageHeader, PrintButton } from "@/components/ui";
 import { SampleDataBadge } from "@/components/SampleDataBadge";
 import { buildKPIAnalytics, CHART_COLORS, MONTH_FULL } from "@/lib/analytics";
@@ -34,6 +35,16 @@ export function CategoryPageClient({
     [data.kpis, categorySlug],
   );
 
+  // Build a kpi_id -> goal lookup for the selected year.
+  const goalsByKpiId = useMemo(() => {
+    const map = new Map(
+      data.goals
+        .filter((g) => g.target_year === state.currentYear)
+        .map((g) => [g.kpi_id, g]),
+    );
+    return map;
+  }, [data.goals, state.currentYear]);
+
   function updateState(next: Partial<CompareState>) {
     const merged = { ...state, ...next };
     setState(merged);
@@ -48,6 +59,12 @@ export function CategoryPageClient({
 
   const monthlyKpis = catKpis.filter((k) => k.unit_type !== "breakdown");
   const breakdownKpis = catKpis.filter((k) => k.unit_type === "breakdown");
+  const monthlyBreakdownKpis = breakdownKpis.filter((k) =>
+    data.breakdowns.some((b) => b.kpi_id === k.id && b.month > 0),
+  );
+  const annualBreakdownKpis = breakdownKpis.filter((k) =>
+    !data.breakdowns.some((b) => b.kpi_id === k.id && b.month > 0),
+  );
 
   function analyticsFor(kpi: KPIWithCategory) {
     const kpiEntries = data.entries.filter((e) => e.kpi_id === kpi.id);
@@ -114,9 +131,9 @@ export function CategoryPageClient({
       csvRows.push({
         KPI: kpi.name,
         Unit: kpi.unit_type,
-        Reporting: "breakdown",
+        Reporting: r.month > 0 ? "monthly breakdown" : "breakdown",
         Year: r.year,
-        Period: r.label,
+        Period: r.month > 0 ? `${MONTH_FULL[r.month - 1]} - ${r.label}` : r.label,
         Value: r.value,
         Compare_Value: "",
         Notes: "",
@@ -179,6 +196,7 @@ export function CategoryPageClient({
                     analytics={analytics}
                     accentColor={CHART_COLORS[idx % CHART_COLORS.length]}
                     onSelect={() => router.push(`/dashboard/metric/${kpi.slug}`)}
+                    goal={goalsByKpiId.get(kpi.id) ?? null}
                   />
                 );
               })}
@@ -186,19 +204,42 @@ export function CategoryPageClient({
           </section>
         ) : null}
 
-        {breakdownKpis.length > 0 ? (
+        {monthlyBreakdownKpis.length > 0 ? (
+          <section className="mb-10 space-y-6">
+            <div className="section-head">
+              <p className="section-eyebrow">Monthly breakdowns</p>
+              <h2 className="section-title">
+                Through {MONTH_FULL[state.currentMonth - 1]} {state.currentYear}
+              </h2>
+            </div>
+            {monthlyBreakdownKpis.map((kpi) => (
+              <Card key={kpi.id} className="p-5 lg:p-6">
+                <DonorConversionCard
+                  kpi={kpi}
+                  data={data.breakdowns.filter((b) => b.kpi_id === kpi.id)}
+                  currentYear={state.currentYear}
+                  compareYear={state.compareYear}
+                  currentMonth={state.currentMonth}
+                />
+              </Card>
+            ))}
+          </section>
+        ) : null}
+
+        {annualBreakdownKpis.length > 0 ? (
           <section className="mb-10 space-y-6">
             <div className="section-head">
               <p className="section-eyebrow">Breakdowns</p>
               <h2 className="section-title">Composition metrics</h2>
             </div>
-            {breakdownKpis.map((kpi) => (
+            {annualBreakdownKpis.map((kpi) => (
               <Card key={kpi.id} className="p-5 lg:p-6">
                 <BreakdownChart
                   kpi={kpi}
                   data={data.breakdowns.filter(
                     (b) =>
                       b.kpi_id === kpi.id &&
+                      b.month === 0 &&
                       (b.year === state.currentYear || b.year === state.compareYear),
                   )}
                   currentYear={state.currentYear}

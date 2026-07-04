@@ -5,6 +5,7 @@ import { usePathname } from "next/navigation";
 import { useState } from "react";
 import {
   BarChart3,
+  Crosshair,
   History,
   LayoutDashboard,
   Menu,
@@ -22,6 +23,7 @@ const NAV = [
   { href: "/dashboard/trends", label: "Trends", icon: TrendingUp, group: "Explore" },
   { href: "/admin/data", label: "Data entry", icon: BarChart3, adminOnly: true, group: "Manage" },
   { href: "/admin/kpis", label: "KPIs", icon: Settings, adminOnly: true, group: "Manage" },
+  { href: "/admin/goals", label: "Goals", icon: Crosshair, adminOnly: true, group: "Manage" },
   { href: "/admin/history", label: "History", icon: History, adminOnly: true, group: "Manage" },
   { href: "/admin/users", label: "Team", icon: Users, adminOnly: true, group: "Manage" },
 ];
