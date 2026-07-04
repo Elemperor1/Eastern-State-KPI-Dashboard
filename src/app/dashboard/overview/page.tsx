@@ -1,5 +1,5 @@
 import { redirect } from "next/navigation";
-import { getCurrentUser } from "@/lib/session";
+import { getCurrentUserReadOnly } from "@/lib/session";
 import { AppShell } from "@/components/AppShell";
 import { DashboardOverviewClient } from "./DashboardOverviewClient";
 import { loadDashboardData } from "@/lib/dashboard-data";
@@ -13,7 +13,7 @@ export default async function DashboardOverviewPage({
   searchParams: Promise<Record<string, string | string[] | undefined>>;
 }) {
   const sp = await searchParams;
-  const user = await getCurrentUser();
+  const user = await getCurrentUserReadOnly();
   if (!user) redirect("/login");
   if (user.must_change_password) redirect("/setup-password");
 

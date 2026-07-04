@@ -1,5 +1,5 @@
 import { redirect } from "next/navigation";
-import { getCurrentUser } from "@/lib/session";
+import { getCurrentUserReadOnly } from "@/lib/session";
 import { AppShell } from "@/components/AppShell";
 import { MetricDetailClient } from "./MetricDetailClient";
 import { loadDashboardData } from "@/lib/dashboard-data";
@@ -17,7 +17,7 @@ export default async function MetricDetailPage({
 }) {
   const { slug } = await params;
   const sp = await searchParams;
-  const user = await getCurrentUser();
+  const user = await getCurrentUserReadOnly();
   if (!user) redirect("/login");
   if (user.must_change_password) redirect("/setup-password");
 

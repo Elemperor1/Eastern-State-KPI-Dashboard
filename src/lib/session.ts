@@ -180,6 +180,41 @@ export async function getCurrentUser(): Promise<SessionUser | null> {
   return synced;
 }
 
+/**
+ * Read-only variant of getCurrentUser for server components.
+ *
+ * In Next.js 15, `cookies()` from `next/headers` returns
+ * `ReadonlyRequestCookies` when called in a server component — calling
+ * `.set()` or `.delete()` on it throws.  getCurrentUser() calls
+ * session.save() and session.destroy() to sync role/name and clear
+ * revoked cookies, which is only legal in a Route Handler or Server
+ * Action.
+ *
+ * This variant performs the same DB-backed revocation checks (deleted,
+ * disabled, sessions_valid_after watermark) so a stale or revoked
+ * session returns null → the page redirects to /login.  It never
+ * touches the cookie, so cookie cleanup happens on the next Route
+ * Handler call (API route, login, logout) instead.  The stale cookie
+ * is overwritten on re-login, so there is no practical security gap.
+ */
+export async function getCurrentUserReadOnly(): Promise<SessionUser | null> {
+  if (AUTH_DISABLED) return getBypassUser();
+  const session = await getSession();
+  if (!session.user) return null;
+  const dbUser = findUserById(session.user.id);
+  if (!dbUser) return null;
+  if (dbUser.disabled) return null;
+  const issuedAt = session.issuedAt ?? 0;
+  if (issuedAt < dbUser.sessions_valid_after) return null;
+  return {
+    id: dbUser.id,
+    email: dbUser.email,
+    name: dbUser.name,
+    role: dbUser.role,
+    must_change_password: dbUser.must_change_password,
+  };
+}
+
 /** Throw 401-style helpers for route handlers. */
 export async function requireSession(): Promise<SessionUser> {
   const user = await getCurrentUser();

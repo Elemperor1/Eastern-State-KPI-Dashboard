@@ -1,5 +1,5 @@
 import { redirect } from "next/navigation";
-import { getCurrentUser } from "@/lib/session";
+import { getCurrentUserReadOnly } from "@/lib/session";
 import { AppShell } from "@/components/AppShell";
 import { listCategories, listEntryHistory, listKPIs } from "@/lib/repository";
 import { HistoryClient } from "./HistoryClient";
@@ -11,7 +11,7 @@ export default async function HistoryPage({
 }: {
   searchParams: Promise<{ kpi_id?: string; category_id?: string; year?: string }>;
 }) {
-  const user = await getCurrentUser();
+  const user = await getCurrentUserReadOnly();
   if (!user) redirect("/login");
   if (user.must_change_password) redirect("/setup-password");
   if (user.role !== "admin") redirect("/dashboard/overview");
