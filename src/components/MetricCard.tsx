@@ -1,8 +1,8 @@
 "use client";
 
-import { AlertTriangle, ArrowDownRight, ArrowUpRight, Minus } from "lucide-react";
-import { Badge, CardAction } from "@/components/ui";
-import type { KPIAnalytics } from "@/lib/types";
+import { AlertTriangle, ArrowDownRight, ArrowUpRight, Crosshair, Minus } from "lucide-react";
+import { Badge, CardAction, Progress } from "@/components/ui";
+import type { KPIAnalytics, KpiGoalWithMeta } from "@/lib/types";
 import { formatDelta, formatValue, isFavorable, MONTH_FULL } from "@/lib/analytics";
 
 interface Props {
@@ -11,9 +11,10 @@ interface Props {
   onSelect?: () => void;
   selected?: boolean;
   basis?: "monthly" | "ytd";
+  goal?: KpiGoalWithMeta | null;
 }
 
-export function MetricCard({ analytics, accentColor, onSelect, selected, basis = "monthly" }: Props) {
+export function MetricCard({ analytics, accentColor, onSelect, selected, basis = "monthly", goal }: Props) {
   const { kpi } = analytics;
   const comp = basis === "ytd" ? analytics.ytdComparison : analytics.monthlyComparison;
   const isEmpty = comp.isEmpty;
@@ -84,11 +85,22 @@ export function MetricCard({ analytics, accentColor, onSelect, selected, basis =
           </Badge>
           <span className="truncate text-sm text-ink-500">vs {comp.compareYear}</span>
         </div>
-        {!isEmpty ? (
-          <div className="shrink-0 text-sm font-medium tabular text-ink-700">
-            {formatDelta(comp.delta, kpi.unit_type)}
-          </div>
-        ) : null}
+        <div className="flex items-center gap-3">
+          {goal && goal.progress_pct !== null ? (
+            <div className="flex items-center gap-1.5" title={`Goal: +${goal.target_value}${goal.goal_type === "pct" ? "%" : ""} → ${goal.goal_target?.toLocaleString(undefined, { maximumFractionDigits: 1 })}`}>
+              <Crosshair className="size-3 text-ink-400" aria-hidden />
+              <Progress value={Math.round(goal.progress_pct)} className="w-10" />
+              <span className="text-xs tabular text-ink-500 min-w-[2.5ch]">
+                {Math.round(goal.progress_pct)}%
+              </span>
+            </div>
+          ) : null}
+          {!isEmpty ? (
+            <div className="shrink-0 text-sm font-medium tabular text-ink-700">
+              {formatDelta(comp.delta, kpi.unit_type)}
+            </div>
+          ) : null}
+        </div>
       </div>
     </CardAction>
   );

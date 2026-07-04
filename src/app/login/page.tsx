@@ -28,7 +28,15 @@ export default function LoginPage() {
         setLoading(false);
         return;
       }
-      router.push("/dashboard");
+      const data = await response.json().catch(() => ({}));
+      // A bootstrap / admin-issued temp credential must be rotated
+      // before the user reaches the dashboard. Route them to the
+      // forced change-password page instead.
+      if (data.mustChangePassword) {
+        router.push("/setup-password");
+      } else {
+        router.push("/dashboard");
+      }
       router.refresh();
     } catch (caught) {
       console.error(caught);

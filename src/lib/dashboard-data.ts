@@ -3,12 +3,14 @@ import {
   listEntries,
   listKPIs,
   listBreakdowns,
+  listGoals,
 } from "./repository";
 import { getDb } from "./db";
 import type {
   BreakdownEntryWithMeta,
   Category,
   KPIWithCategory,
+  KpiGoalWithMeta,
   MonthlyEntryWithMeta,
 } from "./types";
 
@@ -17,6 +19,7 @@ export interface DashboardData {
   kpis: KPIWithCategory[];
   entries: MonthlyEntryWithMeta[];
   breakdowns: BreakdownEntryWithMeta[];
+  goals: KpiGoalWithMeta[];
   years: number[];
   sampleData: boolean;
 }
@@ -32,11 +35,13 @@ export function loadDashboardData(): DashboardData {
       ...listBreakdowns().map((b) => b.year),
     ]),
   ).sort((a, b) => a - b);
+  const latestYear = years.length > 0 ? Math.max(...years) : new Date().getFullYear();
   return {
     categories: listCategories(),
     kpis: listKPIs(),
     entries: listEntries(),
     breakdowns: listBreakdowns(),
+    goals: listGoals({ enabledOnly: true, year: latestYear }),
     years,
     sampleData: metaRow?.value === "1",
   };

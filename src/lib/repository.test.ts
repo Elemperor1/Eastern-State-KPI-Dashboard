@@ -185,7 +185,7 @@ describe("upsertEntry / upsertBreakdown audit integrity", () => {
     const h = lastHistory("breakdown");
     expect(h).toBeDefined();
     expect(h!.kpi_id).toBe(kpiA);
-    expect(h!.month_or_label).toBe("Group A");
+    expect(h!.month_or_label).toBe("0|Group A");
     expect(h!.new_value).toBe(42);
     expect(h!.prev_value).toBe(10);
   });

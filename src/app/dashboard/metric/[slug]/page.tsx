@@ -1,5 +1,5 @@
 import { redirect } from "next/navigation";
-import { getSession } from "@/lib/session";
+import { getCurrentUser } from "@/lib/session";
 import { AppShell } from "@/components/AppShell";
 import { MetricDetailClient } from "./MetricDetailClient";
 import { loadDashboardData } from "@/lib/dashboard-data";
@@ -17,8 +17,9 @@ export default async function MetricDetailPage({
 }) {
   const { slug } = await params;
   const sp = await searchParams;
-  const session = await getSession();
-  if (!session.user) redirect("/login");
+  const user = await getCurrentUser();
+  if (!user) redirect("/login");
+  if (user.must_change_password) redirect("/setup-password");
 
   const data = loadDashboardData();
   const kpi = getKPIBySlug(slug);
@@ -40,7 +41,7 @@ export default async function MetricDetailPage({
   };
 
   return (
-    <AppShell user={session.user}>
+    <AppShell user={user}>
       <MetricDetailClient data={data} kpiSlug={slug} initialState={initialState} />
     </AppShell>
   );

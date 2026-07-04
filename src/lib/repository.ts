@@ -5,7 +5,10 @@ import type {
   Category,
   Direction,
   EntryHistoryWithMeta,
+  GoalType,
   KPI,
+  KpiGoal,
+  KpiGoalWithMeta,
   KPIWithCategory,
   MonthlyEntry,
   MonthlyEntryWithMeta,
@@ -206,7 +209,85 @@ export function updateCategory(
   db.prepare(`UPDATE categories SET ${fields.join(", ")} WHERE id = ?`).run(...values);
 }
 
+/**
+ * Thrown when an admin attempts to delete a KPI or category that still has
+ * dependent live entries. Deleting metadata with live entries used to
+ * cascade silently (ON DELETE CASCADE) and destroy the underlying monthly /
+ * breakdown rows. D8AD-CAN-005 requires that deletion be explicit and
+ * auditable: the admin must delete the dependent entries first (each entry
+ * deletion records a tombstone audit row), at which point the metadata can
+ * be removed without hiding any data. Routes catch this and return 409.
+ */
+export class DependentEntriesError extends Error {
+  readonly code = "DEPENDENT_ENTRIES" as const;
+  readonly dependency: "kpi" | "category";
+  readonly dependents: number;
+  constructor(dependency: "kpi" | "category", dependents: number) {
+    const what = dependency === "kpi" ? "KPI" : "category";
+    super(
+      `Cannot delete ${what}: ${dependents} live entr${dependents === 1 ? "y is" : "ies are"} still referencing it. Delete the dependent entries first so their audit history is recorded.`,
+    );
+    this.name = "DependentEntriesError";
+    this.dependency = dependency;
+    this.dependents = dependents;
+  }
+}
+
+/** Number of live monthly + breakdown entries for a KPI, including entries
+ *  on its child KPIs (deleting a parent cascades to its children). */
+export function countKPIDependents(id: number): number {
+  const db = getDb();
+  const monthly = db
+    .prepare("SELECT COUNT(*) AS n FROM monthly_entries WHERE kpi_id = ?")
+    .get(id) as { n: number };
+  const breakdown = db
+    .prepare("SELECT COUNT(*) AS n FROM breakdown_entries WHERE kpi_id = ?")
+    .get(id) as { n: number };
+  // Child KPIs cascade on parent delete. Count entries on every descendant
+  // too so the guard reflects the full blast radius, not just this row.
+  const childMonthly = db
+    .prepare(
+      `SELECT COUNT(*) AS n FROM monthly_entries
+       WHERE kpi_id IN (SELECT id FROM kpis WHERE parent_id = ?)`,
+    )
+    .get(id) as { n: number };
+  const childBreakdown = db
+    .prepare(
+      `SELECT COUNT(*) AS n FROM breakdown_entries
+       WHERE kpi_id IN (SELECT id FROM kpis WHERE parent_id = ?)`,
+    )
+    .get(id) as { n: number };
+  return (
+    Number(monthly.n) +
+    Number(breakdown.n) +
+    Number(childMonthly.n) +
+    Number(childBreakdown.n)
+  );
+}
+
+/** Total live entries across every KPI in a category (cascade blast radius). */
+export function countCategoryDependents(id: number): number {
+  const db = getDb();
+  const monthly = db
+    .prepare(
+      `SELECT COUNT(*) AS n FROM monthly_entries
+       WHERE kpi_id IN (SELECT id FROM kpis WHERE category_id = ?)`,
+    )
+    .get(id) as { n: number };
+  const breakdown = db
+    .prepare(
+      `SELECT COUNT(*) AS n FROM breakdown_entries
+       WHERE kpi_id IN (SELECT id FROM kpis WHERE category_id = ?)`,
+    )
+    .get(id) as { n: number };
+  return Number(monthly.n) + Number(breakdown.n);
+}
+
 export function deleteCategory(id: number): void {
+  const dependents = countCategoryDependents(id);
+  if (dependents > 0) {
+    throw new DependentEntriesError("category", dependents);
+  }
   const db = getDb();
   db.prepare("DELETE FROM categories WHERE id = ?").run(id);
 }
@@ -358,6 +439,17 @@ export function updateKPI(
 }
 
 export function deleteKPI(id: number): void {
+  // D8AD-CAN-005: refuse to delete a KPI that still has live entries (or
+  // child KPIs with live entries). The schema's ON DELETE CASCADE would
+  // otherwise silently destroy the underlying monthly/breakdown rows
+  // without recording an audit trail for the loss. Forcing the admin to
+  // delete the entries first means each removal is recorded in
+  // entry_history with a tombstone (new_value = NULL) and the KPI can
+  // then be deleted without hiding any data.
+  const dependents = countKPIDependents(id);
+  if (dependents > 0) {
+    throw new DependentEntriesError("kpi", dependents);
+  }
   const db = getDb();
   db.prepare("DELETE FROM kpis WHERE id = ?").run(id);
 }
@@ -402,6 +494,18 @@ export function listEntries(filter?: {
   return rows.map(asEntryWithMeta);
 }
 
+/**
+ * Sentinel slug/name used when a KPI/category snapshot column is NULL
+ * (legacy migrated row whose metadata was already deleted, or a seed write
+ * with no metadata). The history endpoint renders this distinctly — it is
+ * the "deleted metadata" tombstone, not a real label.
+ *
+ * D8AD-CAN-005: see db.ts migrateEntryHistorySnapshots.
+ */
+function snapshotString(value: unknown): string | null {
+  return value == null ? null : String(value);
+}
+
 function recordHistory(input: {
   entry_type: "monthly" | "breakdown";
   entry_id: number | null;
@@ -415,11 +519,47 @@ function recordHistory(input: {
   changed_by: number | null;
 }): void {
   const db = getDb();
+  // D8AD-CAN-005: capture the CURRENT KPI/category/user metadata as an
+  // immutable snapshot in the same transaction as the change. This freezes
+  // the human-readable label at the moment of the edit, so a later rename
+  // or delete of the KPI/category cannot retroactively rewrite or hide the
+  // audit row. If the KPI was somehow already gone (shouldn't happen for a
+  // normal entry write — the FK on monthly_entries/breakdown_entries would
+  // have prevented the upsert) the snapshot columns stay NULL and the row
+  // renders as a deleted-metadata tombstone.
+  const meta = db
+    .prepare(
+      `SELECT k.name as kpi_name, k.slug as kpi_slug, k.unit as kpi_unit,
+              k.category_id as category_id,
+              c.name as category_name, c.slug as category_slug
+       FROM kpis k
+       LEFT JOIN categories c ON c.id = k.category_id
+       WHERE k.id = ?`,
+    )
+    .get(input.kpi_id) as
+    | {
+        kpi_name: string | null;
+        kpi_slug: string | null;
+        kpi_unit: string | null;
+        category_id: number | null;
+        category_name: string | null;
+        category_slug: string | null;
+      }
+    | undefined;
+  const actorEmail = input.changed_by == null
+    ? null
+    : snapshotString(
+        (db.prepare("SELECT email FROM users WHERE id = ?").get(input.changed_by) as
+          | { email: string }
+          | undefined)?.email,
+      );
   db.prepare(
     `INSERT INTO entry_history
        (entry_type, entry_id, kpi_id, year, month_or_label,
-        prev_value, new_value, prev_notes, new_notes, changed_by, changed_at)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'))`,
+        prev_value, new_value, prev_notes, new_notes, changed_by, changed_at,
+        kpi_name, kpi_slug, kpi_unit, category_id, category_name, category_slug,
+        changed_by_email)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'), ?, ?, ?, ?, ?, ?, ?)`,
   ).run(
     input.entry_type,
     input.entry_id,
@@ -431,6 +571,13 @@ function recordHistory(input: {
     input.prev_notes,
     input.new_notes,
     input.changed_by,
+    snapshotString(meta?.kpi_name),
+    snapshotString(meta?.kpi_slug),
+    snapshotString(meta?.kpi_unit),
+    meta?.category_id == null ? null : Number(meta.category_id),
+    snapshotString(meta?.category_name),
+    snapshotString(meta?.category_slug),
+    actorEmail,
   );
 }
 
@@ -556,6 +703,7 @@ function asBreakdown(row: Record<string, unknown>): BreakdownEntry {
     id: Number(row.id),
     kpi_id: Number(row.kpi_id),
     year: Number(row.year),
+    month: Number(row.month ?? 0),
     label: String(row.label),
     value: Number(row.value),
     sort_order: Number(row.sort_order ?? 0),
@@ -582,6 +730,7 @@ export function listBreakdowns(filter?: {
   category_id?: number;
   year?: number;
   years?: number[];
+  month?: number;
 }): BreakdownEntryWithMeta[] {
   const db = getDb();
   const where: string[] = [];
@@ -602,6 +751,10 @@ export function listBreakdowns(filter?: {
     where.push(`b.year IN (${filter.years.map(() => "?").join(",")})`);
     params.push(...filter.years);
   }
+  if (filter?.month !== undefined) {
+    where.push("b.month = ?");
+    params.push(filter.month);
+  }
   const sql = `
     SELECT b.*, k.name as kpi_name, k.unit as kpi_unit,
            c.id as category_id, c.name as category_name, c.slug as category_slug
@@ -609,7 +762,7 @@ export function listBreakdowns(filter?: {
     JOIN kpis k ON k.id = b.kpi_id
     JOIN categories c ON c.id = k.category_id
     ${where.length ? `WHERE ${where.join(" AND ")}` : ""}
-    ORDER BY b.year ASC, b.sort_order ASC, b.label ASC
+    ORDER BY b.year ASC, b.month ASC, b.sort_order ASC, b.label ASC
   `;
   const rows = db.prepare(sql).all(...params) as Record<string, unknown>[];
   return rows.map(asBreakdownWithMeta);
@@ -618,6 +771,7 @@ export function listBreakdowns(filter?: {
 export function upsertBreakdown(input: {
   kpi_id: number;
   year: number;
+  month?: number;
   label: string;
   value: number;
   sort_order?: number;
@@ -626,32 +780,34 @@ export function upsertBreakdown(input: {
 }): BreakdownEntry {
   // See upsertEntry for the rationale: the upsert + readback + history is
   // wrapped in a transaction, the post-write read uses the natural unique
-  // key (kpi_id, year, label) instead of `lastInsertRowid`, and a key
+  // key (kpi_id, year, month, label) instead of `lastInsertRowid`, and a key
   // mismatch throws so a wrong-row bug cannot silently corrupt the audit
   // trail.
   return transaction(() => {
     const db = getDb();
+    const month = input.month ?? 0;
     const label = input.label.trim();
     // Capture the prior row (if any) so the history log records the before-state.
     const prior = db
       .prepare(
-        "SELECT id, value, notes FROM breakdown_entries WHERE kpi_id = ? AND year = ? AND label = ?",
+        "SELECT id, value, notes FROM breakdown_entries WHERE kpi_id = ? AND year = ? AND month = ? AND label = ?",
       )
-      .get(input.kpi_id, input.year, label) as
+      .get(input.kpi_id, input.year, month, label) as
       | { id: number; value: number; notes: string | null }
       | undefined;
     db.prepare(
-      `INSERT INTO breakdown_entries (kpi_id, year, label, value, sort_order, notes, updated_by, updated_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, datetime('now'))
-       ON CONFLICT(kpi_id, year, label) DO UPDATE SET
-         value = excluded.value,
-         sort_order = excluded.sort_order,
-         notes = excluded.notes,
-         updated_by = excluded.updated_by,
-         updated_at = datetime('now')`,
+      `INSERT INTO breakdown_entries (kpi_id, year, month, label, value, sort_order, notes, updated_by, updated_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, datetime('now'))
+       ON CONFLICT(kpi_id, year, month, label) DO UPDATE SET
+        value = excluded.value,
+        sort_order = excluded.sort_order,
+        notes = excluded.notes,
+        updated_by = excluded.updated_by,
+        updated_at = datetime('now')`,
     ).run(
       input.kpi_id,
       input.year,
+      month,
       label,
       input.value,
       input.sort_order ?? 0,
@@ -660,23 +816,24 @@ export function upsertBreakdown(input: {
     );
     const row = db
       .prepare(
-        "SELECT * FROM breakdown_entries WHERE kpi_id = ? AND year = ? AND label = ?",
+        "SELECT * FROM breakdown_entries WHERE kpi_id = ? AND year = ? AND month = ? AND label = ?",
       )
-      .get(input.kpi_id, input.year, label) as
+      .get(input.kpi_id, input.year, month, label) as
       | Record<string, unknown>
       | undefined;
     if (!row) {
       throw new Error(
-        `upsertBreakdown: row not found after upsert for kpi_id=${input.kpi_id} year=${input.year} label=${label}`,
+        `upsertBreakdown: row not found after upsert for kpi_id=${input.kpi_id} year=${input.year} month=${month} label=${label}`,
       );
     }
     if (
       Number(row.kpi_id) !== input.kpi_id ||
       Number(row.year) !== input.year ||
+      Number(row.month ?? 0) !== month ||
       String(row.label) !== label
     ) {
       throw new Error(
-        `upsertBreakdown: read-back key mismatch (expected kpi=${input.kpi_id} year=${input.year} label=${label}, got kpi=${row.kpi_id} year=${row.year} label=${row.label})`,
+        `upsertBreakdown: read-back key mismatch (expected kpi=${input.kpi_id} year=${input.year} month=${month} label=${label}, got kpi=${row.kpi_id} year=${row.year} month=${row.month} label=${row.label})`,
       );
     }
     const entry = asBreakdown(row);
@@ -685,7 +842,7 @@ export function upsertBreakdown(input: {
       entry_id: entry.id,
       kpi_id: entry.kpi_id,
       year: entry.year,
-      month_or_label: entry.label,
+      month_or_label: `${month}|${entry.label}`,
       prev_value: prior?.value ?? null,
       new_value: entry.value,
       prev_notes: prior?.notes ?? null,
@@ -700,10 +857,10 @@ export function deleteBreakdown(id: number, changedBy?: number | null): void {
   const db = getDb();
   const prior = db
     .prepare(
-      "SELECT id, kpi_id, year, label, value, notes FROM breakdown_entries WHERE id = ?",
+      "SELECT id, kpi_id, year, month, label, value, notes FROM breakdown_entries WHERE id = ?",
     )
     .get(id) as
-    | { id: number; kpi_id: number; year: number; label: string; value: number; notes: string | null }
+    | { id: number; kpi_id: number; year: number; month: number; label: string; value: number; notes: string | null }
     | undefined;
   db.prepare("DELETE FROM breakdown_entries WHERE id = ?").run(id);
   if (prior) {
@@ -712,7 +869,7 @@ export function deleteBreakdown(id: number, changedBy?: number | null): void {
       entry_id: prior.id,
       kpi_id: prior.kpi_id,
       year: prior.year,
-      month_or_label: prior.label,
+      month_or_label: `${prior.month}|${prior.label}`,
       prev_value: prior.value,
       new_value: null,
       prev_notes: prior.notes,
@@ -749,11 +906,18 @@ export function listEntryHistory(filter?: {
   const where: string[] = [];
   const params: (string | number)[] = [];
   if (filter?.kpi_id !== undefined) {
+    // Filter on the snapshot kpi_id, not the live join — a history row is
+    // attributed to the KPI it described at change time and must remain
+    // filterable even after that KPI is deleted.
     where.push("h.kpi_id = ?");
     params.push(filter.kpi_id);
   }
   if (filter?.category_id !== undefined) {
-    where.push("k.category_id = ?");
+    // D8AD-CAN-005: filter on the SNAPSHOT category_id so a history row
+    // stays visible for its category even after the category (or its KPI)
+    // is deleted. Previously this used `k.category_id` from an inner join,
+    // which silently dropped rows for deleted/renamed metadata.
+    where.push("h.category_id = ?");
     params.push(filter.category_id);
   }
   if (filter?.year !== undefined) {
@@ -761,14 +925,35 @@ export function listEntryHistory(filter?: {
     params.push(filter.year);
   }
   const limit = Math.min(Math.max(filter?.limit ?? 200, 1), 1000);
+  // D8AD-CAN-005: LEFT JOIN the live KPI/category tables purely to surface
+  // the *current* name (nullable) and to compute metadata_deleted /
+  // metadata_renamed. The historical label comes from the immutable
+  // snapshot columns on entry_history itself (h.kpi_name etc.), so a
+  // missing or renamed live row never removes or rewrites the event. The
+  // users join is also LEFT so a deleted actor's snapshot email survives.
   const sql = `
     SELECT h.*,
-           k.name as kpi_name, k.slug as kpi_slug,
-           c.id as category_id, c.name as category_name, c.slug as category_slug,
-           u.email as changed_by_email
+           h.kpi_name as kpi_name,
+           h.kpi_slug as kpi_slug,
+           h.kpi_unit as kpi_unit,
+           h.category_id as category_id,
+           h.category_name as category_name,
+           h.category_slug as category_slug,
+           h.changed_by_email as changed_by_email,
+           k.name as kpi_current_name,
+           k.slug as kpi_current_slug,
+           c.name as category_current_name,
+           c.slug as category_current_slug,
+           CASE WHEN k.id IS NULL OR (h.category_id IS NOT NULL AND c.id IS NULL)
+                THEN 1 ELSE 0 END AS metadata_deleted,
+           CASE WHEN k.id IS NOT NULL AND (
+                  k.name IS NOT h.kpi_name OR k.slug IS NOT h.kpi_slug
+                  OR c.name IS NOT h.category_name OR c.slug IS NOT h.category_slug
+                )
+                THEN 1 ELSE 0 END AS metadata_renamed
     FROM entry_history h
-    JOIN kpis k ON k.id = h.kpi_id
-    JOIN categories c ON c.id = k.category_id
+    LEFT JOIN kpis k ON k.id = h.kpi_id
+    LEFT JOIN categories c ON c.id = h.category_id
     LEFT JOIN users u ON u.id = h.changed_by
     ${where.length ? `WHERE ${where.join(" AND ")}` : ""}
     ORDER BY h.changed_at DESC, h.id DESC
@@ -788,11 +973,221 @@ export function listEntryHistory(filter?: {
     new_notes: row.new_notes == null ? null : String(row.new_notes),
     changed_by: row.changed_by == null ? null : Number(row.changed_by),
     changed_at: String(row.changed_at),
+    kpi_name: row.kpi_name == null ? null : String(row.kpi_name),
+    kpi_slug: row.kpi_slug == null ? null : String(row.kpi_slug),
+    kpi_unit: row.kpi_unit == null ? null : String(row.kpi_unit),
+    category_id: row.category_id == null ? null : Number(row.category_id),
+    category_name: row.category_name == null ? null : String(row.category_name),
+    category_slug: row.category_slug == null ? null : String(row.category_slug),
+    changed_by_email: row.changed_by_email == null ? null : String(row.changed_by_email),
+    kpi_current_name: row.kpi_current_name == null ? null : String(row.kpi_current_name),
+    kpi_current_slug: row.kpi_current_slug == null ? null : String(row.kpi_current_slug),
+    category_current_name: row.category_current_name == null ? null : String(row.category_current_name),
+    category_current_slug: row.category_current_slug == null ? null : String(row.category_current_slug),
+    metadata_deleted: Number(row.metadata_deleted) === 1,
+    metadata_renamed: Number(row.metadata_renamed) === 1,
+  }));
+}
+
+// ---------- KPI Goals ----------
+
+interface GoalRow {
+  id: number;
+  kpi_id: number;
+  target_year: number;
+  goal_type: "pct" | "number";
+  target_value: number;
+  enabled: number;
+  notes: string | null;
+  created_by: number | null;
+  created_at: string;
+  updated_by: number | null;
+  updated_at: string;
+}
+
+function asGoal(row: Record<string, unknown>): GoalRow {
+  return {
+    id: Number(row.id),
+    kpi_id: Number(row.kpi_id),
+    target_year: Number(row.target_year),
+    goal_type: String(row.goal_type) as "pct" | "number",
+    target_value: Number(row.target_value),
+    enabled: Number(row.enabled ?? 1),
+    notes: row.notes == null ? null : String(row.notes),
+    created_by: row.created_by == null ? null : Number(row.created_by),
+    created_at: String(row.created_at),
+    updated_by: row.updated_by == null ? null : Number(row.updated_by),
+    updated_at: String(row.updated_at),
+  };
+}
+
+/**
+ * Compute the numeric goal target and progress for a KPI goal.
+ * For pct goals: target = current_value * (1 + goal.target_value / 100)
+ * For number goals: target = current_value + goal.target_value
+ * Returns { goal_target, progress_pct } or nulls when current_value is absent.
+ */
+function computeGoalProgress(
+  goal: { goal_type: "pct" | "number"; target_value: number },
+  currentValue: number | null,
+): { goal_target: number | null; progress_pct: number | null } {
+  if (currentValue == null) {
+    return { goal_target: null, progress_pct: null };
+  }
+  let target: number;
+  if (goal.goal_type === "pct") {
+    target = currentValue * (1 + goal.target_value / 100);
+  } else {
+    target = currentValue + goal.target_value;
+  }
+  const progress_pct = target === 0
+    ? 100
+    : Math.min(Math.round((currentValue / target) * 100), 100);
+  return { goal_target: target, progress_pct };
+}
+
+export function listGoals(opts?: { enabledOnly?: boolean; year?: number }): KpiGoalWithMeta[] {
+  const db = getDb();
+  const where: string[] = [];
+  const params: (string | number)[] = [];
+  if (opts?.enabledOnly) {
+    where.push("g.enabled = 1");
+  }
+  if (opts?.year !== undefined) {
+    where.push("g.target_year = ?");
+    params.push(opts.year);
+  }
+  const clause = where.length ? `WHERE ${where.join(" AND ")}` : "";
+  const rows = db
+    .prepare(
+      `SELECT g.*, k.name as kpi_name, k.slug as kpi_slug, k.unit as kpi_unit,
+              k.unit_type as kpi_unit_type, c.id as category_id, c.name as category_name,
+              c.slug as category_slug
+       FROM kpi_goals g
+       JOIN kpis k ON k.id = g.kpi_id
+       JOIN categories c ON c.id = k.category_id
+       ${clause}
+       ORDER BY g.target_year DESC, c.sort_order ASC, k.sort_order ASC`,
+    )
+    .all(...params) as Record<string, unknown>[];
+
+  return rows.map((row) => {
+    const g = asGoal(row);
+    // Compute current value from monthly_entries
+    const currentRow = db
+      .prepare(
+        `SELECT SUM(value) as total FROM monthly_entries
+         WHERE kpi_id = ? AND year = ? AND month > 0`,
+      )
+      .get(g.kpi_id, g.target_year) as { total: number | null } | undefined;
+    const currentValue = currentRow?.total ?? null;
+    const { goal_target, progress_pct } = computeGoalProgress(g, currentValue);
+    return {
+      ...g,
+      enabled: g.enabled === 1,
+      kpi_name: String(row.kpi_name),
+      kpi_slug: String(row.kpi_slug),
+      kpi_unit: String(row.kpi_unit ?? ""),
+      kpi_unit_type: String(row.kpi_unit_type) as import("./types").UnitType,
+      category_id: Number(row.category_id),
+      category_name: String(row.category_name),
+      category_slug: String(row.category_slug),
+      current_value: currentValue,
+      goal_target,
+      progress_pct,
+    };
+  });
+}
+
+export function getGoalByKpiAndYear(kpiId: number, year: number): KpiGoalWithMeta | null {
+  const db = getDb();
+  const row = db
+    .prepare(
+      `SELECT g.*, k.name as kpi_name, k.slug as kpi_slug, k.unit as kpi_unit,
+              k.unit_type as kpi_unit_type, c.id as category_id, c.name as category_name,
+              c.slug as category_slug
+       FROM kpi_goals g
+       JOIN kpis k ON k.id = g.kpi_id
+       JOIN categories c ON c.id = k.category_id
+       WHERE g.kpi_id = ? AND g.target_year = ?`,
+    )
+    .get(kpiId, year) as Record<string, unknown> | undefined;
+  if (!row) return null;
+  const g = asGoal(row);
+  const currentRow = db
+    .prepare(
+      `SELECT SUM(value) as total FROM monthly_entries
+       WHERE kpi_id = ? AND year = ? AND month > 0`,
+    )
+    .get(g.kpi_id, g.target_year) as { total: number | null } | undefined;
+  const currentValue = currentRow?.total ?? null;
+  const { goal_target, progress_pct } = computeGoalProgress(g, currentValue);
+  return {
+    ...g,
+    enabled: g.enabled === 1,
     kpi_name: String(row.kpi_name),
     kpi_slug: String(row.kpi_slug),
+    kpi_unit: String(row.kpi_unit ?? ""),
+    kpi_unit_type: String(row.kpi_unit_type) as import("./types").UnitType,
     category_id: Number(row.category_id),
     category_name: String(row.category_name),
     category_slug: String(row.category_slug),
-    changed_by_email: row.changed_by_email == null ? null : String(row.changed_by_email),
-  }));
+    current_value: currentValue,
+    goal_target,
+    progress_pct,
+  };
+}
+
+export function upsertGoal(input: {
+  kpi_id: number;
+  target_year: number;
+  goal_type: "pct" | "number";
+  target_value: number;
+  enabled?: boolean;
+  notes?: string | null;
+  updated_by?: number | null;
+}): GoalRow {
+  const db = getDb();
+  const enabled = input.enabled ?? true;
+  db.prepare(
+    `INSERT INTO kpi_goals (kpi_id, target_year, goal_type, target_value, enabled, notes, updated_by, updated_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?, datetime('now'))
+     ON CONFLICT(kpi_id, target_year) DO UPDATE SET
+       goal_type = excluded.goal_type,
+       target_value = excluded.target_value,
+       enabled = excluded.enabled,
+       notes = excluded.notes,
+       updated_by = excluded.updated_by,
+       updated_at = datetime('now')`,
+  ).run(
+    input.kpi_id,
+    input.target_year,
+    input.goal_type,
+    input.target_value,
+    enabled ? 1 : 0,
+    input.notes ?? null,
+    input.updated_by ?? null,
+  );
+  const row = db
+    .prepare("SELECT * FROM kpi_goals WHERE kpi_id = ? AND target_year = ?")
+    .get(input.kpi_id, input.target_year) as Record<string, unknown> | undefined;
+  if (!row) {
+    throw new Error(
+      `upsertGoal: row not found after upsert for kpi_id=${input.kpi_id} year=${input.target_year}`,
+    );
+  }
+  return asGoal(row);
+}
+
+export function toggleGoal(id: number, enabled: boolean): void {
+  const db = getDb();
+  db.prepare("UPDATE kpi_goals SET enabled = ?, updated_at = datetime('now') WHERE id = ?").run(
+    enabled ? 1 : 0,
+    id,
+  );
+}
+
+export function deleteGoal(id: number): void {
+  const db = getDb();
+  db.prepare("DELETE FROM kpi_goals WHERE id = ?").run(id);
 }

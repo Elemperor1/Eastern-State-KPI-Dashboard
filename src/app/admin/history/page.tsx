@@ -1,5 +1,5 @@
 import { redirect } from "next/navigation";
-import { getSession } from "@/lib/session";
+import { getCurrentUser } from "@/lib/session";
 import { AppShell } from "@/components/AppShell";
 import { listCategories, listEntryHistory, listKPIs } from "@/lib/repository";
 import { HistoryClient } from "./HistoryClient";
@@ -11,9 +11,10 @@ export default async function HistoryPage({
 }: {
   searchParams: Promise<{ kpi_id?: string; category_id?: string; year?: string }>;
 }) {
-  const session = await getSession();
-  if (!session.user) redirect("/login");
-  if (session.user.role !== "admin") redirect("/dashboard/overview");
+  const user = await getCurrentUser();
+  if (!user) redirect("/login");
+  if (user.must_change_password) redirect("/setup-password");
+  if (user.role !== "admin") redirect("/dashboard/overview");
 
   const params = await searchParams;
   const filter: Parameters<typeof listEntryHistory>[0] = {};
@@ -22,7 +23,7 @@ export default async function HistoryPage({
   if (params.year) filter.year = Number(params.year);
 
   return (
-    <AppShell user={session.user}>
+    <AppShell user={user}>
       <HistoryClient
         history={listEntryHistory(filter)}
         kpis={listKPIs()}

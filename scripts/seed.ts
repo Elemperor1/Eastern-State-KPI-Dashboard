@@ -46,6 +46,11 @@ interface BreakdownKpi extends KpiSpec {
   breakdown: Record<number, Record<string, number>>; // year -> { label: value }
 }
 
+interface MonthlyBreakdownKpi extends KpiSpec {
+  labels: string[];
+  monthlyBreakdown: Record<number, Record<number, Record<string, number>>>; // year -> month -> { label: value }
+}
+
 interface CategorySpec {
   slug: string;
   name: string;
@@ -54,6 +59,7 @@ interface CategorySpec {
   monthly: MonthlyKpi[];
   annual: AnnualKpi[];
   breakdown?: BreakdownKpi[];
+  monthlyBreakdown?: MonthlyBreakdownKpi[];
 }
 
 function grow(base: number[], factor: number): number[] {
@@ -385,12 +391,6 @@ const CATEGORIES: CategorySpec[] = [
     monthly: [],
     annual: [
       {
-        slug: "percent-cultivated-donors", name: "Percent of people/orgs referred to development cultivated as donors", unit: "%", unit_type: "percent",
-        reporting_frequency: "annual", direction: "higher", sort_order: 10,
-        description: "Share of referrals to development that are cultivated into donors.",
-        annual: { 2024: 41, 2025: 46, 2026: 49 },
-      },
-      {
         slug: "individual-donors", name: "Number of overall individual donors", unit: "donors", unit_type: "count",
         reporting_frequency: "annual", direction: "higher", sort_order: 20,
         description: "Total individual donors in the year.",
@@ -460,6 +460,52 @@ const CATEGORIES: CategorySpec[] = [
           2024: { "First-time donors": 620, "Returning donors": 980, "Lapsed donors": 380 },
           2025: { "First-time donors": 740, "Returning donors": 1180, "Lapsed donors": 410 },
           2026: { "First-time donors": 820, "Returning donors": 1340, "Lapsed donors": 440 },
+        },
+      },
+    ],
+    monthlyBreakdown: [
+      {
+        slug: "percent-cultivated-donors", name: "People referred to development who became donors", unit: "people", unit_type: "breakdown",
+        reporting_frequency: "monthly", direction: "higher", sort_order: 10,
+        description: "Monthly count of people referred to development and how many became donors.",
+        labels: ["Referred", "Donors"],
+        monthlyBreakdown: {
+          2024: {
+            1: { "Referred": 22, "Donors": 9 },
+            2: { "Referred": 18, "Donors": 7 },
+            3: { "Referred": 25, "Donors": 10 },
+            4: { "Referred": 30, "Donors": 13 },
+            5: { "Referred": 28, "Donors": 11 },
+            6: { "Referred": 35, "Donors": 15 },
+            7: { "Referred": 32, "Donors": 13 },
+            8: { "Referred": 26, "Donors": 10 },
+            9: { "Referred": 20, "Donors": 8 },
+            10: { "Referred": 24, "Donors": 10 },
+            11: { "Referred": 19, "Donors": 8 },
+            12: { "Referred": 15, "Donors": 6 },
+          },
+          2025: {
+            1: { "Referred": 28, "Donors": 13 },
+            2: { "Referred": 22, "Donors": 10 },
+            3: { "Referred": 32, "Donors": 15 },
+            4: { "Referred": 38, "Donors": 18 },
+            5: { "Referred": 35, "Donors": 16 },
+            6: { "Referred": 42, "Donors": 20 },
+            7: { "Referred": 40, "Donors": 18 },
+            8: { "Referred": 34, "Donors": 15 },
+            9: { "Referred": 26, "Donors": 12 },
+            10: { "Referred": 30, "Donors": 14 },
+            11: { "Referred": 24, "Donors": 11 },
+            12: { "Referred": 20, "Donors": 9 },
+          },
+          2026: {
+            1: { "Referred": 34, "Donors": 17 },
+            2: { "Referred": 28, "Donors": 14 },
+            3: { "Referred": 40, "Donors": 20 },
+            4: { "Referred": 45, "Donors": 22 },
+            5: { "Referred": 38, "Donors": 19 },
+            6: { "Referred": 42, "Donors": 20 },
+          },
         },
       },
     ],
@@ -599,6 +645,44 @@ function main() {
         }
       }
       console.log(`  - ${k.name}: breakdown ${years.join(",")}`);
+    }
+
+    // Monthly breakdown KPIs
+    for (const k of cat.monthlyBreakdown ?? []) {
+      const kpi = createKPI({
+        category_id: created.id,
+        slug: k.slug,
+        name: k.name,
+        unit: k.unit,
+        unit_type: "breakdown",
+        reporting_frequency: k.reporting_frequency,
+        direction: k.direction,
+        description: k.description,
+        sort_order: k.sort_order,
+      });
+      kpiCount++;
+      for (const year of years) {
+        const yearMap = k.monthlyBreakdown[year];
+        if (!yearMap) continue;
+        const months = Object.keys(yearMap).map(Number).sort((a, b) => a - b);
+        for (const month of months) {
+          const monthMap = yearMap[month];
+          let order = 0;
+          for (const label of k.labels) {
+            upsertBreakdown({
+              kpi_id: kpi.id,
+              year,
+              month,
+              label,
+              value: monthMap[label] ?? 0,
+              sort_order: order++,
+              notes: null,
+            });
+            entryCount++;
+          }
+        }
+      }
+      console.log(`  - ${k.name}: monthly breakdown ${years.join(",")}`);
     }
   }
 

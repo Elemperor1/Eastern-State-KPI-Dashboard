@@ -49,6 +49,12 @@ export function CategoryPageClient({
   const monthlyKpis = catKpis.filter((k) => k.unit_type !== "breakdown");
   const breakdownKpis = catKpis.filter((k) => k.unit_type === "breakdown");
 
+  // Build a kpi_id → goal lookup for the current year
+  const goalsByKpiId = useMemo(() => {
+    const map = new Map(data.goals.map((g) => [g.kpi_id, g]));
+    return map;
+  }, [data.goals]);
+
   function analyticsFor(kpi: KPIWithCategory) {
     const kpiEntries = data.entries.filter((e) => e.kpi_id === kpi.id);
     return buildKPIAnalytics({
@@ -179,6 +185,7 @@ export function CategoryPageClient({
                     analytics={analytics}
                     accentColor={CHART_COLORS[idx % CHART_COLORS.length]}
                     onSelect={() => router.push(`/dashboard/metric/${kpi.slug}`)}
+                    goal={goalsByKpiId.get(kpi.id) ?? null}
                   />
                 );
               })}

@@ -24,6 +24,7 @@ import type {
   KPIWithCategory,
   MonthlyEntryWithMeta,
 } from "@/lib/types";
+import { apiFetch } from "@/lib/api-client";
 
 interface DraftEntry {
   value: string;
@@ -61,6 +62,7 @@ export function AdminDataClient({
   const [categorySlug, setCategorySlug] = useState<string>("all");
   const [kpiSlug, setKpiSlug] = useState<string>(kpis[0]?.slug ?? "");
   const [year, setYear] = useState<number>(years[years.length - 1] ?? new Date().getFullYear());
+  const [brkMonth, setBrkMonth] = useState<number>(0);
   const [drafts, setDrafts] = useState<Record<string, DraftEntry>>({});
   const [brkDrafts, setBrkDrafts] = useState<DraftBreakdown[]>([]);
   const [feedback, setFeedback] = useState<{ message: string; variant: "success" | "error" } | null>(null);
@@ -82,16 +84,30 @@ export function AdminDataClient({
     if (!kpi) return;
     setFeedback(null);
     if (kpi.unit_type === "breakdown") {
-      const yearBrks = breakdowns.filter((b) => b.kpi_id === kpi.id && b.year === year);
-      const drafts: DraftBreakdown[] = yearBrks.map((b) => ({
-        id: b.id,
-        label: b.label,
-        value: String(b.value),
-        notes: b.notes ?? "",
-        savedValue: b.value,
-        dirty: false,
-      }));
-      setBrkDrafts(drafts);
+      const hasMonthlyBrk = breakdowns.some((b) => b.kpi_id === kpi.id && b.month > 0);
+      if (hasMonthlyBrk) {
+        const monthBrks = breakdowns.filter((b) => b.kpi_id === kpi.id && b.year === year && b.month === brkMonth);
+        const drafts: DraftBreakdown[] = monthBrks.map((b) => ({
+          id: b.id,
+          label: b.label,
+          value: String(b.value),
+          notes: b.notes ?? "",
+          savedValue: b.value,
+          dirty: false,
+        }));
+        setBrkDrafts(drafts);
+      } else {
+        const yearBrks = breakdowns.filter((b) => b.kpi_id === kpi.id && b.year === year);
+        const drafts: DraftBreakdown[] = yearBrks.map((b) => ({
+          id: b.id,
+          label: b.label,
+          value: String(b.value),
+          notes: b.notes ?? "",
+          savedValue: b.value,
+          dirty: false,
+        }));
+        setBrkDrafts(drafts);
+      }
       setDrafts({});
       return;
     }
@@ -118,7 +134,7 @@ export function AdminDataClient({
     }
     setDrafts(next);
     setBrkDrafts([]);
-  }, [kpi, year, entries, breakdowns]);
+  }, [kpi, year, entries, breakdowns, brkMonth]);
 
   function setField(month: number, patch: Partial<Omit<DraftEntry, "saved" | "dirty" | "saving">>) {
     setDrafts((prev) => {
@@ -138,16 +154,15 @@ export function AdminDataClient({
     if (draft.value === "" || Number.isNaN(Number(draft.value))) return;
     setDrafts((prev) => ({ ...prev, [String(month)]: { ...prev[String(month)], saving: true } }));
     try {
-      const res = await fetch("/api/entries", {
+      const res = await apiFetch("/api/entries", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
+        body: {
           kpi_id: kpi.id,
           year,
           month,
           value: Number(draft.value),
           notes: draft.notes || null,
-        }),
+        },
       });
       if (!res.ok) {
         const data = await res.json().catch(() => ({}));
@@ -180,14 +195,13 @@ export function AdminDataClient({
     if (!draft || draft.saved === null) return;
     setDrafts((prev) => ({ ...prev, [String(month)]: { ...prev[String(month)], saving: true } }));
     try {
-      const res = await fetch("/api/entries", {
+      const res = await apiFetch("/api/entries", {
         method: "DELETE",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
+        body: {
           kpi_id: kpi.id,
           year,
           month,
-        }),
+        },
       });
       if (!res.ok) {
         const data = await res.json().catch(() => ({}));
@@ -238,17 +252,17 @@ export function AdminDataClient({
       return copy;
     });
     try {
-      const res = await fetch("/api/breakdowns", {
+      const res = await apiFetch("/api/breakdowns", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
+        body: {
           id: d.id,
           kpi_id: kpi.id,
           year,
+          month: brkMonth || undefined,
           label: d.label.trim(),
           value: Number(d.value),
           notes: d.notes || null,
-        }),
+        },
       });
       if (!res.ok) {
         const data = await res.json().catch(() => ({}));
@@ -291,10 +305,9 @@ export function AdminDataClient({
     const d = brkDrafts[idx];
     if (!d) return;
     if (d.id !== null) {
-      const res = await fetch("/api/breakdowns", {
+      const res = await apiFetch("/api/breakdowns", {
         method: "DELETE",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ id: d.id }),
+        body: { id: d.id },
       });
       if (!res.ok) {
         setFeedback({ message: "Could not delete row.", variant: "error" });
@@ -417,7 +430,23 @@ export function AdminDataClient({
                 Breakdown · {year} · {kpi.unit}
               </p>
             </div>
-            <Button variant="secondary" size="sm" onClick={addBrkRow}>Add row</Button>
+            <div className="flex items-center gap-3">
+              {breakdowns.some((b) => b.kpi_id === kpi.id && b.month > 0) ? (
+                <div className="min-w-[120px]">
+                  <select
+                    className="w-full rounded-md border border-ink-300 bg-white px-3 py-1.5 text-xs font-medium text-ink-700 focus:outline-none focus:ring-2 focus:ring-brand-400"
+                    value={brkMonth}
+                    onChange={(e) => setBrkMonth(Number(e.target.value))}
+                  >
+                    <option value={0}>Full year</option>
+                    {MONTH_LABELS.map((m, i) => (
+                      <option key={i} value={i + 1}>{m}</option>
+                    ))}
+                  </select>
+                </div>
+              ) : null}
+              <Button variant="secondary" size="sm" onClick={addBrkRow}>Add row</Button>
+            </div>
           </div>
           <div>
             {brkDrafts.map((d, idx) => (

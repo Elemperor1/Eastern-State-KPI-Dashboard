@@ -185,10 +185,22 @@ export function HistoryClient({ history, kpis, categories, activeFilter }: Histo
                     })}
                   </td>
                   <td>
-                    <div className="font-medium text-ink-900">{row.kpi_name}</div>
-                    <div className="mt-1 flex items-center gap-2">
+                    <div className="font-medium text-ink-900">
+                      {row.kpi_name ?? <span className="text-ink-400">Deleted KPI</span>}
+                    </div>
+                    <div className="mt-1 flex flex-wrap items-center gap-2">
                       <Badge variant="default">{row.entry_type === "monthly" ? "Monthly" : "Breakdown"}</Badge>
-                      <Chip>{row.category_name}</Chip>
+                      <Chip>
+                        {row.category_name ?? "Deleted category"}
+                      </Chip>
+                      {row.metadata_deleted ? (
+                        <Badge variant="error">Metadata deleted</Badge>
+                      ) : row.metadata_renamed ? (
+                        <Badge variant="warning" title="The KPI has been renamed since this change. The label shown is the historical one.">
+                          Renamed
+                          {row.kpi_current_name ? ` → ${row.kpi_current_name}` : ""}
+                        </Badge>
+                      ) : null}
                     </div>
                   </td>
                   <td className="text-sm tabular text-ink-700">
@@ -223,7 +235,16 @@ export function HistoryClient({ history, kpis, categories, activeFilter }: Histo
 }
 
 function describePeriod(row: EntryHistoryWithMeta): string {
-  if (row.entry_type === "breakdown") return `Label: ${row.month_or_label}`;
+  if (row.entry_type === "breakdown") {
+    const parts = row.month_or_label.split("|");
+    const month = Number(parts[0]);
+    if (parts.length === 2 && Number.isFinite(month)) {
+      if (month === 0) return `Label: ${parts[1]}`;
+      const labels = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+      return `${labels[month - 1] ?? `Month ${month}`} · ${parts[1]}`;
+    }
+    return `Label: ${row.month_or_label}`;
+  }
   const month = Number(row.month_or_label);
   if (!Number.isFinite(month)) return row.month_or_label;
   if (month === 0) return "Annual";

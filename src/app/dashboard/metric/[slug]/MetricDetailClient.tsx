@@ -13,10 +13,12 @@ import {
   YAxis,
 } from "recharts";
 import { LegacyExportPDFButton } from "@/components/LegacyExportPDFButton";
+import { Crosshair } from "lucide-react";
 import { DashboardControls, type CompareState } from "@/components/DashboardControls";
 import { TrendChart } from "@/components/TrendChart";
 import { BreakdownChart } from "@/components/BreakdownChart";
-import { Breadcrumb, Card, ExportCSVButton, PageHeader, PrintButton, Table } from "@/components/ui";
+import { DonorConversionCard } from "@/components/DonorConversionCard";
+import { Breadcrumb, Card, Chip, ExportCSVButton, PageHeader, PrintButton, Progress, Table } from "@/components/ui";
 import { SampleDataBadge } from "@/components/SampleDataBadge";
 import {
   buildKPIAnalytics,
@@ -92,6 +94,10 @@ export function MetricDetailClient({
   ];
 
   const favorableMonthly = isFavorable(kpi.direction, comp.delta);
+
+  // Find the goal for this KPI in the current year
+  const goal = data.goals.find((g) => g.kpi_id === kpi.id);
+
   const printId = `metric-${kpiSlug}-print`;
 
   type TableRow = {
@@ -222,18 +228,67 @@ export function MetricDetailClient({
           </section>
         ) : null}
 
+        {goal && goal.progress_pct !== null ? (
+          <section className="mb-10">
+            <Card className="overflow-hidden p-5 lg:p-6">
+              <p className="mb-2 text-[10px] font-semibold uppercase tracking-[0.08em] text-ink-500">
+                <Crosshair className="mr-1 inline size-3" aria-hidden /> Goal
+              </p>
+              <div className="flex flex-wrap items-end justify-between gap-4">
+                <div>
+                  <p className="text-sm text-ink-600">
+                    Goal: +{goal.target_value}{goal.goal_type === "pct" ? "%" : ""}{" "}
+                    →{" "}
+                    <span className="font-semibold text-ink-900">
+                      {goal.goal_target?.toLocaleString(undefined, {
+                        maximumFractionDigits: 1,
+                      })}
+                    </span>
+                  </p>
+                </div>
+                <div className="flex items-center gap-3">
+                  <div className="min-w-[120px]">
+                    <Progress
+                      value={Math.round(goal.progress_pct)}
+                      color={goal.progress_pct >= 100 ? "var(--color-success-text)" : undefined}
+                    />
+                  </div>
+                  <span className="text-lg font-semibold tabular text-ink-900">
+                    {Math.round(goal.progress_pct)}%
+                  </span>
+                </div>
+              </div>
+              {goal.notes ? (
+                <p className="mt-2 text-xs text-ink-500">{goal.notes}</p>
+              ) : null}
+            </Card>
+          </section>
+        ) : null}
+
         {isBreakdown ? (
           <Card className="p-5 lg:p-6 mb-10">
-            <BreakdownChart
-              kpi={kpi}
-              data={data.breakdowns.filter(
-                (b) =>
-                  b.kpi_id === kpi.id &&
-                  (b.year === state.currentYear || b.year === state.compareYear),
-              )}
-              currentYear={state.currentYear}
-              compareYear={state.compareYear}
-            />
+            {kpiEntries.length === 0 && data.breakdowns.some(
+              (b) => b.kpi_id === kpi.id && b.month > 0
+            ) ? (
+              <DonorConversionCard
+                kpi={kpi}
+                data={data.breakdowns.filter((b) => b.kpi_id === kpi.id)}
+                currentYear={state.currentYear}
+                compareYear={state.compareYear}
+                currentMonth={state.currentMonth}
+              />
+            ) : (
+              <BreakdownChart
+                kpi={kpi}
+                data={data.breakdowns.filter(
+                  (b) =>
+                    b.kpi_id === kpi.id &&
+                    (b.year === state.currentYear || b.year === state.compareYear),
+                )}
+                currentYear={state.currentYear}
+                compareYear={state.compareYear}
+              />
+            )}
           </Card>
         ) : isAnnual ? (
           <Card className="p-5 lg:p-6 mb-10">

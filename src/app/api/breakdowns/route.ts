@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
-import { requireAdmin, requireSession } from "@/lib/session";
+import { authErrorResponse, requireAdmin, requireSession } from "@/lib/session";
+import { assertMutationRequest } from "@/lib/request-guard";
+import { parseYearFilters } from "@/lib/year-filter";
 import {
   deleteBreakdown,
   listBreakdowns,
@@ -10,8 +12,8 @@ import {
 export async function GET(req: NextRequest) {
   try {
     await requireSession();
-  } catch {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  } catch (err) {
+    return authErrorResponse(err);
   }
   const url = new URL(req.url);
   const filter: Parameters<typeof listBreakdowns>[0] = {};
@@ -20,13 +22,21 @@ export async function GET(req: NextRequest) {
   const categoryId = url.searchParams.get("category_id");
   if (categoryId) filter.category_id = Number(categoryId);
   const yearsParam = url.searchParams.getAll("year");
-  if (yearsParam.length) filter.years = yearsParam.map(Number);
+  const parsed = parseYearFilters(yearsParam);
+  if (!parsed.ok) {
+    return NextResponse.json(
+      { error: parsed.error },
+      { status: parsed.status },
+    );
+  }
+  if (parsed.years.length) filter.years = parsed.years;
   return NextResponse.json({ breakdowns: listBreakdowns(filter) });
 }
 
 const UpsertSchema = z.object({
   kpi_id: z.number().int().positive(),
   year: z.number().int().min(1900).max(2100),
+  month: z.number().int().min(0).max(12).optional(),
   label: z.string().min(1),
   value: z.number().finite(),
   sort_order: z.number().int().optional(),
@@ -37,9 +47,11 @@ export async function POST(req: NextRequest) {
   let sessionUser;
   try {
     sessionUser = await requireAdmin();
-  } catch {
-    return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+  } catch (err) {
+    return authErrorResponse(err);
   }
+  const guard = assertMutationRequest(req);
+  if (guard) return guard;
   const parsed = UpsertSchema.safeParse(await req.json().catch(() => ({})));
   if (!parsed.success) {
     return NextResponse.json(
@@ -57,9 +69,11 @@ export async function DELETE(req: NextRequest) {
   let sessionUser;
   try {
     sessionUser = await requireAdmin();
-  } catch {
-    return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+  } catch (err) {
+    return authErrorResponse(err);
   }
+  const guard = assertMutationRequest(req);
+  if (guard) return guard;
   const parsed = DeleteSchema.safeParse(await req.json().catch(() => ({})));
   if (!parsed.success) {
     return NextResponse.json({ error: "Invalid input" }, { status: 400 });

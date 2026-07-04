@@ -17,6 +17,7 @@ import {
   Tabs,
 } from "@/components/ui";
 import type { Category, KPIWithCategory, UnitType, ReportingFrequency, Direction } from "@/lib/types";
+import { apiFetch } from "@/lib/api-client";
 
 type Tab = "kpis" | "categories";
 
@@ -82,10 +83,9 @@ export function KPIManagerClient({
       direction: String(form.get("direction") || "higher"),
       description: String(form.get("description") || "") || null,
     };
-    const res = await fetch("/api/kpis", {
+    const res = await apiFetch("/api/kpis", {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(payload),
+      body: payload,
     });
     const data = await res.json();
     if (!res.ok) {
@@ -97,10 +97,9 @@ export function KPIManagerClient({
   }
 
   async function deleteKPI(id: number, name: string) {
-    const res = await fetch("/api/kpis", {
+    const res = await apiFetch("/api/kpis", {
       method: "DELETE",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ id }),
+      body: { id },
     });
     if (!res.ok) {
       const data = await res.json();
@@ -117,10 +116,9 @@ export function KPIManagerClient({
       name: String(form.get("name") || ""),
       description: String(form.get("description") || "") || null,
     };
-    const res = await fetch("/api/categories", {
+    const res = await apiFetch("/api/categories", {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(payload),
+      body: payload,
     });
     const data = await res.json();
     if (!res.ok) {
@@ -132,10 +130,9 @@ export function KPIManagerClient({
   }
 
   async function deleteCategory(id: number, name: string) {
-    const res = await fetch("/api/categories", {
+    const res = await apiFetch("/api/categories", {
       method: "DELETE",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ id }),
+      body: { id },
     });
     if (!res.ok) {
       const data = await res.json();

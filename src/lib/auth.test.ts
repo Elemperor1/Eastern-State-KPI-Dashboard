@@ -125,17 +125,18 @@ describe("verifyCredentials", () => {
     expect(await bcrypt.compare("", row.password_hash)).toBe(false);
   });
 
-  it("does not print the random seed password under NODE_ENV=test", () => {
-    // The seed writes the per-install random password to stdout once
-    // on a fresh DB. The auth test suite runs against a fresh temp DB
-    // every time, so the logger should be silent under NODE_ENV=test
-    // to keep the test runner output clean and to avoid leaking the
-    // plaintext into CI logs.
-    // We can't intercept the live stdout from inside the same
-    // process, but we can assert the guard variable is set as
-    // expected. Vitest sets NODE_ENV=test; if that ever stops being
-    // true, the seed's plaintext leak would start showing up here.
-    expect(process.env.NODE_ENV).toBe("test");
+  it("marks the named seed accounts as requiring a password rotation", () => {
+    // ensureSeedAdmin() in beforeAll seeded a fresh DB with random
+    // fallback credentials (no BOOTSTRAP_*_PASSWORD env under test).
+    // Those credentials are TEMPORARY: must_change_password is set so
+    // the account cannot be used as a permanent login. The plaintext
+    // itself is never logged — see auth-secrecy.test.ts for the
+    // stdout/stderr capture proof. Here we assert the rotation flag
+    // is in place on the freshly seeded accounts.
+    const kerry = findUserByEmail("kerry@easternstate.org");
+    const zach = findUserByEmail("zach@easternstate.org");
+    expect(kerry?.must_change_password).toBe(true);
+    expect(zach?.must_change_password).toBe(true);
   });
 
   it("stores an unguessable bcrypt hash on the bypass row", async () => {
