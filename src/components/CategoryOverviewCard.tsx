@@ -1,6 +1,6 @@
 "use client";
 
-import { ChevronRight, TrendingUp, TrendingDown, Minus } from "lucide-react";
+import { ChevronRight, Crosshair, TrendingUp, TrendingDown, Minus } from "lucide-react";
 import clsx from "clsx";
 import { CardAction, Progress } from "@/components/ui";
 import { buildKPIAnalytics, isFavorable } from "@/lib/analytics";
@@ -8,6 +8,7 @@ import type {
   BreakdownEntryWithMeta,
   Category,
   KPIWithCategory,
+  KpiGoalWithMeta,
   MonthlyEntryWithMeta,
 } from "@/lib/types";
 
@@ -16,6 +17,7 @@ interface Props {
   kpis: KPIWithCategory[];
   entries: MonthlyEntryWithMeta[];
   breakdowns: BreakdownEntryWithMeta[];
+  goals: KpiGoalWithMeta[];
   currentYear: number;
   compareYear: number;
   currentMonth: number;
@@ -81,6 +83,7 @@ export function CategoryOverviewCard({
   kpis,
   entries,
   breakdowns,
+  goals,
   currentYear,
   compareYear,
   currentMonth,
@@ -101,6 +104,18 @@ export function CategoryOverviewCard({
     (a, b) => Math.abs(b.pct ?? 0) - Math.abs(a.pct ?? 0),
   );
   const topMover = sorted.find((r) => r.favorable && r.pct !== null) ?? sorted[0];
+
+  // Goal progress for this category in the current year.
+  const catGoals = goals.filter(
+    (g) => g.category_id === category.id && g.target_year === currentYear,
+  );
+  const goalsWithProgress = catGoals.filter((g) => g.full_year_progress_pct !== null);
+  const avgGoalProgress = goalsWithProgress.length
+    ? Math.round(
+        goalsWithProgress.reduce((sum, g) => sum + (g.full_year_progress_pct ?? 0), 0) /
+          goalsWithProgress.length,
+      )
+    : null;
 
   return (
     <CardAction as="a" href={`/dashboard/category/${category.slug}`} className="relative overflow-hidden p-5">
@@ -153,6 +168,24 @@ export function CategoryOverviewCard({
           <Minus className="w-3.5 h-3.5" aria-hidden /> {flat}
         </span>
       </div>
+
+      {catGoals.length > 0 ? (
+        <div className="mt-5 border-t border-ink-100 pt-4">
+          <div className="mb-2 flex items-center justify-between">
+            <span className="inline-flex items-center gap-1.5 text-[10px] font-semibold uppercase tracking-[0.08em] text-ink-500">
+              <Crosshair className="size-3" aria-hidden /> Goals ({catGoals.length})
+            </span>
+            <span className="text-sm font-semibold tabular text-ink-900">
+              {avgGoalProgress !== null ? `${avgGoalProgress}%` : "—"}
+            </span>
+          </div>
+          {avgGoalProgress !== null ? (
+            <Progress value={avgGoalProgress} color={accent} />
+          ) : (
+            <p className="text-xs text-ink-400">No prior-year baseline data yet</p>
+          )}
+        </div>
+      ) : null}
 
       {topMover && topMover.pct !== null ? (
         <div className="mt-5 hidden items-baseline gap-1 text-sm sm:flex">

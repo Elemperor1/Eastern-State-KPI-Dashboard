@@ -59,6 +59,28 @@ export function CategoryPageClient({
 
   const monthlyKpis = catKpis.filter((k) => k.unit_type !== "breakdown");
   const breakdownKpis = catKpis.filter((k) => k.unit_type === "breakdown");
+
+  // Group KPIs by their goal prefix (the text before the em-dash "—").
+  // KPIs without a prefix (no em-dash) are grouped under "Other".
+  function goalPrefix(name: string): string {
+    const idx = name.indexOf(" — ");
+    return idx > 0 ? name.slice(0, idx) : "Other";
+  }
+  function kpiShortName(name: string): string {
+    const idx = name.indexOf(" — ");
+    return idx > 0 ? name.slice(idx + 3) : name;
+  }
+  // Preserve insertion order of goal groups.
+  const goalGroups: { goal: string; kpis: KPIWithCategory[] }[] = [];
+  const goalIndex = new Map<string, number>();
+  for (const kpi of monthlyKpis) {
+    const goal = goalPrefix(kpi.name);
+    if (!goalIndex.has(goal)) {
+      goalIndex.set(goal, goalGroups.length);
+      goalGroups.push({ goal, kpis: [] });
+    }
+    goalGroups[goalIndex.get(goal)!].kpis.push(kpi);
+  }
   const monthlyBreakdownKpis = breakdownKpis.filter((k) =>
     data.breakdowns.some((b) => b.kpi_id === k.id && b.month > 0),
   );
@@ -201,19 +223,28 @@ export function CategoryPageClient({
                 {MONTH_FULL[state.currentMonth - 1]} {state.currentYear} vs {state.compareYear}
               </h2>
             </div>
-            <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
-              {monthlyKpis.map((kpi, idx) => {
-                const analytics = analyticsFor(kpi);
-                return (
-                  <MetricCard
-                    key={kpi.id}
-                    analytics={analytics}
-                    accentColor={CHART_COLORS[idx % CHART_COLORS.length]}
-                    onSelect={() => router.push(`/dashboard/metric/${kpi.slug}`)}
-                    goal={goalsByKpiId.get(kpi.id) ?? null}
-                  />
-                );
-              })}
+            <div className="space-y-8">
+              {goalGroups.map((group) => (
+                <div key={group.goal}>
+                  <h3 className="mb-3 text-sm font-semibold uppercase tracking-[0.06em] text-ink-600">
+                    {group.goal}
+                  </h3>
+                  <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
+                    {group.kpis.map((kpi, idx) => {
+                      const analytics = analyticsFor(kpi);
+                      return (
+                        <MetricCard
+                          key={kpi.id}
+                          analytics={analytics}
+                          accentColor={CHART_COLORS[idx % CHART_COLORS.length]}
+                          onSelect={() => router.push(`/dashboard/metric/${kpi.slug}`)}
+                          goal={goalsByKpiId.get(kpi.id) ?? null}
+                        />
+                      );
+                    })}
+                  </div>
+                </div>
+              ))}
             </div>
           </section>
         ) : null}

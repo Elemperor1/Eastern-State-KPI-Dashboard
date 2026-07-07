@@ -182,6 +182,7 @@ export function DashboardOverviewClient({
                 kpis={data.kpis}
                 entries={data.entries}
                 breakdowns={data.breakdowns}
+                goals={data.goals}
                 currentYear={state.currentYear}
                 compareYear={state.compareYear}
                 currentMonth={state.currentMonth}
