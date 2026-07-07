@@ -1,8 +1,9 @@
 import { redirect } from "next/navigation";
-import { getCurrentUserReadOnly } from "@/lib/session";
+import { getCurrentUserReadOnly } from "@/features/auth/session";
 import { AppShell } from "@/components/AppShell";
 import { TrendExplorerClient } from "./TrendExplorerClient";
-import { listCategories, listEntries, listKPIs } from "@/lib/repository";
+import { listCategories, listKPIs } from "@/features/catalog/server";
+import { listEntries } from "@/features/metrics/server";
 
 export const dynamic = "force-dynamic";
 

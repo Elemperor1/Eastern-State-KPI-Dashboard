@@ -4,12 +4,12 @@ import path from "node:path";
 import { spawnSync } from "node:child_process";
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import bcrypt from "bcryptjs";
+import { ensureSeedAdmin } from "@/features/auth/server";
 import {
   createUser,
-  ensureSeedAdmin,
   findUserByEmail,
   updateUserPassword,
-} from "./auth";
+} from "@/features/users/server";
 import { getDb, resetDb } from "./db";
 
 /**
@@ -202,7 +202,7 @@ describe("ensureSeedAdmin credential secrecy (in-process)", () => {
     // No BOOTSTRAP_*_PASSWORD set -> random fallback path. We do not know
     // the plaintext, so assert no secret-like token appears in output at
     // all, and that the operator is told to use setup:admin.
-    const { stdout, stderr, all } = captureOutput(() => ensureSeedAdmin());
+    const { stderr, all } = captureOutput(() => ensureSeedAdmin());
 
     const secretMatches = all.match(SECRET_LIKE) ?? [];
     // bcrypt hashes of the bypass row are NOT logged, and no plaintext

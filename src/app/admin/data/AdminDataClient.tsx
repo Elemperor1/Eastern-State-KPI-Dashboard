@@ -16,6 +16,13 @@ import {
   StatusBanner,
 } from "@/components/ui";
 import { MONTH_FULL, MONTH_LABELS, formatValue } from "@/lib/analytics";
+import {
+  ANNUAL_ENTRY_MONTH,
+  MONTH_NUMBERS,
+  isAnnualEntryMonth,
+  isAnnualReportingFrequency,
+  isMonthlyEntryMonth,
+} from "@/features/metrics";
 import { SampleDataBadge } from "@/components/SampleDataBadge";
 import { cn } from "@/lib/utils";
 import type {
@@ -82,7 +89,7 @@ export function AdminDataClient({
   const selectedBreakdownIsMonthly = useMemo(
     () =>
       kpi?.unit_type === "breakdown" &&
-      breakdowns.some((b) => b.kpi_id === kpi.id && b.month > 0),
+      breakdowns.some((b) => b.kpi_id === kpi.id && isMonthlyEntryMonth(b.month)),
     [breakdowns, kpi?.id, kpi?.unit_type],
   );
   const selectedBreakdownMonths = useMemo(() => {
@@ -90,7 +97,7 @@ export function AdminDataClient({
     return Array.from(
       new Set(
         breakdowns
-          .filter((b) => b.kpi_id === kpi.id && b.year === year && b.month > 0)
+          .filter((b) => b.kpi_id === kpi.id && b.year === year && isMonthlyEntryMonth(b.month))
           .map((b) => b.month),
       ),
     ).sort((a, b) => a - b);
@@ -144,16 +151,16 @@ export function AdminDataClient({
     }
 
     const next: Record<string, DraftEntry> = {};
-    if (kpi.reporting_frequency !== "monthly") {
-      const existing = entries.find((e) => e.kpi_id === kpi.id && e.year === year && e.month === 0);
-      next["0"] = {
+    if (isAnnualReportingFrequency(kpi.reporting_frequency)) {
+      const existing = entries.find((e) => e.kpi_id === kpi.id && e.year === year && isAnnualEntryMonth(e.month));
+      next[String(ANNUAL_ENTRY_MONTH)] = {
         value: existing ? String(existing.value) : "",
         notes: existing?.notes ?? "",
         saved: existing?.value ?? null,
         dirty: false,
       };
     } else {
-      for (let month = 1; month <= 12; month++) {
+      for (const month of MONTH_NUMBERS) {
         const existing = entries.find((e) => e.kpi_id === kpi.id && e.year === year && e.month === month);
         next[String(month)] = {
           value: existing ? String(existing.value) : "",
@@ -372,7 +379,7 @@ export function AdminDataClient({
   }
 
   function labelFor(month: number) {
-    return month === 0 ? `${year}` : MONTH_FULL[month - 1];
+    return isAnnualEntryMonth(month) ? `${year}` : MONTH_FULL[month - 1];
   }
 
   function requestClearMonth(month: number) {
@@ -553,17 +560,17 @@ export function AdminDataClient({
             ) : null}
           </div>
         </Card>
-      ) : kpi.reporting_frequency !== "monthly" ? (
+      ) : isAnnualReportingFrequency(kpi.reporting_frequency) ? (
         <Card className="max-w-2xl p-5 lg:p-6">
           <h2 className="text-xl font-semibold text-ink-900">{kpi.name}</h2>
           <p className="mb-5 mt-1 text-sm text-ink-500">
             Annual metric · {year} · {kpi.unit} ({kpi.unit_type})
           </p>
           <AnnualEntryRow
-            draft={drafts["0"]}
-            onChange={(patch) => setField(0, patch)}
-            onSave={() => saveMonth(0)}
-            onClear={() => requestClearMonth(0)}
+            draft={drafts[String(ANNUAL_ENTRY_MONTH)]}
+            onChange={(patch) => setField(ANNUAL_ENTRY_MONTH, patch)}
+            onSave={() => saveMonth(ANNUAL_ENTRY_MONTH)}
+            onClear={() => requestClearMonth(ANNUAL_ENTRY_MONTH)}
             year={year}
             unit={kpi.unit}
             unitType={kpi.unit_type}

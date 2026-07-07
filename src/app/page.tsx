@@ -1,6 +1,6 @@
 import { redirect } from "next/navigation";
-import { getCurrentUserReadOnly } from "@/lib/session";
-import { ensureSeedAdmin } from "@/lib/auth";
+import { getCurrentUserReadOnly } from "@/features/auth/session";
+import { ensureSeedAdmin } from "@/features/auth/server";
 import { AUTH_DISABLED } from "@/lib/auth-flag";
 
 // Run once at module load to make sure an admin can always log in.

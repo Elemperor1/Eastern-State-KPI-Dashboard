@@ -1,8 +1,9 @@
 import { redirect } from "next/navigation";
-import { getCurrentUserReadOnly } from "@/lib/session";
+import { getCurrentUserReadOnly } from "@/features/auth/session";
 import { AppShell } from "@/components/AppShell";
 import { GoalsManagerClient } from "./GoalsManagerClient";
-import { listGoals, listKPIs } from "@/lib/repository";
+import { listKPIs } from "@/features/catalog/server";
+import { listGoals } from "@/features/goals";
 
 export const dynamic = "force-dynamic";
 

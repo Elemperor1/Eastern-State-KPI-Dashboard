@@ -1,37 +1,11 @@
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
-import { authErrorResponse, requireAdmin, requireSession } from "@/lib/session";
-import { assertMutationRequest } from "@/lib/request-guard";
-import { parseYearFilters } from "@/lib/year-filter";
 import {
   deleteBreakdown,
-  listBreakdowns,
   upsertBreakdown,
-} from "@/lib/repository";
-
-export async function GET(req: NextRequest) {
-  try {
-    await requireSession();
-  } catch (err) {
-    return authErrorResponse(err);
-  }
-  const url = new URL(req.url);
-  const filter: Parameters<typeof listBreakdowns>[0] = {};
-  const kpiId = url.searchParams.get("kpi_id");
-  if (kpiId) filter.kpi_id = Number(kpiId);
-  const categoryId = url.searchParams.get("category_id");
-  if (categoryId) filter.category_id = Number(categoryId);
-  const yearsParam = url.searchParams.getAll("year");
-  const parsed = parseYearFilters(yearsParam);
-  if (!parsed.ok) {
-    return NextResponse.json(
-      { error: parsed.error },
-      { status: parsed.status },
-    );
-  }
-  if (parsed.years.length) filter.years = parsed.years;
-  return NextResponse.json({ breakdowns: listBreakdowns(filter) });
-}
+} from "@/features/metrics/server";
+import { authErrorResponse, requireAdmin } from "@/features/auth/session";
+import { assertMutationRequest } from "@/lib/request-guard";
 
 const UpsertSchema = z.object({
   kpi_id: z.number().int().positive(),

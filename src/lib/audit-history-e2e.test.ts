@@ -4,7 +4,7 @@
  * Drives the REAL HTTP route handlers (categories, KPIs, entries, and the
  * admin history endpoint) against a real temp SQLite DB, exercising the
  * full stack: zod validation → requireAdmin → assertMutationRequest (CSRF)
- * → repository → entry_history snapshot writes → LEFT-joined history
+ * → feature data access → entry_history snapshot writes → LEFT-joined history
  * retrieval. Only the cookie transport is faked (in-memory jar via
  * vi.mock("next/headers")); iron-session, the revocation chokepoint, the
  * request guard, and every route handler run unchanged.
@@ -31,7 +31,7 @@ import { NextRequest } from "next/server";
  * In-memory cookie jar (fakes only the transport). Hoisted so the
  * reference is available inside the hoisted vi.mock factory.
  * ------------------------------------------------------------------ */
-const { jar, resetSession, cookieStore } = vi.hoisted(() => {
+const { resetSession, cookieStore } = vi.hoisted(() => {
   const jar: Record<string, string> = {};
   function resetSession(): void {
     for (const k of Object.keys(jar)) delete jar[k];
@@ -50,7 +50,7 @@ const { jar, resetSession, cookieStore } = vi.hoisted(() => {
       }
     },
   };
-  return { jar, resetSession, cookieStore };
+  return { resetSession, cookieStore };
 });
 
 vi.mock("next/headers", () => ({
@@ -60,14 +60,13 @@ vi.mock("next/headers", () => ({
 
 // Real modules — imported AFTER vi.mock so they see the mocked cookies().
 import { dispatch } from "./auth-regression-helpers";
-import { createUser, ensureSeedAdmin } from "./auth";
+import { ensureSeedAdmin } from "@/features/auth/server";
+import { createUser } from "@/features/users/server";
 import { resetDb } from "@/lib/db";
 import { _resetForTests as resetThrottle } from "@/lib/login-throttle";
 import { POST as loginPost } from "@/app/api/auth/login/route";
 import { GET as historyGet } from "@/app/api/entries/history/route";
 import { getDb } from "@/lib/db";
-
-const COOKIE_NAME = "eastern_state_kpi_session";
 
 /* ------------------------------------------------------------------ *
  * Env / DB lifecycle
@@ -560,7 +559,7 @@ describe("D8AD-CAN-005 end-to-end audit integrity", () => {
   });
 
   describe("immutability (req 10)", () => {
-    it("history rows cannot be changed through ordinary repository or API operations", async () => {
+    it("history rows cannot be changed through ordinary feature or API operations", async () => {
       const cat = await createCategoryViaApi("immut-cat", "Immut Category");
       const kpi = await createKpiViaApi(cat.id, "immut-kpi", "Immut KPI");
       await upsertEntryViaApi(kpi.id, 2025, 7, 100);
@@ -622,7 +621,7 @@ describe("D8AD-CAN-005 end-to-end audit integrity", () => {
     it("no API operation exposes an UPDATE or DELETE on entry_history", async () => {
       // The only state-changing endpoints that touch entry_history do so
       // by INSERT (upsertEntry / deleteEntry / upsertBreakdown /
-      // deleteBreakdown via the repository). There is no route that
+      // deleteBreakdown via the metrics feature). There is no route that
       // updates or deletes a history row. Verify at the schema level:
       // every history row written across a full lifecycle is retained.
       const cat = await createCategoryViaApi("noupd-cat", "NoUpdate Cat");

@@ -19,29 +19,20 @@ import {
   Select,
   Tabs,
 } from "@/components/ui";
-import { CHART_COLORS, formatValue, MONTH_LABELS } from "@/lib/analytics";
+import {
+  TREND_AXIS_MODE_OPTIONS,
+  buildTrendExplorerModel,
+  defaultTrendAxisMode,
+  defaultTrendYears,
+  selectInitialTrendKpiSlugs,
+  type TrendAxisMode,
+} from "@/features/reporting/trend-explorer";
+import { CHART_COLORS, formatValue } from "@/lib/analytics";
 import type {
   Category,
-  ComparisonPoint,
   KPIWithCategory,
   MonthlyEntryWithMeta,
 } from "@/lib/types";
-
-type AxisMode = "shared" | "log" | "indexed";
-
-const AXIS_MODE_OPTIONS: { value: AxisMode; label: string }[] = [
-  { value: "shared", label: "Shared" },
-  { value: "log", label: "Per-series (log)" },
-  { value: "indexed", label: "Per-series (indexed)" },
-];
-
-const AXIS_MODE_HELP: Record<AxisMode, string> = {
-  shared:
-    "All series share one linear axis; high-volume measures can compress smaller ones.",
-  log: "Each series is plotted on a logarithmic scale so small and large magnitudes coexist.",
-  indexed:
-    "Each line is indexed to its first non-null value = 100, so relative movement is comparable across magnitudes.",
-};
 
 export function TrendExplorerClient({
   kpis,
@@ -54,111 +45,12 @@ export function TrendExplorerClient({
   entries: MonthlyEntryWithMeta[];
   years: number[];
 }) {
-  const initialKpiSlugs = (() => {
-    const seen = new Set<string>();
-    const picks: string[] = [];
-    for (const kpi of kpis) {
-      if (seen.has(kpi.category_slug)) continue;
-      seen.add(kpi.category_slug);
-      picks.push(kpi.slug);
-      if (picks.length >= 3) break;
-    }
-    return picks;
-  })();
   const [categorySlug, setCategorySlug] = useState<string>("all");
-  const [kpiSlugs, setKpiSlugs] = useState<string[]>(initialKpiSlugs);
-  const [selectedYears, setSelectedYears] = useState<number[]>(years.slice(-3));
-
-  const visibleKPIs = useMemo(() => {
-    const base = categorySlug === "all"
-      ? kpis
-      : kpis.filter((k) => k.category_slug === categorySlug);
-    return base.filter((k) => k.reporting_frequency === "monthly" && k.unit_type !== "breakdown");
-  }, [kpis, categorySlug]);
-
-  // Raw, untransformed points: one row per month, one column per (kpi, year).
-  // Only month=1–12 entries are plotted; month=0 (annual snapshot) rows are
-  // excluded so they never appear as a thirteenth point on the x-axis.
-  const rawTrendData: ComparisonPoint[] = useMemo(() => {
-    const points: ComparisonPoint[] = [];
-    for (let month = 1; month <= 12; month++) {
-      const point: ComparisonPoint = { label: MONTH_LABELS[month - 1], month };
-      for (const kpiSlug of kpiSlugs) {
-        const kpi = kpis.find((k) => k.slug === kpiSlug);
-        if (!kpi) continue;
-        const value = entries
-          .filter((e) => e.kpi_id === kpi.id && e.month === month)
-          .reduce((acc, e) => {
-            if (selectedYears.includes(e.year)) {
-              acc[e.year] = (acc[e.year] || 0) + e.value;
-            }
-            return acc;
-          }, {} as Record<number, number>);
-        for (const year of selectedYears) {
-          point[`${kpi.slug}__${year}`] = value[year] ?? null;
-        }
-      }
-      points.push(point);
-    }
-    return points;
-  }, [kpis, entries, kpiSlugs, selectedYears]);
-
-  // Default to "indexed" once we have multiple KPIs — that's the value-add of this view.
-  const [axisMode, setAxisMode] = useState<AxisMode>(() =>
-    initialKpiSlugs.length > 1 ? "indexed" : "shared",
+  const [kpiSlugs, setKpiSlugs] = useState<string[]>(() => selectInitialTrendKpiSlugs(kpis));
+  const [selectedYears, setSelectedYears] = useState<number[]>(() => defaultTrendYears(years));
+  const [axisMode, setAxisMode] = useState<TrendAxisMode>(() =>
+    defaultTrendAxisMode(selectInitialTrendKpiSlugs(kpis)),
   );
-
-  // Compute per-(kpi, year) baselines for the indexed mode.
-  // Baseline = first non-null value across months (1-12). Series whose baseline is null or
-  // zero are dropped from the indexed chart (their values become null).
-  const indexedBaselines = useMemo(() => {
-    const map: Record<string, number | null> = {};
-    if (axisMode !== "indexed") return map;
-    for (const kpiSlug of kpiSlugs) {
-      for (const year of selectedYears) {
-        const key = `${kpiSlug}__${year}`;
-        const baseline = rawTrendData.find((p) => p[key] != null && (p[key] as number) !== 0)?.[key];
-        map[key] = typeof baseline === "number" ? baseline : null;
-      }
-    }
-    return map;
-  }, [axisMode, kpiSlugs, selectedYears, rawTrendData]);
-
-  // Apply log/indexed transforms on top of the raw data.
-  const trendData: ComparisonPoint[] = useMemo(() => {
-    if (axisMode === "shared") return rawTrendData;
-    return rawTrendData.map((point) => {
-      const next: ComparisonPoint = { label: point.label, month: point.month };
-      for (const kpiSlug of kpiSlugs) {
-        for (const year of selectedYears) {
-          const key = `${kpiSlug}__${year}`;
-          const raw = point[key];
-          if (raw === null || raw === undefined) {
-            next[key] = null;
-            continue;
-          }
-          const v = raw as number;
-          if (axisMode === "log") {
-            // log10 is undefined for <= 0; drop those points instead of producing NaN.
-            if (v <= 0) {
-              next[key] = null;
-            } else {
-              next[key] = Math.log10(v);
-            }
-          } else {
-            // indexed
-            const baseline = indexedBaselines[key];
-            if (!baseline) {
-              next[key] = null;
-            } else {
-              next[key] = (v / baseline) * 100;
-            }
-          }
-        }
-      }
-      return next;
-    });
-  }, [axisMode, rawTrendData, indexedBaselines, kpiSlugs, selectedYears]);
 
   // When the user toggles a category that changes which KPIs are visible, fall back to a
   // sensible default if the current mode no longer makes sense (e.g. only 1 KPI left → Shared).
@@ -168,9 +60,10 @@ export function TrendExplorerClient({
     }
   }, [kpiSlugs.length, axisMode]);
 
-  const sampleUnitType = kpiSlugs[0]
-    ? kpis.find((k) => k.slug === kpiSlugs[0])?.unit_type ?? "count"
-    : "count";
+  const trendModel = useMemo(() => buildTrendExplorerModel(
+    { kpis, entries },
+    { categorySlug, kpiSlugs, selectedYears, axisMode },
+  ), [kpis, entries, categorySlug, kpiSlugs, selectedYears, axisMode]);
 
   function toggleKpi(slug: string) {
     setKpiSlugs((prev) => (prev.includes(slug) ? prev.filter((s) => s !== slug) : [...prev, slug]));
@@ -178,24 +71,6 @@ export function TrendExplorerClient({
   function toggleYear(year: number) {
     setSelectedYears((prev) => (prev.includes(year) ? prev.filter((y) => y !== year) : [...prev, year]));
   }
-
-  // Build CSV rows for the current trend selection: one row per month,
-  // one column per (kpi, year) series.
-  type CsvRow = Record<string, string | number | null>;
-  const csvColumns = ["Month", ...kpiSlugs.flatMap((slug) =>
-    selectedYears.map((y) => `${slug}__${y}`)),
-  ];
-  const csvRows: CsvRow[] = rawTrendData.map((point) => {
-    const row: CsvRow = { Month: String(point.label) };
-    for (const slug of kpiSlugs) {
-      for (const year of selectedYears) {
-        const key = `${slug}__${year}`;
-        row[key] = point[key] != null ? Number(point[key]) : "";
-      }
-    }
-    return row;
-  });
-  const csvFilename = `eastern-state-trends-${kpiSlugs.join("+")}-${selectedYears.join("-")}.csv`;
 
   const trendPrintId = "trend-print-root";
 
@@ -207,12 +82,8 @@ export function TrendExplorerClient({
           title="Multi-KPI · Multi-Year Trends"
           subtitle="Compare any combination of KPIs and years to see how the site is moving."
           filters={[
-            { label: "KPIs", value: kpiSlugs.length > 0
-              ? kpiSlugs.map((s) => kpis.find((k) => k.slug === s)?.name ?? s).join(", ")
-              : "None" },
-            { label: "Years", value: selectedYears.length > 0
-              ? selectedYears.join(", ")
-              : "None" },
+            { label: "KPIs", value: trendModel.selectedKpiFilterLabel },
+            { label: "Years", value: trendModel.selectedYearsFilterLabel },
             { label: "Y-axis", value: axisMode },
           ]}
         />
@@ -222,228 +93,215 @@ export function TrendExplorerClient({
           subtitle="Compare any combination of KPIs and years to see how the site is moving."
           actions={
             <>
-              <ExportCSVButton rows={csvRows} columns={csvColumns} filename={csvFilename} />
+              <ExportCSVButton
+                rows={trendModel.csvExport.rows}
+                columns={trendModel.csvExport.columns}
+                filename={trendModel.csvExport.filename}
+              />
               <PrintButton />
               <ExportPNGButton
                 targetId={trendPrintId}
-                fileName={`eastern-state-trends-${kpiSlugs.join("+")}-${selectedYears.join("-")}.png`}
+                fileName={trendModel.pngFileName}
               />
             </>
           }
         />
 
-      <div className="grid grid-cols-1 gap-6 lg:grid-cols-[18rem_minmax(0,1fr)]">
-        <aside className="no-print">
-          <Card className="overflow-hidden">
-            <div className="p-5">
-              <p className="section-eyebrow">Configure view</p>
-              <h2 className="text-xl font-semibold text-ink-900">Trend selection</h2>
-              <p className="mt-2 text-sm leading-6 text-ink-600 text-pretty">
-                Choose the measures and years to place on the same timeline.
-              </p>
-            </div>
+        <div className="grid grid-cols-1 gap-6 lg:grid-cols-[18rem_minmax(0,1fr)]">
+          <aside className="no-print">
+            <Card className="overflow-hidden">
+              <div className="p-5">
+                <p className="section-eyebrow">Configure view</p>
+                <h2 className="text-xl font-semibold text-ink-900">Trend selection</h2>
+                <p className="mt-2 text-sm leading-6 text-ink-600 text-pretty">
+                  Choose the measures and years to place on the same timeline.
+                </p>
+              </div>
 
-            <div className="border-t border-ink-100 p-5">
-            <FormField htmlFor="trend-category" label="Category">
-              <Select
-                id="trend-category"
-                value={categorySlug}
-                onChange={(e) => {
-                  setCategorySlug(e.target.value);
-                  setKpiSlugs([]);
-                }}
-              >
-                <option value="all">All categories</option>
-                {categories.map((c) => (
-                  <option key={c.id} value={c.slug}>{c.name}</option>
-                ))}
-              </Select>
-            </FormField>
-            </div>
+              <div className="border-t border-ink-100 p-5">
+                <FormField htmlFor="trend-category" label="Category">
+                  <Select
+                    id="trend-category"
+                    value={categorySlug}
+                    onChange={(e) => {
+                      setCategorySlug(e.target.value);
+                      setKpiSlugs([]);
+                    }}
+                  >
+                    <option value="all">All categories</option>
+                    {categories.map((c) => (
+                      <option key={c.id} value={c.slug}>{c.name}</option>
+                    ))}
+                  </Select>
+                </FormField>
+              </div>
 
-            <div className="border-t border-ink-100 p-3">
-            <div className="mb-2 flex items-center justify-between px-2">
-              <p className="label mb-0">KPIs</p>
-              <Badge variant="default" className="tabular">{kpiSlugs.length} selected</Badge>
-            </div>
-            <div className="max-h-80 space-y-0.5 overflow-auto pr-1">
-              {visibleKPIs.map((kpi) => {
-                const checked = kpiSlugs.includes(kpi.slug);
-                return (
-                  <Checkbox
-                    key={kpi.id}
-                    id={`trend-kpi-${kpi.slug}`}
-                    label={kpi.name}
-                    checked={checked}
-                    onChange={() => toggleKpi(kpi.slug)}
-                  />
-                );
-              })}
-              {visibleKPIs.length === 0 && (
-                <p className="px-2 py-3 text-sm leading-6 text-ink-500">No monthly KPIs in this category.</p>
-              )}
-            </div>
-            </div>
-
-            <div className="border-t border-ink-100 p-5">
-            <p className="label mb-2">Years</p>
-            <div className="flex flex-wrap gap-2">
-              {years.map((year) => {
-                const checked = selectedYears.includes(year);
-                return (
-                  <Chip
-                  key={year}
-                  active={checked}
-                  onClick={() => toggleYear(year)}
-                  aria-pressed={checked}
-                >
-                  {year}
-                </Chip>
-                );
-              })}
-            </div>
-            </div>
-          </Card>
-        </aside>
-
-        <Card className="flex min-h-[480px] flex-col overflow-hidden">
-          {kpiSlugs.length === 0 || selectedYears.length === 0 ? (
-            <EmptyState
-              icon={BarChart3}
-              title={kpiSlugs.length === 0 ? "Select a KPI" : "Select a year"}
-              description={
-                kpiSlugs.length === 0
-                  ? "Use the control rail to choose a category, then pick KPIs and years to see the trend."
-                  : "Choose at least one year to draw the selected measures."
-              }
-            />
-          ) : (
-            <>
-              <div className="flex flex-wrap items-start justify-between gap-4 border-b border-ink-100 px-5 py-4 lg:px-6">
-                <div>
-                  <p className="section-eyebrow">Trend comparison</p>
-                  <h2 className="text-xl font-semibold text-ink-900">
-                    {kpiSlugs.length} {kpiSlugs.length === 1 ? "measure" : "measures"} across {selectedYears.length} {selectedYears.length === 1 ? "year" : "years"}
-                  </h2>
-                  <p className="mt-1 text-xs leading-5 text-ink-500">
-                    Each measure uses its native scale; high-volume series can compress smaller values.
-                  </p>
+              <div className="border-t border-ink-100 p-3">
+                <div className="mb-2 flex items-center justify-between px-2">
+                  <p className="label mb-0">KPIs</p>
+                  <Badge variant="default" className="tabular">{kpiSlugs.length} selected</Badge>
                 </div>
-                <div className="flex max-w-xl flex-wrap justify-end gap-x-4 gap-y-2">
-                  {kpiSlugs.map((slug, index) => {
-                    const kpi = kpis.find((item) => item.slug === slug);
-                    if (!kpi) return null;
+                <div className="max-h-80 space-y-0.5 overflow-auto pr-1">
+                  {trendModel.visibleKPIs.map((kpi) => {
+                    const checked = kpiSlugs.includes(kpi.slug);
                     return (
-                      <span key={slug} className="inline-flex items-center gap-2 text-xs text-ink-600">
-                        <span
-                          className="size-2 rounded-sm"
-                          style={{ backgroundColor: CHART_COLORS[index % CHART_COLORS.length] }}
-                          aria-hidden
-                        />
-                        {kpi.name}
-                      </span>
+                      <Checkbox
+                        key={kpi.id}
+                        id={`trend-kpi-${kpi.slug}`}
+                        label={kpi.name}
+                        checked={checked}
+                        onChange={() => toggleKpi(kpi.slug)}
+                      />
+                    );
+                  })}
+                  {trendModel.visibleKPIs.length === 0 && (
+                    <p className="px-2 py-3 text-sm leading-6 text-ink-500">No monthly KPIs in this category.</p>
+                  )}
+                </div>
+              </div>
+
+              <div className="border-t border-ink-100 p-5">
+                <p className="label mb-2">Years</p>
+                <div className="flex flex-wrap gap-2">
+                  {years.map((year) => {
+                    const checked = selectedYears.includes(year);
+                    return (
+                      <Chip
+                        key={year}
+                        active={checked}
+                        onClick={() => toggleYear(year)}
+                        aria-pressed={checked}
+                      >
+                        {year}
+                      </Chip>
                     );
                   })}
                 </div>
               </div>
-              <div className="border-b border-ink-100 px-5 py-3 lg:px-6">
-                <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
-                  <span className="label text-ink-700">Y-axis mode</span>
-                  <Tabs
-                    options={AXIS_MODE_OPTIONS}
-                    value={axisMode}
-                    onChange={setAxisMode}
-                  />
-                </div>
-              </div>
-              <div className="h-[440px] px-2 pb-4 pt-5 md:h-[560px] md:px-4">
-              <ResponsiveContainer width="100%" height="100%">
-                <LineChart data={trendData} margin={{ top: 8, right: 16, left: 8, bottom: 8 }}>
-                  <CartesianGrid strokeDasharray="3 3" stroke="var(--chart-grid)" vertical={false} />
-                  <XAxis dataKey="label" tickLine={false} axisLine={false} tick={{ fontSize: 11, fill: "var(--chart-axis)" }} />
-                  <YAxis
-                    scale={axisMode === "log" ? "log" : "linear"}
-                    domain={axisMode === "log" ? ["auto", "auto"] : axisMode === "indexed" ? ["auto", "auto"] : ["auto", "auto"]}
-                    allowDataOverflow={axisMode === "log"}
-                    tickFormatter={(v) =>
-                      axisMode === "shared"
-                        ? formatValue(Number(v), sampleUnitType, { compact: true })
-                        : axisMode === "log"
-                          ? `10^${Number(v).toFixed(1)}`
-                          : `${Number(v).toFixed(0)}`
-                    }
-                    tickLine={false}
-                    axisLine={false}
-                    tick={{ fontSize: 11, fill: "var(--chart-axis)" }}
-                    width={70}
-                  />
-                  <Tooltip
-                    formatter={(value, name) => {
-                      if (value === null || value === undefined) return ["—", name];
-                      if (axisMode === "shared") {
-                        return [formatValue(Number(value), sampleUnitType), name];
-                      }
-                      if (axisMode === "log") {
-                        return [`10^${Number(value).toFixed(2)} (≈ ${formatValue(Math.pow(10, Number(value)), sampleUnitType, { compact: true })})`, name];
-                      }
-                      // indexed
-                      return [`${Number(value).toFixed(1)} (baseline = 100)`, name];
-                    }}
-                  />
-                  {kpiSlugs.flatMap((slug, ki) =>
-                    selectedYears.map((year, yi) => {
-                      const kpi = kpis.find((k) => k.slug === slug);
-                      if (!kpi) return null;
-                      const color = CHART_COLORS[ki % CHART_COLORS.length];
-                      const isCurrentSelection = yi === selectedYears.length - 1;
-                      const seriesName =
-                        axisMode === "indexed"
-                          ? `${kpi.name} ${year} (idx)`
-                          : axisMode === "log"
-                            ? `${kpi.name} ${year} (log)`
-                            : `${kpi.name} ${year}`;
+            </Card>
+          </aside>
+
+          <Card className="flex min-h-[480px] flex-col overflow-hidden">
+            {trendModel.emptyState ? (
+              <EmptyState
+                icon={BarChart3}
+                title={trendModel.emptyState.title}
+                description={trendModel.emptyState.description}
+              />
+            ) : (
+              <>
+                <div className="flex flex-wrap items-start justify-between gap-4 border-b border-ink-100 px-5 py-4 lg:px-6">
+                  <div>
+                    <p className="section-eyebrow">Trend comparison</p>
+                    <h2 className="text-xl font-semibold text-ink-900">
+                      {kpiSlugs.length} {kpiSlugs.length === 1 ? "measure" : "measures"} across {selectedYears.length} {selectedYears.length === 1 ? "year" : "years"}
+                    </h2>
+                    <p className="mt-1 text-xs leading-5 text-ink-500">
+                      Each measure uses its native scale; high-volume series can compress smaller values.
+                    </p>
+                  </div>
+                  <div className="flex max-w-xl flex-wrap justify-end gap-x-4 gap-y-2">
+                    {trendModel.selectedKpis.map((kpi, index) => {
                       return (
-                        <Line
-                          key={`${slug}__${year}`}
-                          dataKey={`${slug}__${year}`}
-                          name={seriesName}
-                          stroke={color}
-                          strokeWidth={isCurrentSelection ? 2.75 : 1.75}
-                          strokeOpacity={isCurrentSelection ? 1 : 0.62}
-                          strokeDasharray={isCurrentSelection ? undefined : yi % 2 === 0 ? "2 4" : "7 4"}
-                          dot={false}
-                          activeDot={{ r: 4, strokeWidth: 0 }}
-                          connectNulls={false}
-                          isAnimationActive={false}
-                        />
+                        <span key={kpi.slug} className="inline-flex items-center gap-2 text-xs text-ink-600">
+                          <span
+                            className="size-2 rounded-sm"
+                            style={{ backgroundColor: CHART_COLORS[index % CHART_COLORS.length] }}
+                            aria-hidden
+                          />
+                          {kpi.name}
+                        </span>
                       );
-                    }),
-                  )}
-                </LineChart>
-              </ResponsiveContainer>
-              </div>
-              <div className="border-t border-ink-100 px-5 py-2 text-xs leading-5 text-ink-600">
-                {AXIS_MODE_HELP[axisMode]}
-              </div>
-              <div className="flex flex-wrap gap-4 border-t border-ink-100 px-5 py-3 text-[10px] font-semibold uppercase tracking-[0.08em] text-ink-500">
-                {selectedYears.map((year, index) => {
-                  const isCurrentSelection = index === selectedYears.length - 1;
-                  return (
-                    <span key={year} className="inline-flex items-center gap-2">
-                      <span
-                        className={`block w-7 border-t-2 ${isCurrentSelection ? "border-solid border-ink-950" : index % 2 === 0 ? "border-dotted border-ink-500" : "border-dashed border-ink-500"}`}
-                        aria-hidden
+                    })}
+                  </div>
+                </div>
+                <div className="border-b border-ink-100 px-5 py-3 lg:px-6">
+                  <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
+                    <span className="label text-ink-700">Y-axis mode</span>
+                    <Tabs
+                      options={TREND_AXIS_MODE_OPTIONS}
+                      value={axisMode}
+                      onChange={setAxisMode}
+                    />
+                  </div>
+                </div>
+                <div className="h-[440px] px-2 pb-4 pt-5 md:h-[560px] md:px-4">
+                  <ResponsiveContainer width="100%" height="100%">
+                    <LineChart data={trendModel.trendData} margin={{ top: 8, right: 16, left: 8, bottom: 8 }}>
+                      <CartesianGrid strokeDasharray="3 3" stroke="var(--chart-grid)" vertical={false} />
+                      <XAxis dataKey="label" tickLine={false} axisLine={false} tick={{ fontSize: 11, fill: "var(--chart-axis)" }} />
+                      <YAxis
+                        scale={axisMode === "log" ? "log" : "linear"}
+                        domain={axisMode === "log" ? ["auto", "auto"] : axisMode === "indexed" ? ["auto", "auto"] : ["auto", "auto"]}
+                        allowDataOverflow={axisMode === "log"}
+                        tickFormatter={(v) =>
+                          axisMode === "shared"
+                            ? formatValue(Number(v), trendModel.sampleUnitType, { compact: true })
+                            : axisMode === "log"
+                              ? `10^${Number(v).toFixed(1)}`
+                              : `${Number(v).toFixed(0)}`
+                        }
+                        tickLine={false}
+                        axisLine={false}
+                        tick={{ fontSize: 11, fill: "var(--chart-axis)" }}
+                        width={70}
                       />
-                      {year}
-                    </span>
-                  );
-                })}
-              </div>
-            </>
-          )}
-        </Card>
-      </div>
-      <PrintReportFooter />
+                      <Tooltip
+                        formatter={(value, name) => {
+                          if (value === null || value === undefined) return ["—", name];
+                          if (axisMode === "shared") {
+                            return [formatValue(Number(value), trendModel.sampleUnitType), name];
+                          }
+                          if (axisMode === "log") {
+                            return [`10^${Number(value).toFixed(2)} (≈ ${formatValue(Math.pow(10, Number(value)), trendModel.sampleUnitType, { compact: true })})`, name];
+                          }
+                          // indexed
+                          return [`${Number(value).toFixed(1)} (baseline = 100)`, name];
+                        }}
+                      />
+                      {trendModel.series.map((series) => {
+                        const color = CHART_COLORS[series.kpiIndex % CHART_COLORS.length];
+                        return (
+                          <Line
+                            key={series.dataKey}
+                            dataKey={series.dataKey}
+                            name={series.name}
+                            stroke={color}
+                            strokeWidth={series.isCurrentSelection ? 2.75 : 1.75}
+                            strokeOpacity={series.isCurrentSelection ? 1 : 0.62}
+                            strokeDasharray={series.isCurrentSelection ? undefined : series.yearIndex % 2 === 0 ? "2 4" : "7 4"}
+                            dot={false}
+                            activeDot={{ r: 4, strokeWidth: 0 }}
+                            connectNulls={false}
+                            isAnimationActive={false}
+                          />
+                        );
+                      })}
+                    </LineChart>
+                  </ResponsiveContainer>
+                </div>
+                <div className="border-t border-ink-100 px-5 py-2 text-xs leading-5 text-ink-600">
+                  {trendModel.axisModeHelp}
+                </div>
+                <div className="flex flex-wrap gap-4 border-t border-ink-100 px-5 py-3 text-[10px] font-semibold uppercase tracking-[0.08em] text-ink-500">
+                  {selectedYears.map((year, index) => {
+                    const isCurrentSelection = index === selectedYears.length - 1;
+                    return (
+                      <span key={year} className="inline-flex items-center gap-2">
+                        <span
+                          className={`block w-7 border-t-2 ${isCurrentSelection ? "border-solid border-ink-950" : index % 2 === 0 ? "border-dotted border-ink-500" : "border-dashed border-ink-500"}`}
+                          aria-hidden
+                        />
+                        {year}
+                      </span>
+                    );
+                  })}
+                </div>
+              </>
+            )}
+          </Card>
+        </div>
+        <PrintReportFooter />
       </div>
     </div>
   );

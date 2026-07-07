@@ -3,18 +3,17 @@
  * Run with:  npm run db:seed
  *
  * Idempotent: drops all KPI/category/entry rows and re-creates them. Users are left
- * untouched (use auth.ts to seed the default admin/viewer on first request). All data
+ * untouched (use the auth feature to seed the default admin/viewer on first request). All data
  * is realistic SAMPLE data for 2024–2026, clearly flagged via the meta key 'sample_data'.
  */
 import { getDb } from "../src/lib/db";
-import { ensureSeedAdmin } from "../src/lib/auth";
+import { ensureSeedAdmin } from "../src/features/auth/server";
 import {
   createCategory,
   createKPI,
-  upsertEntry,
-  upsertBreakdown,
   listKPIs,
-} from "../src/lib/repository";
+} from "../src/features/catalog/server";
+import { upsertBreakdown, upsertEntry } from "../src/features/metrics/server";
 import type { Direction, ReportingFrequency, UnitType } from "../src/lib/types";
 
 const CURRENT_YEAR = 2026;

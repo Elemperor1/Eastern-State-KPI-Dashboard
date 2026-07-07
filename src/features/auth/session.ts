@@ -1,0 +1,19 @@
+/**
+ * App-facing authentication/session surface.
+ *
+ * The implementation stays in `src/lib/session.ts` because it owns the
+ * Next.js cookies() and iron-session plumbing. Pages, route handlers, and
+ * auth regression tests import through this feature module so the product
+ * authorization boundary has one public home.
+ */
+export type { SessionData } from "@/lib/session";
+
+export {
+  AuthError,
+  authErrorResponse,
+  getCurrentUser,
+  getCurrentUserReadOnly,
+  getSession,
+  requireAdmin,
+  requireSession,
+} from "@/lib/session";

@@ -24,15 +24,15 @@ Open <http://localhost:3000> and sign in.
 > **Auth bypass (temporary).** `AUTH_DISABLED=true` is set in `.env.local`, so the
 > dashboard is publicly reachable in dev — `/` redirects straight to
 > `/dashboard/overview` and the login form is skipped. The flag is read by
-> `src/lib/auth-flag.ts`; with it on, `getSession()` returns the real
-> `auth-disabled@local` users row and the `AccountBlock` in `AppShell` hides its
-> Logout button. The bypass is blocked in production/test: `next build` fails
+> `src/lib/auth-flag.ts`; with it on, the auth feature session surface returns
+> the real `auth-disabled@local` users row and the `AccountBlock` in `AppShell`
+> hides its Logout button. The bypass is blocked in production/test: `next build` fails
 > with `AUTH_DISABLED=true`, and `next start` cannot serve app routes with the
 > flag set. To restore iron-session
 > login, set `AUTH_DISABLED=false` in `.env.local` (or unset it) and revert the
 > four conditional branches in `src/lib/session.ts`, `src/app/page.tsx`, and
 > `src/components/AppShell.tsx`. The `/login` page, `/api/auth/*` routes, seeded
-> accounts, and `requireSession`/`requireAdmin` call sites are all preserved — no
+> accounts, and the `src/features/auth/session.ts` gate surface is preserved — no
 > other restoration work is needed.
 
 ### Default accounts (seeded on first DB access)

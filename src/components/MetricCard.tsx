@@ -4,6 +4,7 @@ import { AlertTriangle, ArrowDownRight, ArrowUpRight, Crosshair, Minus } from "l
 import { Badge, CardAction, Progress } from "@/components/ui";
 import type { KPIAnalytics, KpiGoalWithMeta } from "@/lib/types";
 import { formatDelta, formatValue, isFavorable, MONTH_FULL } from "@/lib/analytics";
+import { isAnnualReportingFrequency } from "@/features/metrics";
 
 interface Props {
   analytics: KPIAnalytics;
@@ -93,7 +94,7 @@ export function MetricCard({ analytics, accentColor, onSelect, selected, basis =
                   <Crosshair className="size-3 text-ink-400" aria-hidden />
                   <span className="text-xs tabular text-ink-400 min-w-[2.5ch]">—</span>
                 </div>
-              ) : goal.reporting_frequency !== "monthly" ? (
+              ) : isAnnualReportingFrequency(goal.reporting_frequency) ? (
                 <div className="flex items-center gap-1.5">
                   <Crosshair className="size-3 text-ink-400" aria-hidden />
                   <Progress value={Math.round(goal.full_year_progress_pct ?? 0)} className="w-10" />

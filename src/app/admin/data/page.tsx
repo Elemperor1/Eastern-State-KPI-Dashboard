@@ -1,13 +1,9 @@
 import { redirect } from "next/navigation";
-import { getCurrentUserReadOnly } from "@/lib/session";
+import { getCurrentUserReadOnly } from "@/features/auth/session";
 import { AppShell } from "@/components/AppShell";
 import { AdminDataClient } from "./AdminDataClient";
-import {
-  listBreakdowns,
-  listCategories,
-  listEntries,
-  listKPIs,
-} from "@/lib/repository";
+import { listCategories, listKPIs } from "@/features/catalog/server";
+import { listBreakdowns, listEntries } from "@/features/metrics/server";
 import { getDb } from "@/lib/db";
 
 export const dynamic = "force-dynamic";

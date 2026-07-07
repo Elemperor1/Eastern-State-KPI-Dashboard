@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
-import { authErrorResponse, requireAdmin } from "@/lib/session";
-import { listEntryHistory } from "@/lib/repository";
+import { listEntryHistory } from "@/features/audit/server";
+import { authErrorResponse, requireAdmin } from "@/features/auth/session";
 
 /**
  * Admin-only audit-trail endpoint. Powers /admin/history.

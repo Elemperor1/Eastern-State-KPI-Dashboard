@@ -20,16 +20,14 @@ import { BreakdownChart } from "@/components/BreakdownChart";
 import { DonorConversionCard } from "@/components/DonorConversionCard";
 import { Breadcrumb, Card, Chip, ExportCSVButton, ExportPNGButton, PageHeader, PrintButton, PrintReportFooter, PrintReportHeader, Progress, Table } from "@/components/ui";
 import { SampleDataBadge } from "@/components/SampleDataBadge";
+import { buildMetricDetailModel } from "@/features/reporting/metric-detail";
+import { buildMetricCsvExport } from "@/features/reporting/csv";
 import {
-  buildKPIAnalytics,
-  buildTrendPoints,
   formatDelta,
   formatValue,
-  isFavorable,
   MONTH_FULL,
-  MONTH_LABELS,
 } from "@/lib/analytics";
-import type { DashboardData } from "@/lib/dashboard-data";
+import type { DashboardData } from "@/features/reporting/types";
 
 export type GoalDisplayMode = "compare" | "goal" | "both";
 
@@ -52,7 +50,7 @@ export function MetricDetailClient({
 
   useEffect(() => {
     setState(initialState);
-  }, [initialState.currentYear, initialState.compareYear, initialState.currentMonth]);
+  }, [initialState]);
 
   // Sync goalDisplay from URL when the server component re-renders.
   useEffect(() => {
@@ -62,8 +60,10 @@ export function MetricDetailClient({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [initialGoalDisplay]);
 
-  const kpi = data.kpis.find((k) => k.slug === kpiSlug);
-  const category = data.categories.find((c) => c.id === kpi?.category_id);
+  const model = useMemo(
+    () => buildMetricDetailModel(data, kpiSlug, state),
+    [data, kpiSlug, state],
+  );
 
   function updateState(next: Partial<CompareState>) {
     const merged = { ...state, ...next };
@@ -86,48 +86,27 @@ export function MetricDetailClient({
     router.replace(`/dashboard/metric/${kpiSlug}?${search.toString()}`, { scroll: false });
   }
 
-  const kpiEntries = useMemo(
-    () => (kpi ? data.entries.filter((e) => e.kpi_id === kpi.id) : []),
-    [data.entries, kpi],
-  );
+  if (!model.kpi || !model.category || !model.analytics) return null;
 
-  if (!kpi || !category) return null;
-
-  const analytics = buildKPIAnalytics({
+  const {
     kpi,
-    entries: kpiEntries,
-    currentYear: state.currentYear,
-    compareYear: state.compareYear,
-    currentMonth: state.currentMonth,
-  });
+    category,
+    analytics,
+    isAnnual,
+    isBreakdown,
+    trendYears,
+    trendPoints,
+    ytdBar,
+    favorableMonthly,
+    favorableYtd,
+    goal,
+    goalIsAnnual,
+    tableRows,
+    directionLabel,
+    breakdown,
+  } = model;
   const comp = analytics.monthlyComparison;
   const ytd = analytics.ytdComparison;
-  const isAnnual = kpi.reporting_frequency !== "monthly";
-  const isBreakdown = kpi.unit_type === "breakdown";
-
-  const trendYears = useMemo(
-    () => Array.from(new Set(kpiEntries.filter((e) => e.month > 0).map((e) => e.year))).sort(),
-    [kpiEntries],
-  );
-  const trendPoints = useMemo(
-    () => buildTrendPoints(kpiEntries, trendYears),
-    [kpiEntries, trendYears],
-  );
-
-  const ytdBar = [
-    {
-      label: isAnnual ? "Full year" : `Through ${MONTH_FULL[state.currentMonth - 1]}`,
-      [ytd.compareYear]: ytd.compareValue,
-      [ytd.currentYear]: ytd.currentValue,
-    },
-  ];
-
-  const favorableMonthly = isFavorable(kpi.direction, comp.delta);
-
-  // Find the goal for this KPI in the selected year.
-  const goal = data.goals.find(
-    (g) => g.kpi_id === kpi.id && g.target_year === state.currentYear,
-  );
   const hasGoal = goal != null;
 
   // Whether to show the comparison stats and/or goal progress sections.
@@ -142,59 +121,7 @@ export function MetricDetailClient({
 
   const printId = `metric-${kpiSlug}-print`;
 
-  type TableRow = {
-    period: string;
-    value: number | undefined;
-    notes: string | null;
-    compare?: number | undefined;
-  };
-  const tableRows: TableRow[] = isAnnual
-    ? analytics.years.map((y) => ({
-        period: String(y.year),
-        value: y.fullYearValue,
-        notes: kpiEntries.find((e) => e.year === y.year && e.month === 0)?.notes ?? null,
-      }))
-    : MONTH_LABELS.map((m, i) => {
-        const month = i + 1;
-        const cur = kpiEntries.find((e) => e.year === state.currentYear && e.month === month);
-        const cmp = kpiEntries.find((e) => e.year === state.compareYear && e.month === month);
-        return {
-          period: `${m} ${state.currentYear}`,
-          value: cur?.value,
-          notes: cur?.notes ?? null,
-          compare: cmp?.value,
-        };
-      });
-
-  const directionLabel =
-    kpi.direction === "higher"
-      ? "Higher is better"
-      : kpi.direction === "lower"
-        ? "Lower is better"
-        : "Neutral direction";
-
-  // CSV row construction: same data the on-screen table shows. For monthly
-  // KPIs we include the compare-year column so the export matches what the
-  // user sees; for annual KPIs we emit one row per available year. We
-  // prepend a couple of header rows with KPI context (name, unit, years)
-  // to keep the file self-describing when shared outside the dashboard.
-  type CsvRow = Record<string, string | number | null>;
-  const csvColumns = isAnnual
-    ? ["Year", "Value", "Notes"]
-    : ["Period", `Value (${state.currentYear})`, `Value (${state.compareYear})`, "Notes"];
-  const csvRows: CsvRow[] = isAnnual
-    ? tableRows.map((r) => ({
-        Year: r.period,
-        Value: r.value ?? "",
-        Notes: r.notes ?? "",
-      }))
-    : tableRows.map((r) => ({
-        Period: r.period,
-        [`Value (${state.currentYear})`]: r.value ?? "",
-        [`Value (${state.compareYear})`]: r.compare ?? "",
-        Notes: r.notes ?? "",
-      }));
-  const csvFilename = `eastern-state-${kpiSlug}-${state.currentYear}-vs-${state.compareYear}.csv`;
+  const csvExport = buildMetricCsvExport({ kpi, rows: tableRows, period: state });
 
   return (
     <div className="page-content page-enter">
@@ -224,7 +151,7 @@ export function MetricDetailClient({
           actions={
             <>
               <SampleDataBadge sample={data.sampleData} />
-              <ExportCSVButton rows={csvRows} columns={csvColumns} filename={csvFilename} />
+              <ExportCSVButton rows={csvExport.rows} columns={csvExport.columns} filename={csvExport.filename} />
               <PrintButton />
               <ExportPNGButton
                 targetId={printId}
@@ -278,7 +205,7 @@ export function MetricDetailClient({
                     ? `${ytd.pctChange > 0 ? "+" : ""}${ytd.pctChange.toFixed(1)}%`
                     : "—"}
                 sub={formatDelta(ytd.delta, kpi.unit_type)}
-                tone={isFavorable(kpi.direction, ytd.delta) ? "good" : ytd.delta < 0 ? "bad" : "neutral"}
+                tone={favorableYtd ? "good" : ytd.delta < 0 ? "bad" : "neutral"}
               />
               </div>
             </Card>
@@ -342,7 +269,7 @@ export function MetricDetailClient({
                   Enter {goal.target_year - 1} data or choose a different target year for the target to take effect.
                 </p>
               ) : showGoalDetails ? (
-                goal.reporting_frequency !== "monthly" ? (
+                goalIsAnnual ? (
                   <div className="mt-4">
                     <div className="flex items-center justify-between gap-3">
                       <span className="text-sm text-ink-600">Completion</span>
@@ -429,12 +356,10 @@ export function MetricDetailClient({
 
         {isBreakdown ? (
           <Card className="p-5 lg:p-6 mb-10">
-            {kpiEntries.length === 0 && data.breakdowns.some(
-              (b) => b.kpi_id === kpi.id && b.month > 0
-            ) ? (
+            {breakdown?.kind === "donor-conversion" ? (
               <DonorConversionCard
                 kpi={kpi}
-                data={data.breakdowns.filter((b) => b.kpi_id === kpi.id)}
+                data={breakdown.breakdowns}
                 currentYear={state.currentYear}
                 compareYear={state.compareYear}
                 currentMonth={state.currentMonth}
@@ -442,12 +367,7 @@ export function MetricDetailClient({
             ) : (
               <BreakdownChart
                 kpi={kpi}
-                data={data.breakdowns.filter(
-                  (b) =>
-                    b.kpi_id === kpi.id &&
-                    b.month === 0 &&
-                    (b.year === state.currentYear || b.year === state.compareYear),
-                )}
+                data={breakdown?.breakdowns ?? []}
                 currentYear={state.currentYear}
                 compareYear={state.compareYear}
               />

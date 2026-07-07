@@ -18,6 +18,7 @@ import type {
   EntryHistoryWithMeta,
   KPIWithCategory,
 } from "@/lib/types";
+import { isAnnualEntryMonth } from "@/features/metrics";
 
 interface HistoryClientProps {
   history: EntryHistoryWithMeta[];
@@ -241,7 +242,7 @@ function describePeriod(row: EntryHistoryWithMeta): string {
     const month = Number(row.month_or_label.slice(0, sep));
     const label = row.month_or_label.slice(sep + 1);
     if (Number.isFinite(month)) {
-      if (month === 0) return `Label: ${label}`;
+      if (isAnnualEntryMonth(month)) return `Label: ${label}`;
       const labels = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
       return `${labels[month - 1] ?? `Month ${month}`} · ${label}`;
     }
@@ -249,7 +250,7 @@ function describePeriod(row: EntryHistoryWithMeta): string {
   }
   const month = Number(row.month_or_label);
   if (!Number.isFinite(month)) return row.month_or_label;
-  if (month === 0) return "Annual";
+  if (isAnnualEntryMonth(month)) return "Annual";
   const labels = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
   return labels[month - 1] ?? `Month ${month}`;
 }

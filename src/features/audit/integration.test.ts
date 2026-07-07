@@ -2,24 +2,27 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
-import { ensureSeedAdmin } from "./auth";
-import { getDb, resetDb } from "./db";
 import {
-  createCategory,
-  createKPI,
   deleteBreakdown,
-  deleteCategory,
   deleteEntry,
+  upsertBreakdown,
+  upsertEntry,
+} from "@/features/metrics/server";
+import { MONTH_NUMBERS } from "@/features/metrics";
+import {
+  deleteCategory,
   deleteKPI,
   DependentEntriesError,
+  updateCategory,
+  updateKPI,
+} from "@/features/catalog/server";
+import { ensureSeedAdmin } from "@/features/auth/server";
+import { getDb, resetDb } from "@/lib/db";
+import {
   listDeletedHistoryCategories,
   listDeletedHistoryKpis,
   listEntryHistory,
-  upsertBreakdown,
-  upsertEntry,
-  updateCategory,
-  updateKPI,
-} from "./repository";
+} from "@/features/audit/server";
 
 /**
  * D8AD-CAN-005 regression suite.
@@ -249,7 +252,7 @@ describe("D8AD-CAN-005 audit-history integrity", () => {
   it("pagination and ordering remain stable (changed_at DESC, id DESC)", () => {
     // Insert 12 distinct monthly rows for kpiA. They share the same
     // datetime('now') second, so ordering falls back to id DESC.
-    for (let m = 1; m <= 12; m++) {
+    for (const m of MONTH_NUMBERS) {
       upsertEntry({ kpi_id: kpiA, year: 2025, month: m, value: m, updated_by: adminId });
     }
     const all = historyForKpi(kpiA);

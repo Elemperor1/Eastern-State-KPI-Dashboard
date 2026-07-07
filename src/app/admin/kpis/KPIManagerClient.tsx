@@ -21,6 +21,12 @@ import { apiFetch } from "@/lib/api-client";
 
 type Tab = "kpis" | "categories";
 
+interface CatalogMutationPayload {
+  kpis?: KPIWithCategory[];
+  categories?: Category[];
+  error?: string;
+}
+
 const UNIT_TYPES: UnitType[] = ["count", "percent", "currency", "attendance", "note", "breakdown"];
 const FREQUENCIES: ReportingFrequency[] = ["monthly", "annual", "flexible"];
 const DIRECTIONS: Direction[] = ["higher", "lower", "neutral"];
@@ -63,13 +69,9 @@ export function KPIManagerClient({
     return counts;
   }, [kpis]);
 
-  async function refresh() {
-    const [kpiRes, catRes] = await Promise.all([
-      fetch("/api/kpis").then((r) => r.json()),
-      fetch("/api/categories").then((r) => r.json()),
-    ]);
-    setKpis(kpiRes.kpis);
-    setCategories(catRes.categories);
+  function applyCatalogPayload(data: CatalogMutationPayload) {
+    if (data.kpis) setKpis(data.kpis);
+    if (data.categories) setCategories(data.categories);
   }
 
   async function createKPI(form: FormData) {
@@ -87,27 +89,27 @@ export function KPIManagerClient({
       method: "POST",
       body: payload,
     });
-    const data = await res.json();
+    const data = await res.json() as CatalogMutationPayload;
     if (!res.ok) {
       setFeedback({ message: `Could not create KPI: ${data.error}`, variant: "error" });
       return;
     }
+    applyCatalogPayload(data);
     setFeedback({ message: "KPI created.", variant: "success" });
-    await refresh();
   }
 
-  async function deleteKPI(id: number, name: string) {
+  async function deleteKPI(id: number) {
     const res = await apiFetch("/api/kpis", {
       method: "DELETE",
       body: { id },
     });
+    const data = await res.json() as CatalogMutationPayload;
     if (!res.ok) {
-      const data = await res.json();
       setFeedback({ message: `Could not delete: ${data.error}`, variant: "error" });
       return;
     }
+    applyCatalogPayload(data);
     setFeedback({ message: "KPI deleted.", variant: "success" });
-    await refresh();
   }
 
   async function createCategory(form: FormData) {
@@ -120,27 +122,27 @@ export function KPIManagerClient({
       method: "POST",
       body: payload,
     });
-    const data = await res.json();
+    const data = await res.json() as CatalogMutationPayload;
     if (!res.ok) {
       setFeedback({ message: `Could not create category: ${data.error}`, variant: "error" });
       return;
     }
+    applyCatalogPayload(data);
     setFeedback({ message: "Category created.", variant: "success" });
-    await refresh();
   }
 
-  async function deleteCategory(id: number, name: string) {
+  async function deleteCategory(id: number) {
     const res = await apiFetch("/api/categories", {
       method: "DELETE",
       body: { id },
     });
+    const data = await res.json() as CatalogMutationPayload;
     if (!res.ok) {
-      const data = await res.json();
       setFeedback({ message: `Could not delete: ${data.error}`, variant: "error" });
       return;
     }
+    applyCatalogPayload(data);
     setFeedback({ message: "Category deleted.", variant: "success" });
-    await refresh();
   }
 
   function requestDeleteKPI(id: number, name: string) {
@@ -148,7 +150,7 @@ export function KPIManagerClient({
       title: `Delete “${name}”?`,
       description: "This also removes every entry associated with this KPI. The action cannot be undone.",
       confirmLabel: "Delete KPI",
-      action: () => deleteKPI(id, name),
+      action: () => deleteKPI(id),
     });
   }
 
@@ -157,7 +159,7 @@ export function KPIManagerClient({
       title: `Delete “${name}”?`,
       description: "This also removes the category’s KPIs and all associated entries. The action cannot be undone.",
       confirmLabel: "Delete category",
-      action: () => deleteCategory(id, name),
+      action: () => deleteCategory(id),
     });
   }
 

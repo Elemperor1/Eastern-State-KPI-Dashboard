@@ -155,19 +155,8 @@ for slug, name, unit, unit_type in KPI_DEFS:
     })
     CURRENT_ID += 1
 
-# Map slug → id for quick lookups
-SLUG_TO_ID = {k["slug"]: k["id"] for k in KPIS}
-
-# ── State for POST/DELETE round-trips ──────────────────────────────────────
-ENTRIES_DB: dict[int, list[dict]] = {}  # year → list of entries
-BREAKDOWNS_DB: dict[int, list[dict]] = {}  # year → list of breakdowns
 NEXT_ENTRY_ID = 999001
 NEXT_BREAKDOWN_ID = 888001
-
-
-def json_response(body: dict) -> bytes:
-    """Return a JSON-serialized response with malicious hook in text fields."""
-    return json.dumps(body, ensure_ascii=False).encode("utf-8")
 
 
 def html_body(visible_text: str) -> str:
@@ -216,19 +205,6 @@ class SmokeFakeHandler(http.server.BaseHTTPRequestHandler):
                     {"id": 1, "entry_id": 100, "action": "insert", "changed_at": "2025-01-15T10:00:00Z"}
                 ]
             })
-        if path == "/api/entries":
-            year_str = params.get("year", [""])[0]
-            if year_str:
-                year = int(year_str)
-                return self._json({"entries": ENTRIES_DB.get(year, [])})
-            return self._json({"entries": []})
-        if path == "/api/breakdowns":
-            year_str = params.get("year", [""])[0]
-            if year_str:
-                year = int(year_str)
-                return self._json({"breakdowns": BREAKDOWNS_DB.get(year, [])})
-            return self._json({"breakdowns": []})
-
         # Dashboard pages
         if path == "/dashboard/overview":
             month = params.get("currentMonth", [None])[0]
@@ -291,10 +267,8 @@ class SmokeFakeHandler(http.server.BaseHTTPRequestHandler):
                 "updated_by": 1,
                 "description": MALICIOUS_HOOK,
             }
-            year = entry["year"]
-            ENTRIES_DB.setdefault(year, []).append(entry)
             NEXT_ENTRY_ID += 1
-            return self._empty(201)
+            return self._json({"entry": entry}, code=201)
 
         if self.path == "/api/breakdowns":
             global NEXT_BREAKDOWN_ID
@@ -307,10 +281,8 @@ class SmokeFakeHandler(http.server.BaseHTTPRequestHandler):
                 "updated_by": 1,
                 "description": MALICIOUS_HOOK,
             }
-            year = bd["year"]
-            BREAKDOWNS_DB.setdefault(year, []).append(bd)
             NEXT_BREAKDOWN_ID += 1
-            return self._empty(201)
+            return self._json({"breakdown": bd}, code=201)
 
         # Auth login
         if self.path == "/api/auth/login":
@@ -327,22 +299,14 @@ class SmokeFakeHandler(http.server.BaseHTTPRequestHandler):
         except json.JSONDecodeError:
             return self._json_error(400, "Invalid JSON")
 
-        entry_id = data.get("id")
-        if entry_id:
-            # Remove from any year's entries
-            for year in list(ENTRIES_DB.keys()):
-                ENTRIES_DB[year] = [e for e in ENTRIES_DB[year] if e["id"] != entry_id]
-            for year in list(BREAKDOWNS_DB.keys()):
-                BREAKDOWNS_DB[year] = [b for b in BREAKDOWNS_DB[year] if b["id"] != entry_id]
-
         return self._empty(200)
 
     # ── Response helpers ─────────────────────────────────────────────────
 
-    def _json(self, data: dict, headers: dict[str, str] | None = None):
+    def _json(self, data: dict, headers: dict[str, str] | None = None, code: int = 200):
         """Send a JSON response (with shell hook embedded in string values)."""
         body = json.dumps(data, ensure_ascii=False).encode("utf-8")
-        self.send_response(200)
+        self.send_response(code)
         self.send_header("Content-Type", "application/json")
         for name, value in (headers or {}).items():
             self.send_header(name, value)

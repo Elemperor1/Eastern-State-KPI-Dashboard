@@ -111,7 +111,7 @@ Each audit row captures:
 
 ### Immutability
 
-The audit trail is **append-only**. No API endpoint exposes an UPDATE or DELETE on `entry_history`. The only state-changing endpoints that touch `entry_history` do so by INSERT (via `upsertEntry`, `deleteEntry`, `upsertBreakdown`, `deleteBreakdown`).
+The audit trail is **append-only**. No API endpoint exposes an UPDATE or DELETE on `entry_history`. The only state-changing endpoints that touch `entry_history` do so by INSERT via the metrics feature (`upsertEntry`, `deleteEntry`, `upsertBreakdown`, `deleteBreakdown`).
 
 The KPI/category/user name columns are **immutable snapshots** frozen at the moment of the edit. If a KPI is later renamed, the audit row still shows the name it had when the edit was made. If the KPI or category is deleted, the audit row survives with its snapshot intact and a "Metadata deleted" badge in the UI.
 
@@ -129,7 +129,7 @@ The `/admin/history` page (admin-only, sidebar → Manage → History) renders t
 
 ### Deletion guards
 
-KPIs and categories **cannot be deleted** while live `monthly_entries` or `breakdown_entries` still reference them. `deleteKPI` / `deleteCategory` throw `DependentEntriesError` (HTTP 409) when dependents exist. The admin must delete the dependent entries first — each entry deletion records its own audit row — so no metadata deletion can hide a previously recorded change.
+KPIs and categories **cannot be deleted** while live `monthly_entries` or `breakdown_entries` still reference them. The catalog feature's `deleteKPI` / `deleteCategory` operations throw `DependentEntriesError` (HTTP 409) when dependents exist. The admin must delete the dependent entries first — each entry deletion records its own audit row — so no metadata deletion can hide a previously recorded change.
 
 ---
 
@@ -174,14 +174,14 @@ Admin user
     │
     ▼  Zod validation + CSRF guard + requireAdmin()
     │
-    ▼  repository.upsertEntry()  — single transaction:
+    ▼  metrics.upsertEntry()  — single transaction:
     │      1. Read prior value
     │      2. UPSERT monthly_entries
     │      3. Read back by natural key (not lastInsertRowid)
     │      4. INSERT into entry_history (prev → new, snapshot labels)
     │
     ▼
-Dashboard pages read monthly_entries + breakdown_entries
+Dashboard pages read monthly_entries + breakdown_entries through the metrics feature
     │
     ▼  analytics.ts computes YoY %, YTD, deltas, isEmpty
     │

@@ -1,0 +1,39 @@
+# ADR 0010: Reporting Category Detail Page Model
+
+Status: accepted
+Date: 2026-07-07
+
+## Context
+
+Category detail pages render three related reporting sections:
+
+- metric cards for non-breakdown KPIs
+- monthly breakdown cards for donor-conversion style breakdowns
+- annual breakdown composition charts
+
+Before this decision, `CategoryPageClient` built those sections inline. It filtered category KPIs, built KPI analytics, selected the current-year goal for each metric card, classified breakdown KPIs by row month, and filtered annual breakdown chart rows. The page also owns browser routing and export controls, so these reporting rules were mixed into UI state code.
+
+## Decision
+
+Category detail page model construction is owned by `src/features/reporting/category-page.ts`.
+
+The reporting feature builds a `CategoryPageModel` containing:
+
+- the selected category
+- metric card models with KPI analytics and the selected current-year goal
+- monthly breakdown sections with all rows for the KPI
+- annual breakdown sections filtered to month `0` rows for the current and comparison years
+
+`CategoryPageClient` remains the interactive renderer. It owns URL updates, navigation, export buttons, and the component tree, while the feature module owns the reporting data shape that those components consume.
+
+## Alternatives Considered
+
+- Leave the calculations in `CategoryPageClient`. This kept the data close to the JSX but required the client to know analytics, goal, and annual/monthly breakdown rules.
+- Move only the KPI analytics helper. That would reduce one import but leave goal selection and breakdown classification duplicated in page code.
+- Build the page model in the server component. This may become useful later, but the current category controls update browser state optimistically; a pure feature builder keeps the behavior testable without changing routing behavior.
+
+## Consequences
+
+- Category page metric analytics, selected-year goals, and breakdown section membership now have direct unit coverage.
+- `CategoryPageClient` no longer imports KPI analytics or metric period-rule helpers directly.
+- The page still receives the broad dashboard dataset; future slices can narrow server-prepared props once metric and trend page models are protected.

@@ -70,14 +70,13 @@ vi.mock("next/headers", () => ({
   headers: async () => new Map<string, string>(),
 }));
 
-import { getCurrentUser, requireAdmin } from "@/lib/session";
+import { getCurrentUser, requireAdmin } from "@/features/auth/session";
+import { ensureSeedAdmin } from "@/features/auth/server";
 import {
   createUser,
-  ensureSeedAdmin,
   findUserById,
   setUserDisabled,
-  updateUserRole,
-} from "@/lib/auth";
+} from "@/features/users/server";
 import { getDb, resetDb } from "@/lib/db";
 import { _resetForTests as resetThrottle } from "@/lib/login-throttle";
 import { POST as loginPost } from "@/app/api/auth/login/route";

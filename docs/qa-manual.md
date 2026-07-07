@@ -294,8 +294,9 @@ name `QA test category`).
 
 1. `/admin/kpis`. On the **Categories** tab, delete `QA test category`.
    Confirm.
-2. If the cascade did not happen automatically, follow up by deleting each
-   KPI that referenced the deleted category.
+2. If the category has KPIs with live monthly/breakdown entries, confirm the
+   delete is blocked with a conflict. Delete those entries first so audit
+   tombstones are recorded, then retry the category delete.
 3. Reload `/dashboard/overview`. Verify the deleted category is gone from the
    executive summary grid.
 4. `GET /api/categories` should not include the deleted category.
@@ -303,11 +304,9 @@ name `QA test category`).
 **Expected outcome.**
 
 - After deletion, `GET /api/categories` excludes `qa-test-cat-{timestamp}`.
-- All KPIs that previously pointed at the deleted category either cascade-
-  deleted (preferred) or are now orphaned and require manual cleanup
-  (current behavior — verify which by reading `src/lib/repository.ts`
-  `deleteCategory`). Document the actual behavior here when running the
-  checklist against a fresh build.
+- The catalog deletion guard blocks categories with live metric entries.
+  Once those dependents are gone, deleting the category removes its child
+  KPIs through the schema cascade; no orphaned KPIs remain.
 - `/admin/history` shows a delete audit row.
 
 **Screenshot placeholder.** `[Insert screenshot: category delete + overview after]`

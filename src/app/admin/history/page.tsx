@@ -1,13 +1,12 @@
 import { redirect } from "next/navigation";
-import { getCurrentUserReadOnly } from "@/lib/session";
+import { getCurrentUserReadOnly } from "@/features/auth/session";
 import { AppShell } from "@/components/AppShell";
 import {
-  listCategories,
   listDeletedHistoryCategories,
   listDeletedHistoryKpis,
   listEntryHistory,
-  listKPIs,
-} from "@/lib/repository";
+} from "@/features/audit/server";
+import { listCategories, listKPIs } from "@/features/catalog/server";
 import { HistoryClient } from "./HistoryClient";
 import type { Category, KPIWithCategory } from "@/lib/types";
 

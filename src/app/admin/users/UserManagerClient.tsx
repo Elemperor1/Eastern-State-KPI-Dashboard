@@ -19,6 +19,12 @@ import {
 import type { User } from "@/lib/types";
 import { apiFetch } from "@/lib/api-client";
 
+interface UserMutationPayload {
+  user?: User | null;
+  users?: User[];
+  error?: string;
+}
+
 export function UserManagerClient({
   users: initialUsers,
   currentUserId,
@@ -35,10 +41,8 @@ export function UserManagerClient({
   const [resetting, setResetting] = useState(false);
   const [accountBusy, setAccountBusy] = useState<number | null>(null);
 
-  async function refresh() {
-    const res = await fetch("/api/users");
-    const data = await res.json();
-    setUsers(data.users);
+  function applyUsersPayload(data: UserMutationPayload) {
+    if (data.users) setUsers(data.users);
   }
 
   async function createUser(form: FormData) {
@@ -51,44 +55,48 @@ export function UserManagerClient({
         role: String(form.get("role")),
       },
     });
-    const data = await res.json();
+    const data = await res.json() as UserMutationPayload;
     if (!res.ok) {
       setFeedback({ message: `Could not create user: ${data.error}`, variant: "error" });
       return;
     }
+    applyUsersPayload(data);
     setFeedback({ message: "User created.", variant: "success" });
-    await refresh();
   }
 
   async function resetPassword(id: number, password: string) {
     setResetting(true);
-    const res = await apiFetch("/api/users", {
-      method: "PATCH",
-      body: { id, password },
-    });
-    if (!res.ok) {
-      setFeedback({ message: "Could not reset password.", variant: "error" });
+    try {
+      const res = await apiFetch("/api/users", {
+        method: "PATCH",
+        body: { id, password },
+      });
+      const data = await res.json().catch(() => ({})) as UserMutationPayload;
+      if (!res.ok) {
+        setFeedback({ message: `Could not reset password: ${data.error ?? res.status}`, variant: "error" });
+        return;
+      }
+      applyUsersPayload(data);
+      setFeedback({ message: "Temporary password set. The user must replace it at next login.", variant: "success" });
+      setResetTarget(null);
+      setNewPassword("");
+    } finally {
       setResetting(false);
-      return;
     }
-    setFeedback({ message: "Temporary password set. The user must replace it at next login.", variant: "success" });
-    setResetTarget(null);
-    setNewPassword("");
-    setResetting(false);
-    await refresh();
   }
 
-  async function deleteUser(id: number, name: string) {
+  async function deleteUser(id: number) {
     const res = await apiFetch("/api/users", {
       method: "DELETE",
       body: { id },
     });
+    const data = await res.json().catch(() => ({})) as UserMutationPayload;
     if (!res.ok) {
-      setFeedback({ message: "Could not delete user.", variant: "error" });
+      setFeedback({ message: `Could not delete user: ${data.error ?? res.status}`, variant: "error" });
       return;
     }
+    applyUsersPayload(data);
     setFeedback({ message: "User deleted.", variant: "success" });
-    await refresh();
   }
 
   /**
@@ -106,13 +114,13 @@ export function UserManagerClient({
         method: "PATCH",
         body: { id, ...body },
       });
-      const data = await res.json().catch(() => ({}));
+      const data = await res.json().catch(() => ({})) as UserMutationPayload;
       if (!res.ok) {
         setFeedback({ message: `Could not update account: ${data.error ?? res.status}`, variant: "error" });
         return;
       }
+      applyUsersPayload(data);
       setFeedback({ message: successMessage, variant: "success" });
-      await refresh();
     } finally {
       setAccountBusy(null);
     }
@@ -345,7 +353,7 @@ export function UserManagerClient({
         onConfirm={async () => {
           const target = deleteTarget;
           setDeleteTarget(null);
-          if (target) await deleteUser(target.id, target.name);
+          if (target) await deleteUser(target.id);
         }}
       />
 

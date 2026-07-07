@@ -4,12 +4,8 @@ import { NextResponse } from "next/server";
 import { cookies } from "next/headers";
 import { AUTH_DISABLED } from "./auth-flag";
 import type { SessionUser } from "./types";
-import {
-  BYPASS_USER_EMAIL,
-  ensureSeedAdmin,
-  findUserByEmail,
-  findUserById,
-} from "./auth";
+import { BYPASS_USER_EMAIL, ensureSeedAdmin } from "@/features/auth/server";
+import { findUserByEmail, findUserById } from "@/features/users/server";
 
 export interface SessionData {
   user?: SessionUser;

@@ -1,7 +1,11 @@
 import bcrypt from "bcryptjs";
 import crypto from "node:crypto";
-import { getDb, transaction } from "./db";
-import type { Role, SessionUser, User } from "./types";
+import { getDb, transaction } from "@/lib/db";
+import type { Role, SessionUser } from "@/lib/types";
+import {
+  createUser,
+  findUserCredentialRecordByEmail,
+} from "@/features/users/server";
 
 const SALT_ROUNDS = 10;
 
@@ -23,68 +27,6 @@ function isReservedEmail(email: string): boolean {
   return RESERVED_EMAILS.has(email.toLowerCase().trim());
 }
 
-interface UserRow {
-  id: number;
-  email: string;
-  name: string;
-  password_hash: string;
-  role: Role;
-  created_at: string;
-  must_change_password: number;
-  disabled: number;
-  sessions_valid_after: number;
-}
-
-function asUserRow(row: Record<string, unknown> | undefined): UserRow | undefined {
-  if (!row) return undefined;
-  return {
-    id: Number(row.id),
-    email: String(row.email),
-    name: String(row.name),
-    password_hash: String(row.password_hash),
-    role: String(row.role) as Role,
-    created_at: String(row.created_at),
-    must_change_password: Number(row.must_change_password ?? 0),
-    disabled: Number(row.disabled ?? 0),
-    sessions_valid_after: Number(row.sessions_valid_after ?? 0),
-  };
-}
-
-function rowToUser(row: UserRow): User {
-  return {
-    id: row.id,
-    email: row.email,
-    name: row.name,
-    role: row.role,
-    created_at: row.created_at,
-    must_change_password: row.must_change_password !== 0,
-    disabled: row.disabled !== 0,
-    sessions_valid_after: row.sessions_valid_after,
-  };
-}
-
-export function findUserByEmail(email: string): User | null {
-  const db = getDb();
-  const row = asUserRow(
-    db
-      .prepare("SELECT * FROM users WHERE email = ?")
-      .get(email.toLowerCase().trim()),
-  );
-  return row ? rowToUser(row) : null;
-}
-
-/** Look up a user by id. Used by getCurrentUser() to re-validate a
- *  session against the live DB on every protected request — the
- *  session cookie may carry stale role / must_change_password /
- *  sessions_valid_after values that only a fresh DB read can
- *  correct (e.g. an admin reset that happened after this session
- *  was issued). */
-export function findUserById(id: number): User | null {
-  const db = getDb();
-  const row = asUserRow(db.prepare("SELECT * FROM users WHERE id = ?").get(id));
-  return row ? rowToUser(row) : null;
-}
-
 export async function verifyCredentials(
   email: string,
   password: string,
@@ -95,19 +37,14 @@ export async function verifyCredentials(
     // timing/leak surface is identical to "no such user".
     return null;
   }
-  const db = getDb();
-  const row = asUserRow(
-    db
-      .prepare("SELECT * FROM users WHERE email = ?")
-      .get(email.toLowerCase().trim()),
-  );
+  const row = findUserCredentialRecordByEmail(email);
   if (!row) return null;
   // A disabled account cannot log in (D8AD-CAN-003). Return null with
   // the same generic shape used for "no such user" / "wrong password"
   // so the login response does not leak that the account exists but is
   // disabled — the caller sees the identical "Invalid email or password."
   // 401 either way.
-  if (row.disabled !== 0) return null;
+  if (row.disabled) return null;
   const ok = await bcrypt.compare(password, row.password_hash);
   if (!ok) return null;
   return {
@@ -115,166 +52,8 @@ export async function verifyCredentials(
     email: row.email,
     name: row.name,
     role: row.role,
-    must_change_password: row.must_change_password !== 0,
+    must_change_password: row.must_change_password,
   };
-}
-
-export async function hashPassword(plain: string): Promise<string> {
-  return bcrypt.hash(plain, SALT_ROUNDS);
-}
-
-export function createUser(input: {
-  email: string;
-  name: string;
-  password: string;
-  role: Role;
-  /** When true the account is created with a temporary credential
-   *  that must be rotated at first login (bootstrap / invited users).
-   *  Defaults to false for normal admin-created users. */
-  mustChangePassword?: boolean;
-}): User {
-  const db = getDb();
-  const hash = bcrypt.hashSync(input.password, SALT_ROUNDS);
-  const email = input.email.toLowerCase().trim();
-  const name = input.name.trim();
-  const mustChange = input.mustChangePassword ? 1 : 0;
-  // Stamp the session-revocation watermark at creation time so the
-  // session validator has a baseline to compare the first session's
-  // issuedAt against. Date.now() is the same value the login route
-  // will record as session.issuedAt, and a session is valid iff
-  // issuedAt >= this watermark, so a session issued moments after
-  // creation is valid.
-  const now = Date.now();
-  // For consistency with the upsert path (see repository.ts) we
-  // re-read the row by its natural unique key (email) instead of
-  // trusting `result.lastInsertRowid`. Plain INSERTs in node:sqlite
-  // do reliably set lastInsertRowid to the new row, but a future
-  // change that wraps this in an upsert or that runs through a
-  // SAVEPOINT-containing transaction could break that assumption
-  // silently. The key-based readback is robust to either case.
-  db.prepare(
-    `INSERT INTO users (email, name, password_hash, role, must_change_password, sessions_valid_after)
-     VALUES (?, ?, ?, ?, ?, ?)`,
-  ).run(email, name, hash, input.role, mustChange, now);
-  const row = db
-    .prepare("SELECT * FROM users WHERE email = ?")
-    .get(email) as Record<string, unknown> | undefined;
-  if (!row) {
-    throw new Error(
-      `createUser: row not found after insert for email=${email}`,
-    );
-  }
-  return {
-    id: Number(row.id),
-    email: String(row.email),
-    name: String(row.name),
-    role: String(row.role) as Role,
-    created_at: String(row.created_at),
-    must_change_password: Number(row.must_change_password ?? 0) !== 0,
-    disabled: Number(row.disabled ?? 0) !== 0,
-    sessions_valid_after: Number(row.sessions_valid_after ?? 0),
-  };
-}
-
-export function listUsers(): User[] {
-  const db = getDb();
-  const rows = db
-    .prepare("SELECT * FROM users ORDER BY created_at ASC")
-    .all() as Record<string, unknown>[];
-  return rows
-    .map((r) => asUserRow(r))
-    .filter((r): r is UserRow => r !== undefined)
-    .map(rowToUser);
-}
-
-/**
- * Set a user's password. `mustChange` controls the
- * must_change_password flag on the row:
- *  - true  → the new password is a *temporary* credential the user
- *            must rotate at next login (admin-issued reset, bootstrap).
- *  - false → the new password is the user's own *permanent* choice
- *            (self-service change-password after login); clears any
- *            pending rotation requirement.
- *
- * The hash write, the flag write, and the sessions_valid_after
- * watermark bump all run in a single transaction so a torn update can
- * never leave a row with a new hash but a stale flag or watermark
- * (or vice-versa). Bumping sessions_valid_after to Date.now()
- * atomically invalidates EVERY session that was issued before this
- * change (their issuedAt < the new watermark), including the actor's
- * own current session — see src/lib/session.ts::getCurrentUser. This
- * is the cross-device session-invalidation guarantee: a compromised
- * or stale temp credential's session cannot survive a credential
- * replacement (D8AD-CAN-001 req 6 / D8AD-CAN-003 req 5).
- */
-export function updateUserPassword(
-  id: number,
-  newPassword: string,
-  mustChange: boolean,
-): void {
-  const db = getDb();
-  const hash = bcrypt.hashSync(newPassword, SALT_ROUNDS);
-  const now = Date.now();
-  transaction(() => {
-    db.prepare(
-      "UPDATE users SET password_hash = ?, must_change_password = ?, sessions_valid_after = ? WHERE id = ?",
-    ).run(hash, mustChange ? 1 : 0, now, id);
-  });
-}
-
-/**
- * Change a user's role (admin ⇄ viewer). A role change is a
- * security-sensitive account change, so it bumps the
- * sessions_valid_after watermark inside the same transaction — every
- * session the user holds is invalidated and they must re-authenticate
- * under the new role (D8AD-CAN-003 req 4 + req 5). Without the bump a
- * downgraded admin's cookie would keep syncing role from the DB on
- * each request (so admin APIs would already 403 them), but the
- * requirement calls for outright session invalidation so the stale
- * cookie is cleared and the client re-logs in cleanly.
- */
-export function updateUserRole(id: number, role: Role): void {
-  const db = getDb();
-  const now = Date.now();
-  transaction(() => {
-    db.prepare(
-      "UPDATE users SET role = ?, sessions_valid_after = ? WHERE id = ?",
-    ).run(role, now, id);
-  });
-}
-
-/**
- * Enable or disable a user account. Disablement is a
- * security-sensitive account change: it bumps sessions_valid_after so
- * every session the user currently holds is invalidated immediately
- * (D8AD-CAN-003 req 5 + req 6), and getCurrentUser additionally
- * rejects any cookie whose row is disabled. Re-enabling bumps the
- * watermark again so any cookie minted during the disabled window
- * (which could not have logged in, but defense-in-depth) cannot be
- * reused; the user must log in fresh with their existing credential.
- */
-export function setUserDisabled(id: number, disabled: boolean): void {
-  const db = getDb();
-  const now = Date.now();
-  transaction(() => {
-    db.prepare(
-      "UPDATE users SET disabled = ?, sessions_valid_after = ? WHERE id = ?",
-    ).run(disabled ? 1 : 0, now, id);
-  });
-}
-
-/**
- * Delete a user. Deletion immediately invalidates every session the
- * user held: getCurrentUser re-reads the row by id on each protected
- * request, finds nothing, destroys the cookie, and returns null
- * (D8AD-CAN-003 req 6). No watermark bump is needed — the row is
- * gone, so no session can ever revalidate against it. Referencing
- * rows (monthly_entries / breakdown_entries .updated_by, entry_history
- * .changed_by) are SET NULL by the FK ON DELETE clause.
- */
-export function deleteUser(id: number): void {
-  const db = getDb();
-  db.prepare("DELETE FROM users WHERE id = ?").run(id);
 }
 
 /**

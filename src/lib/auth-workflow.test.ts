@@ -68,13 +68,13 @@ vi.mock("next/headers", () => ({
 }));
 
 // Auth/DB/session remain real — only the cookie transport is faked.
-import { getCurrentUser, requireSession } from "@/lib/session";
+import { getCurrentUser, requireSession } from "@/features/auth/session";
+import { ensureSeedAdmin } from "@/features/auth/server";
 import {
   createUser,
-  ensureSeedAdmin,
   findUserById,
   updateUserPassword,
-} from "@/lib/auth";
+} from "@/features/users/server";
 import { getDb, resetDb } from "@/lib/db";
 import { _resetForTests as resetThrottle } from "@/lib/login-throttle";
 import { POST as loginPost } from "@/app/api/auth/login/route";

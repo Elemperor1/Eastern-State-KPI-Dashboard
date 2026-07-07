@@ -9,9 +9,10 @@ import { BreakdownChart } from "@/components/BreakdownChart";
 import { DonorConversionCard } from "@/components/DonorConversionCard";
 import { Breadcrumb, Card, ExportCSVButton, ExportPNGButton, PageHeader, PrintButton, PrintReportFooter, PrintReportHeader } from "@/components/ui";
 import { SampleDataBadge } from "@/components/SampleDataBadge";
-import { buildKPIAnalytics, CHART_COLORS, MONTH_FULL } from "@/lib/analytics";
-import type { DashboardData } from "@/lib/dashboard-data";
-import type { KPIWithCategory } from "@/lib/types";
+import { buildCategoryPageModel } from "@/features/reporting/category-page";
+import { buildCategoryCsvExport } from "@/features/reporting/csv";
+import { CHART_COLORS, MONTH_FULL } from "@/lib/analytics";
+import type { DashboardData } from "@/features/reporting/types";
 
 export function CategoryPageClient({
   data,
@@ -27,23 +28,12 @@ export function CategoryPageClient({
 
   useEffect(() => {
     setState(initialState);
-  }, [initialState.currentYear, initialState.compareYear, initialState.currentMonth]);
+  }, [initialState]);
 
-  const category = data.categories.find((c) => c.slug === categorySlug);
-  const catKpis = useMemo(
-    () => data.kpis.filter((k) => k.category_slug === categorySlug),
-    [data.kpis, categorySlug],
+  const model = useMemo(
+    () => buildCategoryPageModel(data, categorySlug, state),
+    [data, categorySlug, state],
   );
-
-  // Build a kpi_id -> goal lookup for the selected year.
-  const goalsByKpiId = useMemo(() => {
-    const map = new Map(
-      data.goals
-        .filter((g) => g.target_year === state.currentYear)
-        .map((g) => [g.kpi_id, g]),
-    );
-    return map;
-  }, [data.goals, state.currentYear]);
 
   function updateState(next: Partial<CompareState>) {
     const merged = { ...state, ...next };
@@ -55,105 +45,12 @@ export function CategoryPageClient({
     router.replace(`/dashboard/category/${categorySlug}?${search.toString()}`, { scroll: false });
   }
 
-  if (!category) return null;
+  if (!model.category) return null;
 
-  const monthlyKpis = catKpis.filter((k) => k.unit_type !== "breakdown");
-  const breakdownKpis = catKpis.filter((k) => k.unit_type === "breakdown");
-  const monthlyBreakdownKpis = breakdownKpis.filter((k) =>
-    data.breakdowns.some((b) => b.kpi_id === k.id && b.month > 0),
-  );
-  const annualBreakdownKpis = breakdownKpis.filter((k) =>
-    !data.breakdowns.some((b) => b.kpi_id === k.id && b.month > 0),
-  );
-
-  function analyticsFor(kpi: KPIWithCategory) {
-    const kpiEntries = data.entries.filter((e) => e.kpi_id === kpi.id);
-    return buildKPIAnalytics({
-      kpi,
-      entries: kpiEntries,
-      currentYear: state.currentYear,
-      compareYear: state.compareYear,
-      currentMonth: state.currentMonth,
-    });
-  }
-
-  // Long-format CSV: one row per (kpi, period, kind). Keeps the file
-  // pivot-friendly in Excel / Sheets while still matching what the user
-  // can see on the category page (current-vs-compare through the active
-  // month, plus breakdown composition for both years).
-  type CsvRow = Record<string, string | number | null>;
-  const csvRows: CsvRow[] = [];
-  for (const kpi of monthlyKpis) {
-    const a = analyticsFor(kpi);
-    if (kpi.reporting_frequency !== "monthly") {
-      for (const y of a.years) {
-        csvRows.push({
-          KPI: kpi.name,
-          Unit: kpi.unit_type,
-          Reporting: "annual",
-          Year: y.year,
-          Period: "full year",
-          Value: y.fullYearValue ?? "",
-          Compare_Value: "",
-          Notes: "",
-        });
-      }
-    } else {
-      const monthsToShow = Math.min(state.currentMonth, 12);
-      for (let m = 1; m <= 12; m++) {
-        const cur = data.entries.find(
-          (e) => e.kpi_id === kpi.id && e.year === state.currentYear && e.month === m,
-        );
-        const cmp = data.entries.find(
-          (e) => e.kpi_id === kpi.id && e.year === state.compareYear && e.month === m,
-        );
-        if (cur || cmp || m <= monthsToShow) {
-          csvRows.push({
-            KPI: kpi.name,
-            Unit: kpi.unit_type,
-            Reporting: "monthly",
-            Year: m <= monthsToShow ? state.currentYear : "",
-            Period: MONTH_FULL[m - 1],
-            Value: cur?.value ?? "",
-            Compare_Value: cmp?.value ?? "",
-            Compare_Year: m <= monthsToShow ? state.compareYear : "",
-            Notes: cur?.notes ?? "",
-          });
-        }
-      }
-    }
-  }
-  for (const kpi of breakdownKpis) {
-    const rows = data.breakdowns.filter(
-      (b) => b.kpi_id === kpi.id && (b.year === state.currentYear || b.year === state.compareYear),
-    );
-    for (const r of rows) {
-      csvRows.push({
-        KPI: kpi.name,
-        Unit: kpi.unit_type,
-        Reporting: r.month > 0 ? "monthly breakdown" : "breakdown",
-        Year: r.year,
-        Period: r.month > 0 ? `${MONTH_FULL[r.month - 1]} - ${r.label}` : r.label,
-        Value: r.value,
-        Compare_Value: "",
-        Notes: "",
-      });
-    }
-  }
-  const csvColumns = [
-    "KPI",
-    "Unit",
-    "Reporting",
-    "Year",
-    "Period",
-    "Value",
-    "Compare_Year",
-    "Compare_Value",
-    "Notes",
-  ];
-  const csvFilename = `eastern-state-${categorySlug}-${state.currentYear}-vs-${state.compareYear}.csv`;
+  const csvExport = buildCategoryCsvExport(data, categorySlug, state);
 
   const printId = `category-${categorySlug}-print`;
+  const { category } = model;
 
   return (
     <div className="page-content page-content-wide page-enter">
@@ -177,7 +74,7 @@ export function CategoryPageClient({
           actions={
             <>
               <SampleDataBadge sample={data.sampleData} />
-              <ExportCSVButton rows={csvRows} columns={csvColumns} filename={csvFilename} />
+              <ExportCSVButton rows={csvExport.rows} columns={csvExport.columns} filename={csvExport.filename} />
               <PrintButton />
               <ExportPNGButton
                 targetId={printId}
@@ -193,7 +90,7 @@ export function CategoryPageClient({
 
         <DashboardControls state={state} availableYears={data.years} onChange={updateState} />
 
-        {monthlyKpis.length > 0 ? (
+        {model.metricCards.length > 0 ? (
           <section className="mb-10">
             <div className="section-head">
               <p className="section-eyebrow">Metrics</p>
@@ -202,23 +99,20 @@ export function CategoryPageClient({
               </h2>
             </div>
             <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
-              {monthlyKpis.map((kpi, idx) => {
-                const analytics = analyticsFor(kpi);
-                return (
-                  <MetricCard
-                    key={kpi.id}
-                    analytics={analytics}
-                    accentColor={CHART_COLORS[idx % CHART_COLORS.length]}
-                    onSelect={() => router.push(`/dashboard/metric/${kpi.slug}`)}
-                    goal={goalsByKpiId.get(kpi.id) ?? null}
-                  />
-                );
-              })}
+              {model.metricCards.map((metric, idx) => (
+                <MetricCard
+                  key={metric.kpi.id}
+                  analytics={metric.analytics}
+                  accentColor={CHART_COLORS[idx % CHART_COLORS.length]}
+                  onSelect={() => router.push(`/dashboard/metric/${metric.kpi.slug}`)}
+                  goal={metric.goal}
+                />
+              ))}
             </div>
           </section>
         ) : null}
 
-        {monthlyBreakdownKpis.length > 0 ? (
+        {model.monthlyBreakdowns.length > 0 ? (
           <section className="mb-10 space-y-6">
             <div className="section-head">
               <p className="section-eyebrow">Monthly breakdowns</p>
@@ -226,11 +120,11 @@ export function CategoryPageClient({
                 Through {MONTH_FULL[state.currentMonth - 1]} {state.currentYear}
               </h2>
             </div>
-            {monthlyBreakdownKpis.map((kpi) => (
-              <Card key={kpi.id} className="p-5 lg:p-6">
+            {model.monthlyBreakdowns.map((section) => (
+              <Card key={section.kpi.id} className="p-5 lg:p-6">
                 <DonorConversionCard
-                  kpi={kpi}
-                  data={data.breakdowns.filter((b) => b.kpi_id === kpi.id)}
+                  kpi={section.kpi}
+                  data={section.breakdowns}
                   currentYear={state.currentYear}
                   compareYear={state.compareYear}
                   currentMonth={state.currentMonth}
@@ -240,22 +134,17 @@ export function CategoryPageClient({
           </section>
         ) : null}
 
-        {annualBreakdownKpis.length > 0 ? (
+        {model.annualBreakdowns.length > 0 ? (
           <section className="mb-10 space-y-6">
             <div className="section-head">
               <p className="section-eyebrow">Breakdowns</p>
               <h2 className="section-title">Composition metrics</h2>
             </div>
-            {annualBreakdownKpis.map((kpi) => (
-              <Card key={kpi.id} className="p-5 lg:p-6">
+            {model.annualBreakdowns.map((section) => (
+              <Card key={section.kpi.id} className="p-5 lg:p-6">
                 <BreakdownChart
-                  kpi={kpi}
-                  data={data.breakdowns.filter(
-                    (b) =>
-                      b.kpi_id === kpi.id &&
-                      b.month === 0 &&
-                      (b.year === state.currentYear || b.year === state.compareYear),
-                  )}
+                  kpi={section.kpi}
+                  data={section.breakdowns}
                   currentYear={state.currentYear}
                   compareYear={state.compareYear}
                 />

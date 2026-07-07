@@ -27,7 +27,7 @@ const ADMIN = {
   must_change_password: true,
 };
 
-vi.mock("@/lib/session", () => ({
+vi.mock("@/features/auth/session", () => ({
   requireAdmin: vi.fn(async () => ADMIN),
   requireSession: vi.fn(async () => ADMIN),
   getCurrentUser: vi.fn(async () => ADMIN),
@@ -51,7 +51,11 @@ vi.mock("@/lib/session", () => ({
   },
 }));
 
-vi.mock("@/lib/auth", () => ({
+vi.mock("@/features/auth/server", () => ({
+  verifyCredentials: vi.fn(async () => ADMIN),
+}));
+
+vi.mock("@/features/users/server", () => ({
   createUser: vi.fn(() => ({ id: 2, email: "new@test", name: "New", role: "viewer" })),
   deleteUser: vi.fn(() => {}),
   listUsers: vi.fn(() => []),
@@ -65,16 +69,9 @@ vi.mock("@/lib/auth", () => ({
   })),
   setUserDisabled: vi.fn(() => {}),
   updateUserRole: vi.fn(() => {}),
-  verifyCredentials: vi.fn(async () => ADMIN),
 }));
 
-vi.mock("@/lib/repository", () => ({
-  listEntries: vi.fn(() => []),
-  upsertEntry: vi.fn(() => ({ id: 1 })),
-  deleteEntry: vi.fn(() => {}),
-  listBreakdowns: vi.fn(() => []),
-  upsertBreakdown: vi.fn(() => ({ id: 1 })),
-  deleteBreakdown: vi.fn(() => {}),
+vi.mock("@/features/catalog/server", () => ({
   listKPIs: vi.fn(() => []),
   createKPI: vi.fn(() => ({ id: 1 })),
   updateKPI: vi.fn(() => {}),
@@ -83,6 +80,15 @@ vi.mock("@/lib/repository", () => ({
   createCategory: vi.fn(() => ({ id: 1 })),
   updateCategory: vi.fn(() => {}),
   deleteCategory: vi.fn(() => {}),
+}));
+
+vi.mock("@/features/metrics/server", () => ({
+  listEntries: vi.fn(() => []),
+  upsertEntry: vi.fn(() => ({ id: 1 })),
+  deleteEntry: vi.fn(() => {}),
+  listBreakdowns: vi.fn(() => []),
+  upsertBreakdown: vi.fn(() => ({ id: 1 })),
+  deleteBreakdown: vi.fn(() => {}),
 }));
 
 // Handlers under test.

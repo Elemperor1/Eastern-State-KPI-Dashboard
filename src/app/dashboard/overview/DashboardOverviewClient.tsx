@@ -1,14 +1,16 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { ExportPDFButton } from "@/components/ExportPDFButton";
 import { DashboardControls, type CompareState } from "@/components/DashboardControls";
 import { CategoryOverviewCard } from "@/components/CategoryOverviewCard";
 import { ExportCSVButton, ExportPNGButton, PageHeader, PrintButton, PrintReportFooter, PrintReportHeader } from "@/components/ui";
 import { SampleDataBadge } from "@/components/SampleDataBadge";
+import { buildCategoryOverviewSummaries } from "@/features/reporting/category-summary";
+import { buildOverviewCsvExport } from "@/features/reporting/csv";
 import { CHART_COLORS, MONTH_FULL } from "@/lib/analytics";
-import type { DashboardData } from "@/lib/dashboard-data";
+import type { DashboardData } from "@/features/reporting/types";
 
 export function DashboardOverviewClient({
   data,
@@ -22,7 +24,7 @@ export function DashboardOverviewClient({
 
   useEffect(() => {
     setState(initialState);
-  }, [initialState.currentYear, initialState.compareYear, initialState.currentMonth]);
+  }, [initialState]);
 
   function updateState(next: Partial<CompareState>) {
     const merged = { ...state, ...next };
@@ -37,87 +39,11 @@ export function DashboardOverviewClient({
 
   const monthLabel = MONTH_FULL[state.currentMonth - 1];
 
-  // Long-format overview CSV: one row per (category, kpi, period). Execs can
-  // pivot the whole KPI surface in Excel / Sheets. For monthly KPIs we
-  // include both the current year and compare-year values for the active
-  // through-month, so the export is self-contained.
-  type CsvRow = Record<string, string | number | null>;
-  const csvRows: CsvRow[] = [];
-  for (const cat of data.categories) {
-    const catKpis = data.kpis.filter((k) => k.category_id === cat.id);
-    for (const kpi of catKpis) {
-      if (kpi.unit_type === "breakdown") {
-        const rows = data.breakdowns.filter(
-          (b) => b.kpi_id === kpi.id && (b.year === state.currentYear || b.year === state.compareYear),
-        );
-        for (const r of rows) {
-          csvRows.push({
-            Category: cat.name,
-            KPI: kpi.name,
-            Unit: kpi.unit_type,
-            Reporting: "breakdown",
-            Year: r.year,
-            Period: r.label,
-            Value: r.value,
-            Compare_Year: "",
-            Compare_Value: "",
-            Notes: "",
-          });
-        }
-        continue;
-      }
-      const kpiEntries = data.entries.filter((e) => e.kpi_id === kpi.id);
-      if (kpi.reporting_frequency !== "monthly") {
-        const years = Array.from(new Set(kpiEntries.map((e) => e.year))).sort();
-        for (const y of years) {
-          const ent = kpiEntries.find((e) => e.year === y && e.month === 0);
-          csvRows.push({
-            Category: cat.name,
-            KPI: kpi.name,
-            Unit: kpi.unit_type,
-            Reporting: "annual",
-            Year: y,
-            Period: "full year",
-            Value: ent?.value ?? "",
-            Compare_Year: "",
-            Compare_Value: "",
-            Notes: ent?.notes ?? "",
-          });
-        }
-        continue;
-      }
-      const monthsToShow = Math.min(state.currentMonth, 12);
-      for (let m = 1; m <= monthsToShow; m++) {
-        const cur = kpiEntries.find((e) => e.year === state.currentYear && e.month === m);
-        const cmp = kpiEntries.find((e) => e.year === state.compareYear && e.month === m);
-        csvRows.push({
-          Category: cat.name,
-          KPI: kpi.name,
-          Unit: kpi.unit_type,
-          Reporting: "monthly",
-          Year: state.currentYear,
-          Period: MONTH_FULL[m - 1],
-          Value: cur?.value ?? "",
-          Compare_Year: state.compareYear,
-          Compare_Value: cmp?.value ?? "",
-          Notes: cur?.notes ?? "",
-        });
-      }
-    }
-  }
-  const csvColumns = [
-    "Category",
-    "KPI",
-    "Unit",
-    "Reporting",
-    "Year",
-    "Period",
-    "Value",
-    "Compare_Year",
-    "Compare_Value",
-    "Notes",
-  ];
-  const csvFilename = `eastern-state-overview-${state.currentYear}-vs-${state.compareYear}.csv`;
+  const csvExport = buildOverviewCsvExport(data, state);
+  const categorySummaries = useMemo(
+    () => buildCategoryOverviewSummaries(data, state),
+    [data, state],
+  );
 
   return (
     <div className="page-content page-content-wide page-enter">
@@ -144,7 +70,7 @@ export function DashboardOverviewClient({
           actions={
             <>
               <SampleDataBadge sample={data.sampleData} />
-              <ExportCSVButton rows={csvRows} columns={csvColumns} filename={csvFilename} />
+              <ExportCSVButton rows={csvExport.rows} columns={csvExport.columns} filename={csvExport.filename} />
               <PrintButton />
               <ExportPNGButton
                 targetId="dashboard-print-root"
@@ -175,16 +101,10 @@ export function DashboardOverviewClient({
             </p>
           </div>
           <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
-            {data.categories.map((cat, idx) => (
+            {categorySummaries.map((summary, idx) => (
               <CategoryOverviewCard
-                key={cat.id}
-                category={cat}
-                kpis={data.kpis}
-                entries={data.entries}
-                breakdowns={data.breakdowns}
-                currentYear={state.currentYear}
-                compareYear={state.compareYear}
-                currentMonth={state.currentMonth}
+                key={summary.category.id}
+                summary={summary}
                 accent={CHART_COLORS[idx % CHART_COLORS.length]}
               />
             ))}

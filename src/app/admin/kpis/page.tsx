@@ -1,8 +1,8 @@
 import { redirect } from "next/navigation";
-import { getCurrentUserReadOnly } from "@/lib/session";
+import { getCurrentUserReadOnly } from "@/features/auth/session";
 import { AppShell } from "@/components/AppShell";
+import { listCategories, listKPIs } from "@/features/catalog/server";
 import { KPIManagerClient } from "./KPIManagerClient";
-import { listCategories, listKPIs } from "@/lib/repository";
 
 export const dynamic = "force-dynamic";
 

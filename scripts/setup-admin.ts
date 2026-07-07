@@ -21,7 +21,7 @@
  * as a CLI argument so it cannot leak through shell history, process
  * listings, or CI logs.
  */
-import { findUserByEmail, updateUserPassword } from "../src/lib/auth";
+import { findUserByEmail, updateUserPassword } from "../src/features/users/server";
 import { getDb, resetDb } from "../src/lib/db";
 
 const MIN_PASSWORD_LENGTH = 8;

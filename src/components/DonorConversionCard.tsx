@@ -13,6 +13,7 @@ import {
 } from "recharts";
 import { Table } from "@/components/ui";
 import { MONTH_LABELS, formatValue } from "@/lib/analytics";
+import { MONTH_NUMBERS } from "@/features/metrics";
 import type { BreakdownEntryWithMeta, KPIWithCategory } from "@/lib/types";
 
 interface Props {
@@ -41,7 +42,7 @@ export function DonorConversionCard({
 
   const monthlyRows: MonthlyRow[] = useMemo(() => {
     const rows: MonthlyRow[] = [];
-    for (let m = 1; m <= monthsToShow; m++) {
+    for (const m of MONTH_NUMBERS.slice(0, monthsToShow)) {
       const curReferred =
         data.find(
           (b) =>

@@ -42,8 +42,6 @@ const sizeMap = {
 
 export function BrandMark({
   size = "md",
-  // `inverted` is accepted but unused — see the deprecation note above.
-  inverted: _inverted,
   className,
 }: BrandMarkProps) {
   const { px, className: sizeClass } = sizeMap[size];

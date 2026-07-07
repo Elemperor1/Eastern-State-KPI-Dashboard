@@ -19,6 +19,7 @@ import {
   StatusBanner,
   Table,
 } from "@/components/ui";
+import { isAnnualReportingFrequency } from "@/features/metrics";
 import type { KPIWithCategory, KpiGoalWithMeta } from "@/lib/types";
 import { apiFetch } from "@/lib/api-client";
 
@@ -78,12 +79,28 @@ export function GoalsManagerClient({
     return counts;
   }, [goals]);
 
-  async function refresh() {
+  function goalsEndpoint() {
     const throughMonth = Math.min(new Date().getMonth() + 1, 12);
-    const res = await fetch(`/api/goals?throughMonth=${throughMonth}`).then((r) => r.json());
-    setGoals(res.goals);
+    return `/api/goals?throughMonth=${throughMonth}`;
+  }
+
+  async function applyGoalsMutationResponse(
+    res: Response,
+    fallbackError: string,
+  ): Promise<{ ok: true } | { ok: false; error: string }> {
+    const data = await res.json().catch(() => ({})) as {
+      error?: string;
+      goals?: KpiGoalWithMeta[];
+    };
+    if (!res.ok) {
+      return { ok: false, error: data.error ?? fallbackError };
+    }
+    if (Array.isArray(data.goals)) {
+      setGoals(data.goals);
+    }
     // Re-render server-rendered dashboard pages so progress bars update.
     router.refresh();
+    return { ok: true };
   }
 
   async function handleCreate(e: React.FormEvent) {
@@ -97,47 +114,44 @@ export function GoalsManagerClient({
       enabled: true,
       notes: createNotes || null,
     };
-    const res = await apiFetch("/api/goals", {
+    const res = await apiFetch(goalsEndpoint(), {
       method: "POST",
       body: payload,
     });
-    const data = await res.json();
-    if (!res.ok) {
-      setFeedback({ message: `Could not create goal: ${data.error}`, variant: "error" });
+    const result = await applyGoalsMutationResponse(res, "Unknown error");
+    if (!result.ok) {
+      setFeedback({ message: `Could not create goal: ${result.error}`, variant: "error" });
       return;
     }
     setFeedback({ message: "Goal created.", variant: "success" });
     setCreateTargetValue("");
     setCreateNotes("");
-    await refresh();
   }
 
   async function handleToggle(id: number, enabled: boolean) {
-    const res = await apiFetch("/api/goals", {
+    const res = await apiFetch(goalsEndpoint(), {
       method: "PATCH",
       body: { id, enabled },
     });
-    if (!res.ok) {
-      const data = await res.json();
-      setFeedback({ message: `Could not toggle: ${data.error}`, variant: "error" });
+    const result = await applyGoalsMutationResponse(res, "Unknown error");
+    if (!result.ok) {
+      setFeedback({ message: `Could not toggle: ${result.error}`, variant: "error" });
       return;
     }
     setFeedback({ message: enabled ? "Goal enabled." : "Goal disabled.", variant: "success" });
-    await refresh();
   }
 
   async function handleDelete(id: number, kpiName: string) {
-    const res = await apiFetch("/api/goals", {
+    const res = await apiFetch(goalsEndpoint(), {
       method: "DELETE",
       body: { id },
     });
-    if (!res.ok) {
-      const data = await res.json();
-      setFeedback({ message: `Could not delete: ${data.error}`, variant: "error" });
+    const result = await applyGoalsMutationResponse(res, "Unknown error");
+    if (!result.ok) {
+      setFeedback({ message: `Could not delete: ${result.error}`, variant: "error" });
       return;
     }
     setFeedback({ message: `Goal deleted for “${kpiName}”.`, variant: "success" });
-    await refresh();
   }
 
   function requestDelete(id: number, kpiName: string) {
@@ -159,7 +173,7 @@ export function GoalsManagerClient({
   async function handleUpdate(e: React.FormEvent) {
     e.preventDefault();
     if (!editing || !editTargetValue) return;
-    const res = await apiFetch("/api/goals", {
+    const res = await apiFetch(goalsEndpoint(), {
       method: "PATCH",
       body: {
         id: editing.id,
@@ -169,14 +183,13 @@ export function GoalsManagerClient({
         notes: editNotes || null,
       },
     });
-    const data = await res.json();
-    if (!res.ok) {
-      setFeedback({ message: `Could not update goal: ${data.error}`, variant: "error" });
+    const result = await applyGoalsMutationResponse(res, "Unknown error");
+    if (!result.ok) {
+      setFeedback({ message: `Could not update goal: ${result.error}`, variant: "error" });
       return;
     }
     setFeedback({ message: "Goal updated.", variant: "success" });
     setEditing(null);
-    await refresh();
   }
 
   // Build a quick-lookup set: which KPIs already have a goal this year?
@@ -356,7 +369,7 @@ export function GoalsManagerClient({
             {filteredGoals.map((g) => {
               const ytdPct = g.ytd_progress_pct;
               const fyPct = g.full_year_progress_pct;
-              const isAnnual = g.reporting_frequency !== "monthly";
+              const isAnnual = isAnnualReportingFrequency(g.reporting_frequency);
               return (
                 <tr key={g.id} className="transition-colors hover:bg-ink-50/70">
                   <td className="py-3 pr-4">
