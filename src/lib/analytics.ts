@@ -121,7 +121,7 @@ interface BuildAnalyticsArgs {
 }
 
 function isAnnual(kpi: KPIWithCategory): boolean {
-  return kpi.reporting_frequency === "annual";
+  return kpi.reporting_frequency !== "monthly";
 }
 
 export function buildKPIAnalytics(args: BuildAnalyticsArgs): KPIAnalytics {
@@ -234,11 +234,14 @@ export function buildKPIAnalytics(args: BuildAnalyticsArgs): KPIAnalytics {
   };
 }
 
-/** Build chart-friendly data points for the trend view (monthly metrics only). */
+/** Build chart-friendly data points for the trend view (monthly metrics only).
+ *  Only month=1–12 entries are plotted; month=0 (annual full-year snapshot) rows
+ *  are always excluded so they never appear as a thirteenth point on the x-axis. */
 export function buildTrendPoints(
   entries: MonthlyEntryWithMeta[],
   years: number[],
 ): ComparisonPoint[] {
+  const monthlyEntries = entries.filter((e) => e.month >= 1 && e.month <= 12);
   const points: ComparisonPoint[] = [];
   for (let month = 1; month <= 12; month++) {
     const point: ComparisonPoint = {
@@ -246,7 +249,7 @@ export function buildTrendPoints(
       month,
     };
     for (const year of years) {
-      const entry = entries.find((e) => e.year === year && e.month === month);
+      const entry = monthlyEntries.find((e) => e.year === year && e.month === month);
       point[String(year)] = entry ? entry.value : null;
     }
     points.push(point);

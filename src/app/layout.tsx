@@ -22,6 +22,29 @@ export const metadata: Metadata = {
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
     <html lang="en">
+      <head>
+        {/* Preload the two most-used Galano Grotesque weights so they
+            arrive before the browser needs them. Combined with
+            font-display: block in globals.css, this eliminates the
+            flash of system-font text on first paint. Bold (700) and
+            Medium (500) are preloaded because they cover headings and
+            nav/labels; Regular (400) is covered by the CSS request
+            that follows immediately. */}
+        <link
+          rel="preload"
+          href="/fonts/galano-grotesque-medium.otf"
+          as="font"
+          type="font/otf"
+          crossOrigin="anonymous"
+        />
+        <link
+          rel="preload"
+          href="/fonts/galano-grotesque-regular.otf"
+          as="font"
+          type="font/otf"
+          crossOrigin="anonymous"
+        />
+      </head>
       <body>
         {children}
       </body>

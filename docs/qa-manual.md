@@ -403,8 +403,9 @@ known gap if it doesn't appear). If `AUTH_DISABLED=true` is active, the
 
 **Expected outcome.**
 
-- PDF contains the visible KPI cards, charts, and the values table; chart
-  legends are not cut off; pagination is intact across multi-page metrics.
+- PDF contains the branded report header/footer chrome, the visible KPI
+  cards, charts, and the values table; chart legends are not cut off;
+  pagination is intact across multi-page metrics.
 - CSV has a header row + one row per month (monthly metric), one row for
   the year (annual metric), or one row per label (breakdown metric). Open in
   a spreadsheet — values should sort numerically and not have stray commas

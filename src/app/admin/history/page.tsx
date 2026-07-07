@@ -1,8 +1,15 @@
 import { redirect } from "next/navigation";
 import { getCurrentUserReadOnly } from "@/lib/session";
 import { AppShell } from "@/components/AppShell";
-import { listCategories, listEntryHistory, listKPIs } from "@/lib/repository";
+import {
+  listCategories,
+  listDeletedHistoryCategories,
+  listDeletedHistoryKpis,
+  listEntryHistory,
+  listKPIs,
+} from "@/lib/repository";
 import { HistoryClient } from "./HistoryClient";
+import type { Category, KPIWithCategory } from "@/lib/types";
 
 export const dynamic = "force-dynamic";
 
@@ -22,12 +29,25 @@ export default async function HistoryPage({
   if (params.category_id) filter.category_id = Number(params.category_id);
   if (params.year) filter.year = Number(params.year);
 
+  // Load the filtered history plus the full unfiltered history so we can
+  // surface tombstone entries (KPIs/categories that have been deleted but
+  // still appear in the audit trail) as filter options. Without this, once
+  // a category or KPI is deleted the filter dropdowns — which are populated
+  // from the live tables — can no longer show it, making the history of
+  // deleted items unreachable through the UI.
+  const history = listEntryHistory(filter);
+
+  const liveCategories = listCategories();
+  const liveKpis = listKPIs({ includeInactive: true });
+  const mergedCategories: Category[] = [...liveCategories, ...listDeletedHistoryCategories()];
+  const mergedKpis: KPIWithCategory[] = [...liveKpis, ...listDeletedHistoryKpis()];
+
   return (
     <AppShell user={user}>
       <HistoryClient
-        history={listEntryHistory(filter)}
-        kpis={listKPIs()}
-        categories={listCategories()}
+        history={history}
+        kpis={mergedKpis}
+        categories={mergedCategories}
         activeFilter={filter}
       />
     </AppShell>

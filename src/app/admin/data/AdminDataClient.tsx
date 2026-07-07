@@ -62,7 +62,7 @@ export function AdminDataClient({
   const [categorySlug, setCategorySlug] = useState<string>("all");
   const [kpiSlug, setKpiSlug] = useState<string>(kpis[0]?.slug ?? "");
   const [year, setYear] = useState<number>(years[years.length - 1] ?? new Date().getFullYear());
-  const [brkMonth, setBrkMonth] = useState<number>(0);
+  const [brkMonth, setBrkMonth] = useState<number>(Math.min(new Date().getMonth() + 1, 12));
   const [drafts, setDrafts] = useState<Record<string, DraftEntry>>({});
   const [brkDrafts, setBrkDrafts] = useState<DraftBreakdown[]>([]);
   const [feedback, setFeedback] = useState<{ message: string; variant: "success" | "error" } | null>(null);
@@ -144,7 +144,7 @@ export function AdminDataClient({
     }
 
     const next: Record<string, DraftEntry> = {};
-    if (kpi.reporting_frequency === "annual") {
+    if (kpi.reporting_frequency !== "monthly") {
       const existing = entries.find((e) => e.kpi_id === kpi.id && e.year === year && e.month === 0);
       next["0"] = {
         value: existing ? String(existing.value) : "",
@@ -285,6 +285,13 @@ export function AdminDataClient({
     if (!kpi) return;
     const d = brkDrafts[idx];
     if (!d || d.value === "" || Number.isNaN(Number(d.value)) || !d.label.trim()) return;
+    // Guard: monthly breakdowns must never be saved with month=0 (annual
+    // summary slot). This catches the race where brkMonth hasn't been
+    // corrected by the useEffect yet after switching KPIs.
+    if (selectedBreakdownIsMonthly && (brkMonth < 1 || brkMonth > 12)) {
+      setFeedback({ message: "Select a valid month before saving.", variant: "error" });
+      return;
+    }
     setBrkDrafts((prev) => {
       const copy = [...prev];
       copy[idx] = { ...copy[idx], saving: true };
@@ -546,7 +553,7 @@ export function AdminDataClient({
             ) : null}
           </div>
         </Card>
-      ) : kpi.reporting_frequency === "annual" ? (
+      ) : kpi.reporting_frequency !== "monthly" ? (
         <Card className="max-w-2xl p-5 lg:p-6">
           <h2 className="text-xl font-semibold text-ink-900">{kpi.name}</h2>
           <p className="mb-5 mt-1 text-sm text-ink-500">

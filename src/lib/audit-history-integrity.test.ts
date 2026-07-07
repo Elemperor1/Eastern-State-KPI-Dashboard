@@ -12,6 +12,8 @@ import {
   deleteEntry,
   deleteKPI,
   DependentEntriesError,
+  listDeletedHistoryCategories,
+  listDeletedHistoryKpis,
   listEntryHistory,
   upsertBreakdown,
   upsertEntry,
@@ -287,6 +289,37 @@ describe("D8AD-CAN-005 audit-history integrity", () => {
     const rows = listEntryHistory({ category_id: categoryId });
     expect(rows).toHaveLength(1);
     expect(rows[0].category_id).toBe(categoryId);
+  });
+
+  it("deleted history metadata stays discoverable even after more than 1000 newer audit rows", () => {
+    const e = upsertEntry({ kpi_id: kpiA, year: 2025, month: 3, value: 10, updated_by: adminId });
+    deleteEntry(e.id, adminId);
+    deleteKPI(kpiA);
+    deleteCategory(categoryId);
+
+    for (let i = 0; i < 1001; i++) {
+      upsertEntry({
+        kpi_id: kpiB,
+        year: 2025,
+        month: 1,
+        value: i + 1,
+        updated_by: adminId,
+      });
+    }
+
+    const sampledHistory = listEntryHistory({ limit: 1000 });
+    expect(sampledHistory.some((row) => row.kpi_id === kpiA)).toBe(false);
+
+    expect(listDeletedHistoryCategories()).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ id: categoryId, name: "Category A", slug: "cat-a" }),
+      ]),
+    );
+    expect(listDeletedHistoryKpis()).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ id: kpiA, name: "KPI A", slug: "kpi-a" }),
+      ]),
+    );
   });
 });
 

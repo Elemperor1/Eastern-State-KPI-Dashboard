@@ -9,8 +9,13 @@ import {
   Checkbox,
   Chip,
   EmptyState,
+  ExportCSVButton,
+  ExportPNGButton,
   FormField,
   PageHeader,
+  PrintButton,
+  PrintReportFooter,
+  PrintReportHeader,
   Select,
   Tabs,
 } from "@/components/ui";
@@ -72,6 +77,8 @@ export function TrendExplorerClient({
   }, [kpis, categorySlug]);
 
   // Raw, untransformed points: one row per month, one column per (kpi, year).
+  // Only month=1–12 entries are plotted; month=0 (annual snapshot) rows are
+  // excluded so they never appear as a thirteenth point on the x-axis.
   const rawTrendData: ComparisonPoint[] = useMemo(() => {
     const points: ComparisonPoint[] = [];
     for (let month = 1; month <= 12; month++) {
@@ -172,13 +179,58 @@ export function TrendExplorerClient({
     setSelectedYears((prev) => (prev.includes(year) ? prev.filter((y) => y !== year) : [...prev, year]));
   }
 
+  // Build CSV rows for the current trend selection: one row per month,
+  // one column per (kpi, year) series.
+  type CsvRow = Record<string, string | number | null>;
+  const csvColumns = ["Month", ...kpiSlugs.flatMap((slug) =>
+    selectedYears.map((y) => `${slug}__${y}`)),
+  ];
+  const csvRows: CsvRow[] = rawTrendData.map((point) => {
+    const row: CsvRow = { Month: String(point.label) };
+    for (const slug of kpiSlugs) {
+      for (const year of selectedYears) {
+        const key = `${slug}__${year}`;
+        row[key] = point[key] != null ? Number(point[key]) : "";
+      }
+    }
+    return row;
+  });
+  const csvFilename = `eastern-state-trends-${kpiSlugs.join("+")}-${selectedYears.join("-")}.csv`;
+
+  const trendPrintId = "trend-print-root";
+
   return (
     <div className="page-content page-content-wide page-enter">
-      <PageHeader
-        eyebrow="Trend Explorer"
-        title="Multi-KPI · Multi-Year Trends"
-        subtitle="Compare any combination of KPIs and years to see how the site is moving."
-      />
+      <div id={trendPrintId}>
+        <PrintReportHeader
+          eyebrow="Trend Explorer"
+          title="Multi-KPI · Multi-Year Trends"
+          subtitle="Compare any combination of KPIs and years to see how the site is moving."
+          filters={[
+            { label: "KPIs", value: kpiSlugs.length > 0
+              ? kpiSlugs.map((s) => kpis.find((k) => k.slug === s)?.name ?? s).join(", ")
+              : "None" },
+            { label: "Years", value: selectedYears.length > 0
+              ? selectedYears.join(", ")
+              : "None" },
+            { label: "Y-axis", value: axisMode },
+          ]}
+        />
+        <PageHeader
+          eyebrow="Trend Explorer"
+          title="Multi-KPI · Multi-Year Trends"
+          subtitle="Compare any combination of KPIs and years to see how the site is moving."
+          actions={
+            <>
+              <ExportCSVButton rows={csvRows} columns={csvColumns} filename={csvFilename} />
+              <PrintButton />
+              <ExportPNGButton
+                targetId={trendPrintId}
+                fileName={`eastern-state-trends-${kpiSlugs.join("+")}-${selectedYears.join("-")}.png`}
+              />
+            </>
+          }
+        />
 
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-[18rem_minmax(0,1fr)]">
         <aside className="no-print">
@@ -326,16 +378,16 @@ export function TrendExplorerClient({
                     width={70}
                   />
                   <Tooltip
-                    formatter={(value) => {
-                      if (value === null || value === undefined) return ["—", ""];
+                    formatter={(value, name) => {
+                      if (value === null || value === undefined) return ["—", name];
                       if (axisMode === "shared") {
-                        return [formatValue(Number(value), sampleUnitType), ""];
+                        return [formatValue(Number(value), sampleUnitType), name];
                       }
                       if (axisMode === "log") {
-                        return [`10^${Number(value).toFixed(2)} (≈ ${formatValue(Math.pow(10, Number(value)), sampleUnitType, { compact: true })})`, ""];
+                        return [`10^${Number(value).toFixed(2)} (≈ ${formatValue(Math.pow(10, Number(value)), sampleUnitType, { compact: true })})`, name];
                       }
                       // indexed
-                      return [`${Number(value).toFixed(1)} (baseline = 100)`, ""];
+                      return [`${Number(value).toFixed(1)} (baseline = 100)`, name];
                     }}
                   />
                   {kpiSlugs.flatMap((slug, ki) =>
@@ -390,6 +442,8 @@ export function TrendExplorerClient({
             </>
           )}
         </Card>
+      </div>
+      <PrintReportFooter />
       </div>
     </div>
   );
