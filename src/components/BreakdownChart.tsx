@@ -105,7 +105,7 @@ export function BreakdownChart({ kpi, data: breakdowns, currentYear, compareYear
               formatter={(v: number) => formatValue(v, fmt)}
               cursor={{ fill: "var(--chart-cursor)" }}
             />
-            <Legend wrapperStyle={{ fontSize: 12 }} />
+            <Legend wrapperStyle={{ fontSize: 12 }} iconType="circle" />
             {showCompare ? (
               <Bar dataKey={String(compareYear)} fill="var(--chart-secondary)" radius={[0, 4, 4, 0]} maxBarSize={16} />
             ) : null}
@@ -132,11 +132,11 @@ export function BreakdownChart({ kpi, data: breakdowns, currentYear, compareYear
               return (
                 <tr key={d.label} className="transition-colors hover:bg-ink-50/70">
                   <td className="font-medium text-ink-900">{d.label}</td>
-                  {showCompare ? <td className="tabular text-ink-600">{formatValue(p, fmt)}</td> : null}
-                  <td className="tabular text-ink-900 font-medium">{formatValue(c, fmt)}</td>
+                  {showCompare ? <td className="text-right tabular text-ink-600">{formatValue(p, fmt)}</td> : null}
+                  <td className="text-right tabular text-ink-900 font-medium">{formatValue(c, fmt)}</td>
                   {showCompare ? (
                     <td
-                      className={`tabular font-medium ${
+                      className={`text-right tabular font-medium ${
                         change > 0
                           ? "text-[var(--color-success-text)]"
                           : change < 0

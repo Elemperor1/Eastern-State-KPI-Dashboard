@@ -488,6 +488,40 @@ describe("D8AD-CAN-005 end-to-end audit integrity", () => {
         expect(r.category_name).toBe("Seq C Cat");
       }
     });
+
+    it("category_id filter returns deleted-category history (snapshot-based)", async () => {
+      // After a category and its KPI are deleted, the category_id filter
+      // on the history endpoint must still return the rows (the filter
+      // uses the SNAPSHOT h.category_id, not a live join). This is the
+      // guarantee that makes the history of deleted items reachable.
+      const cat = await createCategoryViaApi("cfilter-cat", "CFilter Cat");
+      const kpi = await createKpiViaApi(cat.id, "cfilter-kpi", "CFilter KPI");
+      const entry = await upsertEntryViaApi(kpi.id, 2025, 1, 1);
+
+      // Delete the entry, then the KPI, then the category.
+      await deleteEntryViaApi(entry.id);
+      await deleteKpiViaApi(kpi.id);
+      await deleteCategoryViaApi(cat.id);
+
+      // Filter by the deleted category's id — the API must still return
+      // the history rows using the snapshot category_id.
+      const rows = await historyViaApi(`?category_id=${cat.id}&limit=1000`);
+      expect(rows.length).toBeGreaterThan(0);
+      for (const r of rows) {
+        expect(r.category_id).toBe(cat.id);
+        expect(r.category_name).toBe("CFilter Cat");
+        expect(r.metadata_deleted).toBe(true);
+      }
+
+      // Filter by the deleted KPI's id — same guarantee.
+      const kpiRows = await historyViaApi(`?kpi_id=${kpi.id}&limit=1000`);
+      expect(kpiRows.length).toBeGreaterThan(0);
+      for (const r of kpiRows) {
+        expect(r.kpi_id).toBe(kpi.id);
+        expect(r.kpi_name).toBe("CFilter KPI");
+        expect(r.metadata_deleted).toBe(true);
+      }
+    });
   });
 
   describe("authorization (req 9)", () => {

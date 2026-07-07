@@ -139,7 +139,7 @@ export const PROTECTED_API_ROUTES: ProtectedRoute[] = [
   { method: "DELETE", path: "/api/entries", gate: "requireAdmin", group: "entries", takesReq: true },
   { method: "GET", path: "/api/entries/history", gate: "requireAdmin", group: "history", takesReq: true },
   { method: "GET", path: "/api/entries/years", gate: "requireSession", group: "entries", takesReq: false },
-  { method: "GET", path: "/api/goals", gate: "requireSession", group: "goals", takesReq: false },
+  { method: "GET", path: "/api/goals", gate: "requireSession", group: "goals", takesReq: true },
   { method: "POST", path: "/api/goals", gate: "requireAdmin", group: "goals", takesReq: true },
   { method: "PATCH", path: "/api/goals", gate: "requireAdmin", group: "goals", takesReq: true },
   { method: "DELETE", path: "/api/goals", gate: "requireAdmin", group: "goals", takesReq: true },

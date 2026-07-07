@@ -162,11 +162,33 @@ export interface KpiGoalWithMeta extends KpiGoal {
   category_id: number;
   category_name: string;
   category_slug: string;
-  /** Current value for the target year (from monthly_entries, YTD or annual). */
+  /** Direction of the KPI — used to interpret progress for "lower is better" metrics. */
+  direction: Direction;
+  /** Reporting frequency — annual goals have identical YTD and full-year values. */
+  reporting_frequency: ReportingFrequency;
+
+  /** Actual value through the selected month (YTD for monthly KPIs, annual for annual KPIs). */
+  ytd_value: number | null;
+  /** Target value through the selected month (prorated from the annual target for monthly KPIs). */
+  ytd_target: number | null;
+  /** YTD pacing percentage (0–100). Compares actual-through-month vs target-through-month. Null when target is unavailable. */
+  ytd_progress_pct: number | null;
+
+  /** Actual value for the full year (sum of all months, or the annual month-0 value). */
+  full_year_value: number | null;
+  /** Full-year target (baseline + target_value). Null when baseline is unavailable. */
+  full_year_target: number | null;
+  /** Full-year completion percentage (0–100). Compares full-year actual vs full-year target. Null when target is unavailable. */
+  full_year_progress_pct: number | null;
+
+  /**
+   * @deprecated Use ytd_progress_pct or full_year_progress_pct instead.
+   * Kept for backward compat during migration — equals full_year_progress_pct.
+   */
   current_value: number | null;
-  /** Computed goal target (baseline + target_value). Null when baseline is unavailable. */
+  /** @deprecated Use full_year_target instead. */
   goal_target: number | null;
-  /** Progress percentage (0–100). Null when goal_target is unavailable. */
+  /** @deprecated Use ytd_progress_pct or full_year_progress_pct instead. */
   progress_pct: number | null;
 }
 

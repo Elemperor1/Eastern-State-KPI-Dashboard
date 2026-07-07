@@ -388,6 +388,19 @@ describe("buildTrendPoints", () => {
     expect(points[5][2024]).toBe(999);
     expect(points[5][2025]).toBeNull();
   });
+
+  it("excludes month=0 (annual snapshot) rows so they never appear as a 13th point", () => {
+    const entries = [
+      entry({ year: 2024, month: 0, value: 9999 }),
+      entry({ year: 2024, month: 1, value: 100 }),
+    ];
+    const points = buildTrendPoints(entries, [2024]);
+    expect(points.length).toBe(12);
+    // No 13th point — month=0 must not be plotted.
+    expect(points.every((p) => p.month >= 1 && p.month <= 12)).toBe(true);
+    // The month=0 value must not leak into January or any other month.
+    expect(points[0][2024]).toBe(100);
+  });
 });
 
 describe("buildYTDPivot", () => {

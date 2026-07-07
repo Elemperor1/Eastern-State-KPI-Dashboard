@@ -1010,61 +1010,264 @@ function asGoal(row: Record<string, unknown>): GoalRow {
   };
 }
 
-function goalActualValue(
+/**
+ * Read the actual YTD value for a KPI in a given year, summed through
+ * `throughMonth` (inclusive). For annual KPIs the month-0 value is used
+ * regardless of `throughMonth`. Returns `null` when no entries exist
+ * (distinguished from a true 0 sum).
+ */
+function goalYtdValue(
   kpiId: number,
   year: number,
   reportingFrequency: ReportingFrequency,
+  throughMonth: number,
 ): number | null {
   const db = getDb();
-  if (reportingFrequency === "annual") {
+  if (goalIsAnnual(reportingFrequency)) {
     const row = db
       .prepare(
         `SELECT value as total FROM monthly_entries
          WHERE kpi_id = ? AND year = ? AND month = 0`,
       )
       .get(kpiId, year) as { total: number | null } | undefined;
-    return row?.total ?? null;
+    if (!row || row.total == null) return null;
+    return row.total;
   }
   const row = db
     .prepare(
-      `SELECT SUM(value) as total FROM monthly_entries
-       WHERE kpi_id = ? AND year = ? AND month > 0`,
+      `SELECT SUM(value) as total, COUNT(*) as cnt FROM monthly_entries
+       WHERE kpi_id = ? AND year = ? AND month > 0 AND month <= ?`,
     )
-    .get(kpiId, year) as { total: number | null } | undefined;
-  return row?.total ?? null;
+    .get(kpiId, year, throughMonth) as { total: number | null; cnt: number } | undefined;
+  if (!row || row.cnt === 0) return null;
+  return row.total ?? 0;
 }
 
 /**
- * Compute the numeric goal target and progress for a KPI goal from a fixed
- * baseline. For pct goals: target = baseline * (1 + target_value / 100).
- * For number goals: target = baseline + target_value. The baseline is the
- * prior year's actual, so the target does not move when target-year data
- * changes.
+ * Read the actual full-year value for a KPI in a given year (sum of all
+ * months for monthly KPIs, month-0 value for annual KPIs). Returns `null`
+ * when no entries exist.
  */
-function computeGoalProgress(
-  goal: { goal_type: "pct" | "number"; target_value: number },
-  currentValue: number | null,
-  baselineValue: number | null,
-): { goal_target: number | null; progress_pct: number | null } {
-  if (baselineValue == null) {
-    return { goal_target: null, progress_pct: null };
+function goalFullYearValue(
+  kpiId: number,
+  year: number,
+  reportingFrequency: ReportingFrequency,
+): number | null {
+  const db = getDb();
+  if (goalIsAnnual(reportingFrequency)) {
+    const row = db
+      .prepare(
+        `SELECT value as total FROM monthly_entries
+         WHERE kpi_id = ? AND year = ? AND month = 0`,
+      )
+      .get(kpiId, year) as { total: number | null } | undefined;
+    if (!row || row.total == null) return null;
+    return row.total;
   }
-  let target: number;
-  if (goal.goal_type === "pct") {
-    target = baselineValue * (1 + goal.target_value / 100);
-  } else {
-    target = baselineValue + goal.target_value;
-  }
-  if (currentValue == null) {
-    return { goal_target: target, progress_pct: null };
-  }
-  const progress_pct = target === 0
-    ? 100
-    : Math.max(0, Math.min(Math.round((currentValue / target) * 100), 100));
-  return { goal_target: target, progress_pct };
+  const row = db
+    .prepare(
+      `SELECT SUM(value) as total, COUNT(*) as cnt FROM monthly_entries
+       WHERE kpi_id = ? AND year = ? AND month > 0`,
+    )
+    .get(kpiId, year) as { total: number | null; cnt: number } | undefined;
+  if (!row || row.cnt === 0) return null;
+  return row.total ?? 0;
 }
 
-export function listGoals(opts?: { enabledOnly?: boolean; year?: number }): KpiGoalWithMeta[] {
+/**
+ * Compute the numeric goal target from a fixed baseline. For pct goals:
+ * target = baseline * (1 + target_value / 100). For number goals:
+ * target = baseline + target_value. Returns null when baseline is null.
+ */
+function computeGoalTarget(
+  goal: { goal_type: GoalType; target_value: number },
+  baselineValue: number | null,
+): number | null {
+  if (baselineValue == null) return null;
+  if (goal.goal_type === "pct") {
+    return baselineValue * (1 + goal.target_value / 100);
+  }
+  return baselineValue + goal.target_value;
+}
+
+/**
+ * Compute a progress percentage (0–100) for a given actual vs target.
+ *
+ * For "higher is better" KPIs, progress = actual / target * 100.
+ * For "lower is better" KPIs, progress is inverted: being at or below
+ * target = 100%, and exceeding target reduces progress. Specifically,
+ * progress = (baseline - actual) / (baseline - target) * 100 — i.e.
+ * how far the actual has moved from baseline toward the goal target.
+ * For "neutral" direction, a simple actual/target ratio is used.
+ *
+ * `baseline` must be on the SAME SCALE as `actual` and `target` (e.g.
+ * all three YTD-through-March, or all three full-year). The caller is
+ * responsible for prorating the baseline when computing YTD pacing.
+ *
+ * Returns null when target is null or when the computation is
+ * indeterminate (actual is null, or baseline == target for a "lower"
+ * goal). When the target is on the wrong side of baseline for a "lower"
+ * KPI (target >= baseline, meaning the "goal" is to increase a metric
+ * that is supposed to go down), the progress falls back to a simple
+ * ratio to avoid nonsensical values.
+ */
+function computeProgressPct(
+  actual: number | null,
+  target: number | null,
+  baseline: number | null,
+  direction: Direction,
+): number | null {
+  if (target == null) return null;
+  if (actual == null) return null;
+
+  if (direction === "lower" && baseline != null) {
+    const range = baseline - target;
+    if (range <= 0) {
+      // The target is at or above the baseline — this is a semantically
+      // odd goal ("increase a lower-is-better metric"). Fall back to a
+      // simple ratio so progress doesn't blow up or go negative.
+      if (target === 0) return 100;
+      const fallback = (actual / target) * 100;
+      return Math.max(0, Math.min(Math.round(fallback), 100));
+    }
+    const progress = ((baseline - actual) / range) * 100;
+    return Math.max(0, Math.min(Math.round(progress), 100));
+  }
+
+  // "higher" or "neutral": simple ratio
+  if (target === 0) return 100;
+  const progress = (actual / target) * 100;
+  return Math.max(0, Math.min(Math.round(progress), 100));
+}
+
+interface GoalComputedValues {
+  ytd_value: number | null;
+  ytd_target: number | null;
+  ytd_progress_pct: number | null;
+  full_year_value: number | null;
+  full_year_target: number | null;
+  full_year_progress_pct: number | null;
+}
+
+/**
+ * Determine whether a KPI's goal values should be computed in annual mode
+ * (single month-0 value) vs monthly mode (sum of months 1–12). "annual"
+ * and "flexible" frequencies both use month-0 entries; only "monthly"
+ * sums individual months.
+ */
+function goalIsAnnual(reportingFrequency: ReportingFrequency): boolean {
+  return reportingFrequency !== "monthly";
+}
+
+/**
+ * Compute all goal values for a single goal row: YTD pacing (actual
+ * through `throughMonth` vs prorated target through that month) and
+ * full-year completion (full-year actual vs full-year target). The
+ * baseline is the prior year's actual so the target does not move
+ * when target-year data changes.
+ *
+ * For monthly KPIs the YTD target is prorated:
+ *   ytd_target = full_year_target * (throughMonth / 12)
+ * and the YTD baseline is prorated the same way so that "lower"
+ * direction progress compares apples-to-apples:
+ *   ytd_baseline = full_year_baseline * (throughMonth / 12)
+ * This lets pacing compare actual through March vs 25% of the annual
+ * target, with progress measured on a March-scale baseline. For annual
+ * KPIs, YTD == full-year (no proration).
+ */
+function computeGoalValues(
+  goal: { goal_type: GoalType; target_value: number },
+  kpiId: number,
+  targetYear: number,
+  reportingFrequency: ReportingFrequency,
+  direction: Direction,
+  throughMonth: number,
+): GoalComputedValues {
+  const annual = goalIsAnnual(reportingFrequency);
+
+  const baselineValue = goalFullYearValue(kpiId, targetYear - 1, reportingFrequency);
+  const fullYearTarget = computeGoalTarget(goal, baselineValue);
+
+  const fullYearValue = goalFullYearValue(kpiId, targetYear, reportingFrequency);
+  const fullYearProgressPct = computeProgressPct(
+    fullYearValue,
+    fullYearTarget,
+    baselineValue,
+    direction,
+  );
+
+  // YTD pacing
+  const ytdValue = goalYtdValue(kpiId, targetYear, reportingFrequency, throughMonth);
+
+  // Prorate target and baseline for monthly KPIs so YTD pacing is on
+  // the same scale as the YTD actual. Annual KPIs: YTD == full-year.
+  let ytdTarget: number | null;
+  let ytdBaseline: number | null;
+  if (annual || fullYearTarget == null) {
+    ytdTarget = fullYearTarget;
+    ytdBaseline = baselineValue;
+  } else {
+    const fraction = throughMonth / 12;
+    ytdTarget = fullYearTarget * fraction;
+    ytdBaseline = baselineValue != null ? baselineValue * fraction : null;
+  }
+
+  const ytdProgressPct = computeProgressPct(
+    ytdValue,
+    ytdTarget,
+    ytdBaseline,
+    direction,
+  );
+
+  return {
+    ytd_value: ytdValue,
+    ytd_target: ytdTarget,
+    ytd_progress_pct: ytdProgressPct,
+    full_year_value: fullYearValue,
+    full_year_target: fullYearTarget,
+    full_year_progress_pct: fullYearProgressPct,
+  };
+}
+
+/** Map a raw DB row + computed values into a KpiGoalWithMeta object. */
+function buildGoalWithMeta(
+  row: Record<string, unknown>,
+  g: GoalRow,
+  throughMonth: number,
+): KpiGoalWithMeta {
+  const frequency = String(row.kpi_reporting_frequency) as ReportingFrequency;
+  const direction = String(row.kpi_direction) as Direction;
+  const computed = computeGoalValues(
+    g,
+    g.kpi_id,
+    g.target_year,
+    frequency,
+    direction,
+    throughMonth,
+  );
+  return {
+    ...g,
+    enabled: g.enabled === 1,
+    kpi_name: String(row.kpi_name),
+    kpi_slug: String(row.kpi_slug),
+    kpi_unit: String(row.kpi_unit ?? ""),
+    kpi_unit_type: String(row.kpi_unit_type) as UnitType,
+    category_id: Number(row.category_id),
+    category_name: String(row.category_name),
+    category_slug: String(row.category_slug),
+    direction,
+    reporting_frequency: frequency,
+    ...computed,
+    // Backward-compat aliases
+    current_value: computed.full_year_value,
+    goal_target: computed.full_year_target,
+    progress_pct: computed.full_year_progress_pct,
+  };
+}
+
+export function listGoals(
+  opts?: { enabledOnly?: boolean; year?: number; throughMonth?: number },
+): KpiGoalWithMeta[] {
   const db = getDb();
   const where: string[] = [];
   const params: (string | number)[] = [];
@@ -1076,10 +1279,12 @@ export function listGoals(opts?: { enabledOnly?: boolean; year?: number }): KpiG
     params.push(opts.year);
   }
   const clause = where.length ? `WHERE ${where.join(" AND ")}` : "";
+  const throughMonth = opts?.throughMonth ?? 12;
   const rows = db
     .prepare(
       `SELECT g.*, k.name as kpi_name, k.slug as kpi_slug, k.unit as kpi_unit,
               k.unit_type as kpi_unit_type, k.reporting_frequency as kpi_reporting_frequency,
+              k.direction as kpi_direction,
               c.id as category_id, c.name as category_name,
               c.slug as category_slug
        FROM kpi_goals g
@@ -1090,39 +1295,20 @@ export function listGoals(opts?: { enabledOnly?: boolean; year?: number }): KpiG
     )
     .all(...params) as Record<string, unknown>[];
 
-  return rows.map((row) => {
-    const g = asGoal(row);
-    const frequency = String(row.kpi_reporting_frequency) as ReportingFrequency;
-    const currentValue = goalActualValue(g.kpi_id, g.target_year, frequency);
-    const baselineValue = goalActualValue(g.kpi_id, g.target_year - 1, frequency);
-    const { goal_target, progress_pct } = computeGoalProgress(
-      g,
-      currentValue,
-      baselineValue,
-    );
-    return {
-      ...g,
-      enabled: g.enabled === 1,
-      kpi_name: String(row.kpi_name),
-      kpi_slug: String(row.kpi_slug),
-      kpi_unit: String(row.kpi_unit ?? ""),
-      kpi_unit_type: String(row.kpi_unit_type) as import("./types").UnitType,
-      category_id: Number(row.category_id),
-      category_name: String(row.category_name),
-      category_slug: String(row.category_slug),
-      current_value: currentValue,
-      goal_target,
-      progress_pct,
-    };
-  });
+  return rows.map((row) => buildGoalWithMeta(row, asGoal(row), throughMonth));
 }
 
-export function getGoalByKpiAndYear(kpiId: number, year: number): KpiGoalWithMeta | null {
+export function getGoalByKpiAndYear(
+  kpiId: number,
+  year: number,
+  throughMonth?: number,
+): KpiGoalWithMeta | null {
   const db = getDb();
   const row = db
     .prepare(
       `SELECT g.*, k.name as kpi_name, k.slug as kpi_slug, k.unit as kpi_unit,
               k.unit_type as kpi_unit_type, k.reporting_frequency as kpi_reporting_frequency,
+              k.direction as kpi_direction,
               c.id as category_id, c.name as category_name,
               c.slug as category_slug
        FROM kpi_goals g
@@ -1132,29 +1318,7 @@ export function getGoalByKpiAndYear(kpiId: number, year: number): KpiGoalWithMet
     )
     .get(kpiId, year) as Record<string, unknown> | undefined;
   if (!row) return null;
-  const g = asGoal(row);
-  const frequency = String(row.kpi_reporting_frequency) as ReportingFrequency;
-  const currentValue = goalActualValue(g.kpi_id, g.target_year, frequency);
-  const baselineValue = goalActualValue(g.kpi_id, g.target_year - 1, frequency);
-  const { goal_target, progress_pct } = computeGoalProgress(
-    g,
-    currentValue,
-    baselineValue,
-  );
-  return {
-    ...g,
-    enabled: g.enabled === 1,
-    kpi_name: String(row.kpi_name),
-    kpi_slug: String(row.kpi_slug),
-    kpi_unit: String(row.kpi_unit ?? ""),
-    kpi_unit_type: String(row.kpi_unit_type) as import("./types").UnitType,
-    category_id: Number(row.category_id),
-    category_name: String(row.category_name),
-    category_slug: String(row.category_slug),
-    current_value: currentValue,
-    goal_target,
-    progress_pct,
-  };
+  return buildGoalWithMeta(row, asGoal(row), throughMonth ?? 12);
 }
 
 export function upsertGoal(input: {
@@ -1204,6 +1368,52 @@ export function toggleGoal(id: number, enabled: boolean): void {
     enabled ? 1 : 0,
     id,
   );
+}
+
+/**
+ * Update an existing goal's target definition (goal_type, target_value,
+ * and/or notes). Only the supplied fields are changed; omitted fields
+ * keep their current value. `enabled` may also be toggled in the same
+ * call. Throws if the goal id does not exist.
+ */
+export function updateGoal(input: {
+  id: number;
+  goal_type?: "pct" | "number";
+  target_value?: number;
+  notes?: string | null;
+  enabled?: boolean;
+  updated_by?: number | null;
+}): void {
+  const db = getDb();
+  const sets: string[] = ["updated_at = datetime('now')"];
+  const params: (string | number | null)[] = [];
+  if (input.goal_type !== undefined) {
+    sets.push("goal_type = ?");
+    params.push(input.goal_type);
+  }
+  if (input.target_value !== undefined) {
+    sets.push("target_value = ?");
+    params.push(input.target_value);
+  }
+  if (input.notes !== undefined) {
+    sets.push("notes = ?");
+    params.push(input.notes);
+  }
+  if (input.enabled !== undefined) {
+    sets.push("enabled = ?");
+    params.push(input.enabled ? 1 : 0);
+  }
+  if (input.updated_by !== undefined) {
+    sets.push("updated_by = ?");
+    params.push(input.updated_by ?? null);
+  }
+  params.push(input.id);
+  const result = db
+    .prepare(`UPDATE kpi_goals SET ${sets.join(", ")} WHERE id = ?`)
+    .run(...params);
+  if (result.changes === 0) {
+    throw new Error(`updateGoal: no row with id=${input.id}`);
+  }
 }
 
 export function deleteGoal(id: number): void {

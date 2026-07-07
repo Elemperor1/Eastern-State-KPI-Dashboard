@@ -24,7 +24,9 @@ export interface DashboardData {
   sampleData: boolean;
 }
 
-export function loadDashboardData(): DashboardData {
+export function loadDashboardData(
+  opts?: { throughMonth?: number; year?: number },
+): DashboardData {
   const db = getDb();
   const metaRow = db.prepare("SELECT value FROM meta WHERE key = 'sample_data'").get() as
     | { value?: string }
@@ -40,7 +42,7 @@ export function loadDashboardData(): DashboardData {
     kpis: listKPIs(),
     entries: listEntries(),
     breakdowns: listBreakdowns(),
-    goals: listGoals({ enabledOnly: true }),
+    goals: listGoals({ enabledOnly: true, throughMonth: opts?.throughMonth, year: opts?.year }),
     years,
     sampleData: metaRow?.value === "1",
   };

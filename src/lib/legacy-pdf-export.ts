@@ -5,10 +5,21 @@
  * This module pulls in html2canvas (~200 KB) + jspdf (~350 KB). Importers
  * MUST use `await import("@/lib/legacy-pdf-export")` rather than a static
  * import so webpack can code-split it.
+ *
+ * The export temporarily reveals `.export-only` report chrome (brand
+ * header, filter chips, footer) inside the target so the PDF includes
+ * branding and filter context. The on-screen action buttons
+ * (`.no-print`, `[data-page-header-actions]`) are hidden during capture
+ * to avoid duplicate controls in the output.
  */
 
 import html2canvas from "html2canvas";
 import jsPDF from "jspdf";
+import {
+  showExportOnly,
+  getPageBackground,
+  hideActionsForExport,
+} from "./export-helpers";
 
 export interface ExportPdfOptions {
   /** id of the element to rasterize. */
@@ -31,65 +42,83 @@ export async function exportElementToPdf({
     throw new Error(`Export target #${targetId} not found.`);
   }
 
-  const sections = Array.from(
-    target.querySelectorAll<HTMLElement>("section, header, footer"),
-  );
-  const blocks = sections.length ? sections : [target];
+  // Temporarily reveal report chrome and hide on-screen actions.
+  const restoreExport = showExportOnly(target);
+  const restoreActions = hideActionsForExport(target);
 
-  const pdf = new jsPDF({ orientation: "landscape", unit: "pt", format: "letter" });
-  const pageWidth = pdf.internal.pageSize.getWidth();
-  const pageHeight = pdf.internal.pageSize.getHeight();
-  const margin = 24;
-  const pageBackground =
-    getComputedStyle(document.documentElement).getPropertyValue("--color-page").trim() ||
-    "white";
+  try {
+    const sections = Array.from(
+      target.querySelectorAll<HTMLElement>("section, header, footer"),
+    );
+    const blocks = sections.length ? sections : [target];
 
-  for (let i = 0; i < blocks.length; i++) {
-    const block = blocks[i];
-    const canvas = await html2canvas(block, {
-      scale: 2,
-      backgroundColor: pageBackground,
-      logging: false,
-      useCORS: true,
-      windowWidth: block.scrollWidth,
-      windowHeight: block.scrollHeight,
+    const pdf = new jsPDF({
+      orientation: "landscape",
+      unit: "pt",
+      format: "letter",
     });
-    const imgData = canvas.toDataURL("image/png");
-    const imgWidth = pageWidth - margin * 2;
-    const imgHeight = (canvas.height * imgWidth) / canvas.width;
+    const pageWidth = pdf.internal.pageSize.getWidth();
+    const pageHeight = pdf.internal.pageSize.getHeight();
+    const margin = 24;
+    const pageBackground = getPageBackground();
 
-    if (i > 0) pdf.addPage();
-    if (imgHeight <= pageHeight - margin * 2) {
-      pdf.addImage(imgData, "PNG", margin, margin, imgWidth, imgHeight);
-    } else {
-      let remaining = imgHeight;
-      let yOffset = 0;
-      const pageContent = pageHeight - margin * 2;
-      while (remaining > 0) {
-        const sliceHeight = Math.min(pageContent, remaining);
-        const sliceCanvas = document.createElement("canvas");
-        sliceCanvas.width = canvas.width;
-        sliceCanvas.height = (sliceHeight / imgWidth) * canvas.width;
-        const ctx = sliceCanvas.getContext("2d");
-        if (ctx) {
-          ctx.drawImage(
-            canvas,
-            0,
-            yOffset,
-            canvas.width,
-            sliceCanvas.height,
-            0,
-            0,
-            canvas.width,
-            sliceCanvas.height,
-          );
-          pdf.addImage(sliceCanvas.toDataURL("image/png"), "PNG", margin, margin, imgWidth, sliceHeight);
+    for (let i = 0; i < blocks.length; i++) {
+      const block = blocks[i];
+      const canvas = await html2canvas(block, {
+        scale: 2,
+        backgroundColor: pageBackground,
+        logging: false,
+        useCORS: true,
+        windowWidth: block.scrollWidth,
+        windowHeight: block.scrollHeight,
+      });
+      const imgData = canvas.toDataURL("image/png");
+      const imgWidth = pageWidth - margin * 2;
+      const imgHeight = (canvas.height * imgWidth) / canvas.width;
+
+      if (i > 0) pdf.addPage();
+      if (imgHeight <= pageHeight - margin * 2) {
+        pdf.addImage(imgData, "PNG", margin, margin, imgWidth, imgHeight);
+      } else {
+        let remaining = imgHeight;
+        let yOffset = 0;
+        const pageContent = pageHeight - margin * 2;
+        while (remaining > 0) {
+          const sliceHeight = Math.min(pageContent, remaining);
+          const sliceCanvas = document.createElement("canvas");
+          sliceCanvas.width = canvas.width;
+          sliceCanvas.height = (sliceHeight / imgWidth) * canvas.width;
+          const ctx = sliceCanvas.getContext("2d");
+          if (ctx) {
+            ctx.drawImage(
+              canvas,
+              0,
+              yOffset,
+              canvas.width,
+              sliceCanvas.height,
+              0,
+              0,
+              canvas.width,
+              sliceCanvas.height,
+            );
+            pdf.addImage(
+              sliceCanvas.toDataURL("image/png"),
+              "PNG",
+              margin,
+              margin,
+              imgWidth,
+              sliceHeight,
+            );
+          }
+          remaining -= sliceHeight;
+          yOffset += sliceCanvas.height;
+          if (remaining > 0) pdf.addPage();
         }
-        remaining -= sliceHeight;
-        yOffset += sliceCanvas.height;
-        if (remaining > 0) pdf.addPage();
       }
     }
+    pdf.save(fileName);
+  } finally {
+    restoreExport();
+    restoreActions();
   }
-  pdf.save(fileName);
 }

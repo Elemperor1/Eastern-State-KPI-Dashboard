@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation";
 import { ExportPDFButton } from "@/components/ExportPDFButton";
 import { DashboardControls, type CompareState } from "@/components/DashboardControls";
 import { CategoryOverviewCard } from "@/components/CategoryOverviewCard";
-import { ExportCSVButton, PageHeader, PrintButton } from "@/components/ui";
+import { ExportCSVButton, ExportPNGButton, PageHeader, PrintButton, PrintReportFooter, PrintReportHeader } from "@/components/ui";
 import { SampleDataBadge } from "@/components/SampleDataBadge";
 import { CHART_COLORS, MONTH_FULL } from "@/lib/analytics";
 import type { DashboardData } from "@/lib/dashboard-data";
@@ -67,7 +67,7 @@ export function DashboardOverviewClient({
         continue;
       }
       const kpiEntries = data.entries.filter((e) => e.kpi_id === kpi.id);
-      if (kpi.reporting_frequency === "annual") {
+      if (kpi.reporting_frequency !== "monthly") {
         const years = Array.from(new Set(kpiEntries.map((e) => e.year))).sort();
         for (const y of years) {
           const ent = kpiEntries.find((e) => e.year === y && e.month === 0);
@@ -122,6 +122,16 @@ export function DashboardOverviewClient({
   return (
     <div className="page-content page-content-wide page-enter">
       <div id="dashboard-print-root">
+        <PrintReportHeader
+          eyebrow="KPI Intelligence Dashboard"
+          title="Organizational Performance"
+          subtitle={`${monthLabel} ${state.currentYear} compared with ${state.compareYear} · ${data.categories.length} categories · ${data.kpis.length} metrics`}
+          filters={[
+            { label: "Current Year", value: String(state.currentYear) },
+            { label: "Compare Year", value: String(state.compareYear) },
+            { label: "Through Month", value: monthLabel },
+          ]}
+        />
         <PageHeader
           eyebrow="KPI Intelligence Dashboard"
           title="Organizational Performance"
@@ -136,6 +146,10 @@ export function DashboardOverviewClient({
               <SampleDataBadge sample={data.sampleData} />
               <ExportCSVButton rows={csvRows} columns={csvColumns} filename={csvFilename} />
               <PrintButton />
+              <ExportPNGButton
+                targetId="dashboard-print-root"
+                fileName={`eastern-state-overview-${state.currentYear}.png`}
+              />
               <ExportPDFButton
                 targetId="dashboard-print-root"
                 fileName={`eastern-state-overview-${state.currentYear}.pdf`}
@@ -176,6 +190,7 @@ export function DashboardOverviewClient({
             ))}
           </div>
         </section>
+        <PrintReportFooter />
       </div>
     </div>
   );

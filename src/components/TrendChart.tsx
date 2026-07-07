@@ -45,9 +45,11 @@ export function TrendChart({ data, years, unitType, unit }: Props) {
             width={70}
           />
           <Tooltip
-            formatter={(value) => {
-              if (value === null || value === undefined) return ["—", ""];
-              return [formatValue(Number(value), unitType), unit ?? ""];
+            formatter={(value, name) => {
+              if (value === null || value === undefined) return ["—", name];
+              const formatted = formatValue(Number(value), unitType);
+              const label = unit ? `${formatted} ${unit}` : formatted;
+              return [label, name];
             }}
           />
           <Legend wrapperStyle={{ fontSize: 12 }} iconType="circle" />

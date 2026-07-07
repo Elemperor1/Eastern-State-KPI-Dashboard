@@ -5,7 +5,7 @@ import {
   Bar,
   BarChart,
   CartesianGrid,
-  Cell,
+  Legend,
   ResponsiveContainer,
   Tooltip,
   XAxis,
@@ -85,19 +85,23 @@ export function DonorConversionCard({
     0,
   );
   const curTotalDonors = monthlyRows.reduce((s, r) => s + r.current.donors, 0);
+  const curTotalPctNum =
+    curTotalReferred > 0 ? (curTotalDonors / curTotalReferred) * 100 : null;
   const curTotalPct =
-    curTotalReferred > 0
-      ? ((curTotalDonors / curTotalReferred) * 100).toFixed(1)
-      : "—";
+    curTotalPctNum !== null ? curTotalPctNum.toFixed(1) : "—";
   const cmpTotalReferred = monthlyRows.reduce(
     (s, r) => s + r.compare.referred,
     0,
   );
   const cmpTotalDonors = monthlyRows.reduce((s, r) => s + r.compare.donors, 0);
+  const cmpTotalPctNum =
+    cmpTotalReferred > 0 ? (cmpTotalDonors / cmpTotalReferred) * 100 : null;
   const cmpTotalPct =
-    cmpTotalReferred > 0
-      ? ((cmpTotalDonors / cmpTotalReferred) * 100).toFixed(1)
-      : "—";
+    cmpTotalPctNum !== null ? cmpTotalPctNum.toFixed(1) : "—";
+  const ppChange =
+    curTotalPctNum !== null && cmpTotalPctNum !== null
+      ? curTotalPctNum - cmpTotalPctNum
+      : null;
 
   const showCompare = data.some((b) => b.year === compareYear);
 
@@ -132,7 +136,7 @@ export function DonorConversionCard({
       </div>
 
       {/* Summary stat cards */}
-      <div className="mb-6 grid grid-cols-2 gap-4 lg:grid-cols-4">
+      <div className="mb-6 grid grid-cols-2 gap-4 lg:grid-cols-5">
         <div className="rounded-lg border border-ink-200 bg-ink-50/50 p-4">
           <p className="mb-1 text-[10px] font-semibold uppercase tracking-[0.08em] text-ink-500">
             Referred ({currentYear})
@@ -144,7 +148,7 @@ export function DonorConversionCard({
         </div>
         <div className="rounded-lg border border-ink-200 bg-ink-50/50 p-4">
           <p className="mb-1 text-[10px] font-semibold uppercase tracking-[0.08em] text-ink-500">
-            Converted ({currentYear})
+            Donors ({currentYear})
           </p>
           <p className="text-2xl font-medium tabular text-ink-900">
             {curTotalDonors}
@@ -158,7 +162,9 @@ export function DonorConversionCard({
           <p className="text-2xl font-medium tabular text-[var(--color-success-text)]">
             {curTotalPct}%
           </p>
-          <p className="text-xs text-ink-500">YTD conversion</p>
+          <p className="text-xs text-ink-500">
+            {curTotalDonors}/{curTotalReferred} YTD
+          </p>
         </div>
         {showCompare ? (
           <div className="rounded-lg border border-ink-200 bg-ink-50/50 p-4">
@@ -168,7 +174,26 @@ export function DonorConversionCard({
             <p className="text-2xl font-medium tabular text-ink-900">
               {cmpTotalPct}%
             </p>
-            <p className="text-xs text-ink-500">Full {compareYear}</p>
+            <p className="text-xs text-ink-500">
+              {cmpTotalDonors}/{cmpTotalReferred} same period
+            </p>
+          </div>
+        ) : null}
+        {showCompare ? (
+          <div className="rounded-lg border border-ink-200 bg-ink-50/50 p-4">
+            <p className="mb-1 text-[10px] font-semibold uppercase tracking-[0.08em] text-ink-500">
+              Change (pp)
+            </p>
+            <p
+              className={`text-2xl font-medium tabular ${ppChange === null ? "text-ink-900" : ppChange >= 0 ? "text-[var(--color-success-text)]" : "text-[var(--color-danger-text)]"}`}
+            >
+              {ppChange === null
+                ? "—"
+                : `${ppChange > 0 ? "+" : ""}${ppChange.toFixed(1)} pts`}
+            </p>
+            <p className="text-xs text-ink-500">
+              {currentYear} vs {compareYear}
+            </p>
           </div>
         ) : null}
       </div>
@@ -202,6 +227,7 @@ export function DonorConversionCard({
               formatter={(v: number) => `${v.toFixed(1)}%`}
               cursor={{ fill: "var(--chart-cursor)" }}
             />
+            <Legend wrapperStyle={{ fontSize: 12 }} iconType="circle" />
             {showCompare ? (
               <Bar
                 dataKey={String(compareYear)}
@@ -247,7 +273,11 @@ export function DonorConversionCard({
               tick={{ fontSize: 11, fill: "var(--chart-axis)" }}
               width={50}
             />
-            <Tooltip cursor={{ fill: "var(--chart-cursor)" }} />
+            <Tooltip
+              formatter={(v: number) => formatValue(v, "count")}
+              cursor={{ fill: "var(--chart-cursor)" }}
+            />
+            <Legend wrapperStyle={{ fontSize: 12 }} iconType="circle" />
             <Bar
               dataKey="Referred"
               fill="var(--chart-primary)"
@@ -290,6 +320,9 @@ export function DonorConversionCard({
                 </th>
                 <th className="text-right" scope="col">
                   Conversion %
+                </th>
+                <th className="text-right" scope="col">
+                  Change (pp)
                 </th>
               </>
             ) : null}
@@ -339,6 +372,26 @@ export function DonorConversionCard({
                     <td className="tabular text-ink-600 text-right">
                       {cmpPct}%
                     </td>
+                    <td className="tabular text-right font-medium">
+                      {curPct !== "—" && cmpPct !== "—"
+                        ? (() => {
+                            const d =
+                              Number(curPct) - Number(cmpPct);
+                            return (
+                              <span
+                                className={
+                                  d >= 0
+                                    ? "text-[var(--color-success-text)]"
+                                    : "text-[var(--color-danger-text)]"
+                                }
+                              >
+                                {d > 0 ? "+" : ""}
+                                {d.toFixed(1)}
+                              </span>
+                            );
+                          })()
+                        : "—"}
+                    </td>
                   </>
                 ) : null}
               </tr>
@@ -364,6 +417,13 @@ export function DonorConversionCard({
                 </td>
                 <td className="tabular text-ink-600 text-right">
                   {cmpTotalPct}%
+                </td>
+                <td
+                  className={`tabular text-right ${ppChange === null ? "text-ink-900" : ppChange >= 0 ? "text-[var(--color-success-text)]" : "text-[var(--color-danger-text)]"}`}
+                >
+                  {ppChange === null
+                    ? "—"
+                    : `${ppChange > 0 ? "+" : ""}${ppChange.toFixed(1)} pts`}
                 </td>
               </>
             ) : null}

@@ -7,7 +7,7 @@ import { DashboardControls, type CompareState } from "@/components/DashboardCont
 import { MetricCard } from "@/components/MetricCard";
 import { BreakdownChart } from "@/components/BreakdownChart";
 import { DonorConversionCard } from "@/components/DonorConversionCard";
-import { Breadcrumb, Card, ExportCSVButton, PageHeader, PrintButton } from "@/components/ui";
+import { Breadcrumb, Card, ExportCSVButton, ExportPNGButton, PageHeader, PrintButton, PrintReportFooter, PrintReportHeader } from "@/components/ui";
 import { SampleDataBadge } from "@/components/SampleDataBadge";
 import { buildKPIAnalytics, CHART_COLORS, MONTH_FULL } from "@/lib/analytics";
 import type { DashboardData } from "@/lib/dashboard-data";
@@ -85,7 +85,7 @@ export function CategoryPageClient({
   const csvRows: CsvRow[] = [];
   for (const kpi of monthlyKpis) {
     const a = analyticsFor(kpi);
-    if (kpi.reporting_frequency === "annual") {
+    if (kpi.reporting_frequency !== "monthly") {
       for (const y of a.years) {
         csvRows.push({
           KPI: kpi.name,
@@ -158,6 +158,16 @@ export function CategoryPageClient({
   return (
     <div className="page-content page-content-wide page-enter">
       <div id={printId}>
+        <PrintReportHeader
+          eyebrow={category.name}
+          title={category.name}
+          subtitle={category.description}
+          filters={[
+            { label: "Current Year", value: String(state.currentYear) },
+            { label: "Compare Year", value: String(state.compareYear) },
+            { label: "Through Month", value: MONTH_FULL[state.currentMonth - 1] },
+          ]}
+        />
         <Breadcrumb href="/dashboard/overview" label="All categories" />
 
         <PageHeader
@@ -169,6 +179,10 @@ export function CategoryPageClient({
               <SampleDataBadge sample={data.sampleData} />
               <ExportCSVButton rows={csvRows} columns={csvColumns} filename={csvFilename} />
               <PrintButton />
+              <ExportPNGButton
+                targetId={printId}
+                fileName={`eastern-state-${categorySlug}.png`}
+              />
               <LegacyExportPDFButton
                 targetId={printId}
                 fileName={`eastern-state-${categorySlug}.pdf`}
@@ -249,6 +263,7 @@ export function CategoryPageClient({
             ))}
           </section>
         ) : null}
+        <PrintReportFooter />
       </div>
     </div>
   );

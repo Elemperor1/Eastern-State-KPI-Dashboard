@@ -1,12 +1,19 @@
 /* Galano Grotesque — Eastern State Penitentiary's licensed brand font.
    © 2014 René Bieder. Loaded from /public/fonts/ as OTF; the system
    fallback stack is identical to the original Rubik chain so pages
-   still render sanely before the web font is ready. */
+   still render sanely before the web font is ready.
+
+   font-display is "block" (not "swap") so the browser holds text
+   invisible for up to 3s while the font loads, then falls back. This
+   prevents the FOUT (flash of unstyled/system-font text) that made
+   the dashboard look like it was using a system font on first paint.
+   The <link rel="preload"> in layout.tsx ensures the font arrives
+   before the 3s timeout in practice. */
 @font-face {
   font-family: "Galano Grotesque";
   font-style: normal;
   font-weight: 300;
-  font-display: swap;
+  font-display: block;
   src: url("/fonts/galano-grotesque-light.otf") format("opentype");
 }
 
@@ -14,7 +21,7 @@
   font-family: "Galano Grotesque";
   font-style: normal;
   font-weight: 400;
-  font-display: swap;
+  font-display: block;
   src: url("/fonts/galano-grotesque-regular.otf") format("opentype");
 }
 
@@ -22,7 +29,20 @@
   font-family: "Galano Grotesque";
   font-style: normal;
   font-weight: 500;
-  font-display: swap;
+  font-display: block;
+  src: url("/fonts/galano-grotesque-medium.otf") format("opentype");
+}
+
+/* weight 600 (semibold) is used by Tailwind's `font-semibold` utility.
+   No dedicated semibold OTF ships with the brand kit, so we map 600
+   to the medium (500) file and let the browser synthesize the slight
+   bolding. This is better than faux-bolding from 400 → 600, which
+   produces a much heavier and less accurate result. */
+@font-face {
+  font-family: "Galano Grotesque";
+  font-style: normal;
+  font-weight: 600;
+  font-display: block;
   src: url("/fonts/galano-grotesque-medium.otf") format("opentype");
 }
 
@@ -30,7 +50,7 @@
   font-family: "Galano Grotesque";
   font-style: normal;
   font-weight: 700;
-  font-display: swap;
+  font-display: block;
   src: url("/fonts/galano-grotesque-bold.otf") format("opentype");
 }
 
@@ -163,7 +183,7 @@ body {
   background: var(--color-page);
   color: var(--color-text-primary);
   font-family: "Galano Grotesque", -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
-  font-feature-settings: "cv02", "cv03", "cv04", "cv11";
+  font-feature-settings: "liga" 1, "kern" 1;
 }
 
 ::selection {
@@ -562,7 +582,21 @@ blockquote,
   }
 }
 
+/* ── Export-only ───────────────────────────────────────────────────
+   Elements with `.export-only` are hidden on screen but appear in
+   every export medium: browser print (Save as PDF), the rasterized
+   legacy PDF, and PNG snapshots. They are the report chrome — the
+   branded header with the active filter context and the confidentiality
+   footer — that make the output self-describing and board-ready. */
+.export-only {
+  display: none !important;
+}
+
 @media print {
+  .export-only {
+    display: block !important;
+  }
+
   /* Universal print-time chrome hider used across pages. */
   .no-print,
   aside.fixed,
@@ -633,7 +667,8 @@ blockquote,
     display: none !important;
   }
 
-  /* Make the visible page title the print title too. */
+  /* Keep brand text colors even on the ink-friendly white background so
+     report chrome stays on-brand in the print output. */
   h1,
   h2,
   h3 {
@@ -645,4 +680,160 @@ blockquote,
     color: inherit !important;
     text-decoration: none !important;
   }
+
+  /* The filter toolbar on the page is hidden for screen readability, but
+     the export header re-surfaces the active filters as chips so a
+     printed page still says what years/month were selected. */
+}
+
+/* ── Report header & footer styles ──────────────────────────────────
+   Shared by all three export paths (print, PDF, PNG). Kept outside the
+   `@media print` block so the html2canvas PNG/PDF rasterizer — which
+   temporarily toggles `.export-only` to `display:block` — picks them up
+   too. On screen they remain hidden via the base `.export-only { display:
+   none }` rule above. */
+
+.print-report-header {
+  margin-bottom: 1.5rem;
+}
+
+.print-report-brand-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  background: linear-gradient(to right, #003649 0%, #005f6f 50%, #209ba5 100%);
+  padding: 0.75rem 1.25rem;
+  border-radius: 0.5rem 0.5rem 0 0;
+}
+
+.print-report-brand-text {
+  display: flex;
+  flex-direction: column;
+}
+
+.print-report-brand-name {
+  color: white;
+  font-size: 1rem;
+  font-weight: 700;
+  letter-spacing: 0.01em;
+  line-height: 1.3;
+}
+
+.print-report-brand-sub {
+  color: rgba(255, 255, 255, 0.72);
+  font-size: 0.7rem;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  margin-top: 0.15rem;
+}
+
+.print-report-date {
+  color: rgba(255, 255, 255, 0.85);
+  font-size: 0.75rem;
+  font-weight: 500;
+  white-space: nowrap;
+}
+
+.print-report-title-block {
+  padding: 1.25rem 0 0.5rem;
+}
+
+.print-report-eyebrow {
+  font-size: 0.7rem;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: #557883;
+  margin: 0 0 0.4rem;
+}
+
+.print-report-title {
+  font-size: 1.65rem;
+  font-weight: 700;
+  line-height: 1.2;
+  letter-spacing: -0.02em;
+  color: #003649;
+  margin: 0;
+}
+
+.print-report-subtitle {
+  font-size: 0.85rem;
+  line-height: 1.5;
+  color: #3a5e69;
+  margin: 0.5rem 0 0;
+  max-width: 48rem;
+}
+
+.print-report-filters {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  margin-top: 0.75rem;
+}
+
+.print-report-filter-chip {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 0.35rem;
+  background: #eef3f4;
+  border: 1px solid #cfe0e3;
+  border-radius: 0.375rem;
+  padding: 0.2rem 0.55rem;
+  font-size: 0.75rem;
+  line-height: 1.4;
+}
+
+.print-report-filter-label {
+  color: #557883;
+  font-weight: 600;
+  font-size: 0.65rem;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.print-report-filter-value {
+  color: #003649;
+  font-weight: 600;
+}
+
+.print-report-divider {
+  height: 1px;
+  background: #cfe0e3;
+  margin: 1rem 0 0;
+}
+
+/* Footer */
+
+.print-report-footer {
+  margin-top: 2rem;
+}
+
+.print-report-footer-rule {
+  height: 1px;
+  background: #cfe0e3;
+  margin-bottom: 0.5rem;
+}
+
+.print-report-footer-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+}
+
+.print-report-footer-notice {
+  font-size: 0.65rem;
+  font-weight: 600;
+  letter-spacing: 0.03em;
+  color: #7a9aa3;
+  text-transform: uppercase;
+}
+
+.print-report-footer-timestamp {
+  font-size: 0.65rem;
+  font-weight: 500;
+  color: #7a9aa3;
+  white-space: nowrap;
 }

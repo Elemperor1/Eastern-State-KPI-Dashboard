@@ -1,13 +1,15 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
-import { Plus, Search, ToggleLeft, ToggleRight, Trash2 } from "lucide-react";
+import { useMemo, useState } from "react";
+import { useRouter } from "next/navigation";
+import { Pencil, Plus, Search, ToggleLeft, ToggleRight, Trash2 } from "lucide-react";
 import {
   Badge,
   Button,
   Card,
   Chip,
   ConfirmDialog,
+  Dialog,
   FormField,
   IconButton,
   Input,
@@ -16,7 +18,6 @@ import {
   Select,
   StatusBanner,
   Table,
-  Tabs,
 } from "@/components/ui";
 import type { KPIWithCategory, KpiGoalWithMeta } from "@/lib/types";
 import { apiFetch } from "@/lib/api-client";
@@ -38,6 +39,13 @@ export function GoalsManagerClient({
   } | null>(null);
   const [query, setQuery] = useState("");
   const [categoryFilter, setCategoryFilter] = useState<number | null>(null);
+  const router = useRouter();
+
+  // Edit dialog state
+  const [editing, setEditing] = useState<KpiGoalWithMeta | null>(null);
+  const [editGoalType, setEditGoalType] = useState<"pct" | "number">("pct");
+  const [editTargetValue, setEditTargetValue] = useState("");
+  const [editNotes, setEditNotes] = useState("");
 
   // Create goal form state
   const [createKpiId, setCreateKpiId] = useState(kpis[0]?.id ?? 0);
@@ -71,8 +79,11 @@ export function GoalsManagerClient({
   }, [goals]);
 
   async function refresh() {
-    const res = await fetch("/api/goals").then((r) => r.json());
+    const throughMonth = Math.min(new Date().getMonth() + 1, 12);
+    const res = await fetch(`/api/goals?throughMonth=${throughMonth}`).then((r) => r.json());
     setGoals(res.goals);
+    // Re-render server-rendered dashboard pages so progress bars update.
+    router.refresh();
   }
 
   async function handleCreate(e: React.FormEvent) {
@@ -136,6 +147,36 @@ export function GoalsManagerClient({
       confirmLabel: "Delete goal",
       action: () => handleDelete(id, kpiName),
     });
+  }
+
+  function openEditDialog(goal: KpiGoalWithMeta) {
+    setEditing(goal);
+    setEditGoalType(goal.goal_type);
+    setEditTargetValue(String(goal.target_value));
+    setEditNotes(goal.notes ?? "");
+  }
+
+  async function handleUpdate(e: React.FormEvent) {
+    e.preventDefault();
+    if (!editing || !editTargetValue) return;
+    const res = await apiFetch("/api/goals", {
+      method: "PATCH",
+      body: {
+        id: editing.id,
+        enabled: editing.enabled,
+        goal_type: editGoalType,
+        target_value: Number(editTargetValue),
+        notes: editNotes || null,
+      },
+    });
+    const data = await res.json();
+    if (!res.ok) {
+      setFeedback({ message: `Could not update goal: ${data.error}`, variant: "error" });
+      return;
+    }
+    setFeedback({ message: "Goal updated.", variant: "success" });
+    setEditing(null);
+    await refresh();
   }
 
   // Build a quick-lookup set: which KPIs already have a goal this year?
@@ -210,11 +251,11 @@ export function GoalsManagerClient({
                 value={createGoalType}
                 onChange={(e) => setCreateGoalType(e.target.value as "pct" | "number")}
               >
-                <option value="pct">Percentage — e.g. 20% more</option>
-                <option value="number">Numeric — e.g. 3 more</option>
+                <option value="pct">Percentage — e.g. 20% more or -10% less</option>
+                <option value="number">Numeric — e.g. 3 more or -5 less</option>
               </Select>
             </FormField>
-            <FormField label={createGoalType === "pct" ? "Percentage increase" : "Numeric increase"}>
+            <FormField label={createGoalType === "pct" ? "Percentage change" : "Numeric change"}>
               <Input
                 type="number"
                 step="any"
@@ -290,7 +331,7 @@ export function GoalsManagerClient({
             </div>
           </div>
         </div>
-        <Table minWidth="720px">
+        <Table minWidth="900px">
           <thead>
             <tr>
               <th className="text-left" scope="col">KPI</th>
@@ -298,7 +339,8 @@ export function GoalsManagerClient({
               <th className="text-right" scope="col">Year</th>
               <th className="text-left" scope="col">Type</th>
               <th className="text-right" scope="col">Target</th>
-              <th className="text-center" scope="col">Progress</th>
+              <th className="text-center" scope="col">YTD pace</th>
+              <th className="text-center" scope="col">Full year</th>
               <th className="text-center" scope="col">Enabled</th>
               <th className="text-right" scope="col"></th>
             </tr>
@@ -306,14 +348,15 @@ export function GoalsManagerClient({
           <tbody>
             {filteredGoals.length === 0 ? (
               <tr>
-                <td colSpan={8} className="py-8 text-center text-sm text-ink-500">
+                <td colSpan={9} className="py-8 text-center text-sm text-ink-500">
                   No goals match the current filters.
                 </td>
               </tr>
             ) : null}
             {filteredGoals.map((g) => {
-              const progressValue = g.progress_pct ?? 0;
-              const isComplete = g.progress_pct !== null && g.progress_pct >= 100;
+              const ytdPct = g.ytd_progress_pct;
+              const fyPct = g.full_year_progress_pct;
+              const isAnnual = g.reporting_frequency !== "monthly";
               return (
                 <tr key={g.id} className="transition-colors hover:bg-ink-50/70">
                   <td className="py-3 pr-4">
@@ -324,20 +367,35 @@ export function GoalsManagerClient({
                   <td className="text-right tabular text-ink-700">{g.target_year}</td>
                   <td className="text-ink-700">
                     <Badge variant="default" className="tabular">
-                      {g.goal_type === "pct" ? `+${g.target_value}%` : `+${g.target_value}`}
+                      {g.goal_type === "pct" ? `${g.target_value > 0 ? "+" : ""}${g.target_value}%` : `${g.target_value > 0 ? "+" : ""}${g.target_value}`}
                     </Badge>
                   </td>
                   <td className="text-right tabular text-ink-700">
-                    {g.goal_target !== null ? g.goal_target.toLocaleString(undefined, { maximumFractionDigits: 1 }) : "—"}
+                    {g.full_year_target !== null ? g.full_year_target.toLocaleString(undefined, { maximumFractionDigits: 1 }) : "—"}
                   </td>
                   <td className="min-w-[120px] text-center">
-                    <div className="flex items-center gap-2">
+                    {isAnnual ? (
+                      <span className="text-xs text-ink-400">annual</span>
+                    ) : (
+                      <div className="flex items-center justify-center gap-2">
+                        <Progress
+                          value={ytdPct ?? 0}
+                          color={ytdPct !== null && ytdPct >= 100 ? "var(--color-success-text)" : undefined}
+                        />
+                        <span className="text-xs tabular text-ink-600 min-w-[3ch] text-right">
+                          {ytdPct !== null ? `${Math.round(ytdPct)}%` : "—"}
+                        </span>
+                      </div>
+                    )}
+                  </td>
+                  <td className="min-w-[120px] text-center">
+                    <div className="flex items-center justify-center gap-2">
                       <Progress
-                        value={progressValue}
-                        color={isComplete ? "var(--color-success-text)" : undefined}
+                        value={fyPct ?? 0}
+                        color={fyPct !== null && fyPct >= 100 ? "var(--color-success-text)" : undefined}
                       />
                       <span className="text-xs tabular text-ink-600 min-w-[3ch] text-right">
-                        {g.progress_pct !== null ? `${Math.round(g.progress_pct)}%` : "—"}
+                        {fyPct !== null ? `${Math.round(fyPct)}%` : "—"}
                       </span>
                     </div>
                   </td>
@@ -351,13 +409,22 @@ export function GoalsManagerClient({
                     />
                   </td>
                   <td className="text-right">
-                    <IconButton
-                      icon={Trash2}
-                      label={`Delete goal for ${g.kpi_name}`}
-                      variant="danger"
-                      size="sm"
-                      onClick={() => requestDelete(g.id, g.kpi_name)}
-                    />
+                    <div className="flex items-center justify-end gap-1">
+                      <IconButton
+                        icon={Pencil}
+                        label={`Edit goal for ${g.kpi_name}`}
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => openEditDialog(g)}
+                      />
+                      <IconButton
+                        icon={Trash2}
+                        label={`Delete goal for ${g.kpi_name}`}
+                        variant="danger"
+                        size="sm"
+                        onClick={() => requestDelete(g.id, g.kpi_name)}
+                      />
+                    </div>
                   </td>
                 </tr>
               );
@@ -378,6 +445,48 @@ export function GoalsManagerClient({
           await action?.();
         }}
       />
+
+      <Dialog
+        open={editing !== null}
+        title={editing ? `Edit goal — ${editing.kpi_name}` : ""}
+        description={editing ? `${editing.category_name} · ${editing.target_year}` : undefined}
+        onClose={() => setEditing(null)}
+        footer={
+          <>
+            <Button variant="ghost" size="sm" onClick={() => setEditing(null)}>Cancel</Button>
+            <Button type="submit" form="edit-goal-form" variant="primary" size="sm">Save changes</Button>
+          </>
+        }
+      >
+        <form id="edit-goal-form" onSubmit={handleUpdate} className="space-y-4">
+          <FormField label="Goal type">
+            <Select
+              value={editGoalType}
+              onChange={(e) => setEditGoalType(e.target.value as "pct" | "number")}
+            >
+              <option value="pct">Percentage — e.g. 20% more or -10% less</option>
+              <option value="number">Numeric — e.g. 3 more or -5 less</option>
+            </Select>
+          </FormField>
+          <FormField label={editGoalType === "pct" ? "Percentage change" : "Numeric change"}>
+            <Input
+              type="number"
+              step="any"
+              value={editTargetValue}
+              onChange={(e) => setEditTargetValue(e.target.value)}
+              placeholder={editGoalType === "pct" ? "e.g. 20" : "e.g. 3"}
+              required
+            />
+          </FormField>
+          <FormField label="Notes (optional)">
+            <Input
+              value={editNotes}
+              onChange={(e) => setEditNotes(e.target.value)}
+              placeholder="e.g. Based on 2025 growth trajectory"
+            />
+          </FormField>
+        </form>
+      </Dialog>
     </div>
   );
 }

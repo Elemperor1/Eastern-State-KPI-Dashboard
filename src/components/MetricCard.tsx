@@ -86,13 +86,47 @@ export function MetricCard({ analytics, accentColor, onSelect, selected, basis =
           <span className="truncate text-sm text-ink-500">vs {comp.compareYear}</span>
         </div>
         <div className="flex items-center gap-3">
-          {goal && goal.progress_pct !== null ? (
-            <div className="flex items-center gap-1.5" title={`Goal: +${goal.target_value}${goal.goal_type === "pct" ? "%" : ""} → ${goal.goal_target?.toLocaleString(undefined, { maximumFractionDigits: 1 })}`}>
-              <Crosshair className="size-3 text-ink-400" aria-hidden />
-              <Progress value={Math.round(goal.progress_pct)} className="w-10" />
-              <span className="text-xs tabular text-ink-500 min-w-[2.5ch]">
-                {Math.round(goal.progress_pct)}%
-              </span>
+          {goal ? (
+            <div className="flex flex-col gap-1" title={`Goal: ${goal.target_value > 0 ? "+" : ""}${goal.target_value}${goal.goal_type === "pct" ? "%" : ""}${goal.full_year_target !== null ? ` → ${goal.full_year_target?.toLocaleString(undefined, { maximumFractionDigits: 1 })}` : " (baseline unavailable)"}`}>
+              {goal.full_year_target === null ? (
+                <div className="flex items-center gap-1.5">
+                  <Crosshair className="size-3 text-ink-400" aria-hidden />
+                  <span className="text-xs tabular text-ink-400 min-w-[2.5ch]">—</span>
+                </div>
+              ) : goal.reporting_frequency !== "monthly" ? (
+                <div className="flex items-center gap-1.5">
+                  <Crosshair className="size-3 text-ink-400" aria-hidden />
+                  <Progress value={Math.round(goal.full_year_progress_pct ?? 0)} className="w-10" />
+                  <span className="text-xs tabular text-ink-500 min-w-[2.5ch]">
+                    {goal.full_year_progress_pct !== null ? `${Math.round(goal.full_year_progress_pct)}%` : "—"}
+                  </span>
+                </div>
+              ) : (
+                <>
+                  <div className="flex items-center gap-1.5" title={`YTD pace: ${goal.ytd_value?.toLocaleString(undefined, { maximumFractionDigits: 1 })} actual vs ${goal.ytd_target?.toLocaleString(undefined, { maximumFractionDigits: 1 })} target through this month`}>
+                    <span className="text-[10px] text-ink-400 min-w-[3ch]">Pace</span>
+                    <Progress
+                      value={Math.round(goal.ytd_progress_pct ?? 0)}
+                      className="w-10"
+                      color={goal.ytd_progress_pct !== null && goal.ytd_progress_pct >= 100 ? "var(--color-success-text)" : undefined}
+                    />
+                    <span className="text-xs tabular text-ink-500 min-w-[2.5ch]">
+                      {goal.ytd_progress_pct !== null ? `${Math.round(goal.ytd_progress_pct)}%` : "—"}
+                    </span>
+                  </div>
+                  <div className="flex items-center gap-1.5" title={`Full year: ${goal.full_year_value?.toLocaleString(undefined, { maximumFractionDigits: 1 })} actual vs ${goal.full_year_target?.toLocaleString(undefined, { maximumFractionDigits: 1 })} target`}>
+                    <span className="text-[10px] text-ink-400 min-w-[3ch]">Goal</span>
+                    <Progress
+                      value={Math.round(goal.full_year_progress_pct ?? 0)}
+                      className="w-10"
+                      color={goal.full_year_progress_pct !== null && goal.full_year_progress_pct >= 100 ? "var(--color-success-text)" : undefined}
+                    />
+                    <span className="text-xs tabular text-ink-500 min-w-[2.5ch]">
+                      {goal.full_year_progress_pct !== null ? `${Math.round(goal.full_year_progress_pct)}%` : "—"}
+                    </span>
+                  </div>
+                </>
+              )}
             </div>
           ) : null}
           {!isEmpty ? (
