@@ -978,6 +978,88 @@ export function listEntryHistory(filter?: {
   }));
 }
 
+export function listDeletedHistoryCategories(): Category[] {
+  const db = getDb();
+  const rows = db
+    .prepare(
+      `
+      WITH deleted_categories AS (
+        SELECT
+          h.category_id,
+          h.category_name,
+          h.category_slug,
+          ROW_NUMBER() OVER (
+            PARTITION BY h.category_id
+            ORDER BY h.changed_at DESC, h.id DESC
+          ) AS rn
+        FROM entry_history h
+        LEFT JOIN categories c ON c.id = h.category_id
+        WHERE h.category_id IS NOT NULL AND c.id IS NULL
+      )
+      SELECT category_id, category_name, category_slug
+      FROM deleted_categories
+      WHERE rn = 1
+      ORDER BY category_id ASC
+      `,
+    )
+    .all() as Record<string, unknown>[];
+  return rows.map((row) => ({
+    id: Number(row.category_id),
+    slug: row.category_slug == null ? `deleted-${Number(row.category_id)}` : String(row.category_slug),
+    name: row.category_name == null ? `Deleted category ${Number(row.category_id)}` : String(row.category_name),
+    description: null,
+    sort_order: 9999,
+  }));
+}
+
+export function listDeletedHistoryKpis(): KPIWithCategory[] {
+  const db = getDb();
+  const rows = db
+    .prepare(
+      `
+      WITH deleted_kpis AS (
+        SELECT
+          h.kpi_id,
+          h.kpi_name,
+          h.kpi_slug,
+          h.kpi_unit,
+          h.category_id,
+          h.category_name,
+          h.category_slug,
+          ROW_NUMBER() OVER (
+            PARTITION BY h.kpi_id
+            ORDER BY h.changed_at DESC, h.id DESC
+          ) AS rn
+        FROM entry_history h
+        LEFT JOIN kpis k ON k.id = h.kpi_id
+        WHERE k.id IS NULL
+      )
+      SELECT kpi_id, kpi_name, kpi_slug, kpi_unit, category_id, category_name, category_slug
+      FROM deleted_kpis
+      WHERE rn = 1
+      ORDER BY kpi_id ASC
+      `,
+    )
+    .all() as Record<string, unknown>[];
+  return rows.map((row) => ({
+    id: Number(row.kpi_id),
+    category_id: row.category_id == null ? 0 : Number(row.category_id),
+    parent_id: null,
+    slug: row.kpi_slug == null ? `deleted-${Number(row.kpi_id)}` : String(row.kpi_slug),
+    name: row.kpi_name == null ? `Deleted KPI ${Number(row.kpi_id)}` : String(row.kpi_name),
+    unit: row.kpi_unit == null ? "" : String(row.kpi_unit),
+    unit_type: "count",
+    reporting_frequency: "monthly",
+    direction: "higher",
+    description: null,
+    sort_order: 9999,
+    is_active: 0,
+    created_at: "",
+    category_name: row.category_name == null ? "Deleted category" : String(row.category_name),
+    category_slug: row.category_slug == null ? "deleted" : String(row.category_slug),
+  }));
+}
+
 // ---------- KPI Goals ----------
 
 interface GoalRow {

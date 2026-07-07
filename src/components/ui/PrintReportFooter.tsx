@@ -28,12 +28,14 @@ export function PrintReportFooter({
   });
 
   return (
-    <div className={cn("export-only print-report-footer", className)}>
+    <footer className={cn("export-only print-report-footer", className)}>
       <div className="print-report-footer-rule" />
       <div className="print-report-footer-row">
         <span className="print-report-footer-notice">{notice}</span>
-        <span className="print-report-footer-timestamp">Generated {generated}</span>
+        <span className="print-report-footer-timestamp" suppressHydrationWarning>
+          Generated {generated}
+        </span>
       </div>
-    </div>
+    </footer>
   );
 }

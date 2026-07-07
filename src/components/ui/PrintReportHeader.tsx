@@ -39,14 +39,16 @@ export function PrintReportHeader({
   });
 
   return (
-    <div className={cn("export-only print-report-header", className)}>
+    <header className={cn("export-only print-report-header", className)}>
       {/* Brand bar — the navy→teal gradient strip with the org name. */}
       <div className="print-report-brand-bar">
         <div className="print-report-brand-text">
           <span className="print-report-brand-name">Eastern State Penitentiary</span>
           <span className="print-report-brand-sub">KPI Intelligence Dashboard</span>
         </div>
-        <span className="print-report-date">Generated {generated}</span>
+        <span className="print-report-date" suppressHydrationWarning>
+          Generated {generated}
+        </span>
       </div>
 
       {/* Title block */}
@@ -69,6 +71,6 @@ export function PrintReportHeader({
       ) : null}
 
       <div className="print-report-divider" />
-    </div>
+    </header>
   );
 }

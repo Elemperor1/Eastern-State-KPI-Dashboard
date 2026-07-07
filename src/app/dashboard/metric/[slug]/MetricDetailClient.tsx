@@ -128,12 +128,13 @@ export function MetricDetailClient({
   const goal = data.goals.find(
     (g) => g.kpi_id === kpi.id && g.target_year === state.currentYear,
   );
+  const hasGoal = goal != null;
 
   // Whether to show the comparison stats and/or goal progress sections.
   // When a goal exists, the user can toggle between three display modes.
   // Without a goal, always show the comparison stats.
-  const showCompare = goalDisplay !== "goal" || !goal;
-  const showGoal = goal != null && goalDisplay !== "compare";
+  const showCompare = goalDisplay !== "goal" || !hasGoal;
+  const showGoalDetails = hasGoal && goalDisplay !== "compare";
   // Precompute chip active states to avoid TS narrowing inside conditional JSX.
   const modeIsCompare = goalDisplay === "compare";
   const modeIsGoal = goalDisplay === "goal";
@@ -284,7 +285,7 @@ export function MetricDetailClient({
           </section>
         ) : null}
 
-        {showGoal ? (
+        {hasGoal ? (
           <section className="mb-10">
             <Card className="overflow-hidden p-5 lg:p-6">
               <div className="mb-3 flex flex-wrap items-center justify-between gap-3">
@@ -340,58 +341,11 @@ export function MetricDetailClient({
                   No prior-year ({goal.target_year - 1}) data available to compute a baseline for this goal.
                   Enter {goal.target_year - 1} data or choose a different target year for the target to take effect.
                 </p>
-              ) : goal.reporting_frequency !== "monthly" ? (
-                <div className="mt-4">
-                  <div className="flex items-center justify-between gap-3">
-                    <span className="text-sm text-ink-600">Completion</span>
-                    <div className="flex items-center gap-3">
-                      <div className="min-w-[120px]">
-                        <Progress
-                          value={Math.round(goal.full_year_progress_pct ?? 0)}
-                          color={goal.full_year_progress_pct !== null && goal.full_year_progress_pct >= 100 ? "var(--color-success-text)" : undefined}
-                        />
-                      </div>
-                      <span className="text-lg font-semibold tabular text-ink-900">
-                        {goal.full_year_progress_pct !== null ? `${Math.round(goal.full_year_progress_pct)}%` : "—"}
-                      </span>
-                    </div>
-                  </div>
-                  <p className="mt-1 text-xs text-ink-500">
-                    {goal.full_year_value != null
-                      ? `${goal.full_year_value.toLocaleString(undefined, { maximumFractionDigits: 1 })} of ${goal.full_year_target?.toLocaleString(undefined, { maximumFractionDigits: 1 })}`
-                      : "No data entered yet"}
-                  </p>
-                </div>
-              ) : (
-                <div className="mt-4 space-y-4">
-                  {/* YTD pacing */}
-                  <div>
+              ) : showGoalDetails ? (
+                goal.reporting_frequency !== "monthly" ? (
+                  <div className="mt-4">
                     <div className="flex items-center justify-between gap-3">
-                      <span className="text-sm text-ink-600">
-                        YTD pace through {MONTH_FULL[state.currentMonth - 1]}
-                      </span>
-                      <div className="flex items-center gap-3">
-                        <div className="min-w-[120px]">
-                          <Progress
-                            value={Math.round(goal.ytd_progress_pct ?? 0)}
-                            color={goal.ytd_progress_pct !== null && goal.ytd_progress_pct >= 100 ? "var(--color-success-text)" : undefined}
-                          />
-                        </div>
-                        <span className="text-lg font-semibold tabular text-ink-900">
-                          {goal.ytd_progress_pct !== null ? `${Math.round(goal.ytd_progress_pct)}%` : "—"}
-                        </span>
-                      </div>
-                    </div>
-                    <p className="mt-1 text-xs text-ink-500">
-                      {goal.ytd_value != null
-                        ? `${goal.ytd_value.toLocaleString(undefined, { maximumFractionDigits: 1 })} actual vs ${goal.ytd_target?.toLocaleString(undefined, { maximumFractionDigits: 1 })} target through ${MONTH_FULL[state.currentMonth - 1]}`
-                        : `No data through ${MONTH_FULL[state.currentMonth - 1]} yet`}
-                    </p>
-                  </div>
-                  {/* Full-year completion */}
-                  <div>
-                    <div className="flex items-center justify-between gap-3">
-                      <span className="text-sm text-ink-600">Full-year completion</span>
+                      <span className="text-sm text-ink-600">Completion</span>
                       <div className="flex items-center gap-3">
                         <div className="min-w-[120px]">
                           <Progress
@@ -406,11 +360,64 @@ export function MetricDetailClient({
                     </div>
                     <p className="mt-1 text-xs text-ink-500">
                       {goal.full_year_value != null
-                        ? `${goal.full_year_value.toLocaleString(undefined, { maximumFractionDigits: 1 })} actual vs ${goal.full_year_target?.toLocaleString(undefined, { maximumFractionDigits: 1 })} annual target`
+                        ? `${goal.full_year_value.toLocaleString(undefined, { maximumFractionDigits: 1 })} of ${goal.full_year_target?.toLocaleString(undefined, { maximumFractionDigits: 1 })}`
                         : "No data entered yet"}
                     </p>
                   </div>
-                </div>
+                ) : (
+                  <div className="mt-4 space-y-4">
+                    {/* YTD pacing */}
+                    <div>
+                      <div className="flex items-center justify-between gap-3">
+                        <span className="text-sm text-ink-600">
+                          YTD pace through {MONTH_FULL[state.currentMonth - 1]}
+                        </span>
+                        <div className="flex items-center gap-3">
+                          <div className="min-w-[120px]">
+                            <Progress
+                              value={Math.round(goal.ytd_progress_pct ?? 0)}
+                              color={goal.ytd_progress_pct !== null && goal.ytd_progress_pct >= 100 ? "var(--color-success-text)" : undefined}
+                            />
+                          </div>
+                          <span className="text-lg font-semibold tabular text-ink-900">
+                            {goal.ytd_progress_pct !== null ? `${Math.round(goal.ytd_progress_pct)}%` : "—"}
+                          </span>
+                        </div>
+                      </div>
+                      <p className="mt-1 text-xs text-ink-500">
+                        {goal.ytd_value != null
+                          ? `${goal.ytd_value.toLocaleString(undefined, { maximumFractionDigits: 1 })} actual vs ${goal.ytd_target?.toLocaleString(undefined, { maximumFractionDigits: 1 })} target through ${MONTH_FULL[state.currentMonth - 1]}`
+                          : `No data through ${MONTH_FULL[state.currentMonth - 1]} yet`}
+                      </p>
+                    </div>
+                    {/* Full-year completion */}
+                    <div>
+                      <div className="flex items-center justify-between gap-3">
+                        <span className="text-sm text-ink-600">Full-year completion</span>
+                        <div className="flex items-center gap-3">
+                          <div className="min-w-[120px]">
+                            <Progress
+                              value={Math.round(goal.full_year_progress_pct ?? 0)}
+                              color={goal.full_year_progress_pct !== null && goal.full_year_progress_pct >= 100 ? "var(--color-success-text)" : undefined}
+                            />
+                          </div>
+                          <span className="text-lg font-semibold tabular text-ink-900">
+                            {goal.full_year_progress_pct !== null ? `${Math.round(goal.full_year_progress_pct)}%` : "—"}
+                          </span>
+                        </div>
+                      </div>
+                      <p className="mt-1 text-xs text-ink-500">
+                        {goal.full_year_value != null
+                          ? `${goal.full_year_value.toLocaleString(undefined, { maximumFractionDigits: 1 })} actual vs ${goal.full_year_target?.toLocaleString(undefined, { maximumFractionDigits: 1 })} annual target`
+                          : "No data entered yet"}
+                      </p>
+                    </div>
+                  </div>
+                )
+              ) : (
+                <p className="mt-4 text-sm text-ink-500">
+                  Comparison mode is hiding pacing details. Switch to Goal progress or Both to view the goal charts and completion metrics.
+                </p>
               )}
 
               {goal.notes ? (

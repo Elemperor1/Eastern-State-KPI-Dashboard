@@ -15,14 +15,22 @@
  */
 export function showExportOnly(target: HTMLElement): () => void {
   const exportEls = target.querySelectorAll<HTMLElement>(".export-only");
-  const originalDisplays: string[] = [];
+  const originalDisplays: Array<{ value: string; priority: string }> = [];
   exportEls.forEach((el) => {
-    originalDisplays.push(el.style.display);
-    el.style.display = "block";
+    originalDisplays.push({
+      value: el.style.getPropertyValue("display"),
+      priority: el.style.getPropertyPriority("display"),
+    });
+    el.style.setProperty("display", "block", "important");
   });
   return () => {
     exportEls.forEach((el, i) => {
-      el.style.display = originalDisplays[i];
+      const original = originalDisplays[i];
+      if (!original.value) {
+        el.style.removeProperty("display");
+      } else {
+        el.style.setProperty("display", original.value, original.priority);
+      }
     });
   };
 }
@@ -49,14 +57,22 @@ export function hideActionsForExport(target: HTMLElement): () => void {
   const actions = target.querySelectorAll<HTMLElement>(
     '[data-page-header-actions], .no-print',
   );
-  const originalDisplays: string[] = [];
+  const originalDisplays: Array<{ value: string; priority: string }> = [];
   actions.forEach((el) => {
-    originalDisplays.push(el.style.display);
-    el.style.display = "none";
+    originalDisplays.push({
+      value: el.style.getPropertyValue("display"),
+      priority: el.style.getPropertyPriority("display"),
+    });
+    el.style.setProperty("display", "none", "important");
   });
   return () => {
     actions.forEach((el, i) => {
-      el.style.display = originalDisplays[i];
+      const original = originalDisplays[i];
+      if (!original.value) {
+        el.style.removeProperty("display");
+      } else {
+        el.style.setProperty("display", original.value, original.priority);
+      }
     });
   };
 }
