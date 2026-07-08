@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 import {
+  EntryKpiNotFoundError,
+  EntryKpiTypeError,
   EntryPeriodMismatchError,
   deleteEntry,
   upsertEntry,
@@ -36,6 +38,15 @@ export async function POST(req: NextRequest) {
     const entry = upsertEntry({ ...parsed.data, updated_by: sessionUser.id });
     return NextResponse.json({ entry }, { status: 201 });
   } catch (error) {
+    if (error instanceof EntryKpiNotFoundError) {
+      return NextResponse.json({ error: "KPI not found." }, { status: 404 });
+    }
+    if (error instanceof EntryKpiTypeError) {
+      return NextResponse.json(
+        { error: "Breakdown KPIs must use the breakdown endpoint." },
+        { status: 400 },
+      );
+    }
     if (error instanceof EntryPeriodMismatchError) {
       return NextResponse.json({ error: error.message }, { status: 400 });
     }

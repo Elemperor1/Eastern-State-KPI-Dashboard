@@ -13,11 +13,7 @@ import {
   countEnabledAdminGoals,
   filterAdminGoals,
 } from "@/features/goals/admin-goals";
-import {
-  ConfirmDialog,
-  PageHeader,
-  StatusBanner,
-} from "@/components/ui";
+import { ConfirmDialog, PageHeader, StatusBanner } from "@/components/ui";
 import type { GoalType, KPIWithCategory, KpiGoalWithMeta } from "@/lib/types";
 import { apiFetch } from "@/lib/api-client";
 
@@ -29,7 +25,10 @@ export function GoalsManagerClient({
   kpis: KPIWithCategory[];
 }) {
   const [goals, setGoals] = useState(initialGoals);
-  const [feedback, setFeedback] = useState<{ message: string; variant: "success" | "error" } | null>(null);
+  const [feedback, setFeedback] = useState<{
+    message: string;
+    variant: "success" | "error";
+  } | null>(null);
   const [confirmation, setConfirmation] = useState<{
     title: string;
     description: string;
@@ -42,6 +41,9 @@ export function GoalsManagerClient({
 
   // Edit dialog state
   const [editing, setEditing] = useState<KpiGoalWithMeta | null>(null);
+  const [editBaselineYear, setEditBaselineYear] = useState(
+    new Date().getFullYear() - 1,
+  );
   const [editGoalType, setEditGoalType] = useState<GoalType>("pct");
   const [editTargetValue, setEditTargetValue] = useState("");
   const [editNotes, setEditNotes] = useState("");
@@ -49,6 +51,9 @@ export function GoalsManagerClient({
   // Create goal form state
   const [createKpiId, setCreateKpiId] = useState(kpis[0]?.id ?? 0);
   const [createYear, setCreateYear] = useState(new Date().getFullYear());
+  const [createBaselineYear, setCreateBaselineYear] = useState(
+    new Date().getFullYear() - 1,
+  );
   const [createGoalType, setCreateGoalType] = useState<GoalType>("pct");
   const [createTargetValue, setCreateTargetValue] = useState("");
   const [createNotes, setCreateNotes] = useState("");
@@ -62,7 +67,10 @@ export function GoalsManagerClient({
     return filterAdminGoals(goals, { query, categoryId: categoryFilter });
   }, [goals, query, categoryFilter]);
 
-  const enabledGoalCount = useMemo(() => countEnabledAdminGoals(goals), [goals]);
+  const enabledGoalCount = useMemo(
+    () => countEnabledAdminGoals(goals),
+    [goals],
+  );
 
   const goalYearOptions = useMemo(() => buildAdminGoalYearOptions(), []);
 
@@ -74,14 +82,15 @@ export function GoalsManagerClient({
 
   function goalsEndpoint() {
     const throughMonth = Math.min(new Date().getMonth() + 1, 12);
-    return `/api/goals?throughMonth=${throughMonth}`;
+    const asOfYear = new Date().getFullYear();
+    return `/api/goals?throughMonth=${throughMonth}&asOfYear=${asOfYear}`;
   }
 
   async function applyGoalsMutationResponse(
     res: Response,
     fallbackError: string,
   ): Promise<{ ok: true } | { ok: false; error: string }> {
-    const data = await res.json().catch(() => ({})) as {
+    const data = (await res.json().catch(() => ({}))) as {
       error?: string;
       goals?: KpiGoalWithMeta[];
     };
@@ -102,6 +111,7 @@ export function GoalsManagerClient({
     const payload = {
       kpi_id: createKpiId,
       target_year: createYear,
+      baseline_year: createBaselineYear,
       goal_type: createGoalType,
       target_value: Number(createTargetValue),
       enabled: true,
@@ -113,7 +123,10 @@ export function GoalsManagerClient({
     });
     const result = await applyGoalsMutationResponse(res, "Unknown error");
     if (!result.ok) {
-      setFeedback({ message: `Could not create goal: ${result.error}`, variant: "error" });
+      setFeedback({
+        message: `Could not create goal: ${result.error}`,
+        variant: "error",
+      });
       return;
     }
     setFeedback({ message: "Goal created.", variant: "success" });
@@ -128,10 +141,16 @@ export function GoalsManagerClient({
     });
     const result = await applyGoalsMutationResponse(res, "Unknown error");
     if (!result.ok) {
-      setFeedback({ message: `Could not toggle: ${result.error}`, variant: "error" });
+      setFeedback({
+        message: `Could not toggle: ${result.error}`,
+        variant: "error",
+      });
       return;
     }
-    setFeedback({ message: enabled ? "Goal enabled." : "Goal disabled.", variant: "success" });
+    setFeedback({
+      message: enabled ? "Goal enabled." : "Goal disabled.",
+      variant: "success",
+    });
   }
 
   async function handleDelete(id: number, kpiName: string) {
@@ -141,16 +160,23 @@ export function GoalsManagerClient({
     });
     const result = await applyGoalsMutationResponse(res, "Unknown error");
     if (!result.ok) {
-      setFeedback({ message: `Could not delete: ${result.error}`, variant: "error" });
+      setFeedback({
+        message: `Could not delete: ${result.error}`,
+        variant: "error",
+      });
       return;
     }
-    setFeedback({ message: `Goal deleted for “${kpiName}”.`, variant: "success" });
+    setFeedback({
+      message: `Goal deleted for “${kpiName}”.`,
+      variant: "success",
+    });
   }
 
   function requestDelete(id: number, kpiName: string) {
     setConfirmation({
       title: `Delete goal for “${kpiName}”?`,
-      description: "This removes the goal permanently. The KPI data is unaffected.",
+      description:
+        "This removes the goal permanently. The KPI data is unaffected.",
       confirmLabel: "Delete goal",
       action: () => handleDelete(id, kpiName),
     });
@@ -158,6 +184,7 @@ export function GoalsManagerClient({
 
   function openEditDialog(goal: KpiGoalWithMeta) {
     setEditing(goal);
+    setEditBaselineYear(goal.baseline_year);
     setEditGoalType(goal.goal_type);
     setEditTargetValue(String(goal.target_value));
     setEditNotes(goal.notes ?? "");
@@ -171,6 +198,7 @@ export function GoalsManagerClient({
       body: {
         id: editing.id,
         enabled: editing.enabled,
+        baseline_year: editBaselineYear,
         goal_type: editGoalType,
         target_value: Number(editTargetValue),
         notes: editNotes || null,
@@ -178,7 +206,10 @@ export function GoalsManagerClient({
     });
     const result = await applyGoalsMutationResponse(res, "Unknown error");
     if (!result.ok) {
-      setFeedback({ message: `Could not update goal: ${result.error}`, variant: "error" });
+      setFeedback({
+        message: `Could not update goal: ${result.error}`,
+        variant: "error",
+      });
       return;
     }
     setFeedback({ message: "Goal updated.", variant: "success" });
@@ -194,7 +225,10 @@ export function GoalsManagerClient({
       />
 
       {feedback ? (
-        <StatusBanner variant={feedback.variant} onDismiss={() => setFeedback(null)}>
+        <StatusBanner
+          variant={feedback.variant}
+          onDismiss={() => setFeedback(null)}
+        >
           {feedback.message}
         </StatusBanner>
       ) : null}
@@ -205,11 +239,16 @@ export function GoalsManagerClient({
         yearOptions={goalYearOptions}
         kpiId={createKpiId}
         targetYear={createYear}
+        baselineYear={createBaselineYear}
         goalType={createGoalType}
         targetValue={createTargetValue}
         notes={createNotes}
         onKpiIdChange={setCreateKpiId}
-        onTargetYearChange={setCreateYear}
+        onTargetYearChange={(year) => {
+          setCreateYear(year);
+          setCreateBaselineYear(year - 1);
+        }}
+        onBaselineYearChange={setCreateBaselineYear}
         onGoalTypeChange={setCreateGoalType}
         onTargetValueChange={setCreateTargetValue}
         onNotesChange={setCreateNotes}
@@ -245,10 +284,12 @@ export function GoalsManagerClient({
 
       <AdminGoalEditDialog
         goal={editing}
+        baselineYear={editBaselineYear}
         goalType={editGoalType}
         targetValue={editTargetValue}
         notes={editNotes}
         onGoalTypeChange={setEditGoalType}
+        onBaselineYearChange={setEditBaselineYear}
         onTargetValueChange={setEditTargetValue}
         onNotesChange={setEditNotes}
         onClose={() => setEditing(null)}

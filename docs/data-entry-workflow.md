@@ -80,6 +80,7 @@ Clicking the trash icon opens a confirmation dialog ("Clear [Month] [Year]?"). E
 
 - Empty or non-numeric values are rejected client-side (Save button is disabled).
 - The API validates with Zod: `value` must be a finite number, `year` in 1900–2100, `month` in 0–12.
+- The metrics feature verifies the referenced KPI before writing. Scalar entries cannot target a breakdown KPI, breakdown rows cannot target a scalar KPI, annual KPIs accept only month `0`, monthly KPIs accept only months `1–12`, and breakdown labels cannot be blank.
 - CSRF guard (`assertMutationRequest`) enforces same-origin, `application/json` content-type, and a double-submit `X-CSRF-Token` header on all POST/DELETE.
 
 ### No bulk import
@@ -153,12 +154,16 @@ The dashboard does **not** generate annual summaries by rolling up monthly value
 
 ### Goal-based annual targets
 
-Goals (managed at `/admin/goals`) define a target for a KPI in a given year. A goal's full-year target is computed from the **prior year's actual** as the baseline:
+Goals (managed at `/admin/goals`) define a target year and a fixed baseline
+year. The baseline does not move when later actuals are entered:
 
 - **Percentage goals** (`goal_type = "pct"`): `target = baseline × (1 + target_value / 100)`
 - **Absolute goals** (`goal_type = "number"`): `target = baseline + target_value`
 
-If no prior-year data exists, the baseline is null and the target cannot be computed — the goal shows "—" and a message explains that prior-year data is needed.
+If no data exists for the selected baseline year, the target cannot be
+computed. The goal shows "—" and identifies the missing baseline year.
+Dashboard progress uses the selected reporting year; admin progress uses the
+current year.
 
 ### YTD pacing
 
@@ -210,7 +215,8 @@ The roadmap explicitly calls out: *"Mirror the export with an import path on `/a
 ### What is already automated
 - **Schema seeding**: `npm run db:seed` populates 59 annual KPIs across 5 strategic priorities with 2024–2026 sample data and 25 target-bearing goals. The canonical definition lives in `src/features/catalog/strategic-plan.ts`.
 - **Period integrity**: annual/flexible KPIs accept only `month = 0`; monthly KPIs accept only `1–12`. The metrics feature enforces this on every entry upsert and the API returns 400 for mismatches.
-- **Schema 8 migration**: this release intentionally replaces the previous sample catalog. It resets KPI values and `entry_history` while preserving users. Back up the production database before rollout; ADR 0020 contains the rollback procedure.
+- **Schema 8 migration**: intentionally replaced the previous sample catalog, resetting KPI values and `entry_history` while preserving users. Back up production before crossing this boundary.
+- **Schema 9 migration**: additive. Preserves strategic data and freezes each existing goal to the latest available actual year before its target. New strategic goals explicitly use 2026.
 - **Bootstrap admin**: `ensureSeedAdmin()` runs at module load on every server start and creates the seed admin/viewer accounts on first DB access.
 - **Production startup**: `scripts/ensure-seeded.mjs` compares the mounted DB's schema version against `src/lib/schema-version.json` and auto-seeds if needed.
 - **Goal computation**: YTD pacing, full-year progress, and prorated targets are all computed server-side per request — no manual calculation needed.

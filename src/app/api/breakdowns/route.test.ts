@@ -26,9 +26,9 @@ const { deleteBreakdownMock, upsertBreakdownMock } = vi.hoisted(() => ({
 }));
 
 vi.mock("@/features/metrics/server", async () => {
-  const actual = await vi.importActual<typeof import("@/features/metrics/server")>(
-    "@/features/metrics/server",
-  );
+  const actual = await vi.importActual<
+    typeof import("@/features/metrics/server")
+  >("@/features/metrics/server");
   return {
     ...actual,
     deleteBreakdown: deleteBreakdownMock,
@@ -40,6 +40,9 @@ import { POST } from "./route";
 import {
   BreakdownEntryConflictError,
   BreakdownEntryNotFoundError,
+  BreakdownKpiNotFoundError,
+  BreakdownKpiTypeError,
+  BreakdownPeriodMismatchError,
 } from "@/features/metrics/server";
 
 const CSRF_TOKEN = "test-csrf-token-0123456789abcdef";
@@ -123,6 +126,80 @@ describe("/api/breakdowns mutation contract", () => {
 
     expect(res.status).toBe(400);
     expect(upsertBreakdownMock).not.toHaveBeenCalled();
+  });
+
+  it("rejects a whitespace-only label before the repository call", async () => {
+    const res = await POST(
+      postRequest({
+        kpi_id: 12,
+        year: 2026,
+        label: "   ",
+        value: 17,
+      }),
+    );
+
+    expect(res.status).toBe(400);
+    expect(upsertBreakdownMock).not.toHaveBeenCalled();
+  });
+
+  it("returns 404 when the KPI does not exist", async () => {
+    upsertBreakdownMock.mockImplementationOnce(() => {
+      throw new BreakdownKpiNotFoundError(12);
+    });
+
+    const res = await POST(
+      postRequest({
+        kpi_id: 12,
+        year: 2026,
+        label: "Funders",
+        value: 17,
+      }),
+    );
+
+    expect(res.status).toBe(404);
+    await expect(res.json()).resolves.toEqual({ error: "KPI not found." });
+  });
+
+  it("rejects scalar KPIs on the breakdown endpoint", async () => {
+    upsertBreakdownMock.mockImplementationOnce(() => {
+      throw new BreakdownKpiTypeError(12);
+    });
+
+    const res = await POST(
+      postRequest({
+        kpi_id: 12,
+        year: 2026,
+        label: "Funders",
+        value: 17,
+      }),
+    );
+
+    expect(res.status).toBe(400);
+    await expect(res.json()).resolves.toEqual({
+      error: "KPI 12 is not a breakdown KPI.",
+    });
+  });
+
+  it("rejects a breakdown month that does not match KPI frequency", async () => {
+    upsertBreakdownMock.mockImplementationOnce(() => {
+      throw new BreakdownPeriodMismatchError("annual", 1);
+    });
+
+    const res = await POST(
+      postRequest({
+        kpi_id: 12,
+        year: 2026,
+        month: 1,
+        label: "Funders",
+        value: 17,
+      }),
+    );
+
+    expect(res.status).toBe(400);
+    await expect(res.json()).resolves.toEqual({
+      error:
+        "Breakdown month 1 is invalid for an annual KPI; expected month 0.",
+    });
   });
 
   it("returns 404 when a saved row was deleted elsewhere", async () => {

@@ -5,7 +5,10 @@ Date: 2026-07-07
 
 ## Context
 
-Goal behavior is a high-risk part of the KPI dashboard. It includes fixed prior-year baselines, percentage and numeric targets, annual month `0` values, monthly YTD pacing, full-year completion, lower-is-better inversion, missing data, and zero-valued data.
+Goal behavior is a high-risk part of the KPI dashboard. It includes persisted
+fixed baseline years, explicit progress years, percentage and numeric targets,
+annual month `0` values, monthly YTD pacing, full-year completion,
+lower-is-better inversion, missing data, and zero-valued data.
 
 Before this decision, the deterministic calculation rules lived inside `src/lib/repository.ts` beside SQL reads and unrelated repository operations. That made the rule harder to locate and encouraged future goal work to understand repository internals before touching business behavior.
 
@@ -14,6 +17,9 @@ Before this decision, the deterministic calculation rules lived inside `src/lib/
 Goal target, progress, YTD pacing, and full-year completion calculations are owned by `src/features/goals/calculations.ts`.
 
 Goal database reads and writes are owned by `src/features/goals/queries.ts` and `src/features/goals/mutations.ts`. Those modules read the relevant baseline, YTD, and full-year values from SQLite, then call the feature calculation module.
+
+Schema 9 persists `baseline_year`. Callers may supply `asOfYear` to calculate
+progress for a selected reporting year without changing the fixed target.
 
 Goal API validation and query-param normalization are owned by `src/features/goals/validation.ts`. Production call sites import through the public `src/features/goals/index.ts` surface. `src/lib/repository.ts` does not re-export goal operations.
 

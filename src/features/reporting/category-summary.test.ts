@@ -87,6 +87,7 @@ function goal(overrides: Partial<KpiGoalWithMeta>): KpiGoalWithMeta {
     id: 1,
     kpi_id: visitorsKpi.id,
     target_year: 2027,
+    baseline_year: 2026,
     goal_type: "number",
     target_value: 10,
     enabled: true,
@@ -104,6 +105,7 @@ function goal(overrides: Partial<KpiGoalWithMeta>): KpiGoalWithMeta {
     category_slug: category.slug,
     direction: visitorsKpi.direction,
     reporting_frequency: visitorsKpi.reporting_frequency,
+    progress_year: 2026,
     ytd_value: 80,
     ytd_target: 100,
     ytd_progress_pct: 80,
@@ -182,6 +184,12 @@ describe("reporting category summaries", () => {
         goal({ id: 1, target_year: 2027, full_year_progress_pct: 80 }),
         goal({ id: 2, target_year: 2029, full_year_progress_pct: null }),
         goal({ id: 3, target_year: 2025, full_year_progress_pct: 100 }),
+        goal({
+          id: 4,
+          baseline_year: 2027,
+          target_year: 2029,
+          full_year_progress_pct: 10,
+        }),
       ],
     });
 

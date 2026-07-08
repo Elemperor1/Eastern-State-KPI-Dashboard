@@ -185,14 +185,16 @@ password change flow — lives at `docs/qa-manual.md`. New engineers should
 walk the checklist end-to-end after their first checkout.
 
 Latest local runs:
+- `npm test` → **642 passed**
 - `AUTH_DISABLED=true` via `next dev` → **48 passed, 0 failed**
 - `AUTH_DISABLED=false` via `next start` → **52 passed, 0 failed**
 - `npm run test:e2e` → **4 passed**
 
-Schema version 8 intentionally replaces the former sample catalog with the
-strategic plan. That migration resets KPI data and audit history while
-preserving users. Back up a production database before deploying this version;
-see ADR 0020 for the rollout and rollback procedure.
+Schema 8 intentionally replaced the former sample catalog with the strategic
+plan, resetting KPI data and audit history while preserving users. Schema 9 is
+additive: it gives every goal a fixed baseline year so 2027/2029 progress can
+be measured against the 2026 strategic baseline. Back up a production database
+before crossing the schema-8 replacement; see ADR 0020.
 
 ## Data model (schema)
 

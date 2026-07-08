@@ -40,9 +40,8 @@ async function deleteGoalIfPresent(page: Page): Promise<void> {
   const search = page.getByRole("searchbox", { name: "Search goals" });
   await search.fill(GOAL_KPI);
   const row = page
-    .getByRole("row")
-    .filter({ hasText: GOAL_KPI })
-    .filter({ hasText: GOAL_YEAR });
+    .locator(`tr[data-goal-year="${GOAL_YEAR}"]`)
+    .filter({ hasText: GOAL_KPI });
 
   if (await row.count()) {
     await row.getByRole("button", { name: `Delete goal for ${GOAL_KPI}` }).click();
@@ -73,10 +72,10 @@ test("creates, edits, exports, and deletes a KPI goal", async ({ page }) => {
   await expect(page.getByRole("status")).toContainText("Goal created.");
 
   const row = page
-    .getByRole("row")
-    .filter({ hasText: GOAL_KPI })
-    .filter({ hasText: GOAL_YEAR });
+    .locator(`tr[data-goal-year="${GOAL_YEAR}"]`)
+    .filter({ hasText: GOAL_KPI });
   await expect(row).toContainText("+17%");
+  await expect(row).toContainText("baseline 2025");
   await row.getByRole("button", { name: `Edit goal for ${GOAL_KPI}` }).click();
 
   const dialog = page.getByRole("dialog", { name: `Edit goal — ${GOAL_KPI}` });
@@ -95,6 +94,9 @@ test("creates, edits, exports, and deletes a KPI goal", async ({ page }) => {
   });
   await expect(goalPanel).toContainText("2026 Goal");
   await expect(goalPanel).toContainText("Goal: +23%");
+  await expect(goalPanel).toContainText(
+    "2026 actual toward 2026 target · baseline 2025",
+  );
   const pngPromise = page.waitForEvent("download");
   await page.getByRole("button", { name: "Export current view as PNG image" }).click();
   await expectPngDownload(await pngPromise);
@@ -178,6 +180,9 @@ test("downloads representative strategic-plan exports and renders native print P
 }) => {
   const browserErrors = collectBrowserErrors(page);
 
+  await page.goto("/dashboard/overview");
+  await expect(page.getByText(/Goals \(13\)/)).toBeVisible();
+
   await page.goto("/dashboard/category/visitor-experience");
   await expect(
     page.getByRole("heading", { name: "Reimagine Visitor Experience" }),
@@ -206,6 +211,7 @@ test("downloads representative strategic-plan exports and renders native print P
     "/dashboard/metric/interpretive-plan-milestones-on-schedule?legacy=1",
   );
   await expect(page.getByText("2027 Goal", { exact: true })).toBeVisible();
+  await expect(page.getByText("2026 actual toward 2027 target · baseline 2026")).toBeVisible();
   downloadPromise = page.waitForEvent("download");
   await page.getByRole("button", { name: "Export current dashboard view as PDF" }).click();
   await expectPdfDownload(await downloadPromise);

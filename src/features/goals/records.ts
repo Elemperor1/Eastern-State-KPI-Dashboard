@@ -4,6 +4,7 @@ export interface GoalRow {
   id: number;
   kpi_id: number;
   target_year: number;
+  baseline_year: number;
   goal_type: GoalType;
   target_value: number;
   enabled: number;
@@ -19,6 +20,10 @@ export function asGoal(row: Record<string, unknown>): GoalRow {
     id: Number(row.id),
     kpi_id: Number(row.kpi_id),
     target_year: Number(row.target_year),
+    baseline_year:
+      row.baseline_year == null
+        ? Number(row.target_year) - 1
+        : Number(row.baseline_year),
     goal_type: String(row.goal_type) as GoalType,
     target_value: Number(row.target_value),
     enabled: Number(row.enabled ?? 1),

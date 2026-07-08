@@ -6,6 +6,11 @@ import { ensureSeedAdmin } from "@/features/auth/server";
 import { getDb, resetDb, transaction } from "@/lib/db";
 import {
   BreakdownEntryConflictError,
+  BreakdownKpiNotFoundError,
+  BreakdownKpiTypeError,
+  BreakdownLabelError,
+  BreakdownPeriodMismatchError,
+  EntryKpiTypeError,
   deleteBreakdown,
   deleteEntry,
   listEntries,
@@ -44,6 +49,8 @@ describe("upsertEntry / upsertBreakdown audit integrity", () => {
   let kpiA: number;
   let kpiB: number;
   let annualKpi: number;
+  let breakdownA: number;
+  let breakdownB: number;
 
   beforeAll(() => {
     tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "es-kpi-repo-test-"));
@@ -57,27 +64,107 @@ describe("upsertEntry / upsertBreakdown audit integrity", () => {
       "INSERT INTO categories (slug, name, sort_order) VALUES (?, ?, ?)",
     ).run("test-category", "Test Category", 0);
     categoryId = Number(
-      (db.prepare("SELECT id FROM categories LIMIT 1").get() as { id: number }).id,
+      (db.prepare("SELECT id FROM categories LIMIT 1").get() as { id: number })
+        .id,
     );
     db.prepare(
       `INSERT INTO kpis (category_id, slug, name, unit, unit_type, reporting_frequency, direction, sort_order)
        VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
-    ).run(categoryId, "kpi-a", "KPI A", "count", "count", "monthly", "higher", 0);
+    ).run(
+      categoryId,
+      "kpi-a",
+      "KPI A",
+      "count",
+      "count",
+      "monthly",
+      "higher",
+      0,
+    );
     db.prepare(
       `INSERT INTO kpis (category_id, slug, name, unit, unit_type, reporting_frequency, direction, sort_order)
        VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
-    ).run(categoryId, "kpi-b", "KPI B", "count", "count", "monthly", "higher", 1);
+    ).run(
+      categoryId,
+      "kpi-b",
+      "KPI B",
+      "count",
+      "count",
+      "monthly",
+      "higher",
+      1,
+    );
     db.prepare(
       `INSERT INTO kpis (category_id, slug, name, unit, unit_type, reporting_frequency, direction, sort_order)
        VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
-    ).run(categoryId, "annual-kpi", "Annual KPI", "count", "count", "annual", "higher", 2);
-    kpiA = Number((db.prepare("SELECT id FROM kpis WHERE slug = ?").get("kpi-a") as { id: number }).id);
-    kpiB = Number((db.prepare("SELECT id FROM kpis WHERE slug = ?").get("kpi-b") as { id: number }).id);
+    ).run(
+      categoryId,
+      "annual-kpi",
+      "Annual KPI",
+      "count",
+      "count",
+      "annual",
+      "higher",
+      2,
+    );
+    db.prepare(
+      `INSERT INTO kpis (category_id, slug, name, unit, unit_type, reporting_frequency, direction, sort_order)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+    ).run(
+      categoryId,
+      "breakdown-a",
+      "Breakdown A",
+      "percent",
+      "breakdown",
+      "annual",
+      "neutral",
+      3,
+    );
+    db.prepare(
+      `INSERT INTO kpis (category_id, slug, name, unit, unit_type, reporting_frequency, direction, sort_order)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+    ).run(
+      categoryId,
+      "breakdown-b",
+      "Breakdown B",
+      "percent",
+      "breakdown",
+      "annual",
+      "neutral",
+      4,
+    );
+    kpiA = Number(
+      (
+        db.prepare("SELECT id FROM kpis WHERE slug = ?").get("kpi-a") as {
+          id: number;
+        }
+      ).id,
+    );
+    kpiB = Number(
+      (
+        db.prepare("SELECT id FROM kpis WHERE slug = ?").get("kpi-b") as {
+          id: number;
+        }
+      ).id,
+    );
     annualKpi = Number(
       (
-        db
-          .prepare("SELECT id FROM kpis WHERE slug = ?")
-          .get("annual-kpi") as { id: number }
+        db.prepare("SELECT id FROM kpis WHERE slug = ?").get("annual-kpi") as {
+          id: number;
+        }
+      ).id,
+    );
+    breakdownA = Number(
+      (
+        db.prepare("SELECT id FROM kpis WHERE slug = ?").get("breakdown-a") as {
+          id: number;
+        }
+      ).id,
+    );
+    breakdownB = Number(
+      (
+        db.prepare("SELECT id FROM kpis WHERE slug = ?").get("breakdown-b") as {
+          id: number;
+        }
       ).id,
     );
   });
@@ -137,7 +224,9 @@ describe("upsertEntry / upsertBreakdown audit integrity", () => {
       updated_by: 1,
     });
 
-    expect(listEntries({ kpi_ids: [kpiB] }).map((row) => row.kpi_id)).toEqual([kpiB]);
+    expect(listEntries({ kpi_ids: [kpiB] }).map((row) => row.kpi_id)).toEqual([
+      kpiB,
+    ]);
     expect(listEntries({ kpi_ids: [] })).toEqual([]);
   });
 
@@ -181,6 +270,71 @@ describe("upsertEntry / upsertBreakdown audit integrity", () => {
     ).toBe(12);
   });
 
+  it("rejects an entry for an unknown KPI before SQLite surfaces a foreign-key error", () => {
+    expect(() =>
+      upsertEntry({
+        kpi_id: 999_999,
+        year: 2026,
+        month: 0,
+        value: 10,
+        updated_by: 1,
+      }),
+    ).toThrow("KPI 999999 was not found.");
+  });
+
+  it("rejects writes through the wrong metric storage path", () => {
+    expect(() =>
+      upsertEntry({
+        kpi_id: breakdownA,
+        year: 2026,
+        month: 0,
+        value: 10,
+        updated_by: 1,
+      }),
+    ).toThrow(EntryKpiTypeError);
+    expect(() =>
+      upsertBreakdown({
+        kpi_id: kpiA,
+        year: 2026,
+        month: 1,
+        label: "Invalid",
+        value: 10,
+        updated_by: 1,
+      }),
+    ).toThrow(BreakdownKpiTypeError);
+  });
+
+  it("validates breakdown KPI identity, reporting period, and label", () => {
+    expect(() =>
+      upsertBreakdown({
+        kpi_id: 999_999,
+        year: 2026,
+        label: "Missing KPI",
+        value: 10,
+        updated_by: 1,
+      }),
+    ).toThrow(BreakdownKpiNotFoundError);
+    expect(() =>
+      upsertBreakdown({
+        kpi_id: breakdownA,
+        year: 2026,
+        month: 1,
+        label: "Wrong period",
+        value: 10,
+        updated_by: 1,
+      }),
+    ).toThrow(BreakdownPeriodMismatchError);
+    expect(() =>
+      upsertBreakdown({
+        kpi_id: breakdownA,
+        year: 2026,
+        label: "   ",
+        value: 10,
+        updated_by: 1,
+      }),
+    ).toThrow(BreakdownLabelError);
+  });
+
   it("loads the complete admin data-entry page model through the metrics feature", () => {
     const db = getDb();
     db.prepare(
@@ -194,7 +348,7 @@ describe("upsertEntry / upsertBreakdown audit integrity", () => {
       updated_by: 1,
     });
     const breakdown = upsertBreakdown({
-      kpi_id: kpiB,
+      kpi_id: breakdownB,
       year: 2024,
       label: "Foundation",
       value: 3,
@@ -203,11 +357,15 @@ describe("upsertEntry / upsertBreakdown audit integrity", () => {
 
     const model = loadAdminDataPageData();
 
-    expect(model.categories.map((item) => item.name)).toEqual(["Test Category"]);
+    expect(model.categories.map((item) => item.name)).toEqual([
+      "Test Category",
+    ]);
     expect(model.kpis.map((item) => item.slug)).toEqual([
       "kpi-a",
       "kpi-b",
       "annual-kpi",
+      "breakdown-a",
+      "breakdown-b",
     ]);
     expect(model.entries.map((item) => item.id)).toEqual([monthly.id]);
     expect(model.breakdowns.map((item) => item.id)).toEqual([breakdown.id]);
@@ -219,8 +377,18 @@ describe("upsertEntry / upsertBreakdown audit integrity", () => {
     // The original bug: a prior insert on the same connection leaves
     // `lastInsertRowid` set to its row id. A subsequent conflict update on a
     // different key must NOT return the prior row.
-    const first = upsertEntry({ kpi_id: kpiA, year: 2025, month: 3, value: 10 });
-    const second = upsertEntry({ kpi_id: kpiA, year: 2025, month: 4, value: 20 });
+    const first = upsertEntry({
+      kpi_id: kpiA,
+      year: 2025,
+      month: 3,
+      value: 10,
+    });
+    const second = upsertEntry({
+      kpi_id: kpiA,
+      year: 2025,
+      month: 4,
+      value: 20,
+    });
     expect(second.kpi_id).toBe(kpiA);
     expect(second.year).toBe(2025);
     expect(second.month).toBe(4);
@@ -230,10 +398,22 @@ describe("upsertEntry / upsertBreakdown audit integrity", () => {
 
   it("writes a correct audit row when an unrelated insert precedes a conflict update", () => {
     // First insert for KPI A month=3.
-    upsertEntry({ kpi_id: kpiA, year: 2025, month: 3, value: 10, updated_by: 1 });
+    upsertEntry({
+      kpi_id: kpiA,
+      year: 2025,
+      month: 3,
+      value: 10,
+      updated_by: 1,
+    });
     // Unrelated insert on the same connection that bumps lastInsertRowid
     // to point at KPI B's row.
-    upsertEntry({ kpi_id: kpiB, year: 2025, month: 3, value: 99, updated_by: 1 });
+    upsertEntry({
+      kpi_id: kpiB,
+      year: 2025,
+      month: 3,
+      value: 99,
+      updated_by: 1,
+    });
     // Conflict update on KPI A month=3 (re-uses the first row's id).
     const updated = upsertEntry({
       kpi_id: kpiA,
@@ -258,7 +438,13 @@ describe("upsertEntry / upsertBreakdown audit integrity", () => {
     // Two distinct inserts with no conflict — the second is a new key, so
     // its history row must have prev_value=null, not a value from a
     // different entry.
-    upsertEntry({ kpi_id: kpiA, year: 2025, month: 1, value: 5, updated_by: 1 });
+    upsertEntry({
+      kpi_id: kpiA,
+      year: 2025,
+      month: 1,
+      value: 5,
+      updated_by: 1,
+    });
     const created = upsertEntry({
       kpi_id: kpiA,
       year: 2025,
@@ -276,7 +462,7 @@ describe("upsertEntry / upsertBreakdown audit integrity", () => {
 
   it("upsertBreakdown writes a correct audit row on conflict update", () => {
     upsertBreakdown({
-      kpi_id: kpiA,
+      kpi_id: breakdownA,
       year: 2025,
       label: "Group A",
       value: 10,
@@ -284,7 +470,7 @@ describe("upsertEntry / upsertBreakdown audit integrity", () => {
     });
     // Unrelated insert that bumps lastInsertRowid.
     upsertBreakdown({
-      kpi_id: kpiB,
+      kpi_id: breakdownB,
       year: 2025,
       label: "Group B",
       value: 99,
@@ -292,18 +478,18 @@ describe("upsertEntry / upsertBreakdown audit integrity", () => {
     });
     // Conflict update on the first label.
     const updated = upsertBreakdown({
-      kpi_id: kpiA,
+      kpi_id: breakdownA,
       year: 2025,
       label: "Group A",
       value: 42,
       updated_by: 1,
     });
-    expect(updated.kpi_id).toBe(kpiA);
+    expect(updated.kpi_id).toBe(breakdownA);
     expect(updated.label).toBe("Group A");
     expect(updated.value).toBe(42);
     const h = lastHistory("breakdown");
     expect(h).toBeDefined();
-    expect(h!.kpi_id).toBe(kpiA);
+    expect(h!.kpi_id).toBe(breakdownA);
     expect(h!.month_or_label).toBe("0|Group A");
     expect(h!.new_value).toBe(42);
     expect(h!.prev_value).toBe(10);
@@ -311,7 +497,7 @@ describe("upsertEntry / upsertBreakdown audit integrity", () => {
 
   it("updates a saved breakdown by durable id when its label changes", () => {
     const created = upsertBreakdown({
-      kpi_id: kpiA,
+      kpi_id: breakdownA,
       year: 2025,
       label: "Original label",
       value: 10,
@@ -322,7 +508,7 @@ describe("upsertEntry / upsertBreakdown audit integrity", () => {
 
     const updated = upsertBreakdown({
       id: created.id,
-      kpi_id: kpiA,
+      kpi_id: breakdownA,
       year: 2025,
       label: "Renamed label",
       value: 15,
@@ -341,7 +527,7 @@ describe("upsertEntry / upsertBreakdown audit integrity", () => {
       .prepare(
         "SELECT id, label, value FROM breakdown_entries WHERE kpi_id = ? ORDER BY id",
       )
-      .all(kpiA);
+      .all(breakdownA);
     expect(rows).toEqual([
       { id: created.id, label: "Renamed label", value: 15 },
     ]);
@@ -359,14 +545,14 @@ describe("upsertEntry / upsertBreakdown audit integrity", () => {
 
   it("rolls back an id-based label edit that conflicts with another row", () => {
     const first = upsertBreakdown({
-      kpi_id: kpiA,
+      kpi_id: breakdownA,
       year: 2025,
       label: "First label",
       value: 10,
       updated_by: 1,
     });
     const second = upsertBreakdown({
-      kpi_id: kpiA,
+      kpi_id: breakdownA,
       year: 2025,
       label: "Second label",
       value: 20,
@@ -376,7 +562,7 @@ describe("upsertEntry / upsertBreakdown audit integrity", () => {
     expect(() =>
       upsertBreakdown({
         id: first.id,
-        kpi_id: kpiA,
+        kpi_id: breakdownA,
         year: 2025,
         label: "Second label",
         value: 99,
@@ -388,7 +574,7 @@ describe("upsertEntry / upsertBreakdown audit integrity", () => {
       .prepare(
         "SELECT id, label, value FROM breakdown_entries WHERE kpi_id = ? ORDER BY id",
       )
-      .all(kpiA);
+      .all(breakdownA);
     expect(rows).toEqual([
       { id: first.id, label: "First label", value: 10 },
       { id: second.id, label: "Second label", value: 20 },
@@ -438,10 +624,22 @@ describe("upsertEntry / upsertBreakdown audit integrity", () => {
     db.exec("DELETE FROM entry_history;");
     expect(() =>
       transaction(() => {
-        upsertEntry({ kpi_id: kpiA, year: 2025, month: 1, value: 1, updated_by: 1 });
+        upsertEntry({
+          kpi_id: kpiA,
+          year: 2025,
+          month: 1,
+          value: 1,
+          updated_by: 1,
+        });
         // Nested transaction — exercises the savepoint path.
         transaction(() => {
-          upsertEntry({ kpi_id: kpiA, year: 2025, month: 2, value: 2, updated_by: 1 });
+          upsertEntry({
+            kpi_id: kpiA,
+            year: 2025,
+            month: 2,
+            value: 2,
+            updated_by: 1,
+          });
         });
         throw new Error("simulated");
       }),
@@ -459,9 +657,21 @@ describe("upsertEntry / upsertBreakdown audit integrity", () => {
     db.exec("DELETE FROM monthly_entries;");
     db.exec("DELETE FROM entry_history;");
     transaction(() => {
-      upsertEntry({ kpi_id: kpiA, year: 2025, month: 1, value: 1, updated_by: 1 });
+      upsertEntry({
+        kpi_id: kpiA,
+        year: 2025,
+        month: 1,
+        value: 1,
+        updated_by: 1,
+      });
       transaction(() => {
-        upsertEntry({ kpi_id: kpiA, year: 2025, month: 2, value: 2, updated_by: 1 });
+        upsertEntry({
+          kpi_id: kpiA,
+          year: 2025,
+          month: 2,
+          value: 2,
+          updated_by: 1,
+        });
       });
     });
     const rows = db
@@ -480,13 +690,25 @@ describe("upsertEntry / upsertBreakdown audit integrity", () => {
 
     transaction(() => {
       transaction(() => {
-        upsertEntry({ kpi_id: kpiA, year: 2025, month: 1, value: 1, updated_by: 1 });
+        upsertEntry({
+          kpi_id: kpiA,
+          year: 2025,
+          month: 1,
+          value: 1,
+          updated_by: 1,
+        });
       });
     });
 
     expect(() =>
       transaction(() => {
-        upsertEntry({ kpi_id: kpiA, year: 2025, month: 2, value: 2, updated_by: 1 });
+        upsertEntry({
+          kpi_id: kpiA,
+          year: 2025,
+          month: 2,
+          value: 2,
+          updated_by: 1,
+        });
         throw new Error("top-level failure after nested success");
       }),
     ).toThrow("top-level failure after nested success");
@@ -523,7 +745,7 @@ describe("upsertEntry / upsertBreakdown audit integrity", () => {
 
   it("deleteBreakdown still records a correct history row", () => {
     const e = upsertBreakdown({
-      kpi_id: kpiA,
+      kpi_id: breakdownA,
       year: 2025,
       label: "Group D",
       value: 25,
@@ -533,7 +755,7 @@ describe("upsertEntry / upsertBreakdown audit integrity", () => {
     const h = lastHistory("breakdown");
     expect(h).toBeDefined();
     expect(h!.entry_id).toBe(e.id);
-    expect(h!.kpi_id).toBe(kpiA);
+    expect(h!.kpi_id).toBe(breakdownA);
     expect(h!.new_value).toBeNull();
     expect(h!.prev_value).toBe(25);
   });

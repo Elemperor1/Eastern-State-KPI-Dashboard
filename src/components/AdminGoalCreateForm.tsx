@@ -11,11 +11,13 @@ interface AdminGoalCreateFormProps {
   yearOptions: number[];
   kpiId: number;
   targetYear: number;
+  baselineYear: number;
   goalType: GoalType;
   targetValue: string;
   notes: string;
   onKpiIdChange: (kpiId: number) => void;
   onTargetYearChange: (year: number) => void;
+  onBaselineYearChange: (year: number) => void;
   onGoalTypeChange: (goalType: GoalType) => void;
   onTargetValueChange: (targetValue: string) => void;
   onNotesChange: (notes: string) => void;
@@ -28,11 +30,13 @@ export function AdminGoalCreateForm({
   yearOptions,
   kpiId,
   targetYear,
+  baselineYear,
   goalType,
   targetValue,
   notes,
   onKpiIdChange,
   onTargetYearChange,
+  onBaselineYearChange,
   onGoalTypeChange,
   onTargetValueChange,
   onNotesChange,
@@ -44,7 +48,7 @@ export function AdminGoalCreateForm({
         <h2 className="mb-5 flex items-center gap-2 text-xl font-semibold text-ink-900">
           <Plus className="h-4 w-4" /> Add a new goal
         </h2>
-        <div className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-4">
+        <div className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-5">
           <FormField htmlFor="create-goal-kpi" label="KPI">
             <Select
               id="create-goal-kpi"
@@ -53,7 +57,9 @@ export function AdminGoalCreateForm({
               required
             >
               {availableKpis.length === 0 ? (
-                <option value={0} disabled>No KPIs available</option>
+                <option value={0} disabled>
+                  No KPIs available
+                </option>
               ) : null}
               {availableKpis.map((kpi) => (
                 <option key={kpi.id} value={kpi.id}>
@@ -67,11 +73,26 @@ export function AdminGoalCreateForm({
               ))}
             </Select>
           </FormField>
+          <FormField htmlFor="create-goal-baseline-year" label="Baseline year">
+            <Input
+              id="create-goal-baseline-year"
+              type="number"
+              min={1900}
+              max={targetYear - 1}
+              value={baselineYear}
+              onChange={(event) =>
+                onBaselineYearChange(Number(event.target.value))
+              }
+              required
+            />
+          </FormField>
           <FormField htmlFor="create-goal-year" label="Target year">
             <Select
               id="create-goal-year"
               value={targetYear}
-              onChange={(event) => onTargetYearChange(Number(event.target.value))}
+              onChange={(event) =>
+                onTargetYearChange(Number(event.target.value))
+              }
             >
               {yearOptions.map((year) => (
                 <option key={year} value={year}>
@@ -84,9 +105,13 @@ export function AdminGoalCreateForm({
             <Select
               id="create-goal-type"
               value={goalType}
-              onChange={(event) => onGoalTypeChange(event.target.value as GoalType)}
+              onChange={(event) =>
+                onGoalTypeChange(event.target.value as GoalType)
+              }
             >
-              <option value="pct">Percentage — e.g. 20% more or -10% less</option>
+              <option value="pct">
+                Percentage — e.g. 20% more or -10% less
+              </option>
               <option value="number">Numeric — e.g. 3 more or -5 less</option>
             </Select>
           </FormField>
@@ -107,7 +132,7 @@ export function AdminGoalCreateForm({
           <FormField
             htmlFor="create-goal-notes"
             label="Notes (optional)"
-            className="md:col-span-2 lg:col-span-4"
+            className="md:col-span-2 lg:col-span-5"
           >
             <Input
               id="create-goal-notes"

@@ -13,11 +13,11 @@ records the final evidence proving each required outcome.
 | Requirement | Current evidence | Status |
 | --- | --- | --- |
 | Canonical 5 priorities / 59 KPIs / 25 goals and ordering | `strategic-plan.ts`, invariant tests, seeded DB query, server-rendered catalog smoke assertions | Proven |
-| Schema 8 catalog replacement is explicit and recoverable | ADR 0020, DB migration comment, operator docs; users preserved while old KPI data/history are intentionally reset | Proven; production backup remains an operator rollout requirement |
-| Annual `month = 0` and monthly `1–12` behavior | `period-rules.test.ts`, analytics tests, metrics integration enforcement, annual smoke round-trips | Proven |
+| Schema 8 replacement and schema 9 goal-baseline migration | ADR 0020, populated migration tests, DB comments, operator docs; users survive the replacement and v8 strategic data survives v9 | Proven; production backup remains an operator rollout requirement |
+| Annual `month = 0`, monthly `1–12`, and KPI storage-type behavior | Period-rule, metrics integration, API route, and audit-history tests; annual and breakdown smoke round-trips | Proven |
 | Missing months, zero values, partial current year, completed prior year | Analytics, reporting model, period-rule, and admin draft tests | Proven |
 | Counts, percentages, percentage points, conversion rates, donor conversion, YoY | `analytics.test.ts`, `donor-conversion.test.ts`, category/metric reporting model tests | Proven |
-| Goal CRUD, supported years, fixed baseline, annual progress, YTD pacing, full-year completion | Goals calculation/integration/validation/route tests, auth regression matrix, and Playwright create/edit/goal-bearing export/delete workflow | Proven |
+| Goal CRUD, explicit baseline/progress years, annual progress, YTD pacing, full-year completion | Goal calculation/integration/validation/route/migration tests plus Playwright create/edit/goal-bearing export/delete | Proven |
 | Dashboard period filters, overview, category, metric, and trend models | Reporting period/category/metric/trend tests plus live smoke page checks | Proven for model and route rendering |
 | Monthly and annual breakdown editing | Metrics draft/DB/route tests; direct browser create/rename/delete verification | Proven for current workflow |
 | Admin catalog, goals, users, history, and data entry | Feature view-helper tests, mutation-route tests, page smoke checks, and Playwright goal/monthly-data workflows including an error/retry path | Proven for approved workflows |
@@ -34,10 +34,10 @@ records the final evidence proving each required outcome.
 | Feature-owned data access | Production SQL is confined to feature data-access modules and narrow DB infrastructure; app/components are blocked by `architecture-boundary-guard.sh` | Proven for current source |
 | No server-side self-HTTP or obsolete read adapters | API boundary inventory plus architecture guard | Proven for current source |
 | Large components divided by responsibility | Admin, category, metric, trend, donor-conversion, and audit renderers have focused components; client coordinators retain only browser state, mutation orchestration, and composition | Proven by responsibility review |
-| Minimal serialized client props / server-first reads | Explicit operations scope category and metric rows before serialization; schema-8 payloads measure 34,355 and 2,694 bytes versus 121,187 for overview. ADR 0018 records the original decision baseline | Proven for current dashboard boundaries |
+| Minimal serialized client props / server-first reads | Schema-9 seeded JSON: overview 122,406 bytes; Justice Education 15,952; one metric 1,961; annual-only trends 1,721. Category and metric operations scope rows before serialization; ADR 0018 records the decision baseline | Proven |
 | Required ADR topics | ADR 0017 defines the feature-oriented modular monolith, ADR 0018 defines server-first/client-payload strategy, and ADR 0019 defines centralized auth enforcement; earlier ADRs retain detailed feature decisions | Proven |
 | Obsolete abstractions, duplicate calculations, dead routes, compatibility paths removed | `architecture-refactor-final-audit.md` records SQL ownership, duplicate-rule review, removals, retained-path rationale, and rerunnable searches; strict TypeScript unused checks pass; the architecture guard blocks cross-feature internals and calculation-layer framework/DB imports | Proven for current source |
-| Full product acceptance | 626 Vitest tests; strict typecheck; lint; design/security/architecture gates; production build; 4 Playwright workflows; real strategic-plan smoke 48/48 bypass and 52/52 auth-enabled | Proven |
+| Full product acceptance | 642 Vitest tests; strict typecheck; lint; design/security/architecture gates; production build; 4 Playwright workflows; real strategic-plan smoke 48/48 bypass and 52/52 auth-enabled | Proven |
 
 ## Current Completion Blockers
 
@@ -58,7 +58,15 @@ moving canonical data or reporting calculations back into route/components.
 `src/features/catalog/strategic-plan.ts` owns the 5 priorities, 59 annual KPIs,
 and 25 goals; category grouping, upcoming-goal selection, and overview goal
 summaries remain pure reporting models; entry writes now reject
-frequency/month mismatches. Final
-acceptance passed 626 Vitest tests, strict typecheck, lint, all
+frequency/month mismatches.
+
+The forty-seventh protected slice audited the merged result rather than merely
+re-running its checks. It corrected the direct-upgrade reset boundary, added
+the schema-9 fixed goal baseline, replaced hand-calculated strategic targets
+with auditable absolute or growth declarations, and rejected writes through
+the wrong scalar/breakdown storage path. The seeded DB proves schema 9, 5
+priorities, 59 KPIs, 25 goals, a 2026 baseline for every goal, no missing
+targets or progress actuals, and zero invalid storage/period rows. Final
+acceptance passed 642 Vitest tests, strict typecheck, lint, all
 design/security/architecture gates, production build, 4 Playwright workflows,
 48/48 live bypass smoke checks, and 52/52 production-mode auth-enabled checks.

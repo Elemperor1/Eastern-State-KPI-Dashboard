@@ -1,4 +1,6 @@
 export {
+  EntryKpiNotFoundError,
+  EntryKpiTypeError,
   EntryPeriodMismatchError,
   listEntries,
   upsertEntry,
@@ -8,6 +10,10 @@ export {
 export {
   BreakdownEntryConflictError,
   BreakdownEntryNotFoundError,
+  BreakdownKpiNotFoundError,
+  BreakdownKpiTypeError,
+  BreakdownLabelError,
+  BreakdownPeriodMismatchError,
   listBreakdowns,
   upsertBreakdown,
   deleteBreakdown,

@@ -26,18 +26,25 @@ snapshots to the strategic-plan measures.
   while users review 2024–2026 actuals.
 - Schema version 8 intentionally uses the destructive reset migration for KPI
   tables and `entry_history`; users are preserved.
+- Schema version 9 is additive. It persists a fixed goal baseline year,
+  migrates schema-8 goals to their latest available pre-target actual, and
+  keeps the strategic baseline at 2026.
+- Canonical numeric goals declare auditable endpoint values; the seed adapter
+  derives the stored delta from the 2026 baseline. Growth goals remain
+  explicitly percentage-based.
 - `scripts/seed.ts` remains a transactional adapter over feature-owned catalog,
   metrics, and goals operations.
 
 ## Rollout and rollback
 
-Before deploying schema 8, stop writes and copy the mounted SQLite database to
+Before crossing schema 8, stop writes and copy the mounted SQLite database to
 durable backup storage. Startup detects the version mismatch, recreates KPI
 tables, and seeds the strategic sample data.
 
-To roll back, stop the application, restore the pre-deployment database backup,
-and deploy the prior application version whose expected schema is 7. Restoring
-only the old application or only the old database is unsupported.
+To roll back across the catalog replacement, stop the application, restore the
+pre-deployment database backup, and deploy the prior application version whose
+expected schema is 7. Schema 9 can be rolled back only by restoring a schema-8
+backup because SQLite cannot remove the additive baseline column in place.
 
 Production KPI values and audit history from schema 7 are not migrated. If they
 must remain available for reference, retain the backup as a read-only archive

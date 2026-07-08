@@ -3,6 +3,10 @@ import { z } from "zod";
 import {
   BreakdownEntryConflictError,
   BreakdownEntryNotFoundError,
+  BreakdownKpiNotFoundError,
+  BreakdownKpiTypeError,
+  BreakdownLabelError,
+  BreakdownPeriodMismatchError,
   deleteBreakdown,
   upsertBreakdown,
 } from "@/features/metrics/server";
@@ -14,7 +18,7 @@ const UpsertSchema = z.object({
   kpi_id: z.number().int().positive(),
   year: z.number().int().min(1900).max(2100),
   month: z.number().int().min(0).max(12).optional(),
-  label: z.string().min(1),
+  label: z.string().trim().min(1),
   value: z.number().finite(),
   sort_order: z.number().int().optional(),
   notes: z.string().nullable().optional(),
@@ -43,6 +47,16 @@ export async function POST(req: NextRequest) {
     });
     return NextResponse.json({ breakdown }, { status: 201 });
   } catch (err) {
+    if (err instanceof BreakdownKpiNotFoundError) {
+      return NextResponse.json({ error: "KPI not found." }, { status: 404 });
+    }
+    if (
+      err instanceof BreakdownKpiTypeError ||
+      err instanceof BreakdownLabelError ||
+      err instanceof BreakdownPeriodMismatchError
+    ) {
+      return NextResponse.json({ error: err.message }, { status: 400 });
+    }
     if (err instanceof BreakdownEntryNotFoundError) {
       return NextResponse.json(
         { error: "Breakdown entry not found." },

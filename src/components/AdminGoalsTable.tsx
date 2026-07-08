@@ -1,7 +1,15 @@
 "use client";
 
 import { Pencil, Search, ToggleLeft, ToggleRight, Trash2 } from "lucide-react";
-import { Badge, Card, Chip, IconButton, Input, Progress, Table } from "@/components/ui";
+import {
+  Badge,
+  Card,
+  Chip,
+  IconButton,
+  Input,
+  Progress,
+  Table,
+} from "@/components/ui";
 import {
   type AdminGoalCategorySummary,
   formatAdminGoalChangeLabel,
@@ -44,7 +52,9 @@ export function AdminGoalsTable({
           <h2 className="text-xl font-semibold text-ink-900">Existing goals</h2>
           <p className="mt-1 text-sm text-ink-500">
             Showing {goals.length} of {totalGoals} goals
-            {enabledGoalCount !== totalGoals ? ` (${enabledGoalCount} enabled)` : ""}
+            {enabledGoalCount !== totalGoals
+              ? ` (${enabledGoalCount} enabled)`
+              : ""}
           </p>
         </div>
         <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
@@ -76,7 +86,9 @@ export function AdminGoalsTable({
                 type="button"
                 active={categoryFilter === category.id}
                 onClick={() =>
-                  onCategoryFilterChange(categoryFilter === category.id ? null : category.id)
+                  onCategoryFilterChange(
+                    categoryFilter === category.id ? null : category.id,
+                  )
                 }
               >
                 {category.name} ({category.goalCount})
@@ -88,14 +100,30 @@ export function AdminGoalsTable({
       <Table minWidth="900px">
         <thead>
           <tr>
-            <th className="text-left" scope="col">KPI</th>
-            <th className="text-left" scope="col">Category</th>
-            <th className="text-right" scope="col">Year</th>
-            <th className="text-left" scope="col">Type</th>
-            <th className="text-right" scope="col">Target</th>
-            <th className="text-center" scope="col">YTD pace</th>
-            <th className="text-center" scope="col">Full year</th>
-            <th className="text-center" scope="col">Enabled</th>
+            <th className="text-left" scope="col">
+              KPI
+            </th>
+            <th className="text-left" scope="col">
+              Category
+            </th>
+            <th className="text-right" scope="col">
+              Year
+            </th>
+            <th className="text-left" scope="col">
+              Type
+            </th>
+            <th className="text-right" scope="col">
+              Target
+            </th>
+            <th className="text-center" scope="col">
+              YTD pace
+            </th>
+            <th className="text-center" scope="col">
+              Full year
+            </th>
+            <th className="text-center" scope="col">
+              Enabled
+            </th>
             <th className="text-right" scope="col"></th>
           </tr>
         </thead>
@@ -110,15 +138,30 @@ export function AdminGoalsTable({
           {goals.map((goal) => {
             const ytdPct = goal.ytd_progress_pct;
             const fyPct = goal.full_year_progress_pct;
-            const isAnnual = isAnnualReportingFrequency(goal.reporting_frequency);
+            const isAnnual = isAnnualReportingFrequency(
+              goal.reporting_frequency,
+            );
             return (
-              <tr key={goal.id} className="transition-colors hover:bg-ink-50/70">
+              <tr
+                key={goal.id}
+                className="transition-colors hover:bg-ink-50/70"
+                data-goal-year={goal.target_year}
+              >
                 <td className="py-3 pr-4">
-                  <span className="font-medium text-ink-900">{goal.kpi_name}</span>
-                  <span className="block text-xs text-ink-400">{goal.kpi_slug} · {goal.kpi_unit}</span>
+                  <span className="font-medium text-ink-900">
+                    {goal.kpi_name}
+                  </span>
+                  <span className="block text-xs text-ink-400">
+                    {goal.kpi_slug} · {goal.kpi_unit}
+                  </span>
                 </td>
                 <td className="text-ink-700">{goal.category_name}</td>
-                <td className="text-right tabular text-ink-700">{goal.target_year}</td>
+                <td className="text-right tabular text-ink-700">
+                  {goal.target_year}
+                  <span className="block text-xs text-ink-400">
+                    baseline {goal.baseline_year}
+                  </span>
+                </td>
                 <td className="text-ink-700">
                   <Badge variant="default" className="tabular">
                     {formatAdminGoalChangeLabel(goal)}
@@ -134,7 +177,11 @@ export function AdminGoalsTable({
                     <div className="flex items-center justify-center gap-2">
                       <Progress
                         value={ytdPct ?? 0}
-                        color={ytdPct !== null && ytdPct >= 100 ? "var(--color-success-text)" : undefined}
+                        color={
+                          ytdPct !== null && ytdPct >= 100
+                            ? "var(--color-success-text)"
+                            : undefined
+                        }
                       />
                       <span className="min-w-[3ch] text-right text-xs tabular text-ink-600">
                         {ytdPct !== null ? `${Math.round(ytdPct)}%` : "—"}
@@ -146,7 +193,11 @@ export function AdminGoalsTable({
                   <div className="flex items-center justify-center gap-2">
                     <Progress
                       value={fyPct ?? 0}
-                      color={fyPct !== null && fyPct >= 100 ? "var(--color-success-text)" : undefined}
+                      color={
+                        fyPct !== null && fyPct >= 100
+                          ? "var(--color-success-text)"
+                          : undefined
+                      }
                     />
                     <span className="min-w-[3ch] text-right text-xs tabular text-ink-600">
                       {fyPct !== null ? `${Math.round(fyPct)}%` : "—"}

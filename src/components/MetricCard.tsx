@@ -89,7 +89,7 @@ export function MetricCard({ analytics, accentColor, onSelect, selected, basis =
         </div>
         <div className="flex items-center gap-3">
           {goal ? (
-            <div className="flex flex-col gap-1" title={`Goal: ${goal.target_value > 0 ? "+" : ""}${goal.target_value}${goal.goal_type === "pct" ? "%" : ""}${goal.full_year_target !== null ? ` → ${goal.full_year_target?.toLocaleString(undefined, { maximumFractionDigits: 1 })}` : " (baseline unavailable)"}`}>
+            <div className="flex flex-col gap-1" title={`${goal.target_year} goal from ${goal.baseline_year} baseline: ${goal.target_value > 0 ? "+" : ""}${goal.target_value}${goal.goal_type === "pct" ? "%" : ""}${goal.full_year_target !== null ? ` → ${goal.full_year_target?.toLocaleString(undefined, { maximumFractionDigits: 1 })}` : " (baseline unavailable)"}`}>
               {goal.full_year_target === null ? (
                 <div className="flex items-center gap-1.5">
                   <Crosshair className="size-3 text-ink-400" aria-hidden />

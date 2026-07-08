@@ -189,43 +189,12 @@ function migrateSchema(raw: DatabaseSync): void {
     return;
   }
 
-  // D8AD-CAN-005: v4 → v5 adds immutable snapshot columns to entry_history
-  // (kpi_name/slug/unit, category_id/name/slug, changed_by_email) so that
-  // deleting or renaming KPI/category metadata can no longer hide or
-  // rewrite previously recorded audit-history events. Unlike earlier
-  // bumps, this migration is IN-PLACE: the existing audit trail is
-  // preserved and backfilled from whatever current metadata still
-  // exists. Rows whose KPI/category was already deleted before the
-  // migration stay NULL in the snapshot columns — that NULL is the
-  // tombstone that lets the history read model represent deleted metadata
-  // distinctly (see listEntryHistory).
-  //
-  // v5 → v6 adds a `month` column to `breakdown_entries` and updates
-  // the unique constraint from (kpi_id, year, label) to
-  // (kpi_id, year, month, label). We handle this in-place because the
-  // old data is reusable — existing entries get month=0.
-  if (version === 4) {
-    // v4 → v6: apply snapshot columns first, then month column
-    migrateEntryHistorySnapshots(raw);
-    migrateBreakdownMonth(raw);
-    initializeSchema(raw); // CREATE TABLE IF NOT EXISTS — no-ops for unchanged tables
-    raw.exec(
-      `INSERT OR REPLACE INTO meta (key, value) VALUES ('schema_version', ${SCHEMA_VERSION});`,
-    );
-    return;
-  }
-  if (version === 5) {
-    // v5 → v6: add month column to breakdown_entries
-    migrateBreakdownMonth(raw);
-    initializeSchema(raw);
-    raw.exec(
-      `INSERT OR REPLACE INTO meta (key, value) VALUES ('schema_version', ${SCHEMA_VERSION});`,
-    );
-    return;
-  }
-  if (version === 6) {
-    // v6 → v7: additive — adds kpi_goals table (CREATE TABLE IF NOT EXISTS
-    // handles existing rows). No data migration needed.
+  // v8 → v9 is additive. Goals now carry an explicit, fixed baseline year so
+  // multi-year strategic targets (for example, a 2029 target based on 2026
+  // actuals) do not depend on nonexistent target_year - 1 data. Existing
+  // goals freeze the latest available actual year before their target.
+  if (version === 8) {
+    migrateGoalBaselineYear(raw);
     initializeSchema(raw);
     raw.exec(
       `INSERT OR REPLACE INTO meta (key, value) VALUES ('schema_version', ${SCHEMA_VERSION});`,
@@ -233,7 +202,7 @@ function migrateSchema(raw: DatabaseSync): void {
     return;
   }
 
-  // v7 → v8 is intentionally handled by the reset path below. Version 8
+  // v7 and older are intentionally handled by the reset path below. Version 8
   // replaces the former sample catalog with a new strategic-plan dimension
   // model (5 priorities, 59 annual KPIs, 25 goals); old KPI ids and audit
   // snapshots cannot be mapped safely. Users remain intact. Production
@@ -245,121 +214,112 @@ function migrateSchema(raw: DatabaseSync): void {
   // in monthly_entries/breakdown_entries by id, so for a *shape* change
   // (not the snapshot-only v4→v5 bump) it has to be dropped alongside
   // them — the audit trail for the old shape is no longer meaningful.
-  raw.exec("DROP TABLE IF EXISTS entry_history;");
-  raw.exec("DROP TABLE IF EXISTS breakdown_entries;");
-  raw.exec("DROP TABLE IF EXISTS monthly_entries;");
-  raw.exec("DROP TABLE IF EXISTS kpis;");
-  raw.exec("DROP TABLE IF EXISTS categories;");
-  initializeSchema(raw);
-  raw.exec(`INSERT OR REPLACE INTO meta (key, value) VALUES ('schema_version', ${SCHEMA_VERSION});`);
+  resetKpiSchema(raw);
+}
+
+function resetKpiSchema(raw: DatabaseSync): void {
+  raw.exec("BEGIN IMMEDIATE;");
+  try {
+    raw.exec("DROP TABLE IF EXISTS entry_history;");
+    raw.exec("DROP TABLE IF EXISTS kpi_goals;");
+    raw.exec("DROP TABLE IF EXISTS breakdown_entries;");
+    raw.exec("DROP TABLE IF EXISTS monthly_entries;");
+    raw.exec("DROP TABLE IF EXISTS kpis;");
+    raw.exec("DROP TABLE IF EXISTS categories;");
+    raw.exec("DELETE FROM meta WHERE key = 'sample_data';");
+    initializeSchema(raw);
+    raw.exec(
+      `INSERT OR REPLACE INTO meta (key, value) VALUES ('schema_version', ${SCHEMA_VERSION});`,
+    );
+    raw.exec("COMMIT;");
+  } catch (error) {
+    try {
+      raw.exec("ROLLBACK;");
+    } catch {
+      // Surface the migration error.
+    }
+    throw error;
+  }
 }
 
 /**
- * v4 → v5 in-place migration. Adds the snapshot columns to the existing
- * entry_history table and backfills them from current kpis / categories /
- * users. Rows whose KPI or category was already deleted before this run
- * (dangling kpi_id) get NULL snapshots — the tombstone the history
- * endpoint uses to represent deleted metadata. Idempotent: re-running only
- * touches rows whose snapshot columns are still NULL.
+ * v8 → v9 in-place migration. Rebuilds kpi_goals with a non-null
+ * baseline_year and freezes each existing goal to the latest available actual
+ * year before its target. A goal with no prior actual falls back to the
+ * historical target_year - 1 behavior.
  */
-function migrateEntryHistorySnapshots(raw: DatabaseSync): void {
-  const cols = raw.prepare("PRAGMA table_info(entry_history)").all() as
+function migrateGoalBaselineYear(raw: DatabaseSync): void {
+  const cols = raw.prepare("PRAGMA table_info(kpi_goals)").all() as
     | { name: string }[]
     | undefined;
   if (!cols || cols.length === 0) {
-    // No entry_history table yet (fresh-ish DB that nonetheless recorded
-    // schema_version=4). initializeSchema will create it with the new
-    // columns directly, so there is nothing to backfill.
     return;
   }
   const colNames = new Set(cols.map((c) => c.name));
-  const additions: { name: string; ddl: string }[] = [
-    { name: "kpi_name", ddl: "ALTER TABLE entry_history ADD COLUMN kpi_name TEXT" },
-    { name: "kpi_slug", ddl: "ALTER TABLE entry_history ADD COLUMN kpi_slug TEXT" },
-    { name: "kpi_unit", ddl: "ALTER TABLE entry_history ADD COLUMN kpi_unit TEXT" },
-    { name: "category_id", ddl: "ALTER TABLE entry_history ADD COLUMN category_id INTEGER" },
-    { name: "category_name", ddl: "ALTER TABLE entry_history ADD COLUMN category_name TEXT" },
-    { name: "category_slug", ddl: "ALTER TABLE entry_history ADD COLUMN category_slug TEXT" },
-    {
-      name: "changed_by_email",
-      ddl: "ALTER TABLE entry_history ADD COLUMN changed_by_email TEXT",
-    },
-  ];
-  for (const add of additions) {
-    if (!colNames.has(add.name)) {
-      raw.exec(add.ddl);
-    }
-  }
-
-  // Backfill from current metadata. Subqueries return NULL for dangling
-  // kpi_id (KPI deleted before the migration) — that NULL is the tombstone.
-  // The WHERE clause makes this idempotent across re-runs and leaves
-  // tombstone rows (whose snapshot genuinely cannot be recovered) NULL.
-  raw.exec(`
-    UPDATE entry_history
-    SET kpi_name = (SELECT k.name FROM kpis k WHERE k.id = entry_history.kpi_id),
-        kpi_slug = (SELECT k.slug FROM kpis k WHERE k.id = entry_history.kpi_id),
-        kpi_unit = (SELECT k.unit FROM kpis k WHERE k.id = entry_history.kpi_id),
-        category_id = (SELECT k.category_id FROM kpis k WHERE k.id = entry_history.kpi_id),
-        category_name = (
-          SELECT c.name FROM kpis k
-          JOIN categories c ON c.id = k.category_id
-          WHERE k.id = entry_history.kpi_id
-        ),
-        category_slug = (
-          SELECT c.slug FROM kpis k
-          JOIN categories c ON c.id = k.category_id
-          WHERE k.id = entry_history.kpi_id
-        ),
-        changed_by_email = (SELECT u.email FROM users u WHERE u.id = entry_history.changed_by)
-    WHERE kpi_name IS NULL
-      AND kpi_slug IS NULL
-      AND category_id IS NULL
-  `);
-}
-
-/**
- * v5 → v6 migration: add `month` column to `breakdown_entries` with
- * DEFAULT 0 (existing entries are treated as annual/month-0 entries).
- * Also updates the UNIQUE constraint from (kpi_id, year, label) to
- * (kpi_id, year, month, label). Since SQLite cannot alter a UNIQUE
- * constraint in place, we recreate the table. Idempotent: re-running
- * only touches tables that lack the column.
- */
-function migrateBreakdownMonth(raw: DatabaseSync): void {
-  const cols = raw.prepare("PRAGMA table_info(breakdown_entries)").all() as
-    | { name: string }[]
-    | undefined;
-  if (!cols) return;
-  const colNames = new Set(cols.map((c) => c.name));
-  if (colNames.has("month")) {
+  if (colNames.has("baseline_year")) {
     return;
   }
-  raw.exec("ALTER TABLE breakdown_entries ADD COLUMN month INTEGER NOT NULL DEFAULT 0 CHECK (month BETWEEN 0 AND 12)");
-  raw.exec(`
-    CREATE TABLE IF NOT EXISTS breakdown_entries_v6 (
+
+  raw.exec("BEGIN IMMEDIATE;");
+  try {
+    raw.exec(`
+    CREATE TABLE kpi_goals_v9 (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       kpi_id INTEGER NOT NULL REFERENCES kpis(id) ON DELETE CASCADE,
-      year INTEGER NOT NULL,
-      month INTEGER NOT NULL DEFAULT 0 CHECK (month BETWEEN 0 AND 12),
-      label TEXT NOT NULL,
-      value REAL NOT NULL DEFAULT 0,
-      sort_order INTEGER NOT NULL DEFAULT 0,
+      target_year INTEGER NOT NULL,
+      baseline_year INTEGER NOT NULL CHECK (baseline_year < target_year),
+      goal_type TEXT NOT NULL CHECK (goal_type IN ('pct','number')),
+      target_value REAL NOT NULL,
+      enabled INTEGER NOT NULL DEFAULT 1,
       notes TEXT,
+      created_by INTEGER REFERENCES users(id) ON DELETE SET NULL,
+      created_at TEXT NOT NULL DEFAULT (datetime('now')),
       updated_by INTEGER REFERENCES users(id) ON DELETE SET NULL,
       updated_at TEXT NOT NULL DEFAULT (datetime('now')),
-      UNIQUE (kpi_id, year, month, label)
+      UNIQUE (kpi_id, target_year)
+    );
+
+    INSERT INTO kpi_goals_v9 (
+      id, kpi_id, target_year, baseline_year, goal_type, target_value,
+      enabled, notes, created_by, created_at, updated_by, updated_at
     )
+    SELECT
+      g.id,
+      g.kpi_id,
+      g.target_year,
+      COALESCE(
+        (
+          SELECT MAX(e.year)
+          FROM monthly_entries e
+          WHERE e.kpi_id = g.kpi_id
+            AND e.year < g.target_year
+        ),
+        g.target_year - 1
+      ),
+      g.goal_type,
+      g.target_value,
+      g.enabled,
+      g.notes,
+      g.created_by,
+      g.created_at,
+      g.updated_by,
+      g.updated_at
+    FROM kpi_goals g;
+
+    DROP TABLE kpi_goals;
+    ALTER TABLE kpi_goals_v9 RENAME TO kpi_goals;
+    CREATE INDEX idx_kpi_goals_kpi ON kpi_goals(kpi_id);
+    CREATE INDEX idx_kpi_goals_year ON kpi_goals(target_year);
   `);
-  raw.exec(`
-    INSERT INTO breakdown_entries_v6 (id, kpi_id, year, month, label, value, sort_order, notes, updated_by, updated_at)
-    SELECT id, kpi_id, year, 0, label, value, sort_order, notes, updated_by, updated_at
-    FROM breakdown_entries
-  `);
-  raw.exec("DROP TABLE breakdown_entries");
-  raw.exec("ALTER TABLE breakdown_entries_v6 RENAME TO breakdown_entries");
-  raw.exec("CREATE INDEX IF NOT EXISTS idx_breakdown_kpi_year ON breakdown_entries(kpi_id, year)");
-  raw.exec("CREATE INDEX IF NOT EXISTS idx_breakdown_kpi_year_month ON breakdown_entries(kpi_id, year, month)");
+    raw.exec("COMMIT;");
+  } catch (error) {
+    try {
+      raw.exec("ROLLBACK;");
+    } catch {
+      // Surface the migration error.
+    }
+    throw error;
+  }
 }
 
 function ensureMetaTable(raw: DatabaseSync): void {
@@ -487,6 +447,7 @@ function initializeSchema(raw: DatabaseSync): void {
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       kpi_id INTEGER NOT NULL REFERENCES kpis(id) ON DELETE CASCADE,
       target_year INTEGER NOT NULL,
+      baseline_year INTEGER NOT NULL CHECK (baseline_year < target_year),
       goal_type TEXT NOT NULL CHECK (goal_type IN ('pct','number')),
       target_value REAL NOT NULL,
       enabled INTEGER NOT NULL DEFAULT 1,

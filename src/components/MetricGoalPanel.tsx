@@ -36,7 +36,11 @@ export function MetricGoalPanel({
             <Crosshair className="mr-1 inline size-3" aria-hidden />{" "}
             {goal.target_year} Goal
           </p>
-          <div className="flex items-center gap-1.5 no-print" role="group" aria-label="Display mode">
+          <div
+            className="flex items-center gap-1.5 no-print"
+            role="group"
+            aria-label="Display mode"
+          >
             <Chip
               type="button"
               active={modeIsCompare}
@@ -66,8 +70,9 @@ export function MetricGoalPanel({
         <div className="flex flex-wrap items-end justify-between gap-4">
           <div>
             <p className="text-sm text-ink-600">
-              Goal: {goal.target_value > 0 ? "+" : ""}{goal.target_value}{goal.goal_type === "pct" ? "%" : ""}{" "}
-              →{" "}
+              Goal: {goal.target_value > 0 ? "+" : ""}
+              {goal.target_value}
+              {goal.goal_type === "pct" ? "%" : ""} →{" "}
               <span className="font-semibold text-ink-900">
                 {goal.full_year_target !== null
                   ? goal.full_year_target?.toLocaleString(undefined, {
@@ -76,13 +81,17 @@ export function MetricGoalPanel({
                   : "—"}
               </span>
             </p>
+            <p className="mt-1 text-xs text-ink-500">
+              {goal.progress_year} actual toward {goal.target_year} target ·
+              baseline {goal.baseline_year}
+            </p>
           </div>
         </div>
 
         {goal.full_year_target === null ? (
           <p className="mt-4 text-sm text-ink-500">
-            No prior-year ({goal.target_year - 1}) data available to compute a baseline for this goal.
-            Enter {goal.target_year - 1} data or choose a different target year for the target to take effect.
+            No {goal.baseline_year} data is available to compute this goal.
+            Enter baseline-year data or choose a different baseline year.
           </p>
         ) : showGoalDetails ? (
           goalIsAnnual ? (
@@ -93,11 +102,18 @@ export function MetricGoalPanel({
                   <div className="min-w-[120px]">
                     <Progress
                       value={Math.round(goal.full_year_progress_pct ?? 0)}
-                      color={goal.full_year_progress_pct !== null && goal.full_year_progress_pct >= 100 ? "var(--color-success-text)" : undefined}
+                      color={
+                        goal.full_year_progress_pct !== null &&
+                        goal.full_year_progress_pct >= 100
+                          ? "var(--color-success-text)"
+                          : undefined
+                      }
                     />
                   </div>
                   <span className="text-lg font-semibold tabular text-ink-900">
-                    {goal.full_year_progress_pct !== null ? `${Math.round(goal.full_year_progress_pct)}%` : "—"}
+                    {goal.full_year_progress_pct !== null
+                      ? `${Math.round(goal.full_year_progress_pct)}%`
+                      : "—"}
                   </span>
                 </div>
               </div>
@@ -118,11 +134,18 @@ export function MetricGoalPanel({
                     <div className="min-w-[120px]">
                       <Progress
                         value={Math.round(goal.ytd_progress_pct ?? 0)}
-                        color={goal.ytd_progress_pct !== null && goal.ytd_progress_pct >= 100 ? "var(--color-success-text)" : undefined}
+                        color={
+                          goal.ytd_progress_pct !== null &&
+                          goal.ytd_progress_pct >= 100
+                            ? "var(--color-success-text)"
+                            : undefined
+                        }
                       />
                     </div>
                     <span className="text-lg font-semibold tabular text-ink-900">
-                      {goal.ytd_progress_pct !== null ? `${Math.round(goal.ytd_progress_pct)}%` : "—"}
+                      {goal.ytd_progress_pct !== null
+                        ? `${Math.round(goal.ytd_progress_pct)}%`
+                        : "—"}
                     </span>
                   </div>
                 </div>
@@ -134,16 +157,25 @@ export function MetricGoalPanel({
               </div>
               <div>
                 <div className="flex items-center justify-between gap-3">
-                  <span className="text-sm text-ink-600">Full-year completion</span>
+                  <span className="text-sm text-ink-600">
+                    Full-year completion
+                  </span>
                   <div className="flex items-center gap-3">
                     <div className="min-w-[120px]">
                       <Progress
                         value={Math.round(goal.full_year_progress_pct ?? 0)}
-                        color={goal.full_year_progress_pct !== null && goal.full_year_progress_pct >= 100 ? "var(--color-success-text)" : undefined}
+                        color={
+                          goal.full_year_progress_pct !== null &&
+                          goal.full_year_progress_pct >= 100
+                            ? "var(--color-success-text)"
+                            : undefined
+                        }
                       />
                     </div>
                     <span className="text-lg font-semibold tabular text-ink-900">
-                      {goal.full_year_progress_pct !== null ? `${Math.round(goal.full_year_progress_pct)}%` : "—"}
+                      {goal.full_year_progress_pct !== null
+                        ? `${Math.round(goal.full_year_progress_pct)}%`
+                        : "—"}
                     </span>
                   </div>
                 </div>
@@ -157,7 +189,8 @@ export function MetricGoalPanel({
           )
         ) : (
           <p className="mt-4 text-sm text-ink-500">
-            Comparison mode is hiding pacing details. Switch to Goal progress or Both to view the goal charts and completion metrics.
+            Comparison mode is hiding pacing details. Switch to Goal progress or
+            Both to view the goal charts and completion metrics.
           </p>
         )}
 

@@ -57,7 +57,8 @@ The refactor is not a rewrite, redesign, framework migration, or product expansi
 - Forty-third protected slice: raster export layout and proof were completed inside `src/features/exports`. Export-only Galano text now receives tested temporary line/wrap corrections with exact cleanup, redundant live page headers are hidden from all export-enabled dashboard views, and the legacy PDF adapter measures keep-together boundaries in the exact html2canvas clone before deterministic letter-page slicing. Live downloads and rendered artifacts verify the overview PNG plus a three-page overview PDF with intact card rows, monthly partial-year count PNG, annual currency PNG, and long-name percentage-point PNG.
 - Forty-fourth protected slice: reporting server reads now expose explicit overview, category, metric-detail, and Trend Explorer operations. Category and metric pages receive only rows for their selected scope, while overview and trends retain broader datasets for documented instant interactions. Seeded JSON measurements reduced the Education category payload to 82,471 bytes and the Video views metric payload to 8,684 bytes, versus 273,363 bytes for overview. ADRs 0017-0019 define the modular-monolith, server-first, and auth-enforcement decisions; the final structural audit records SQL ownership, duplicate-rule review, removals, and intentionally retained paths. The architecture guard now also blocks cross-feature internal imports and framework/database dependencies in calculation modules.
 - Forty-fifth protected slice: added a serial Playwright/Chrome acceptance suite for goal create/edit/goal-bearing PNG/delete, entry save failure/retry/clear, desktop and mobile navigation, no-data PNG, category and metric legacy PDF, and native print PDF. The suite found a real `?legacy=1` hydration mismatch; category/metric server pages now parse that flag and pass it as an explicit client prop.
-- Forty-sixth protected slice: integrated the strategic-plan catalog as feature-owned data rather than returning seed definitions or calculations to routes/components. `src/features/catalog/strategic-plan.ts` owns 5 priorities, 59 annual KPIs, and 25 goals; reporting models own goal-prefix grouping, nearest-upcoming-goal selection, and overview goal summaries; schema 8 and ADR 0020 make the intentional catalog reset explicit; the metrics write boundary rejects annual/monthly period mismatches. Current payloads measure 121,187 bytes for overview, 34,355 for Reimagine Visitor Experience, 2,694 for Interpretive Site Plan milestones, and 1,720 for the annual-only Trend Explorer state. Proof includes the full Vitest and Playwright suites, the D8AD-CAN-008 gate, 48/48 real bypass smoke assertions, and 52/52 production-mode auth-enabled assertions.
+- Forty-sixth protected slice: integrated the strategic-plan catalog as feature-owned data rather than returning seed definitions or calculations to routes/components. `src/features/catalog/strategic-plan.ts` owns 5 priorities, 59 annual KPIs, and 25 goals; reporting models own goal-prefix grouping, nearest-upcoming-goal selection, and overview goal summaries; schema 8 and ADR 0020 make the intentional catalog reset explicit; the metrics write boundary rejects annual/monthly period mismatches.
+- Forty-seventh protected slice: corrected the migration boundary and strategic goal semantics. Schema 9 additively persists `baseline_year`, pre-strategic versions always take the documented reset path, numeric strategic goals declare absolute endpoints, and reporting computes progress for an explicit selected year without moving the target baseline. Populated migration, goal integration, API validation, catalog invariant, and browser acceptance coverage protect the behavior.
 
 ## Current Ownership Map
 
@@ -390,6 +391,22 @@ Durable browser acceptance coverage was added:
 - The first export run caught the legacy fallback reading `window.location`
   during render. The server now parses `legacy=1` and passes a stable boolean,
   eliminating the hydration mismatch.
+
+Post-merge self-review hardened correctness at the data boundaries:
+
+- Schema 9 additively freezes each goal's baseline year; versions 7 and older
+  always take the documented strategic-catalog reset path instead of being
+  stamped current by legacy in-place migrations.
+- Strategic goals declare auditable absolute endpoints or growth percentages;
+  the seed adapter derives stored deltas from the fixed 2026 baseline.
+- Scalar and breakdown writes reject unknown KPIs, the wrong storage type,
+  mismatched annual/monthly periods, and blank breakdown labels before SQLite
+  mutation.
+- Populated migration, goal, catalog, route, integration, and browser tests
+  protect these behaviors. Final acceptance is 642 Vitest tests, 4 Playwright
+  workflows, 48/48 bypass smoke checks, and 52/52 auth-enabled smoke checks.
+- Final schema-9 seeded JSON is 122,406 bytes for overview, 15,952 for Justice
+  Education, 1,961 for one metric, and 1,721 for the annual-only trends state.
 
 ## Next Safe Slices
 

@@ -1,8 +1,18 @@
-import { ANNUAL_ENTRY_MONTH } from "./period-rules";
+import {
+  ANNUAL_ENTRY_MONTH,
+  isAnnualEntryMonth,
+  isAnnualReportingFrequency,
+  isMonthlyEntryMonth,
+} from "./period-rules";
 import { asBreakdown, asBreakdownWithMeta } from "./records";
 import { recordMetricEntryHistory } from "./history";
 import { getDb, transaction } from "@/lib/db";
-import type { BreakdownEntry, BreakdownEntryWithMeta } from "@/lib/types";
+import type {
+  BreakdownEntry,
+  BreakdownEntryWithMeta,
+  ReportingFrequency,
+  UnitType,
+} from "@/lib/types";
 
 export interface BreakdownFilter {
   kpi_id?: number;
@@ -26,7 +36,43 @@ export class BreakdownEntryConflictError extends Error {
   }
 }
 
-export function listBreakdowns(filter?: BreakdownFilter): BreakdownEntryWithMeta[] {
+export class BreakdownKpiNotFoundError extends Error {
+  constructor(kpiId: number) {
+    super(`KPI ${kpiId} was not found.`);
+    this.name = "BreakdownKpiNotFoundError";
+  }
+}
+
+export class BreakdownKpiTypeError extends Error {
+  constructor(kpiId: number) {
+    super(`KPI ${kpiId} is not a breakdown KPI.`);
+    this.name = "BreakdownKpiTypeError";
+  }
+}
+
+export class BreakdownPeriodMismatchError extends Error {
+  constructor(reportingFrequency: ReportingFrequency, month: number) {
+    const expected = isAnnualReportingFrequency(reportingFrequency)
+      ? "month 0"
+      : "a month from 1 through 12";
+    const article = reportingFrequency === "annual" ? "an" : "a";
+    super(
+      `Breakdown month ${month} is invalid for ${article} ${reportingFrequency} KPI; expected ${expected}.`,
+    );
+    this.name = "BreakdownPeriodMismatchError";
+  }
+}
+
+export class BreakdownLabelError extends Error {
+  constructor() {
+    super("Breakdown labels cannot be empty.");
+    this.name = "BreakdownLabelError";
+  }
+}
+
+export function listBreakdowns(
+  filter?: BreakdownFilter,
+): BreakdownEntryWithMeta[] {
   const db = getDb();
   const where: string[] = [];
   const params: (string | number)[] = [];
@@ -80,6 +126,26 @@ export function upsertBreakdown(input: {
     const db = getDb();
     const month = input.month ?? ANNUAL_ENTRY_MONTH;
     const label = input.label.trim();
+    if (!label) {
+      throw new BreakdownLabelError();
+    }
+    const kpi = db
+      .prepare("SELECT reporting_frequency, unit_type FROM kpis WHERE id = ?")
+      .get(input.kpi_id) as
+      | { reporting_frequency: ReportingFrequency; unit_type: UnitType }
+      | undefined;
+    if (!kpi) {
+      throw new BreakdownKpiNotFoundError(input.kpi_id);
+    }
+    if (kpi.unit_type !== "breakdown") {
+      throw new BreakdownKpiTypeError(input.kpi_id);
+    }
+    const validMonth = isAnnualReportingFrequency(kpi.reporting_frequency)
+      ? isAnnualEntryMonth(month)
+      : isMonthlyEntryMonth(month);
+    if (!validMonth) {
+      throw new BreakdownPeriodMismatchError(kpi.reporting_frequency, month);
+    }
     const requestedId = input.id ?? null;
     const prior = (
       requestedId === null
@@ -220,7 +286,15 @@ export function deleteBreakdown(id: number, changedBy?: number | null): void {
       "SELECT id, kpi_id, year, month, label, value, notes FROM breakdown_entries WHERE id = ?",
     )
     .get(id) as
-    | { id: number; kpi_id: number; year: number; month: number; label: string; value: number; notes: string | null }
+    | {
+        id: number;
+        kpi_id: number;
+        year: number;
+        month: number;
+        label: string;
+        value: number;
+        notes: string | null;
+      }
     | undefined;
   db.prepare("DELETE FROM breakdown_entries WHERE id = ?").run(id);
   if (prior) {

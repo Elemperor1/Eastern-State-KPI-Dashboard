@@ -15,10 +15,14 @@ export default async function GoalsManagerPage() {
 
   // Show YTD pace through the current real-world month.
   const throughMonth = Math.min(new Date().getMonth() + 1, 12);
+  const asOfYear = new Date().getFullYear();
 
   return (
     <AppShell user={user}>
-      <GoalsManagerClient goals={listGoals({ throughMonth })} kpis={listKPIs()} />
+      <GoalsManagerClient
+        goals={listGoals({ throughMonth, asOfYear })}
+        kpis={listKPIs()}
+      />
     </AppShell>
   );
 }

@@ -45,6 +45,7 @@ describe("D8AD-CAN-005 audit-history integrity", () => {
   let otherCategoryId: number;
   let kpiA: number;
   let kpiB: number;
+  let breakdownKpi: number;
   let adminId: number;
 
   function rebuildFixture() {
@@ -61,22 +62,58 @@ describe("D8AD-CAN-005 audit-history integrity", () => {
       "INSERT INTO categories (slug, name, sort_order) VALUES (?, ?, ?)",
     ).run("cat-b", "Category B", 1);
     categoryId = Number(
-      (db.prepare("SELECT id FROM categories WHERE slug = 'cat-a'").get() as { id: number }).id,
+      (
+        db.prepare("SELECT id FROM categories WHERE slug = 'cat-a'").get() as {
+          id: number;
+        }
+      ).id,
     );
     otherCategoryId = Number(
-      (db.prepare("SELECT id FROM categories WHERE slug = 'cat-b'").get() as { id: number }).id,
+      (
+        db.prepare("SELECT id FROM categories WHERE slug = 'cat-b'").get() as {
+          id: number;
+        }
+      ).id,
     );
-    const mk = (slug: string, name: string, catId: number, order: number) => {
+    const mk = (
+      slug: string,
+      name: string,
+      catId: number,
+      order: number,
+      unitType = "count",
+      reportingFrequency = "monthly",
+    ) => {
       db.prepare(
         `INSERT INTO kpis (category_id, slug, name, unit, unit_type, reporting_frequency, direction, sort_order)
          VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
-      ).run(catId, slug, name, "count", "count", "monthly", "higher", order);
+      ).run(
+        catId,
+        slug,
+        name,
+        unitType === "breakdown" ? "percent" : "count",
+        unitType,
+        reportingFrequency,
+        unitType === "breakdown" ? "neutral" : "higher",
+        order,
+      );
       return Number(
-        (db.prepare("SELECT id FROM kpis WHERE slug = ?").get(slug) as { id: number }).id,
+        (
+          db.prepare("SELECT id FROM kpis WHERE slug = ?").get(slug) as {
+            id: number;
+          }
+        ).id,
       );
     };
     kpiA = mk("kpi-a", "KPI A", categoryId, 0);
     kpiB = mk("kpi-b", "KPI B", otherCategoryId, 1);
+    breakdownKpi = mk(
+      "breakdown-kpi",
+      "Breakdown KPI",
+      categoryId,
+      2,
+      "breakdown",
+      "annual",
+    );
     adminId = Number(
       (db.prepare("SELECT id FROM users LIMIT 1").get() as { id: number }).id,
     );
@@ -113,7 +150,13 @@ describe("D8AD-CAN-005 audit-history integrity", () => {
   }
 
   it("records the KPI/category snapshot at change time", () => {
-    upsertEntry({ kpi_id: kpiA, year: 2025, month: 3, value: 10, updated_by: adminId });
+    upsertEntry({
+      kpi_id: kpiA,
+      year: 2025,
+      month: 3,
+      value: 10,
+      updated_by: adminId,
+    });
     const rows = historyForKpi(kpiA);
     expect(rows).toHaveLength(1);
     const r = rows[0];
@@ -130,7 +173,13 @@ describe("D8AD-CAN-005 audit-history integrity", () => {
   });
 
   it("KPI rename does not retroactively rewrite the historical label", () => {
-    upsertEntry({ kpi_id: kpiA, year: 2025, month: 3, value: 10, updated_by: adminId });
+    upsertEntry({
+      kpi_id: kpiA,
+      year: 2025,
+      month: 3,
+      value: 10,
+      updated_by: adminId,
+    });
     // Rename the KPI after the change was recorded.
     updateKPI(kpiA, { name: "KPI A — Renamed" });
     const rows = historyForKpi(kpiA);
@@ -146,7 +195,13 @@ describe("D8AD-CAN-005 audit-history integrity", () => {
   });
 
   it("category rename does not retroactively rewrite the historical label", () => {
-    upsertEntry({ kpi_id: kpiA, year: 2025, month: 3, value: 10, updated_by: adminId });
+    upsertEntry({
+      kpi_id: kpiA,
+      year: 2025,
+      month: 3,
+      value: 10,
+      updated_by: adminId,
+    });
     updateCategory(categoryId, { name: "Category A — Renamed" });
     const r = historyForKpi(kpiA)[0];
     expect(r.category_name).toBe("Category A");
@@ -157,27 +212,53 @@ describe("D8AD-CAN-005 audit-history integrity", () => {
   });
 
   it("blocks KPI deletion while live entries exist", () => {
-    upsertEntry({ kpi_id: kpiA, year: 2025, month: 3, value: 10, updated_by: adminId });
+    upsertEntry({
+      kpi_id: kpiA,
+      year: 2025,
+      month: 3,
+      value: 10,
+      updated_by: adminId,
+    });
     expect(() => deleteKPI(kpiA)).toThrow(DependentEntriesError);
     expect(() => deleteKPI(kpiA)).toThrow(/Cannot delete KPI/);
     // KPI still exists; the entry is still there.
     const db = getDb();
     expect(
-      (db.prepare("SELECT COUNT(*) AS n FROM kpis WHERE id = ?").get(kpiA) as { n: number }).n,
+      (
+        db.prepare("SELECT COUNT(*) AS n FROM kpis WHERE id = ?").get(kpiA) as {
+          n: number;
+        }
+      ).n,
     ).toBe(1);
     expect(
-      (db.prepare("SELECT COUNT(*) AS n FROM monthly_entries WHERE kpi_id = ?").get(kpiA) as { n: number }).n,
+      (
+        db
+          .prepare("SELECT COUNT(*) AS n FROM monthly_entries WHERE kpi_id = ?")
+          .get(kpiA) as { n: number }
+      ).n,
     ).toBe(1);
   });
 
   it("blocks category deletion while any KPI in it has live entries", () => {
-    upsertEntry({ kpi_id: kpiA, year: 2025, month: 3, value: 10, updated_by: adminId });
+    upsertEntry({
+      kpi_id: kpiA,
+      year: 2025,
+      month: 3,
+      value: 10,
+      updated_by: adminId,
+    });
     expect(() => deleteCategory(categoryId)).toThrow(DependentEntriesError);
     expect(() => deleteCategory(categoryId)).toThrow(/Cannot delete category/);
   });
 
   it("KPI deletion after entry deletion preserves every history row with a tombstone", () => {
-    const e = upsertEntry({ kpi_id: kpiA, year: 2025, month: 3, value: 50, updated_by: adminId });
+    const e = upsertEntry({
+      kpi_id: kpiA,
+      year: 2025,
+      month: 3,
+      value: 50,
+      updated_by: adminId,
+    });
     deleteEntry(e.id, adminId);
     // No live entries remain → KPI deletion is allowed.
     deleteKPI(kpiA);
@@ -202,7 +283,13 @@ describe("D8AD-CAN-005 audit-history integrity", () => {
   });
 
   it("chained deletions (entry → KPI → category) leave the full audit trail intact", () => {
-    const e = upsertEntry({ kpi_id: kpiB, year: 2024, month: 1, value: 7, updated_by: adminId });
+    const e = upsertEntry({
+      kpi_id: kpiB,
+      year: 2024,
+      month: 1,
+      value: 7,
+      updated_by: adminId,
+    });
     deleteEntry(e.id, adminId);
     deleteKPI(kpiB);
     // Category B has no KPIs with entries now → deletable.
@@ -223,16 +310,34 @@ describe("D8AD-CAN-005 audit-history integrity", () => {
   });
 
   it("history is append-only: existing rows' snapshots never change across later mutations", () => {
-    upsertEntry({ kpi_id: kpiA, year: 2025, month: 1, value: 1, updated_by: adminId });
+    upsertEntry({
+      kpi_id: kpiA,
+      year: 2025,
+      month: 1,
+      value: 1,
+      updated_by: adminId,
+    });
     const before = historyForKpi(kpiA)[0];
 
     // A subsequent update, a rename, and a delete of the entry must not
     // mutate the snapshot of the first history row.
-    upsertEntry({ kpi_id: kpiA, year: 2025, month: 1, value: 2, updated_by: adminId });
+    upsertEntry({
+      kpi_id: kpiA,
+      year: 2025,
+      month: 1,
+      value: 2,
+      updated_by: adminId,
+    });
     updateKPI(kpiA, { name: "Totally Different Name" });
     deleteEntry(
       Number(
-        (getDb().prepare("SELECT id FROM monthly_entries WHERE kpi_id = ? AND year = ? AND month = ?").get(kpiA, 2025, 1) as { id: number }).id,
+        (
+          getDb()
+            .prepare(
+              "SELECT id FROM monthly_entries WHERE kpi_id = ? AND year = ? AND month = ?",
+            )
+            .get(kpiA, 2025, 1) as { id: number }
+        ).id,
       ),
       adminId,
     );
@@ -253,7 +358,13 @@ describe("D8AD-CAN-005 audit-history integrity", () => {
     // Insert 12 distinct monthly rows for kpiA. They share the same
     // datetime('now') second, so ordering falls back to id DESC.
     for (const m of MONTH_NUMBERS) {
-      upsertEntry({ kpi_id: kpiA, year: 2025, month: m, value: m, updated_by: adminId });
+      upsertEntry({
+        kpi_id: kpiA,
+        year: 2025,
+        month: m,
+        value: m,
+        updated_by: adminId,
+      });
     }
     const all = historyForKpi(kpiA);
     expect(all).toHaveLength(12);
@@ -272,10 +383,16 @@ describe("D8AD-CAN-005 audit-history integrity", () => {
   });
 
   it("breakdown history survives KPI deletion with snapshot intact", () => {
-    const b = upsertBreakdown({ kpi_id: kpiA, year: 2025, label: "Group A", value: 10, updated_by: adminId });
+    const b = upsertBreakdown({
+      kpi_id: breakdownKpi,
+      year: 2025,
+      label: "Group A",
+      value: 10,
+      updated_by: adminId,
+    });
     deleteBreakdown(b.id, adminId);
-    deleteKPI(kpiA);
-    const rows = listEntryHistory({ kpi_id: kpiA });
+    deleteKPI(breakdownKpi);
+    const rows = listEntryHistory({ kpi_id: breakdownKpi });
     expect(rows.length).toBeGreaterThanOrEqual(2);
     expect(rows[0].entry_type).toBe("breakdown");
     expect(rows[0].new_value).toBeNull();
@@ -285,7 +402,13 @@ describe("D8AD-CAN-005 audit-history integrity", () => {
   });
 
   it("category_id filter uses the snapshot category, not the live join", () => {
-    upsertEntry({ kpi_id: kpiA, year: 2025, month: 3, value: 10, updated_by: adminId });
+    upsertEntry({
+      kpi_id: kpiA,
+      year: 2025,
+      month: 3,
+      value: 10,
+      updated_by: adminId,
+    });
     // Filter by the snapshot category id — must return the row even
     // though this test never deleted the category. The point is the
     // filter path no longer inner-joins kpis/categories.
@@ -295,7 +418,13 @@ describe("D8AD-CAN-005 audit-history integrity", () => {
   });
 
   it("deleted history metadata stays discoverable even after more than 1000 newer audit rows", () => {
-    const e = upsertEntry({ kpi_id: kpiA, year: 2025, month: 3, value: 10, updated_by: adminId });
+    const e = upsertEntry({
+      kpi_id: kpiA,
+      year: 2025,
+      month: 3,
+      value: 10,
+      updated_by: adminId,
+    });
     deleteEntry(e.id, adminId);
     deleteKPI(kpiA);
     deleteCategory(categoryId);
@@ -315,7 +444,11 @@ describe("D8AD-CAN-005 audit-history integrity", () => {
 
     expect(listDeletedHistoryCategories()).toEqual(
       expect.arrayContaining([
-        expect.objectContaining({ id: categoryId, name: "Category A", slug: "cat-a" }),
+        expect.objectContaining({
+          id: categoryId,
+          name: "Category A",
+          slug: "cat-a",
+        }),
       ]),
     );
     expect(listDeletedHistoryKpis()).toEqual(
@@ -327,12 +460,11 @@ describe("D8AD-CAN-005 audit-history integrity", () => {
 });
 
 /**
- * Legacy migration: simulate a v4 database (entry_history WITHOUT the
- * snapshot columns) and verify the v4→v5 in-place migration backfills
- * the snapshot from current metadata, and leaves a tombstone NULL for
- * rows whose KPI was already deleted before the migration.
+ * Schema 8 intentionally replaced the pre-strategic catalog. Even databases
+ * carrying the old v4 audit shape must take the reset path while preserving
+ * users; otherwise they can be stamped current with incompatible KPI data.
  */
-describe("D8AD-CAN-005 v4→v5 legacy migration", () => {
+describe("pre-strategic audit schema reset", () => {
   let tmpDir: string;
   let dbPath: string;
   let originalDbPath: string | undefined;
@@ -355,9 +487,9 @@ describe("D8AD-CAN-005 v4→v5 legacy migration", () => {
   });
 
   function buildLegacyV4Db() {
-    // Fresh file: getDb() will create the v5 schema. We then manually
+    // Fresh file: getDb() creates the current schema. We then manually
     // tear entry_history back to the v4 shape and stamp schema_version=4
-    // so the next getDb() re-runs the v4→v5 migration.
+    // so the next getDb() exercises the pre-strategic reset.
     resetDb();
     const db = getDb();
     db.exec("DROP TABLE IF EXISTS entry_history;");
@@ -379,25 +511,35 @@ describe("D8AD-CAN-005 v4→v5 legacy migration", () => {
       );
     `);
     // Stamp v4 so the next getDb() runs the v4→v5 in-place migration.
-    db.prepare("INSERT OR REPLACE INTO meta (key, value) VALUES ('schema_version', '4');").run();
+    db.prepare(
+      "INSERT OR REPLACE INTO meta (key, value) VALUES ('schema_version', '4');",
+    ).run();
     return db;
   }
 
-  it("backfills snapshot columns for rows whose KPI still exists at migration time", () => {
+  it("removes incompatible KPI history while preserving users", () => {
     const db = buildLegacyV4Db();
     // Fixture: a live KPI whose metadata should be backfilled.
     db.prepare(
       "INSERT INTO categories (slug, name, sort_order) VALUES ('legacy-cat', 'Legacy Category', 0)",
     ).run();
     const catId = Number(
-      (db.prepare("SELECT id FROM categories WHERE slug = 'legacy-cat'").get() as { id: number }).id,
+      (
+        db
+          .prepare("SELECT id FROM categories WHERE slug = 'legacy-cat'")
+          .get() as { id: number }
+      ).id,
     );
     db.prepare(
       `INSERT INTO kpis (category_id, slug, name, unit, unit_type, reporting_frequency, direction, sort_order)
        VALUES (?, 'legacy-kpi', 'Legacy KPI', 'count', 'count', 'monthly', 'higher', 0)`,
     ).run(catId);
     const kpiId = Number(
-      (db.prepare("SELECT id FROM kpis WHERE slug = 'legacy-kpi'").get() as { id: number }).id,
+      (
+        db.prepare("SELECT id FROM kpis WHERE slug = 'legacy-kpi'").get() as {
+          id: number;
+        }
+      ).id,
     );
     // Seed admin so we have a user whose email can be backfilled.
     ensureSeedAdmin();
@@ -410,29 +552,26 @@ describe("D8AD-CAN-005 v4→v5 legacy migration", () => {
        VALUES ('monthly', 999, ?, 2024, '3', NULL, 42, NULL, NULL, ?)`,
     ).run(kpiId, adminId);
 
-    // Force a re-migration by resetting the connection. getDb() sees
-    // schema_version=4 ≠ SCHEMA_VERSION=6 and runs the in-place path.
+    // Force migration by resetting the connection.
     resetDb();
     const after = getDb();
     const row = after
       .prepare("SELECT * FROM entry_history WHERE kpi_id = ?")
-      .get(kpiId) as Record<string, unknown>;
-    expect(row.kpi_name).toBe("Legacy KPI");
-    expect(row.kpi_slug).toBe("legacy-kpi");
-    expect(row.kpi_unit).toBe("count");
-    expect(Number(row.category_id)).toBe(catId);
-    expect(row.category_name).toBe("Legacy Category");
-    expect(row.category_slug).toBe("legacy-cat");
-    expect(String(row.changed_by_email)).toMatch(/@/);
-
-    // listEntryHistory renders it with the snapshot, not deleted, not renamed.
-    const list = listEntryHistory({ kpi_id: kpiId });
-    expect(list).toHaveLength(1);
-    expect(list[0].kpi_name).toBe("Legacy KPI");
-    expect(list[0].metadata_deleted).toBe(false);
+      .get(kpiId);
+    expect(row).toBeUndefined();
+    expect(listEntryHistory({ kpi_id: kpiId })).toEqual([]);
+    expect(
+      Number(
+        (
+          after.prepare("SELECT COUNT(*) count FROM users").get() as {
+            count: number;
+          }
+        ).count,
+      ),
+    ).toBeGreaterThan(0);
   });
 
-  it("leaves a NULL tombstone for rows whose KPI was already deleted before migration", () => {
+  it("removes incompatible dangling history rows", () => {
     const db = buildLegacyV4Db();
     ensureSeedAdmin();
     // Insert a history row pointing at a KPI id that does NOT exist.
@@ -442,30 +581,31 @@ describe("D8AD-CAN-005 v4→v5 legacy migration", () => {
     ).run();
     resetDb();
     getDb();
-    const list = listEntryHistory({ kpi_id: 999999 });
-    expect(list).toHaveLength(1);
-    const r = list[0];
-    expect(r.kpi_name).toBeNull();
-    expect(r.kpi_slug).toBeNull();
-    expect(r.category_name).toBeNull();
-    expect(r.metadata_deleted).toBe(true);
-    expect(r.kpi_current_name).toBeNull();
+    expect(listEntryHistory({ kpi_id: 999999 })).toEqual([]);
   });
 
-  it("is idempotent: re-running the migration does not change backfilled rows", () => {
+  it("is idempotent when an empty database is stamped with an old version again", () => {
     const db = buildLegacyV4Db();
     db.prepare(
       "INSERT INTO categories (slug, name, sort_order) VALUES ('idem-cat', 'Idem Category', 0)",
     ).run();
     const catId = Number(
-      (db.prepare("SELECT id FROM categories WHERE slug = 'idem-cat'").get() as { id: number }).id,
+      (
+        db
+          .prepare("SELECT id FROM categories WHERE slug = 'idem-cat'")
+          .get() as { id: number }
+      ).id,
     );
     db.prepare(
       `INSERT INTO kpis (category_id, slug, name, unit, unit_type, reporting_frequency, direction, sort_order)
        VALUES (?, 'idem-kpi', 'Idem KPI', 'count', 'count', 'monthly', 'higher', 0)`,
     ).run(catId);
     const kpiId = Number(
-      (db.prepare("SELECT id FROM kpis WHERE slug = 'idem-kpi'").get() as { id: number }).id,
+      (
+        db.prepare("SELECT id FROM kpis WHERE slug = 'idem-kpi'").get() as {
+          id: number;
+        }
+      ).id,
     );
     db.prepare(
       `INSERT INTO entry_history (entry_type, entry_id, kpi_id, year, month_or_label, prev_value, new_value, prev_notes, new_notes, changed_by)
@@ -473,13 +613,18 @@ describe("D8AD-CAN-005 v4→v5 legacy migration", () => {
     ).run(kpiId);
     resetDb();
     getDb();
-    const after1 = listEntryHistory({ kpi_id: kpiId })[0];
-    // Re-run the migration path by stamping v4 again and reconnecting.
+    const after1 = listEntryHistory({ kpi_id: kpiId });
+    expect(after1).toEqual([]);
+    // Re-run the reset path by stamping v4 again and reconnecting.
     const db2 = getDb();
-    db2.prepare("INSERT OR REPLACE INTO meta (key, value) VALUES ('schema_version', '4');").run();
+    db2
+      .prepare(
+        "INSERT OR REPLACE INTO meta (key, value) VALUES ('schema_version', '4');",
+      )
+      .run();
     resetDb();
     getDb();
-    const after2 = listEntryHistory({ kpi_id: kpiId })[0];
+    const after2 = listEntryHistory({ kpi_id: kpiId });
     expect(after2).toEqual(after1);
   });
 });

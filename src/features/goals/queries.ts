@@ -30,7 +30,9 @@ function goalYtdValue(
         `SELECT value as total FROM monthly_entries
          WHERE kpi_id = ? AND year = ? AND month = ?`,
       )
-      .get(kpiId, year, ANNUAL_ENTRY_MONTH) as { total: number | null } | undefined;
+      .get(kpiId, year, ANNUAL_ENTRY_MONTH) as
+      | { total: number | null }
+      | undefined;
     if (!row || row.total == null) return null;
     return row.total;
   }
@@ -39,7 +41,9 @@ function goalYtdValue(
       `SELECT SUM(value) as total, COUNT(*) as cnt FROM monthly_entries
        WHERE kpi_id = ? AND year = ? AND month >= ? AND month <= ?`,
     )
-    .get(kpiId, year, FIRST_MONTH, throughMonth) as { total: number | null; cnt: number } | undefined;
+    .get(kpiId, year, FIRST_MONTH, throughMonth) as
+    | { total: number | null; cnt: number }
+    | undefined;
   if (!row || row.cnt === 0) return null;
   return row.total ?? 0;
 }
@@ -56,7 +60,9 @@ function goalFullYearValue(
         `SELECT value as total FROM monthly_entries
          WHERE kpi_id = ? AND year = ? AND month = ?`,
       )
-      .get(kpiId, year, ANNUAL_ENTRY_MONTH) as { total: number | null } | undefined;
+      .get(kpiId, year, ANNUAL_ENTRY_MONTH) as
+      | { total: number | null }
+      | undefined;
     if (!row || row.total == null) return null;
     return row.total;
   }
@@ -65,7 +71,9 @@ function goalFullYearValue(
       `SELECT SUM(value) as total, COUNT(*) as cnt FROM monthly_entries
        WHERE kpi_id = ? AND year = ? AND month >= ?`,
     )
-    .get(kpiId, year, FIRST_MONTH) as { total: number | null; cnt: number } | undefined;
+    .get(kpiId, year, FIRST_MONTH) as
+    | { total: number | null; cnt: number }
+    | undefined;
   if (!row || row.cnt === 0) return null;
   return row.total ?? 0;
 }
@@ -73,14 +81,28 @@ function goalFullYearValue(
 function computeGoalValues(
   goal: GoalDefinition,
   kpiId: number,
-  targetYear: number,
+  baselineYear: number,
+  progressYear: number,
   reportingFrequency: ReportingFrequency,
   direction: Direction,
   throughMonth: number,
 ): GoalComputedValues {
-  const baselineValue = goalFullYearValue(kpiId, targetYear - 1, reportingFrequency);
-  const fullYearValue = goalFullYearValue(kpiId, targetYear, reportingFrequency);
-  const ytdValue = goalYtdValue(kpiId, targetYear, reportingFrequency, throughMonth);
+  const baselineValue = goalFullYearValue(
+    kpiId,
+    baselineYear,
+    reportingFrequency,
+  );
+  const fullYearValue = goalFullYearValue(
+    kpiId,
+    progressYear,
+    reportingFrequency,
+  );
+  const ytdValue = goalYtdValue(
+    kpiId,
+    progressYear,
+    reportingFrequency,
+    throughMonth,
+  );
   return calculateGoalComputedValues({
     goal,
     reportingFrequency,
@@ -96,13 +118,16 @@ function buildGoalWithMeta(
   row: Record<string, unknown>,
   g: GoalRow,
   throughMonth: number,
+  asOfYear?: number,
 ): KpiGoalWithMeta {
   const frequency = String(row.kpi_reporting_frequency) as ReportingFrequency;
   const direction = String(row.kpi_direction) as Direction;
+  const progressYear = asOfYear ?? g.target_year;
   const computed = computeGoalValues(
     g,
     g.kpi_id,
-    g.target_year,
+    g.baseline_year,
+    progressYear,
     frequency,
     direction,
     throughMonth,
@@ -119,19 +144,19 @@ function buildGoalWithMeta(
     category_slug: String(row.category_slug),
     direction,
     reporting_frequency: frequency,
+    progress_year: progressYear,
     ...computed,
   };
 }
 
-export function listGoals(
-  opts?: {
-    enabledOnly?: boolean;
-    year?: number;
-    throughMonth?: number;
-    category_id?: number;
-    kpi_id?: number;
-  },
-): KpiGoalWithMeta[] {
+export function listGoals(opts?: {
+  enabledOnly?: boolean;
+  year?: number;
+  throughMonth?: number;
+  category_id?: number;
+  kpi_id?: number;
+  asOfYear?: number;
+}): KpiGoalWithMeta[] {
   const db = getDb();
   const where: string[] = [];
   const params: (string | number)[] = [];
@@ -167,13 +192,16 @@ export function listGoals(
     )
     .all(...params) as Record<string, unknown>[];
 
-  return rows.map((row) => buildGoalWithMeta(row, asGoal(row), throughMonth));
+  return rows.map((row) =>
+    buildGoalWithMeta(row, asGoal(row), throughMonth, opts?.asOfYear),
+  );
 }
 
 export function getGoalByKpiAndYear(
   kpiId: number,
   year: number,
   throughMonth?: number,
+  asOfYear?: number,
 ): KpiGoalWithMeta | null {
   const db = getDb();
   const row = db
@@ -190,5 +218,5 @@ export function getGoalByKpiAndYear(
     )
     .get(kpiId, year) as Record<string, unknown> | undefined;
   if (!row) return null;
-  return buildGoalWithMeta(row, asGoal(row), throughMonth ?? 12);
+  return buildGoalWithMeta(row, asGoal(row), throughMonth ?? 12, asOfYear);
 }

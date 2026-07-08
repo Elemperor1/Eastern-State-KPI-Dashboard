@@ -4,6 +4,7 @@ import { asGoal, type GoalRow } from "./records";
 export function upsertGoal(input: {
   kpi_id: number;
   target_year: number;
+  baseline_year?: number;
   goal_type: "pct" | "number";
   target_value: number;
   enabled?: boolean;
@@ -12,10 +13,12 @@ export function upsertGoal(input: {
 }): GoalRow {
   const db = getDb();
   const enabled = input.enabled ?? true;
+  const baselineYear = input.baseline_year ?? input.target_year - 1;
   db.prepare(
-    `INSERT INTO kpi_goals (kpi_id, target_year, goal_type, target_value, enabled, notes, updated_by, updated_at)
-     VALUES (?, ?, ?, ?, ?, ?, ?, datetime('now'))
+    `INSERT INTO kpi_goals (kpi_id, target_year, baseline_year, goal_type, target_value, enabled, notes, updated_by, updated_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, datetime('now'))
      ON CONFLICT(kpi_id, target_year) DO UPDATE SET
+       baseline_year = excluded.baseline_year,
        goal_type = excluded.goal_type,
        target_value = excluded.target_value,
        enabled = excluded.enabled,
@@ -25,6 +28,7 @@ export function upsertGoal(input: {
   ).run(
     input.kpi_id,
     input.target_year,
+    baselineYear,
     input.goal_type,
     input.target_value,
     enabled ? 1 : 0,
@@ -52,6 +56,7 @@ export function toggleGoal(id: number, enabled: boolean): void {
 
 export function updateGoal(input: {
   id: number;
+  baseline_year?: number;
   goal_type?: "pct" | "number";
   target_value?: number;
   notes?: string | null;
@@ -61,6 +66,10 @@ export function updateGoal(input: {
   const db = getDb();
   const sets: string[] = ["updated_at = datetime('now')"];
   const params: (string | number | null)[] = [];
+  if (input.baseline_year !== undefined) {
+    sets.push("baseline_year = ?");
+    params.push(input.baseline_year);
+  }
   if (input.goal_type !== undefined) {
     sets.push("goal_type = ?");
     params.push(input.goal_type);

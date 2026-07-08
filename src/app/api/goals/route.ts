@@ -15,8 +15,16 @@ import {
 import { getKPI } from "@/features/catalog/server";
 
 function refreshedGoalsPayload(req: NextRequest) {
-  const { throughMonth, year } = parseGoalListParams(req.nextUrl.searchParams);
-  return { goals: listGoals({ throughMonth, year }) };
+  const { throughMonth, year, asOfYear } = parseGoalListParams(
+    req.nextUrl.searchParams,
+  );
+  return {
+    goals: listGoals({
+      throughMonth,
+      year,
+      ...(asOfYear === undefined ? {} : { asOfYear }),
+    }),
+  };
 }
 
 export async function POST(req: NextRequest) {
@@ -30,7 +38,10 @@ export async function POST(req: NextRequest) {
   if (guard) return guard;
   const parsed = CreateGoalSchema.safeParse(await req.json().catch(() => ({})));
   if (!parsed.success) {
-    return NextResponse.json({ error: "Invalid input", issues: parsed.error.flatten() }, { status: 400 });
+    return NextResponse.json(
+      { error: "Invalid input", issues: parsed.error.flatten() },
+      { status: 400 },
+    );
   }
   // Verify the KPI exists before upserting — SQLite's ON CONFLICT will
   // otherwise throw a raw FK error that surfaces as a generic 400.
@@ -40,9 +51,13 @@ export async function POST(req: NextRequest) {
   }
   try {
     const goal = upsertGoal({ ...parsed.data, updated_by: sessionUser.id });
-    return NextResponse.json({ goal, ...refreshedGoalsPayload(req) }, { status: 201 });
+    return NextResponse.json(
+      { goal, ...refreshedGoalsPayload(req) },
+      { status: 201 },
+    );
   } catch (err) {
-    const message = err instanceof Error ? err.message : "Could not create goal";
+    const message =
+      err instanceof Error ? err.message : "Could not create goal";
     return NextResponse.json({ error: message }, { status: 400 });
   }
 }
@@ -60,19 +75,33 @@ export async function PATCH(req: NextRequest) {
   if (!parsed.success) {
     return NextResponse.json({ error: "Invalid input" }, { status: 400 });
   }
-  const { id, enabled, goal_type, target_value, notes } = parsed.data;
+  const { id, enabled, baseline_year, goal_type, target_value, notes } =
+    parsed.data;
 
   // If any target-definition fields are present, update them alongside
   // the enabled flag so the progress recalculates immediately.
-  const hasTargetUpdate = goal_type !== undefined || target_value !== undefined || notes !== undefined;
+  const hasTargetUpdate =
+    baseline_year !== undefined ||
+    goal_type !== undefined ||
+    target_value !== undefined ||
+    notes !== undefined;
   try {
     if (hasTargetUpdate) {
-      updateGoal({ id, enabled, goal_type, target_value, notes, updated_by: sessionUser.id });
+      updateGoal({
+        id,
+        enabled,
+        ...(baseline_year === undefined ? {} : { baseline_year }),
+        goal_type,
+        target_value,
+        notes,
+        updated_by: sessionUser.id,
+      });
     } else {
       toggleGoal(id, enabled);
     }
   } catch (err) {
-    const message = err instanceof Error ? err.message : "Could not update goal";
+    const message =
+      err instanceof Error ? err.message : "Could not update goal";
     return NextResponse.json({ error: message }, { status: 400 });
   }
   return NextResponse.json({ ok: true, ...refreshedGoalsPayload(req) });

@@ -12,6 +12,7 @@ function goal(
     id,
     kpi_id: kpiId,
     target_year: targetYear,
+    baseline_year: Math.min(targetYear - 1, 2026),
     goal_type: "number",
     target_value: 1,
     enabled,
@@ -29,6 +30,7 @@ function goal(
     category_slug: "priority",
     direction: "higher",
     reporting_frequency: "annual",
+    progress_year: targetYear,
     ytd_value: null,
     ytd_target: null,
     ytd_progress_pct: null,
@@ -58,6 +60,7 @@ describe("reporting goal selection", () => {
       goal(1, 10, 2025),
       goal(2, 10, 2027, false),
       goal(3, 20, 2027),
+      { ...goal(4, 10, 2029), baseline_year: 2027 },
     ];
 
     expect(selectReportingGoal(goals, 10, 2026)).toBeNull();

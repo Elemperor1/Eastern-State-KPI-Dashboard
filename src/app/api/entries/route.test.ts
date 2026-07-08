@@ -25,16 +25,20 @@ const { upsertEntryMock } = vi.hoisted(() => ({
 }));
 
 vi.mock("@/features/metrics/server", async () => {
-  const actual = await vi.importActual<typeof import("@/features/metrics/server")>(
-    "@/features/metrics/server",
-  );
+  const actual = await vi.importActual<
+    typeof import("@/features/metrics/server")
+  >("@/features/metrics/server");
   return {
     ...actual,
     upsertEntry: upsertEntryMock,
   };
 });
 
-import { EntryPeriodMismatchError } from "@/features/metrics/server";
+import {
+  EntryKpiNotFoundError,
+  EntryKpiTypeError,
+  EntryPeriodMismatchError,
+} from "@/features/metrics/server";
 import { POST } from "./route";
 
 const CSRF_TOKEN = "test-csrf-token-0123456789abcdef";
@@ -102,6 +106,30 @@ describe("/api/entries mutation contract", () => {
     expect(res.status).toBe(400);
     await expect(res.json()).resolves.toEqual({
       error: "Entry month 1 is invalid for an annual KPI; expected month 0.",
+    });
+  });
+
+  it("returns 404 when the KPI does not exist", async () => {
+    upsertEntryMock.mockImplementationOnce(() => {
+      throw new EntryKpiNotFoundError(12);
+    });
+
+    const res = await POST(postRequest(0));
+
+    expect(res.status).toBe(404);
+    await expect(res.json()).resolves.toEqual({ error: "KPI not found." });
+  });
+
+  it("rejects breakdown KPIs on the scalar entry endpoint", async () => {
+    upsertEntryMock.mockImplementationOnce(() => {
+      throw new EntryKpiTypeError(12);
+    });
+
+    const res = await POST(postRequest(0));
+
+    expect(res.status).toBe(400);
+    await expect(res.json()).resolves.toEqual({
+      error: "Breakdown KPIs must use the breakdown endpoint.",
     });
   });
 });

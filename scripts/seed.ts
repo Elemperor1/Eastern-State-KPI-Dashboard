@@ -9,6 +9,7 @@ import {
   listKPIs,
 } from "../src/features/catalog/server";
 import {
+  STRATEGIC_PLAN_BASELINE_YEAR,
   STRATEGIC_PLAN_CATEGORIES,
   STRATEGIC_PLAN_YEARS,
 } from "../src/features/catalog/strategic-plan";
@@ -66,11 +67,16 @@ function main(): void {
           entryCount++;
         }
         if (definition.goal) {
+          const baselineValue =
+            definition.annual[STRATEGIC_PLAN_BASELINE_YEAR];
           upsertGoal({
             kpi_id: kpi.id,
             target_year: definition.goal.target_year,
-            goal_type: definition.goal.goal_type,
-            target_value: definition.goal.target_value,
+            baseline_year: STRATEGIC_PLAN_BASELINE_YEAR,
+            goal_type: "growth_pct" in definition.goal ? "pct" : "number",
+            target_value: "growth_pct" in definition.goal
+              ? definition.goal.growth_pct
+              : definition.goal.target - baselineValue,
             enabled: true,
             notes: definition.goal.notes ?? null,
           });

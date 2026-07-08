@@ -121,6 +121,7 @@ export function buildCategoryOverviewSummary({
     (goal) =>
       goal.enabled &&
       goal.category_id === category.id &&
+      goal.baseline_year <= period.currentYear &&
       goal.target_year >= period.currentYear,
   );
   const goalProgress = activeGoals.flatMap((goal) =>

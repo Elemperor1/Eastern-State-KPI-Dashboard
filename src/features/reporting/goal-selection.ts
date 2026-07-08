@@ -10,6 +10,7 @@ export function selectReportingGoal(
       (goal) =>
         goal.enabled &&
         goal.kpi_id === kpiId &&
+        goal.baseline_year <= currentYear &&
         goal.target_year >= currentYear,
     )
     .sort((a, b) => a.target_year - b.target_year);

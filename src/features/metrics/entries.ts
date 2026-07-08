@@ -3,6 +3,7 @@ import type {
   MonthlyEntry,
   MonthlyEntryWithMeta,
   ReportingFrequency,
+  UnitType,
 } from "@/lib/types";
 import { asEntry, asEntryWithMeta } from "./records";
 import { recordMetricEntryHistory } from "./history";
@@ -22,6 +23,20 @@ export class EntryPeriodMismatchError extends Error {
       `Entry month ${month} is invalid for ${article} ${reportingFrequency} KPI; expected ${expected}.`,
     );
     this.name = "EntryPeriodMismatchError";
+  }
+}
+
+export class EntryKpiNotFoundError extends Error {
+  constructor(kpiId: number) {
+    super(`KPI ${kpiId} was not found.`);
+    this.name = "EntryKpiNotFoundError";
+  }
+}
+
+export class EntryKpiTypeError extends Error {
+  constructor(kpiId: number) {
+    super(`KPI ${kpiId} is a breakdown KPI.`);
+    this.name = "EntryKpiTypeError";
   }
 }
 
@@ -88,20 +103,26 @@ export function upsertEntry(input: {
   return transaction(() => {
     const db = getDb();
     const kpi = db
-      .prepare("SELECT reporting_frequency FROM kpis WHERE id = ?")
+      .prepare(
+        "SELECT reporting_frequency, unit_type FROM kpis WHERE id = ?",
+      )
       .get(input.kpi_id) as
-      | { reporting_frequency: ReportingFrequency }
+      | { reporting_frequency: ReportingFrequency; unit_type: UnitType }
       | undefined;
-    if (kpi) {
-      const validMonth = isAnnualReportingFrequency(kpi.reporting_frequency)
-        ? isAnnualEntryMonth(input.month)
-        : isMonthlyEntryMonth(input.month);
-      if (!validMonth) {
-        throw new EntryPeriodMismatchError(
-          kpi.reporting_frequency,
-          input.month,
-        );
-      }
+    if (!kpi) {
+      throw new EntryKpiNotFoundError(input.kpi_id);
+    }
+    if (kpi.unit_type === "breakdown") {
+      throw new EntryKpiTypeError(input.kpi_id);
+    }
+    const validMonth = isAnnualReportingFrequency(kpi.reporting_frequency)
+      ? isAnnualEntryMonth(input.month)
+      : isMonthlyEntryMonth(input.month);
+    if (!validMonth) {
+      throw new EntryPeriodMismatchError(
+        kpi.reporting_frequency,
+        input.month,
+      );
     }
     const prior = db
       .prepare(

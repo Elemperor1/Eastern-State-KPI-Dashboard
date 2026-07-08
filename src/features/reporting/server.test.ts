@@ -154,6 +154,7 @@ const goal = {
   id: 1,
   kpi_id: videoViews.id,
   target_year: 2026,
+  baseline_year: 2025,
   goal_type: "number",
   target_value: 10,
   enabled: true,
@@ -171,6 +172,7 @@ const goal = {
   category_slug: education.slug,
   direction: videoViews.direction,
   reporting_frequency: videoViews.reporting_frequency,
+  progress_year: 2026,
   ytd_value: 5,
   ytd_target: 5,
   ytd_progress_pct: 100,
@@ -244,6 +246,7 @@ describe("reporting server page data", () => {
     expect(listEntriesMock).toHaveBeenCalledWith();
     expect(listBreakdownsMock).toHaveBeenCalledWith();
     expect(listGoalsMock).toHaveBeenCalledWith({
+      asOfYear: 2026,
       enabledOnly: true,
       throughMonth: 6,
     });
@@ -265,6 +268,7 @@ describe("reporting server page data", () => {
     expect(listEntriesMock).toHaveBeenCalledWith({ category_id: education.id });
     expect(listBreakdownsMock).toHaveBeenCalledWith({ category_id: education.id });
     expect(listGoalsMock).toHaveBeenCalledWith({
+      asOfYear: 2026,
       category_id: education.id,
       enabledOnly: true,
       throughMonth: 6,
@@ -287,6 +291,7 @@ describe("reporting server page data", () => {
     expect(listEntriesMock).toHaveBeenCalledWith({ kpi_id: videoViews.id });
     expect(listBreakdownsMock).toHaveBeenCalledWith({ kpi_id: videoViews.id });
     expect(listGoalsMock).toHaveBeenCalledWith({
+      asOfYear: 2026,
       enabledOnly: true,
       kpi_id: videoViews.id,
       throughMonth: 6,

@@ -9,15 +9,15 @@ refactor. It complements the requirement ledger in
 
 ## Server And Client Boundaries
 
-- Category pages now serialize only their category; metric pages serialize only
-  their KPI. The schema-8 strategic seed measures 34,355 bytes for Reimagine
-  Visitor Experience and 2,694 bytes for Interpretive Site Plan milestones,
-  versus 121,187 bytes for the full overview dataset.
+- Category pages serialize only their category; metric pages serialize only
+  their KPI. Final schema-9 seeded JSON measurements are 122,406 bytes for
+  overview, 15,952 for Justice Education, 1,961 for one representative metric,
+  and 1,721 for the annual-only Trend Explorer.
 - Overview retains the full dataset because every category card recalculates
   immediately for period changes.
 - Trend Explorer retains all monthly non-breakdown series because any eligible
   KPI can be toggled without a read. The current annual-only strategic seed
-  produces a 1,720-byte empty-state payload while preserving that behavior for
+  produces a 1,721-byte empty-state payload while preserving that behavior for
   future monthly KPIs.
 - `listAvailableYears()` owns the distinct-year query; reporting no longer loads
   every entry merely to derive control options.
@@ -48,8 +48,9 @@ parallel catalog model.
 ## Duplicate Rules
 
 Repository searches found no production direct `month === 0` classification
-outside the metrics period-rule surface. Entry writes also validate KPI
-frequency against the requested month before mutation. Percentage arithmetic remains in
+outside the metrics period-rule surface. Scalar and breakdown writes validate
+KPI existence, storage type, and reporting period before mutation; breakdown
+labels must remain non-empty after trimming. Percentage arithmetic remains in
 separate authoritative rules with distinct meanings: KPI YoY analytics, goal
 progress, category rollups, breakdown comparison, donor conversion, and trend
 indexing. UI `Progress` only clamps a prepared display value.
