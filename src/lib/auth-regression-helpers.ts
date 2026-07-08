@@ -13,37 +13,27 @@
  * ## Protected API routes covered by the suite
  *
  * Every route below is gated by the SHARED authorization boundary in
- * `src/lib/session.ts` — `requireSession` (any authenticated,
+ * `src/features/auth/session.ts` — `requireSession` (any authenticated,
  * non-must_change user) and `requireAdmin` (additionally role ===
  * "admin"). A revoked session (deleted / disabled / watermark-bumped)
  * yields 401 `{error:"Unauthorized"}` on ALL of them, because
  * `requireAdmin` calls `requireSession` first and `getCurrentUser`
  * returns null for a revoked cookie. A valid viewer session yields
- * 403 `{error:"Forbidden"}` on the admin-gated routes and 200 on the
- * read routes.
+ * 403 `{error:"Forbidden"}` on the admin-gated routes.
  *
- *   GET    /api/breakdowns        requireSession   (breakdowns read)
  *   POST   /api/breakdowns        requireAdmin     (breakdowns write)
  *   DELETE /api/breakdowns        requireAdmin     (breakdowns write)
- *   GET    /api/categories        requireSession   (categories read)
  *   POST   /api/categories        requireAdmin     (categories write)
  *   PATCH  /api/categories        requireAdmin     (categories write)
  *   DELETE /api/categories        requireAdmin     (categories write)
- *   GET    /api/entries           requireSession   (entries read)
  *   POST   /api/entries           requireAdmin     (entries write)
  *   DELETE /api/entries           requireAdmin     (entries write)
- *   GET    /api/entries/history   requireAdmin     (audit history)
- *   GET    /api/entries/years     requireSession   (entries read)
- *   GET    /api/goals             requireSession   (goals read)
  *   POST   /api/goals             requireAdmin     (goals write)
  *   PATCH  /api/goals             requireAdmin     (goals write)
  *   DELETE /api/goals             requireAdmin     (goals write)
- *   GET    /api/kpis              requireSession   (KPI definitions read)
  *   POST   /api/kpis              requireAdmin     (KPI definitions write)
  *   PATCH  /api/kpis              requireAdmin     (KPI definitions write)
  *   DELETE /api/kpis              requireAdmin     (KPI definitions write)
- *   GET    /api/meta              requireSession   (meta read)
- *   GET    /api/users             requireAdmin     (user management read)
  *   POST   /api/users             requireAdmin     (user management write)
  *   PATCH  /api/users             requireAdmin     (user management write — password reset)
  *   DELETE /api/users             requireAdmin     (user management write — deletion)
@@ -85,17 +75,14 @@
  */
 import { expect } from "vitest";
 import { NextRequest } from "next/server";
-import { createUser } from "./auth";
+import { createUser } from "@/features/users/server";
 import type { User } from "./types";
 
 import * as breakdowns from "@/app/api/breakdowns/route";
 import * as categories from "@/app/api/categories/route";
 import * as entries from "@/app/api/entries/route";
-import * as entriesHistory from "@/app/api/entries/history/route";
-import * as entriesYears from "@/app/api/entries/years/route";
 import * as goals from "@/app/api/goals/route";
 import * as kpis from "@/app/api/kpis/route";
-import * as meta from "@/app/api/meta/route";
 import * as users from "@/app/api/users/route";
 import * as usersAccount from "@/app/api/users/account/route";
 
@@ -108,9 +95,7 @@ export interface ProtectedRoute {
   gate: Gate;
   /** Functional group, for the requirement-6 coverage matrix. */
   group:
-    | "reads"
     | "writes"
-    | "history"
     | "kpis"
     | "categories"
     | "entries"
@@ -127,28 +112,19 @@ export interface ProtectedRoute {
  * whole replay/forbidden/ok matrix extends automatically.
  */
 export const PROTECTED_API_ROUTES: ProtectedRoute[] = [
-  { method: "GET", path: "/api/breakdowns", gate: "requireSession", group: "breakdowns", takesReq: true },
   { method: "POST", path: "/api/breakdowns", gate: "requireAdmin", group: "breakdowns", takesReq: true },
   { method: "DELETE", path: "/api/breakdowns", gate: "requireAdmin", group: "breakdowns", takesReq: true },
-  { method: "GET", path: "/api/categories", gate: "requireSession", group: "categories", takesReq: false },
   { method: "POST", path: "/api/categories", gate: "requireAdmin", group: "categories", takesReq: true },
   { method: "PATCH", path: "/api/categories", gate: "requireAdmin", group: "categories", takesReq: true },
   { method: "DELETE", path: "/api/categories", gate: "requireAdmin", group: "categories", takesReq: true },
-  { method: "GET", path: "/api/entries", gate: "requireSession", group: "entries", takesReq: true },
   { method: "POST", path: "/api/entries", gate: "requireAdmin", group: "entries", takesReq: true },
   { method: "DELETE", path: "/api/entries", gate: "requireAdmin", group: "entries", takesReq: true },
-  { method: "GET", path: "/api/entries/history", gate: "requireAdmin", group: "history", takesReq: true },
-  { method: "GET", path: "/api/entries/years", gate: "requireSession", group: "entries", takesReq: false },
-  { method: "GET", path: "/api/goals", gate: "requireSession", group: "goals", takesReq: true },
   { method: "POST", path: "/api/goals", gate: "requireAdmin", group: "goals", takesReq: true },
   { method: "PATCH", path: "/api/goals", gate: "requireAdmin", group: "goals", takesReq: true },
   { method: "DELETE", path: "/api/goals", gate: "requireAdmin", group: "goals", takesReq: true },
-  { method: "GET", path: "/api/kpis", gate: "requireSession", group: "kpis", takesReq: false },
   { method: "POST", path: "/api/kpis", gate: "requireAdmin", group: "kpis", takesReq: true },
   { method: "PATCH", path: "/api/kpis", gate: "requireAdmin", group: "kpis", takesReq: true },
   { method: "DELETE", path: "/api/kpis", gate: "requireAdmin", group: "kpis", takesReq: true },
-  { method: "GET", path: "/api/meta", gate: "requireSession", group: "reads", takesReq: false },
-  { method: "GET", path: "/api/users", gate: "requireAdmin", group: "users", takesReq: false },
   { method: "POST", path: "/api/users", gate: "requireAdmin", group: "users", takesReq: true },
   { method: "PATCH", path: "/api/users", gate: "requireAdmin", group: "users", takesReq: true },
   { method: "DELETE", path: "/api/users", gate: "requireAdmin", group: "users", takesReq: true },
@@ -158,28 +134,19 @@ export const PROTECTED_API_ROUTES: ProtectedRoute[] = [
 type Handler = (req?: NextRequest) => Promise<Response>;
 
 const HANDLERS: Record<string, Handler> = {
-  "GET /api/breakdowns": breakdowns.GET as Handler,
   "POST /api/breakdowns": breakdowns.POST as Handler,
   "DELETE /api/breakdowns": breakdowns.DELETE as Handler,
-  "GET /api/categories": categories.GET as Handler,
   "POST /api/categories": categories.POST as Handler,
   "PATCH /api/categories": categories.PATCH as Handler,
   "DELETE /api/categories": categories.DELETE as Handler,
-  "GET /api/entries": entries.GET as Handler,
   "POST /api/entries": entries.POST as Handler,
   "DELETE /api/entries": entries.DELETE as Handler,
-  "GET /api/entries/history": entriesHistory.GET as Handler,
-  "GET /api/entries/years": entriesYears.GET as Handler,
-  "GET /api/goals": goals.GET as Handler,
   "POST /api/goals": goals.POST as Handler,
   "PATCH /api/goals": goals.PATCH as Handler,
   "DELETE /api/goals": goals.DELETE as Handler,
-  "GET /api/kpis": kpis.GET as Handler,
   "POST /api/kpis": kpis.POST as Handler,
   "PATCH /api/kpis": kpis.PATCH as Handler,
   "DELETE /api/kpis": kpis.DELETE as Handler,
-  "GET /api/meta": meta.GET as Handler,
-  "GET /api/users": users.GET as Handler,
   "POST /api/users": users.POST as Handler,
   "PATCH /api/users": users.PATCH as Handler,
   "DELETE /api/users": users.DELETE as Handler,
@@ -283,10 +250,6 @@ export async function assertForbidden(res: Response): Promise<void> {
 }
 
 /** 2xx (default 200) — the gate let an authenticated caller through. */
-export async function assertOk(res: Response, status = 200): Promise<void> {
-  expect(res.status).toBe(status);
-}
-
 /** Routes whose handlers do not accept a NextRequest argument. */
 export function routeKey(r: ProtectedRoute): string {
   return `${r.method} ${r.path}`;

@@ -130,7 +130,7 @@ export function AppShell({ user, children }: { user: SessionUser; children: Reac
 
       <header className="fixed inset-x-0 top-0 z-40 flex h-16 items-center justify-between bg-ink-900 px-4 text-white lg:hidden">
         <Link href="/dashboard/overview" className="flex min-h-11 items-center gap-3" aria-label="Eastern State KPI home">
-          <BrandMark size="sm" inverted />
+          <BrandMark size="sm" />
           <div>
             <span className="block text-sm font-semibold leading-tight">Eastern State</span>
             <span className="block text-[10px] uppercase tracking-[0.1em] text-white/50">KPI Intelligence</span>
@@ -150,7 +150,7 @@ export function AppShell({ user, children }: { user: SessionUser; children: Reac
 
       <aside className="fixed inset-y-0 left-0 hidden w-60 flex-col bg-ink-900 text-white lg:flex">
         <Link href="/dashboard/overview" className="mx-4 mb-8 mt-5 flex items-center gap-3" aria-label="Eastern State KPI home">
-          <BrandMark size="md" inverted />
+            <BrandMark size="md" />
           <div className="min-w-0">
             <span className="block truncate text-sm font-semibold leading-tight">Eastern State</span>
             <span className="mt-1 block truncate text-[10px] uppercase tracking-[0.1em] text-white/50">
@@ -178,7 +178,7 @@ export function AppShell({ user, children }: { user: SessionUser; children: Reac
                 className="flex items-center gap-3"
                 onClick={() => setMobileOpen(false)}
               >
-                <BrandMark size="md" inverted />
+                <BrandMark size="md" />
                 <div>
                   <span className="block text-sm font-semibold">Eastern State</span>
                   <span className="block text-[10px] uppercase tracking-[0.1em] text-white/50">KPI Intelligence</span>

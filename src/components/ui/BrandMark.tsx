@@ -18,19 +18,12 @@ import { cn } from "@/lib/utils";
  * which match the dashboard palette exactly. The mark renders identically
  * on light and dark surfaces because the teal/navy palette works on both.
  *
- * The `size` prop drives the rendered pixel size, matching the previous
- * square-frame BrandMark so existing call sites (AppShell sidebar 40px,
- * mobile header 32px, login page 40px) continue to look right.
- *
- * The `inverted` prop is preserved for API compatibility with the previous
- * square-container version of the mark but is a no-op — the new design
- * renders identically on light and dark surfaces.
+ * The `size` prop drives the rendered pixel size for the AppShell and auth
+ * surfaces.
  */
 
 interface BrandMarkProps {
   size?: "sm" | "md" | "lg";
-  /** @deprecated No-op; the mark renders identically on light and dark surfaces. */
-  inverted?: boolean;
   className?: string;
 }
 
@@ -42,8 +35,6 @@ const sizeMap = {
 
 export function BrandMark({
   size = "md",
-  // `inverted` is accepted but unused — see the deprecation note above.
-  inverted: _inverted,
   className,
 }: BrandMarkProps) {
   const { px, className: sizeClass } = sizeMap[size];

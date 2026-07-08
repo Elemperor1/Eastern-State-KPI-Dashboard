@@ -17,8 +17,8 @@ import path from "node:path";
 import { NextRequest } from "next/server";
 
 // Mock the verifier so we control success vs failure per-test.
-vi.mock("@/lib/auth", async () => {
-  const actual = await vi.importActual<typeof import("@/lib/auth")>("@/lib/auth");
+vi.mock("@/features/auth/server", async () => {
+  const actual = await vi.importActual<typeof import("@/features/auth/server")>("@/features/auth/server");
   return {
     ...actual,
     verifyCredentials: vi.fn(),
@@ -28,9 +28,9 @@ vi.mock("@/lib/auth", async () => {
 // Mock the session so login does not try to write a real iron-session
 // cookie. Returning a minimal stub keeps the route's session.save()
 // call a no-op.
-vi.mock("@/lib/session", async () => {
-  const actual = await vi.importActual<typeof import("@/lib/session")>(
-    "@/lib/session",
+vi.mock("@/features/auth/session", async () => {
+  const actual = await vi.importActual<typeof import("@/features/auth/session")>(
+    "@/features/auth/session",
   );
   return {
     ...actual,
@@ -42,7 +42,7 @@ vi.mock("@/lib/session", async () => {
   };
 });
 
-import { verifyCredentials } from "@/lib/auth";
+import { verifyCredentials } from "@/features/auth/server";
 import { POST } from "./route";
 import { _resetForTests } from "@/lib/login-throttle";
 

@@ -11,7 +11,7 @@ interface Props {
 
 /**
  * Lazy PDF export button. The html2canvas + jspdf code lives in
- * `@/lib/legacy-pdf-export` and is loaded on first click via a dynamic
+ * `@/features/exports/legacy-pdf-export` and is loaded on first click via a dynamic
  * `import()` so it stays out of the initial page bundle.
  *
  * For metric and category pages, prefer the always-on `PrintButton`
@@ -29,7 +29,7 @@ export function ExportPDFButton({ targetId, fileName = "eastern-state-kpi.pdf" }
     setBusy(true);
     setError(null);
     try {
-      const mod = await import("@/lib/legacy-pdf-export");
+      const mod = await import("@/features/exports/legacy-pdf-export");
       await mod.exportElementToPdf({ targetId, fileName });
     } catch (err) {
       console.error("PDF export failed", err);

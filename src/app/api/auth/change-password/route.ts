@@ -1,7 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
-import { updateUserPassword, verifyCredentials } from "@/lib/auth";
-import { getCurrentUser, getSession } from "@/lib/session";
+import { verifyCredentials } from "@/features/auth/server";
+import { updateUserPassword } from "@/features/users/server";
+import { getCurrentUser, getSession } from "@/features/auth/session";
 import { assertMutationRequest } from "@/lib/request-guard";
 
 const ChangePasswordSchema = z

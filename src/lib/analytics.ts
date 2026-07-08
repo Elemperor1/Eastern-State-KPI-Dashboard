@@ -6,36 +6,15 @@ import type {
   UnitType,
   YearSummary,
 } from "./types";
-
-export const MONTH_LABELS = [
-  "Jan",
-  "Feb",
-  "Mar",
-  "Apr",
-  "May",
-  "Jun",
-  "Jul",
-  "Aug",
-  "Sep",
-  "Oct",
-  "Nov",
-  "Dec",
-] as const;
-
-export const MONTH_FULL = [
-  "January",
-  "February",
-  "March",
-  "April",
-  "May",
-  "June",
-  "July",
-  "August",
-  "September",
-  "October",
-  "November",
-  "December",
-] as const;
+import {
+  ANNUAL_ENTRY_MONTH,
+  MONTH_LABELS,
+  MONTH_NUMBERS,
+  isAnnualEntryMonth,
+  isAnnualReportingFrequency,
+  isMonthlyEntryMonth,
+  isMonthlyEntryThrough,
+} from "@/features/metrics";
 
 /** Map any unit_type to one of the three numeric formats the formatter understands. */
 function numericFormat(unitType: UnitType): "number" | "currency" | "percent" {
@@ -120,13 +99,9 @@ interface BuildAnalyticsArgs {
   currentMonth: number;
 }
 
-function isAnnual(kpi: KPIWithCategory): boolean {
-  return kpi.reporting_frequency !== "monthly";
-}
-
 export function buildKPIAnalytics(args: BuildAnalyticsArgs): KPIAnalytics {
   const { kpi, entries, currentYear, compareYear, currentMonth } = args;
-  const annual = isAnnual(kpi);
+  const annual = isAnnualReportingFrequency(kpi.reporting_frequency);
   const years = Array.from(new Set([currentYear, compareYear, ...entries.map((e) => e.year)])).sort();
 
   const yearSummaries: YearSummary[] = years.map((year) => {
@@ -136,14 +111,14 @@ export function buildKPIAnalytics(args: BuildAnalyticsArgs): KPIAnalytics {
     let fullYearValue = 0;
     if (annual) {
       // Annual metrics store one full-year value at month 0.
-      const annualEntry = yearEntries.find((e) => e.month === 0);
+      const annualEntry = yearEntries.find((e) => isAnnualEntryMonth(e.month));
       const v = annualEntry?.value ?? 0;
-      monthlyValues[0] = v;
+      monthlyValues[ANNUAL_ENTRY_MONTH] = v;
       ytdValue = v;
       fullYearValue = v;
     } else {
       for (const entry of yearEntries) {
-        if (entry.month === 0) continue; // ignore stray annual rows for monthly kpis
+        if (isAnnualEntryMonth(entry.month)) continue; // ignore stray annual rows for monthly kpis
         monthlyValues[entry.month] = entry.value;
         fullYearValue += entry.value;
         if (entry.month <= currentMonth) {
@@ -164,15 +139,15 @@ export function buildKPIAnalytics(args: BuildAnalyticsArgs): KPIAnalytics {
     return entries.some((e) => e.year === year && e.month === month);
   };
   const hasYtdEntry = (year: number, through: number): boolean => {
-    if (annual) return hasMonthEntry(year, 0);
-    return entries.some((e) => e.year === year && e.month >= 1 && e.month <= through);
+    if (annual) return hasMonthEntry(year, ANNUAL_ENTRY_MONTH);
+    return entries.some((e) => e.year === year && isMonthlyEntryThrough(e.month, through));
   };
 
   let currentValue: number;
   let compareValue: number;
   if (annual) {
-    currentValue = currentSummary?.monthlyValues[0] ?? 0;
-    compareValue = compareSummary?.monthlyValues[0] ?? 0;
+    currentValue = currentSummary?.monthlyValues[ANNUAL_ENTRY_MONTH] ?? 0;
+    compareValue = compareSummary?.monthlyValues[ANNUAL_ENTRY_MONTH] ?? 0;
   } else {
     currentValue = currentSummary?.monthlyValues[currentMonth] ?? 0;
     compareValue = compareSummary?.monthlyValues[currentMonth] ?? 0;
@@ -183,8 +158,8 @@ export function buildKPIAnalytics(args: BuildAnalyticsArgs): KPIAnalytics {
   const monthlyIsEmpty =
     currentValue === 0 &&
     compareValue === 0 &&
-    !hasMonthEntry(currentYear, annual ? 0 : currentMonth) &&
-    !hasMonthEntry(compareYear, annual ? 0 : currentMonth);
+    !hasMonthEntry(currentYear, annual ? ANNUAL_ENTRY_MONTH : currentMonth) &&
+    !hasMonthEntry(compareYear, annual ? ANNUAL_ENTRY_MONTH : currentMonth);
 
   let ytdCurrent: number;
   let ytdCompare: number;
@@ -241,9 +216,9 @@ export function buildTrendPoints(
   entries: MonthlyEntryWithMeta[],
   years: number[],
 ): ComparisonPoint[] {
-  const monthlyEntries = entries.filter((e) => e.month >= 1 && e.month <= 12);
+  const monthlyEntries = entries.filter((e) => isMonthlyEntryMonth(e.month));
   const points: ComparisonPoint[] = [];
-  for (let month = 1; month <= 12; month++) {
+  for (const month of MONTH_NUMBERS) {
     const point: ComparisonPoint = {
       label: MONTH_LABELS[month - 1],
       month,

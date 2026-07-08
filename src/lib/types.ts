@@ -144,6 +144,8 @@ export interface KpiGoal {
   id: number;
   kpi_id: number;
   target_year: number;
+  /** Fixed actual-data year used to calculate the target. */
+  baseline_year: number;
   goal_type: GoalType;
   target_value: number;
   enabled: boolean;
@@ -166,6 +168,8 @@ export interface KpiGoalWithMeta extends KpiGoal {
   direction: Direction;
   /** Reporting frequency — annual goals have identical YTD and full-year values. */
   reporting_frequency: ReportingFrequency;
+  /** Actual-data year used for the progress values in this model. */
+  progress_year: number;
 
   /** Actual value through the selected month (YTD for monthly KPIs, annual for annual KPIs). */
   ytd_value: number | null;
@@ -176,20 +180,10 @@ export interface KpiGoalWithMeta extends KpiGoal {
 
   /** Actual value for the full year (sum of all months, or the annual month-0 value). */
   full_year_value: number | null;
-  /** Full-year target (baseline + target_value). Null when baseline is unavailable. */
+  /** Full-year target (fixed baseline + target_value). Null when baseline is unavailable. */
   full_year_target: number | null;
   /** Full-year completion percentage (0–100). Compares full-year actual vs full-year target. Null when target is unavailable. */
   full_year_progress_pct: number | null;
-
-  /**
-   * @deprecated Use ytd_progress_pct or full_year_progress_pct instead.
-   * Kept for backward compat during migration — equals full_year_progress_pct.
-   */
-  current_value: number | null;
-  /** @deprecated Use full_year_target instead. */
-  goal_target: number | null;
-  /** @deprecated Use ytd_progress_pct or full_year_progress_pct instead. */
-  progress_pct: number | null;
 }
 
 /**

@@ -1,16 +1,37 @@
+# Dependencies and generated builds
 node_modules/
 .next/
 out/
 build/
-data/*.db
-data/*.db-journal
-data/*.db-shm
-data/*.db-wal
-.env*.local
-*.log
-.DS_Store
-tsconfig.tsbuildinfo
+dist/
+.turbo/
+.vercel/
+
+# Local runtime data
+data/
+
+# Environment files and local credentials
+.env
+.env.*
+!.env.example
+*.pem
+
+# Tests, coverage, and browser artifacts
+coverage/
+.nyc_output/
 .playwright-cli/
+playwright-report/
+test-results/
+blob-report/
 output/playwright/
 
-coverage/
+# Tool caches and logs
+*.log
+*.tsbuildinfo
+.eslintcache
+
+# OS and editor files
+.DS_Store
+.idea/
+*.swp
+*.swo

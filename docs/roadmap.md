@@ -2,24 +2,24 @@
 
 > Single source of truth for everything that still needs to be done to take the dashboard from "redesigned-but-fragile" to "internal-tool-of-record." This document is **the answer to the active goal**: "figure out what needs to be improved" with explicit `/goal` prompts at the bottom that an agent can pick up one at a time.
 >
-> Audit cut-off: 2026-06-25. Source of truth for behavior is `DESIGN.md` (visual) and `src/lib/*` + `scripts/*` (logic). All claims below were verified against the worktree, not memory.
+> Audit cut-off: 2026-06-25. This roadmap is historical; completed security and architecture items were reconciled during the modular refactor. Current behavior source of truth is `DESIGN.md`, `src/features/*`, `src/lib/*`, and `scripts/*`.
 
 ## 0. State of the product (today)
 
 | Dimension | State | Evidence |
 | --- | --- | --- |
 | Stack | Next.js 15.5.19 App Router + TS + Tailwind + `node:sqlite` + iron-session | `package.json`, `tsconfig.json` |
-| Finalized metric set | 8 categories · 52 KPIs · 2024–2026 (2026 partial through June) | `scripts/seed.ts` |
+| Strategic-plan metric set | 5 priorities · 59 annual KPIs · 25 goals · 2024–2026 | `src/features/catalog/strategic-plan.ts` |
 | Design language | Teal/navy/yellow + Galano Grotesque per `DESIGN.md` | `src/app/globals.css`, `tailwind.config.ts` |
 | Design-system library | 24 primitives in `src/components/ui/`, enforced by `scripts/design-system-guard.sh` | `src/components/ui/index.ts` |
-| Build | `npm run build` — green, 21 routes | local run |
-| Lint | `npm run design-system:guard` — green | local run |
-| Type-check | standalone `npx tsc --noEmit` — passes **after** `next build` populates `.next/types` | local run |
-| Smoke harness | `scripts/smoke.sh` — curl-driven, 44 assertions, was 49/49 before today's changes | `scripts/smoke.sh` |
-| Auth | iron-session; `AUTH_DISABLED=true` in `.env.local` currently bypasses login via `BYPASS_USER.id=0` static admin | `src/lib/auth-flag.ts`, `src/lib/session.ts` |
+| Build | `npm run design-system:test` includes a production `next build` gate | `package.json` |
+| Lint | `npm run lint` runs design/security guards plus Next ESLint | `package.json`, `eslint.config.mjs` |
+| Type-check | standalone `npx tsc --noEmit` passes | local refactor verification |
+| Smoke harness | `scripts/smoke.sh` — curl-driven, 48 assertions under `AUTH_DISABLED=true` on the strategic-plan path | `scripts/smoke.sh` |
+| Auth | iron-session; `AUTH_DISABLED=true` in `.env.local` bypasses login with a real `auth-disabled@local` users row, surfaced through `src/features/auth/session.ts` | `src/features/auth/server.ts`, `src/features/auth/session.ts`, `src/lib/auth-flag.ts`, `src/lib/session.ts` |
 | Visual regression | none | (no Playwright config checked in; only ad-hoc `output/playwright/*.png`) |
 
-The product looks good and the smoke harness was passing 49/49 yesterday. **As of today it is broken under `AUTH_DISABLED=true`** because the static bypass admin (id=0) is not a row in the `users` table, so any POST/PATCH/DELETE that hits `requireAdmin()` → `upsertEntry({ updated_by: 0 })` blows up with `FOREIGN KEY constraint failed`. That single bug demotes the smoke run to 32 passed / 12 failed and is the highest-priority item below.
+The original critical bypass bug in this roadmap has been fixed: the development bypass now uses a real `auth-disabled@local` users row, and the strategic-plan bypass smoke path reports `48 passed, 0 failed`.
 
 The seven `/goal` prompts at the bottom of this file each fix a coherent, verifiable slice of work. They are ordered by risk-weighted value: anything that breaks the smoke harness or the user's ability to enter data comes first; visual polish, exports, and future-facing features come last.
 
@@ -27,28 +27,13 @@ The seven `/goal` prompts at the bottom of this file each fix a coherent, verifi
 
 ## 1. Critical — fix what is actually broken right now
 
-### 1.1 `BYPASS_USER.id=0` breaks every admin write when auth is bypassed
+### 1.1 Completed — bypass auth uses a real user row
 
-**Where:** `src/lib/session.ts:11` (`BYPASS_USER = { id: 0, ... }`), `src/app/api/entries/route.ts:49`, `src/app/api/breakdowns/route.ts:50`.
+**Where:** `src/features/auth/server.ts`, `src/features/auth/session.ts`, `src/lib/session.ts`, `src/components/AppShell.tsx`.
 
-**Evidence (reproduce):**
+**Current shape:** `ensureSeedAdmin()` always upserts `auth-disabled@local` with stable id `-1`; `verifyCredentials()` rejects that reserved email; `getSession()` / `requireAdmin()` return the real row when `AUTH_DISABLED=true`; AppShell hides the account block by email, not a synthetic id.
 
-```bash
-AUTH_DISABLED=true node_modules/.bin/next dev -p 3290 &
-curl -sk -X POST http://127.0.0.1:3290/api/entries \
-  -H 'Content-Type: application/json' \
-  --data '{"kpi_id":1,"year":2099,"month":1,"value":12345}'
-# → HTTP 500, server logs: FOREIGN KEY constraint failed (monthly_entries.updated_by → users.id)
-```
-
-**Root cause:** `requireAdmin()` returns `BYPASS_USER` (id=0) whenever `AUTH_DISABLED=true`. The FK on `monthly_entries.updated_by → users.id` then rejects id=0 because the bypass user is not a row in `users`. The same failure happens for `breakdown_entries.updated_by`.
-
-**Fix shape:** make sure that *whoever* ends up writing through the admin endpoints has a real `users.id`. Two acceptable approaches — pick one and own it in code review:
-
-- **Approach A (preferred):** in `src/lib/auth.ts`, change `ensureSeedAdmin()` so it also seeds a deterministic "auth-disabled@local" admin row with a known bcrypt hash. Then in `src/lib/session.ts`, look up that row and return its real `users.id` instead of the synthetic `{id: 0}`. AppShell's `user.id === 0` bypass check becomes a check on `user.email === "auth-disabled@local"` (or a new explicit `user.isBypass` flag).
-- **Approach B:** drop the FK constraint on `updated_by` (or add `ON DELETE SET NULL` and set `updated_by = null` when bypassing). Loses the audit trail and is not preferred.
-
-**Verification:** `npm run build` green; `AUTH_DISABLED=true node_modules/.bin/next dev -p 3290` + `scripts/smoke.sh` reports the current bypass pass count (`56 passed, 0 failed` as of this update) end-to-end with `AUTH_DISABLED=true` exported; manual `POST/DELETE /api/entries?year=2099&value=12345` returns 201/200, no FK error in server logs. Bypass verification must use `next dev`; `next start` runs in production mode and cannot serve app routes with `AUTH_DISABLED=true`.
+**Verification:** `npm run build` green; `AUTH_DISABLED=true node_modules/.bin/next dev -p 3290` + `scripts/smoke.sh` reports the current bypass pass count (`48 passed, 0 failed` as of the strategic-plan integration) end-to-end with `AUTH_DISABLED=true` exported; the smoke harness verifies `POST /api/entries` returns a created row body, then `DELETE /api/entries` returns 200 with no FK error in server logs. Bypass verification must use `next dev`; `next start` runs in production mode and cannot serve app routes with `AUTH_DISABLED=true`.
 
 ### 1.2 `scripts/smoke.sh` doesn't propagate `AUTH_DISABLED` into `npm run smoke`
 
@@ -72,7 +57,9 @@ curl -sk -X POST http://127.0.0.1:3290/api/entries \
 
 ### 1.4 `GET /api/categories` is unauthenticated and inconsistent with siblings
 
-**Where:** `src/app/api/categories/route.ts:18-20` returns categories without `requireSession()`, while `entries`, `breakdowns`, `kpis`, `meta` all call `requireSession()` on `GET`.
+**Superseded:** the catalog read adapters were later removed during the modular-monolith refactor. `/admin/kpis` now reads categories directly through `src/features/catalog/server.ts`, and `/api/categories` is a mutation-only adapter.
+
+**Original where:** `src/app/api/categories/route.ts:18-20` returned categories without `requireSession()`, while `entries`, `breakdowns`, `kpis`, `meta` all called `requireSession()` on `GET`.
 
 **Evidence:** `grep -n requireSession src/app/api/*/route.ts` shows that only `categories/route.ts` GET handler omits the check.
 
@@ -84,11 +71,12 @@ curl -sk -X POST http://127.0.0.1:3290/api/entries \
 
 ## 2. High — close the gaps the design audit already flagged
 
-### 2.1 KPI manager has no search/filter UI for 52 KPIs
+### 2.1 KPI manager search/filter for the strategic catalog
 
 **Where:** `src/app/admin/kpis/KPIManagerClient.tsx`, "Existing KPIs" table.
 
-**Evidence:** `docs/design-audit.md` § "Remaining product caveats" explicitly calls this out: *"KPI management still shows all 52 measures in one table because search/filter behavior would be a functional addition, not part of this visual migration."* The table currently renders all 52 rows at once.
+**Status:** completed. The KPI manager now has feature-owned search/category
+filtering for the 59-measure strategic catalog.
 
 **Fix shape:** add a category filter chip row + a free-text search input above the existing table. Reuse the existing `Chip` and `Input` primitives. Filter client-side; this is a small dataset.
 
@@ -104,15 +92,15 @@ curl -sk -X POST http://127.0.0.1:3290/api/entries \
 
 **Verification:** with two KPIs selected, switching modes recomputes the chart (verify by checking the chart's path data via `getByTestId('trend-svg')` or screenshot diff); `npm run build` passes; smoke harness still 49/49.
 
-### 2.3 `BreakdownChart` leaks unbounded breakdowns into the chart
+### 2.3 `BreakdownChart` breakdown comparison model
 
-**Where:** `src/components/BreakdownChart.tsx:23-40` and `src/app/dashboard/metric/[slug]/MetricDetailClient.tsx:200-208`.
+**Where:** `src/components/BreakdownChart.tsx`, `src/features/reporting/breakdown-comparison.ts`, `src/features/reporting/metric-detail.ts`, and `src/features/reporting/category-page.ts`.
 
-**Evidence:** `BreakdownChart` receives the *entire* `breakdowns` array for the KPI and filters internally to two years. If a future seed adds 50 components per year, the chart silently renders only the two selected but the data passed in is unbounded.
+**Status:** resolved for the current architecture refactor. Category and metric detail models pass current/compare annual rows, and `BreakdownChart` renders `buildBreakdownComparisonModel()` output instead of calculating label order, totals, and deltas inline.
 
-**Fix shape:** tighten the prop signature to `{ data: BreakdownEntryWithMeta[]; currentYear; compareYear; ... }` and have the metric detail client filter before passing. While we're there, hide the comparison table when only one year has data — currently it always renders.
+**Remaining watch item:** keep future breakdown views on the reporting model, and avoid passing broader-than-needed breakdown arrays into the renderer.
 
-**Verification:** a unit-style smoke check that asserts `breakdowns.length === 4` for `funders-by-breakdown` after filtering; the rendered table doesn't show empty `<td>` for years with no entries.
+**Verification:** `src/features/reporting/breakdown-comparison.test.ts`, category/metric detail model tests, `npm run design-system:test`, and live `scripts/smoke.sh`.
 
 ### 2.4 `ExportPDFButton` (html2canvas + jspdf) is fragile
 
@@ -130,11 +118,11 @@ curl -sk -X POST http://127.0.0.1:3290/api/entries \
 
 ### 3.1 No edit history / audit log for KPI changes
 
-**Where:** `src/lib/repository.ts:380-540` (`upsertEntry`, `deleteEntry`, `upsertBreakdown`, `deleteBreakdown`).
+**Where:** `src/features/metrics/entries.ts` and `src/features/metrics/breakdowns.ts` (`upsertEntry`, `deleteEntry`, `upsertBreakdown`, `deleteBreakdown`).
 
 **Evidence:** `monthly_entries` and `breakdown_entries` track `updated_by` and `updated_at` but never persist what the value was *before*. Admin users cannot undo a bad data entry; they have to remember what they overwrote. The login page advertises "Activity is logged for audit purposes" (`src/app/login/page.tsx:131`) but no log exists.
 
-**Fix shape:** add `entry_history` table (`id, entry_type, entry_id, kpi_id, year, month_or_label, prev_value, new_value, prev_notes, new_notes, changed_by, changed_at`). On any `upsert*` or `delete*` in `repository.ts`, write the before/after row. Add a `GET /api/entries/history?kpi_id=…&year=…` endpoint (admin-only) that renders a read-only `/admin/history` page. Bumping `src/lib/schema-version.json` to 4 will trigger a clean reset for first-time deploys.
+**Fix shape:** add `entry_history` table (`id, entry_type, entry_id, kpi_id, year, month_or_label, prev_value, new_value, prev_notes, new_notes, changed_by, changed_at`). On any metric `upsert*` or `delete*`, write the before/after row. Render a read-only `/admin/history` page for admins. Bumping `src/lib/schema-version.json` to 4 will trigger a clean reset for first-time deploys.
 
 **Verification:** editing an entry creates a history row visible at `/admin/history?kpi_id=…`; deleting it creates one with `new_value=NULL`; existing 49/49 smoke harness still passes.
 
@@ -163,7 +151,9 @@ Wire `npm test` into CI.
 
 **Fix shape:** in `buildKPIAnalytics`, when `currentValue === 0 && compareValue === 0` *and* both years have no entries for that month/quarter, set a new flag `analytics.monthlyComparison.isEmpty = true` and have `MetricCard` render a `Badge variant="warning"` saying "No data" instead of `±0%`.
 
-**Verification:** viewing `video-views` with `currentMonth=12` shows the warning badge and a tooltip explaining 2026 data only runs through June.
+**Verification:** the analytics unit tests retain missing-month behavior for
+monthly KPIs. The current strategic seed is annual-only, so category no-data
+behavior is verified with empty comparison years instead.
 
 ---
 
@@ -226,10 +216,10 @@ Wire `npm test` into CI.
 These came up while reading the code and the design audit but aren't blocking. They are listed so a future `/goal` knows they exist.
 
 - **Role-based viewing.** `Role` is in the DB but every authenticated user sees everything. Add `/admin/kpis` to require admin and hide it from viewers in `AppShell.tsx` (already done — `adminOnly` flag — but `NavItem` doesn't visually communicate that a section is admin-only beyond the label).
-- **CSRF/origin check.** POST/PATCH/DELETE only rely on `sameSite: "lax"` cookies. For an internal tool this is OK, but document it in `docs/security-notes.md` and add a defensive `Origin` allowlist check in `src/lib/session.ts` for production deploys.
-- **Rate limiting.** No rate limit on `/api/auth/login`. Add a token-bucket per IP for that endpoint and 429 with `Retry-After`.
+- **CSRF/origin check.** Completed in `src/lib/request-guard.ts` with same-origin checks, JSON content-type enforcement, and a double-submit CSRF token.
+- **Rate limiting.** Completed for `/api/auth/login` in `src/lib/login-throttle.ts` with per-IP and per-account lockouts.
 - **CSV/Excel upload.** Mirror the export with an import path on `/admin/data` so Kerry/Zach can paste a quarterly grid without typing into the per-month rows.
-- **KPI parent_id.** `parent_id` is in the schema and repository but never rendered. The two breakdown KPIs ("Number of funders by breakdown", "First-time/returning/lapsed donors") currently store their labels directly in `breakdown_entries`, which works. If we ever need child KPIs (e.g. a parent "Total Funders" with children by category), revisit.
+- **KPI parent_id.** `parent_id` is in the schema and catalog feature but never rendered. The two breakdown KPIs ("Number of funders by breakdown", "First-time/returning/lapsed donors") currently store their labels directly in `breakdown_entries`, which works. If we ever need child KPIs (e.g. a parent "Total Funders" with children by category), revisit.
 - **Annualization toggle for monthly metrics on the metric detail page.** Some execs want "annualized run-rate" (`monthly_current × 12`) for KPIs like "Video views." Cheap to compute in `analytics.ts`; just a UI toggle.
 - **Per-user "favorite" KPIs.** Persist in a small `user_kpi_favorites` table; show favorites first on `/dashboard/overview`. Improves the daily-driver experience.
 - **Schema migration testing.** Bumping `src/lib/schema-version.json` resets KPI tables on every first access. Test the migration path on a populated DB before any future bump.
@@ -243,7 +233,7 @@ Every `/goal` prompt below should treat the following as its completion gate, on
 
 1. `npm run design-system:guard` passes.
 2. `npm run design-system:test` passes (guard + `tsc --noEmit` + `next build`).
-3. With a dev server started by `AUTH_DISABLED=true node_modules/.bin/next dev -p 3290`, `AUTH_DISABLED=true PORT=3290 BASE=http://127.0.0.1:3290 bash ./scripts/smoke.sh` reports `56 passed, 0 failed` *or the new higher number if smoke coverage is added*.
+3. With a dev server started by `AUTH_DISABLED=true node_modules/.bin/next dev -p 3290`, `AUTH_DISABLED=true PORT=3290 BASE=http://127.0.0.1:3290 bash ./scripts/smoke.sh` reports `48 passed, 0 failed` or the new higher number if smoke coverage is added.
 4. The visual changes are screenshotted at desktop (1440px) and mobile (390px) into `output/playwright/` and reviewed against `DESIGN.md`.
 5. The relevant section(s) of `docs/design-audit.md` are updated or replaced.
 6. Any new env vars or config keys are added to `AGENTS.md` under "Setup" and "Gotchas."
@@ -256,14 +246,14 @@ Each prompt below is sized for one focused session. They are ordered. Tackle 7.1
 
 ### `/goal` 7.1 — Fix the bypass-admin FK bug and harden the smoke harness
 
-**Goal:** the smoke harness is green (49 passed, 0 failed) under both `AUTH_DISABLED=true` and `AUTH_DISABLED=false`; the bypass admin is a real `users.id`; the `useSearchParams` dead import is gone; `GET /api/categories` requires a session.
+**Goal:** the smoke harness is green (49 passed, 0 failed) under both `AUTH_DISABLED=true` and `AUTH_DISABLED=false`; the bypass admin is a real `users.id`; the `useSearchParams` dead import is gone; the catalog category read path is authenticated or removed.
 
 **Tasks:**
 
-1. `src/lib/auth.ts` — change `ensureSeedAdmin()` so that, in addition to the two named seed admins, it always ensures a deterministic `auth-disabled@local` admin row exists with a known bcrypt-hashed password and a stable id. The hash can be a fixed bcrypt of an obviously-not-real value; the point is that the row exists so FK constraints succeed.
-2. `src/lib/session.ts` — when `AUTH_DISABLED=true`, look up the `auth-disabled@local` row and return its real `users.id`. Drop the synthetic `{ id: 0 }`. Replace the `user.id === 0` check in `src/components/AppShell.tsx` with `user.email === "auth-disabled@local"` or an explicit `isBypass` flag.
+1. `src/features/auth/server.ts` — change `ensureSeedAdmin()` so that, in addition to the two named seed admins, it always ensures a deterministic `auth-disabled@local` admin row exists with a known bcrypt-hashed password and a stable id. The hash can be a fixed bcrypt of an obviously-not-real value; the point is that the row exists so FK constraints succeed.
+2. Completed: `src/lib/session.ts` looks up the `auth-disabled@local` row and returns its real `users.id`; `src/components/AppShell.tsx` checks `user.email === "auth-disabled@local"`.
 3. `src/app/dashboard/overview/DashboardOverviewClient.tsx` — delete the unused `useSearchParams` import and call.
-4. `src/app/api/categories/route.ts` — add `requireSession()` to the `GET` handler.
+4. Superseded by the later API-boundary refactor: `src/app/api/categories/route.ts` no longer exposes a `GET` handler.
 5. `package.json` + `README.md` — drop the `npm run smoke` wrapper; document the canonical invocation `AUTH_DISABLED=true PORT=3290 BASE=http://127.0.0.1:3290 bash ./scripts/smoke.sh`.
 6. Add a new smoke assertion in `scripts/smoke.sh` for the auth-bypass flow: `curl -sk -X POST …/api/entries` with no cookie should return 401 when `AUTH_DISABLED=false` and 201 when `AUTH_DISABLED=true` (or equivalent coverage).
 
@@ -271,13 +261,13 @@ Each prompt below is sized for one focused session. They are ordered. Tackle 7.1
 
 ### `/goal` 7.2 — Search/filter the KPI manager table and tighten `BreakdownChart`
 
-**Goal:** the KPI manager handles 52 KPIs without forcing a single 52-row scroll; `BreakdownChart` receives a bounded prop and the metric detail page no longer leaks extra breakdown rows.
+**Status:** complete. The KPI manager has local search/category filtering, the smoke harness asserts `/admin/kpis` renders the expected controls, and `BreakdownChart` renders a bounded, feature-built comparison model.
 
-**Tasks:**
+**Completed tasks:**
 
 1. `src/app/admin/kpis/KPIManagerClient.tsx` — add a search input (filters on `name` and `slug` substring) and a category chip row (using the existing `Chip` primitive) above the "Existing KPIs" table. Filter state is local; no backend change.
-2. `src/components/BreakdownChart.tsx` — change the prop signature to require `{ data: BreakdownEntryWithMeta[]; currentYear: number; compareYear: number; ... }` and have the component trust the caller for filtering.
-3. `src/app/dashboard/metric/[slug]/MetricDetailClient.tsx` — pre-filter `data.breakdowns` to the two selected years before passing into `BreakdownChart`. Hide the comparison `<tbody>` row for years with zero entries.
+2. `src/components/BreakdownChart.tsx` — render the feature-owned breakdown comparison model while trusting caller-filtered rows.
+3. `src/features/reporting/metric-detail.ts` / `category-page.ts` — pre-filter annual breakdown rows to the selected current/compare years before rendering.
 4. Add one smoke assertion: `/admin/kpis` renders `Add a new KPI` plus `Existing KPIs` strings (currently missing).
 
 **Verification:** smoke harness still 49/49; the KPI manager loads with 52 rows at desktop width and progressively reveals results as the user types; `BreakdownChart` receives ≤ 8 rows for any seeded KPI.
@@ -293,8 +283,8 @@ Each prompt below is sized for one focused session. They are ordered. Tackle 7.1
 3. `src/lib/analytics.ts` — add `monthlyComparison.isEmpty` and `ytdComparison.isEmpty` when both `currentValue === 0 && compareValue === 0` *and* both years lack any underlying entry.
 4. `src/components/MetricCard.tsx` — when `comparison.isEmpty`, render a `Badge variant="warning"` saying "No data" and skip the percent change.
 5. `src/lib/schema-version.json` + `src/lib/db.ts` — bump the schema version to 4 and create `entry_history` table (`id, entry_type, entry_id, kpi_id, year, month_or_label, prev_value, new_value, prev_notes, new_notes, changed_by, changed_at`).
-6. `src/lib/repository.ts` — wrap `upsertEntry`, `deleteEntry`, `upsertBreakdown`, `deleteBreakdown` to write history rows before/after.
-7. `src/app/api/entries/history/route.ts` (admin-only) — read endpoint.
+6. `src/features/metrics/entries.ts` and `src/features/metrics/breakdowns.ts` — wrap `upsertEntry`, `deleteEntry`, `upsertBreakdown`, `deleteBreakdown` to write history rows before/after.
+7. Superseded by the later API-boundary refactor: `/admin/history` now reads the audit feature directly; no audit-history read endpoint remains.
 8. `src/app/admin/history/page.tsx` — read-only history browser.
 
 **Verification:** `npm test` exits 0 with ≥ 90 % coverage on `analytics.ts`; `npm run build` passes; `npm run design-system:guard` passes; smoke harness still 49/49.
@@ -382,9 +372,9 @@ npm run design-system:test
 
 | Goal | Files most likely to change |
 | --- | --- |
-| 7.1 | `src/lib/auth.ts`, `src/lib/session.ts`, `src/components/AppShell.tsx`, `src/app/api/categories/route.ts`, `src/app/dashboard/overview/DashboardOverviewClient.tsx`, `package.json`, `README.md`, `scripts/smoke.sh` |
+| 7.1 | `src/features/auth/server.ts`, `src/lib/session.ts`, `src/components/AppShell.tsx`, `src/app/api/categories/route.ts`, `src/app/dashboard/overview/DashboardOverviewClient.tsx`, `package.json`, `README.md`, `scripts/smoke.sh` |
 | 7.2 | `src/app/admin/kpis/KPIManagerClient.tsx`, `src/components/BreakdownChart.tsx`, `src/app/dashboard/metric/[slug]/MetricDetailClient.tsx`, `scripts/smoke.sh` |
-| 7.3 | `package.json`, `vitest.config.ts` (new), `src/lib/analytics.ts`, `src/components/MetricCard.tsx`, `src/lib/db.ts`, `src/lib/repository.ts`, `src/app/api/entries/history/route.ts` (new), `src/app/admin/history/page.tsx` (new), `scripts/seed.ts`, `scripts/smoke.sh` |
+| 7.3 | `package.json`, `vitest.config.ts` (new), `src/lib/analytics.ts`, `src/components/MetricCard.tsx`, `src/lib/db.ts`, `src/features/metrics/server.ts`, `src/features/audit/server.ts`, `src/app/admin/history/page.tsx` (new), `scripts/seed.ts`, `scripts/smoke.sh` |
 | 7.4 | `src/app/dashboard/trends/TrendExplorerClient.tsx`, `scripts/smoke.sh` |
 | 7.5 | `src/components/ui/ExportCSVButton.tsx` (new), `src/components/ui/PrintButton.tsx` (new), `src/app/print/...` (new), `src/app/dashboard/metric/[slug]/MetricDetailClient.tsx`, `src/app/dashboard/category/[slug]/CategoryPageClient.tsx`, `src/components/ExportPDFButton.tsx` |
 | 7.6 | `src/app/dashboard/overview/loading.tsx`, `src/app/dashboard/category/[slug]/loading.tsx`, `src/app/dashboard/metric/[slug]/loading.tsx`, `src/app/dashboard/trends/loading.tsx`, `src/app/admin/{data,kpis,users}/loading.tsx`, `src/app/login/loading.tsx`, `public/favicon.ico` (new), `src/app/layout.tsx`, `README.md`, `AGENTS.md` |

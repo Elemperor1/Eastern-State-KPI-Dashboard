@@ -2,47 +2,33 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
-import {
-  Bar,
-  BarChart,
-  CartesianGrid,
-  Legend,
-  ResponsiveContainer,
-  Tooltip,
-  XAxis,
-  YAxis,
-} from "recharts";
 import { LegacyExportPDFButton } from "@/components/LegacyExportPDFButton";
-import { Crosshair } from "lucide-react";
 import { DashboardControls, type CompareState } from "@/components/DashboardControls";
-import { TrendChart } from "@/components/TrendChart";
-import { BreakdownChart } from "@/components/BreakdownChart";
-import { DonorConversionCard } from "@/components/DonorConversionCard";
-import { Breadcrumb, Card, Chip, ExportCSVButton, ExportPNGButton, PageHeader, PrintButton, PrintReportFooter, PrintReportHeader, Progress, Table } from "@/components/ui";
+import { MetricBreakdownPanel } from "@/components/MetricBreakdownPanel";
+import { MetricComparisonStats } from "@/components/MetricComparisonStats";
+import { MetricGoalPanel, type GoalDisplayMode } from "@/components/MetricGoalPanel";
+import { MetricTrendCard } from "@/components/MetricTrendCard";
+import { MetricValuesTable } from "@/components/MetricValuesTable";
+import { MetricYtdBarCard } from "@/components/MetricYtdBarCard";
+import { Breadcrumb, ExportCSVButton, ExportPNGButton, PageHeader, PrintButton, PrintReportFooter, PrintReportHeader } from "@/components/ui";
 import { SampleDataBadge } from "@/components/SampleDataBadge";
-import {
-  buildKPIAnalytics,
-  buildTrendPoints,
-  formatDelta,
-  formatValue,
-  isFavorable,
-  MONTH_FULL,
-  MONTH_LABELS,
-} from "@/lib/analytics";
-import type { DashboardData } from "@/lib/dashboard-data";
-
-export type GoalDisplayMode = "compare" | "goal" | "both";
+import { buildMetricDetailModel } from "@/features/reporting/metric-detail";
+import { buildMetricCsvExport } from "@/features/reporting/csv";
+import { MONTH_FULL } from "@/features/metrics";
+import type { DashboardData } from "@/features/reporting/types";
 
 export function MetricDetailClient({
   data,
   kpiSlug,
   initialState,
   initialGoalDisplay,
+  legacyPdfEnabled,
 }: {
   data: DashboardData;
   kpiSlug: string;
   initialState: CompareState;
   initialGoalDisplay?: GoalDisplayMode;
+  legacyPdfEnabled: boolean;
 }) {
   const router = useRouter();
   const [state, setState] = useState<CompareState>(initialState);
@@ -52,7 +38,7 @@ export function MetricDetailClient({
 
   useEffect(() => {
     setState(initialState);
-  }, [initialState.currentYear, initialState.compareYear, initialState.currentMonth]);
+  }, [initialState]);
 
   // Sync goalDisplay from URL when the server component re-renders.
   useEffect(() => {
@@ -62,8 +48,10 @@ export function MetricDetailClient({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [initialGoalDisplay]);
 
-  const kpi = data.kpis.find((k) => k.slug === kpiSlug);
-  const category = data.categories.find((c) => c.id === kpi?.category_id);
+  const model = useMemo(
+    () => buildMetricDetailModel(data, kpiSlug, state),
+    [data, kpiSlug, state],
+  );
 
   function updateState(next: Partial<CompareState>) {
     const merged = { ...state, ...next };
@@ -86,115 +74,36 @@ export function MetricDetailClient({
     router.replace(`/dashboard/metric/${kpiSlug}?${search.toString()}`, { scroll: false });
   }
 
-  const kpiEntries = useMemo(
-    () => (kpi ? data.entries.filter((e) => e.kpi_id === kpi.id) : []),
-    [data.entries, kpi],
-  );
+  if (!model.kpi || !model.category || !model.analytics) return null;
 
-  if (!kpi || !category) return null;
-
-  const analytics = buildKPIAnalytics({
+  const {
     kpi,
-    entries: kpiEntries,
-    currentYear: state.currentYear,
-    compareYear: state.compareYear,
-    currentMonth: state.currentMonth,
-  });
-  const comp = analytics.monthlyComparison;
+    category,
+    analytics,
+    isAnnual,
+    isBreakdown,
+    trendYears,
+    trendPoints,
+    ytdBar,
+    favorableMonthly,
+    favorableYtd,
+    goal,
+    goalIsAnnual,
+    tableRows,
+    directionLabel,
+    breakdown,
+  } = model;
   const ytd = analytics.ytdComparison;
-  const isAnnual = kpi.reporting_frequency !== "monthly";
-  const isBreakdown = kpi.unit_type === "breakdown";
-
-  const trendYears = useMemo(
-    () => Array.from(new Set(kpiEntries.filter((e) => e.month > 0).map((e) => e.year))).sort(),
-    [kpiEntries],
-  );
-  const trendPoints = useMemo(
-    () => buildTrendPoints(kpiEntries, trendYears),
-    [kpiEntries, trendYears],
-  );
-
-  const ytdBar = [
-    {
-      label: isAnnual ? "Full year" : `Through ${MONTH_FULL[state.currentMonth - 1]}`,
-      [ytd.compareYear]: ytd.compareValue,
-      [ytd.currentYear]: ytd.currentValue,
-    },
-  ];
-
-  const favorableMonthly = isFavorable(kpi.direction, comp.delta);
-
-  // Find the goal for this KPI in the selected year.
-  const goal = data.goals.find(
-    (g) => g.kpi_id === kpi.id && g.target_year === state.currentYear,
-  );
   const hasGoal = goal != null;
 
   // Whether to show the comparison stats and/or goal progress sections.
   // When a goal exists, the user can toggle between three display modes.
   // Without a goal, always show the comparison stats.
   const showCompare = goalDisplay !== "goal" || !hasGoal;
-  const showGoalDetails = hasGoal && goalDisplay !== "compare";
-  // Precompute chip active states to avoid TS narrowing inside conditional JSX.
-  const modeIsCompare = goalDisplay === "compare";
-  const modeIsGoal = goalDisplay === "goal";
-  const modeIsBoth = goalDisplay === "both";
 
   const printId = `metric-${kpiSlug}-print`;
 
-  type TableRow = {
-    period: string;
-    value: number | undefined;
-    notes: string | null;
-    compare?: number | undefined;
-  };
-  const tableRows: TableRow[] = isAnnual
-    ? analytics.years.map((y) => ({
-        period: String(y.year),
-        value: y.fullYearValue,
-        notes: kpiEntries.find((e) => e.year === y.year && e.month === 0)?.notes ?? null,
-      }))
-    : MONTH_LABELS.map((m, i) => {
-        const month = i + 1;
-        const cur = kpiEntries.find((e) => e.year === state.currentYear && e.month === month);
-        const cmp = kpiEntries.find((e) => e.year === state.compareYear && e.month === month);
-        return {
-          period: `${m} ${state.currentYear}`,
-          value: cur?.value,
-          notes: cur?.notes ?? null,
-          compare: cmp?.value,
-        };
-      });
-
-  const directionLabel =
-    kpi.direction === "higher"
-      ? "Higher is better"
-      : kpi.direction === "lower"
-        ? "Lower is better"
-        : "Neutral direction";
-
-  // CSV row construction: same data the on-screen table shows. For monthly
-  // KPIs we include the compare-year column so the export matches what the
-  // user sees; for annual KPIs we emit one row per available year. We
-  // prepend a couple of header rows with KPI context (name, unit, years)
-  // to keep the file self-describing when shared outside the dashboard.
-  type CsvRow = Record<string, string | number | null>;
-  const csvColumns = isAnnual
-    ? ["Year", "Value", "Notes"]
-    : ["Period", `Value (${state.currentYear})`, `Value (${state.compareYear})`, "Notes"];
-  const csvRows: CsvRow[] = isAnnual
-    ? tableRows.map((r) => ({
-        Year: r.period,
-        Value: r.value ?? "",
-        Notes: r.notes ?? "",
-      }))
-    : tableRows.map((r) => ({
-        Period: r.period,
-        [`Value (${state.currentYear})`]: r.value ?? "",
-        [`Value (${state.compareYear})`]: r.compare ?? "",
-        Notes: r.notes ?? "",
-      }));
-  const csvFilename = `eastern-state-${kpiSlug}-${state.currentYear}-vs-${state.compareYear}.csv`;
+  const csvExport = buildMetricCsvExport({ kpi, rows: tableRows, period: state });
 
   return (
     <div className="page-content page-enter">
@@ -213,6 +122,7 @@ export function MetricDetailClient({
         <Breadcrumb href={`/dashboard/category/${category.slug}`} label={category.name} />
 
         <PageHeader
+          className="no-print"
           eyebrow={category.name}
           title={kpi.name}
           subtitle={
@@ -224,7 +134,7 @@ export function MetricDetailClient({
           actions={
             <>
               <SampleDataBadge sample={data.sampleData} />
-              <ExportCSVButton rows={csvRows} columns={csvColumns} filename={csvFilename} />
+              <ExportCSVButton rows={csvExport.rows} columns={csvExport.columns} filename={csvExport.filename} />
               <PrintButton />
               <ExportPNGButton
                 targetId={printId}
@@ -233,6 +143,7 @@ export function MetricDetailClient({
               <LegacyExportPDFButton
                 targetId={printId}
                 fileName={`eastern-state-${kpiSlug}.pdf`}
+                enabled={legacyPdfEnabled}
               />
             </>
           }
@@ -246,349 +157,73 @@ export function MetricDetailClient({
         />
 
         {!isBreakdown && showCompare ? (
-          <section className="mb-10">
-            <Card className="overflow-hidden">
-              <div className="grid grid-cols-2 divide-x divide-y divide-ink-100 lg:grid-cols-4 lg:divide-y-0">
-              <StatItem
-                label={isAnnual ? `${state.currentYear} value` : `${MONTH_FULL[state.currentMonth - 1]} ${state.currentYear}`}
-                value={formatValue(comp.currentValue, kpi.unit_type, { compact: kpi.unit_type === "currency" })}
-                unit={kpi.unit}
-                tone={favorableMonthly ? "good" : comp.delta < 0 ? "bad" : "neutral"}
-              />
-              <StatItem
-                label={`YoY change vs ${state.compareYear}`}
-                value={kpi.unit_type === "percent" && comp.ptsChange !== null
-                  ? `${comp.ptsChange > 0 ? "+" : ""}${comp.ptsChange.toFixed(1)} pts`
-                  : comp.pctChange !== null
-                    ? `${comp.pctChange > 0 ? "+" : ""}${comp.pctChange.toFixed(1)}%`
-                    : "—"}
-                sub={formatDelta(comp.delta, kpi.unit_type)}
-                tone={favorableMonthly ? "good" : comp.delta < 0 ? "bad" : "neutral"}
-              />
-              <StatItem
-                label={isAnnual ? `${state.currentYear} (full year)` : `YTD through ${MONTH_FULL[state.currentMonth - 1]}`}
-                value={formatValue(ytd.currentValue, kpi.unit_type, { compact: kpi.unit_type === "currency" })}
-                unit={kpi.unit}
-              />
-              <StatItem
-                label={isAnnual ? `vs ${state.compareYear}` : `YTD vs ${state.compareYear}`}
-                value={kpi.unit_type === "percent" && ytd.ptsChange !== null
-                  ? `${ytd.ptsChange > 0 ? "+" : ""}${ytd.ptsChange.toFixed(1)} pts`
-                  : ytd.pctChange !== null
-                    ? `${ytd.pctChange > 0 ? "+" : ""}${ytd.pctChange.toFixed(1)}%`
-                    : "—"}
-                sub={formatDelta(ytd.delta, kpi.unit_type)}
-                tone={isFavorable(kpi.direction, ytd.delta) ? "good" : ytd.delta < 0 ? "bad" : "neutral"}
-              />
-              </div>
-            </Card>
-          </section>
+          <MetricComparisonStats
+            analytics={analytics}
+            favorableMonthly={favorableMonthly}
+            favorableYtd={favorableYtd}
+          />
         ) : null}
 
-        {hasGoal ? (
-          <section className="mb-10">
-            <Card className="overflow-hidden p-5 lg:p-6">
-              <div className="mb-3 flex flex-wrap items-center justify-between gap-3">
-                <p className="text-[10px] font-semibold uppercase tracking-[0.08em] text-ink-500">
-                  <Crosshair className="mr-1 inline size-3" aria-hidden /> Goal
-                </p>
-                {/* Segmented display-mode toggle — only shown when a goal exists. */}
-                <div className="flex items-center gap-1.5 no-print" role="group" aria-label="Display mode">
-                  <Chip
-                    type="button"
-                    active={modeIsCompare}
-                    onClick={() => updateGoalDisplay("compare")}
-                    className="px-2.5 py-1 text-xs"
-                  >
-                    Comparison
-                  </Chip>
-                  <Chip
-                    type="button"
-                    active={modeIsGoal}
-                    onClick={() => updateGoalDisplay("goal")}
-                    className="px-2.5 py-1 text-xs"
-                  >
-                    Goal progress
-                  </Chip>
-                  <Chip
-                    type="button"
-                    active={modeIsBoth}
-                    onClick={() => updateGoalDisplay("both")}
-                    className="px-2.5 py-1 text-xs"
-                  >
-                    Both
-                  </Chip>
-                </div>
-              </div>
-              <div className="flex flex-wrap items-end justify-between gap-4">
-                <div>
-                  <p className="text-sm text-ink-600">
-                    Goal: {goal.target_value > 0 ? "+" : ""}{goal.target_value}{goal.goal_type === "pct" ? "%" : ""}{" "}
-                    →{" "}
-                    <span className="font-semibold text-ink-900">
-                      {goal.full_year_target !== null
-                        ? goal.full_year_target?.toLocaleString(undefined, {
-                            maximumFractionDigits: 1,
-                          })
-                        : "—"}
-                    </span>
-                  </p>
-                </div>
-              </div>
-
-              {goal.full_year_target === null ? (
-                <p className="mt-4 text-sm text-ink-500">
-                  No prior-year ({goal.target_year - 1}) data available to compute a baseline for this goal.
-                  Enter {goal.target_year - 1} data or choose a different target year for the target to take effect.
-                </p>
-              ) : showGoalDetails ? (
-                goal.reporting_frequency !== "monthly" ? (
-                  <div className="mt-4">
-                    <div className="flex items-center justify-between gap-3">
-                      <span className="text-sm text-ink-600">Completion</span>
-                      <div className="flex items-center gap-3">
-                        <div className="min-w-[120px]">
-                          <Progress
-                            value={Math.round(goal.full_year_progress_pct ?? 0)}
-                            color={goal.full_year_progress_pct !== null && goal.full_year_progress_pct >= 100 ? "var(--color-success-text)" : undefined}
-                          />
-                        </div>
-                        <span className="text-lg font-semibold tabular text-ink-900">
-                          {goal.full_year_progress_pct !== null ? `${Math.round(goal.full_year_progress_pct)}%` : "—"}
-                        </span>
-                      </div>
-                    </div>
-                    <p className="mt-1 text-xs text-ink-500">
-                      {goal.full_year_value != null
-                        ? `${goal.full_year_value.toLocaleString(undefined, { maximumFractionDigits: 1 })} of ${goal.full_year_target?.toLocaleString(undefined, { maximumFractionDigits: 1 })}`
-                        : "No data entered yet"}
-                    </p>
-                  </div>
-                ) : (
-                  <div className="mt-4 space-y-4">
-                    {/* YTD pacing */}
-                    <div>
-                      <div className="flex items-center justify-between gap-3">
-                        <span className="text-sm text-ink-600">
-                          YTD pace through {MONTH_FULL[state.currentMonth - 1]}
-                        </span>
-                        <div className="flex items-center gap-3">
-                          <div className="min-w-[120px]">
-                            <Progress
-                              value={Math.round(goal.ytd_progress_pct ?? 0)}
-                              color={goal.ytd_progress_pct !== null && goal.ytd_progress_pct >= 100 ? "var(--color-success-text)" : undefined}
-                            />
-                          </div>
-                          <span className="text-lg font-semibold tabular text-ink-900">
-                            {goal.ytd_progress_pct !== null ? `${Math.round(goal.ytd_progress_pct)}%` : "—"}
-                          </span>
-                        </div>
-                      </div>
-                      <p className="mt-1 text-xs text-ink-500">
-                        {goal.ytd_value != null
-                          ? `${goal.ytd_value.toLocaleString(undefined, { maximumFractionDigits: 1 })} actual vs ${goal.ytd_target?.toLocaleString(undefined, { maximumFractionDigits: 1 })} target through ${MONTH_FULL[state.currentMonth - 1]}`
-                          : `No data through ${MONTH_FULL[state.currentMonth - 1]} yet`}
-                      </p>
-                    </div>
-                    {/* Full-year completion */}
-                    <div>
-                      <div className="flex items-center justify-between gap-3">
-                        <span className="text-sm text-ink-600">Full-year completion</span>
-                        <div className="flex items-center gap-3">
-                          <div className="min-w-[120px]">
-                            <Progress
-                              value={Math.round(goal.full_year_progress_pct ?? 0)}
-                              color={goal.full_year_progress_pct !== null && goal.full_year_progress_pct >= 100 ? "var(--color-success-text)" : undefined}
-                            />
-                          </div>
-                          <span className="text-lg font-semibold tabular text-ink-900">
-                            {goal.full_year_progress_pct !== null ? `${Math.round(goal.full_year_progress_pct)}%` : "—"}
-                          </span>
-                        </div>
-                      </div>
-                      <p className="mt-1 text-xs text-ink-500">
-                        {goal.full_year_value != null
-                          ? `${goal.full_year_value.toLocaleString(undefined, { maximumFractionDigits: 1 })} actual vs ${goal.full_year_target?.toLocaleString(undefined, { maximumFractionDigits: 1 })} annual target`
-                          : "No data entered yet"}
-                      </p>
-                    </div>
-                  </div>
-                )
-              ) : (
-                <p className="mt-4 text-sm text-ink-500">
-                  Comparison mode is hiding pacing details. Switch to Goal progress or Both to view the goal charts and completion metrics.
-                </p>
-              )}
-
-              {goal.notes ? (
-                <p className="mt-2 text-xs text-ink-500">{goal.notes}</p>
-              ) : null}
-            </Card>
-          </section>
+        {goal ? (
+          <MetricGoalPanel
+            goal={goal}
+            goalIsAnnual={goalIsAnnual}
+            currentMonth={state.currentMonth}
+            goalDisplay={goalDisplay}
+            onGoalDisplayChange={updateGoalDisplay}
+          />
         ) : null}
 
         {isBreakdown ? (
-          <Card className="p-5 lg:p-6 mb-10">
-            {kpiEntries.length === 0 && data.breakdowns.some(
-              (b) => b.kpi_id === kpi.id && b.month > 0
-            ) ? (
-              <DonorConversionCard
-                kpi={kpi}
-                data={data.breakdowns.filter((b) => b.kpi_id === kpi.id)}
-                currentYear={state.currentYear}
-                compareYear={state.compareYear}
-                currentMonth={state.currentMonth}
-              />
-            ) : (
-              <BreakdownChart
-                kpi={kpi}
-                data={data.breakdowns.filter(
-                  (b) =>
-                    b.kpi_id === kpi.id &&
-                    b.month === 0 &&
-                    (b.year === state.currentYear || b.year === state.compareYear),
-                )}
-                currentYear={state.currentYear}
-                compareYear={state.compareYear}
-              />
-            )}
-          </Card>
+          <MetricBreakdownPanel
+            kpi={kpi}
+            breakdown={breakdown}
+            currentYear={state.currentYear}
+            compareYear={state.compareYear}
+            currentMonth={state.currentMonth}
+          />
         ) : isAnnual ? (
-          <Card className="p-5 lg:p-6 mb-10">
-            <div className="mb-5">
-              <p className="section-eyebrow">Annual</p>
-              <h2 className="section-title">Year-over-year</h2>
-            </div>
-            <div className="h-64">
-              <ResponsiveContainer width="100%" height="100%">
-                <BarChart data={ytdBar} margin={{ top: 8, right: 8, left: 0, bottom: 8 }}>
-                  <CartesianGrid strokeDasharray="3 3" stroke="var(--chart-grid)" vertical={false} />
-                  <XAxis dataKey="label" tick={{ fontSize: 12, fill: "var(--chart-axis)" }} />
-                  <YAxis
-                    tickFormatter={(v) => formatValue(Number(v), kpi.unit_type, { compact: true })}
-                    tick={{ fontSize: 11, fill: "var(--chart-axis)" }}
-                    width={70}
-                  />
-                  <Tooltip formatter={(v: number) => formatValue(Number(v), kpi.unit_type)} cursor={{ fill: "var(--chart-cursor)" }} />
-                  <Legend wrapperStyle={{ fontSize: 12 }} iconType="circle" />
-                  <Bar dataKey={String(ytd.compareYear)} fill="var(--chart-secondary)" radius={[6, 6, 0, 0]} maxBarSize={64} />
-                  <Bar dataKey={String(ytd.currentYear)} fill="var(--chart-primary)" radius={[6, 6, 0, 0]} maxBarSize={64} />
-                </BarChart>
-              </ResponsiveContainer>
-            </div>
-          </Card>
+          <MetricYtdBarCard
+            eyebrow="Annual"
+            title="Year-over-year"
+            data={ytdBar}
+            currentYear={ytd.currentYear}
+            compareYear={ytd.compareYear}
+            unitType={kpi.unit_type}
+            maxBarSize={64}
+          />
         ) : (
           <>
-            <Card className="p-5 lg:p-6 mb-10">
-              <div className="mb-5">
-                <p className="section-eyebrow">Trend</p>
-                <h2 className="section-title">Monthly trend</h2>
-              </div>
-              <TrendChart
-                data={trendPoints}
-                years={trendYears}
-                unitType={kpi.unit_type}
-                unit={kpi.unit}
-              />
-            </Card>
+            <MetricTrendCard
+              data={trendPoints}
+              years={trendYears}
+              unitType={kpi.unit_type}
+              unit={kpi.unit}
+            />
 
-            <Card className="p-5 lg:p-6 mb-10">
-              <div className="mb-5">
-                <p className="section-eyebrow">Year-to-date</p>
-                <h2 className="section-title">
-                  Through {MONTH_FULL[state.currentMonth - 1]} · {state.currentYear} vs {state.compareYear}
-                </h2>
-              </div>
-              <div className="h-64">
-                <ResponsiveContainer width="100%" height="100%">
-                  <BarChart data={ytdBar} margin={{ top: 8, right: 8, left: 0, bottom: 8 }}>
-                    <CartesianGrid strokeDasharray="3 3" stroke="var(--chart-grid)" vertical={false} />
-                    <XAxis dataKey="label" tick={{ fontSize: 12, fill: "var(--chart-axis)" }} />
-                    <YAxis
-                      tickFormatter={(v) => formatValue(Number(v), kpi.unit_type, { compact: true })}
-                      tick={{ fontSize: 11, fill: "var(--chart-axis)" }}
-                      width={70}
-                    />
-                      <Tooltip formatter={(v: number) => formatValue(Number(v), kpi.unit_type)} cursor={{ fill: "var(--chart-cursor)" }} />
-                    <Legend wrapperStyle={{ fontSize: 12 }} iconType="circle" />
-                    <Bar dataKey={String(ytd.compareYear)} fill="var(--chart-secondary)" radius={[6, 6, 0, 0]} maxBarSize={120} />
-                    <Bar dataKey={String(ytd.currentYear)} fill="var(--chart-primary)" radius={[6, 6, 0, 0]} maxBarSize={120} />
-                  </BarChart>
-                </ResponsiveContainer>
-              </div>
-            </Card>
+            <MetricYtdBarCard
+              eyebrow="Year-to-date"
+              title={`Through ${MONTH_FULL[state.currentMonth - 1]} · ${state.currentYear} vs ${state.compareYear}`}
+              data={ytdBar}
+              currentYear={ytd.currentYear}
+              compareYear={ytd.compareYear}
+              unitType={kpi.unit_type}
+              maxBarSize={120}
+            />
           </>
         )}
 
         {!isBreakdown ? (
-          <Card className="p-5 lg:p-6 mb-10">
-            <div className="section-head">
-              <p className="section-eyebrow">Values</p>
-              <h2 className="section-title">
-                {isAnnual ? "Annual values" : `Monthly values · ${state.currentYear}`}
-              </h2>
-            </div>
-            <Table minWidth="520px">
-              <thead>
-                <tr>
-                  <th className="text-left" scope="col">Period</th>
-                  <th className="text-right" scope="col">Value</th>
-                  {!isAnnual ? <th className="text-right" scope="col">{state.compareYear}</th> : null}
-                  <th className="text-left" scope="col">Notes</th>
-                </tr>
-              </thead>
-              <tbody>
-                {tableRows.map((r, idx) => (
-                  <tr key={idx} className="transition-colors hover:bg-ink-50/70">
-                    <td className="font-medium text-ink-900">{r.period}</td>
-                    <td className="text-right tabular text-ink-900 font-medium">
-                      {r.value === undefined || r.value === null ? "—" : formatValue(Number(r.value), kpi.unit_type)}
-                    </td>
-                    {!isAnnual ? (
-                      <td className="text-right tabular text-ink-500">
-                        {r.compare === undefined || r.compare === null ? "—" : formatValue(Number(r.compare), kpi.unit_type)}
-                      </td>
-                    ) : null}
-                    <td className="text-ink-500 text-xs">{r.notes ?? "—"}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </Table>
-          </Card>
+          <MetricValuesTable
+            rows={tableRows}
+            unitType={kpi.unit_type}
+            currentYear={state.currentYear}
+            compareYear={state.compareYear}
+            isAnnual={isAnnual}
+          />
         ) : null}
         <PrintReportFooter />
       </div>
-    </div>
-  );
-}
-
-function StatItem({
-  label,
-  value,
-  unit,
-  sub,
-  tone = "neutral",
-}: {
-  label: string;
-  value: string;
-  unit?: string;
-  sub?: string;
-  tone?: "good" | "bad" | "neutral";
-}) {
-  const toneClass =
-    tone === "good"
-      ? "text-[var(--color-success-text)]"
-      : tone === "bad"
-        ? "text-[var(--color-danger-text)]"
-        : "text-ink-900";
-  return (
-    <div className="min-w-0 p-5">
-      <p className="mb-2 text-[10px] font-semibold uppercase tracking-[0.08em] text-ink-500">{label}</p>
-      <div className="flex items-baseline gap-1.5">
-        <span className={`text-[28px] font-medium leading-none tracking-[-0.02em] tabular ${toneClass}`}>{value}</span>
-        {unit ? <span className="text-sm text-ink-500">{unit}</span> : null}
-      </div>
-      {sub ? <p className={`mt-2 text-sm tabular font-medium ${toneClass}`}>{sub}</p> : null}
     </div>
   );
 }

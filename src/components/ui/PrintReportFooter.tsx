@@ -28,7 +28,11 @@ export function PrintReportFooter({
   });
 
   return (
-    <footer className={cn("export-only print-report-footer", className)}>
+    <footer
+      className={cn("export-only print-report-footer", className)}
+      data-pdf-keep-together
+      data-raster-export-text
+    >
       <div className="print-report-footer-rule" />
       <div className="print-report-footer-row">
         <span className="print-report-footer-notice">{notice}</span>

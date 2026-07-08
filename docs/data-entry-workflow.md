@@ -33,6 +33,8 @@ The page presents three filter controls:
 
 The UI then adapts based on the KPI's `unit_type` and `reporting_frequency`:
 
+Architecture note: the `/admin/data` server page performs authentication/role redirects and renders the feature-built result from `loadAdminDataPageData()`. `AdminDataClient` owns browser state, confirmations, and guarded mutation calls. Deterministic KPI selection, period labels, draft setup, saved-row identity, and breakdown month-selection rules live in `src/features/metrics/admin-data-entry.ts`, while `src/components/AdminDataFilters.tsx`, `src/components/AdminAnnualEntryEditor.tsx`, `src/components/AdminMonthlyEntryEditor.tsx`, and `src/components/AdminBreakdownEntryEditor.tsx` own the filter and editor rendering. The metrics feature is responsible for annual `month = 0` drafts, monthly `1–12` drafts, zero-valued saved entries, and keeping monthly breakdown editing away from the annual slot.
+
 ### Monthly KPIs (`reporting_frequency = "monthly"`)
 
 Shows 12 rows (Jan–Dec). Each row has:
@@ -62,20 +64,23 @@ Shows a variable-row table where each row is a labeled component (e.g. "Foundati
 
 ### Saving a value
 
-Clicking **Save** on any field sends a `POST /api/entries` (or `POST /api/breakdowns`) request with `{ kpi_id, year, month, value, notes }`. The backend uses an **upsert** (INSERT ... ON CONFLICT DO UPDATE) keyed on the natural unique key `(kpi_id, year, month)`. This means:
+Clicking **Save** on any field sends a `POST /api/entries` (or `POST /api/breakdowns`) request. Monthly/annual entries use an **upsert** keyed on `(kpi_id, year, month)`. New breakdown rows use `(kpi_id, year, month, label)`; once saved, the browser also sends the durable breakdown row `id` so changing its label updates that same row instead of creating a duplicate. This means:
 
 - **First save** creates the entry.
 - **Subsequent saves** overwrite the existing value and notes in place. There is no separate "edit" or "correction" mode — the user just types the new value and clicks Save again.
+- **Breakdown label edits** preserve the original row id, sort order, and audit lineage. A stale id returns 404; a label that would duplicate another row in the same KPI period returns 409 without changing either row.
 - The `updated_by` and `updated_at` columns on `monthly_entries` / `breakdown_entries` are refreshed on every save.
+- Successful entry writes return `{ entry }`; successful breakdown writes return `{ breakdown }`. The browser validates the matching response shape through the metrics feature before replacing its local draft, so malformed success payloads produce an error banner rather than a partial or crashed editor state.
 
 ### Clearing a value
 
-Clicking the trash icon opens a confirmation dialog ("Clear [Month] [Year]?"). Confirming sends a `DELETE /api/entries` with `{ kpi_id, year, month }`. The row is removed from the database entirely. A cleared month shows an empty input on the data-entry page and renders as "—" on the dashboard.
+Clicking the trash icon opens a confirmation dialog ("Clear [Month] [Year]?"). Each saved draft retains its `monthly_entries.id`; confirming sends `DELETE /api/entries` with `{ id }`. The row is removed from the database entirely. A cleared month shows an empty input on the data-entry page and renders as "—" on the dashboard. This identity-based contract also preserves clearing a legitimate zero-valued month.
 
 ### Validation
 
 - Empty or non-numeric values are rejected client-side (Save button is disabled).
 - The API validates with Zod: `value` must be a finite number, `year` in 1900–2100, `month` in 0–12.
+- The metrics feature verifies the referenced KPI before writing. Scalar entries cannot target a breakdown KPI, breakdown rows cannot target a scalar KPI, annual KPIs accept only month `0`, monthly KPIs accept only months `1–12`, and breakdown labels cannot be blank.
 - CSRF guard (`assertMutationRequest`) enforces same-origin, `application/json` content-type, and a double-submit `X-CSRF-Token` header on all POST/DELETE.
 
 ### No bulk import
@@ -111,13 +116,13 @@ Each audit row captures:
 
 ### Immutability
 
-The audit trail is **append-only**. No API endpoint exposes an UPDATE or DELETE on `entry_history`. The only state-changing endpoints that touch `entry_history` do so by INSERT (via `upsertEntry`, `deleteEntry`, `upsertBreakdown`, `deleteBreakdown`).
+The audit trail is **append-only**. No API endpoint exposes an UPDATE or DELETE on `entry_history`. The only state-changing endpoints that touch `entry_history` do so by INSERT via the metrics feature (`upsertEntry`, `deleteEntry`, `upsertBreakdown`, `deleteBreakdown`).
 
 The KPI/category/user name columns are **immutable snapshots** frozen at the moment of the edit. If a KPI is later renamed, the audit row still shows the name it had when the edit was made. If the KPI or category is deleted, the audit row survives with its snapshot intact and a "Metadata deleted" badge in the UI.
 
 ### Transactional integrity
 
-The upsert + read-back + history insert runs inside a single SQLite transaction. If any step fails, the entire operation rolls back — no torn audit rows. The read-back uses the natural key `(kpi_id, year, month)`, not `lastInsertRowid`, to avoid a known SQLite pitfall where ON CONFLICT updates produce a stale row id.
+The write + read-back + history insert runs inside a single SQLite transaction. If any step fails, the entire operation rolls back — no torn audit rows. Monthly/annual entries and new breakdown rows read back by natural key rather than `lastInsertRowid`, avoiding a known SQLite stale-row pitfall. Saved breakdown edits read back by their durable row id after verifying the row still belongs to the requested KPI/year/month.
 
 ### Browsing the audit trail
 
@@ -125,11 +130,11 @@ The `/admin/history` page (admin-only, sidebar → Manage → History) renders t
 - Filter by category, KPI, or year (URL-synced, deep-linkable)
 - Columns: When, KPI (with category chip + renamed/deleted badges), Period, Change (prev → new with Created/Updated/Deleted badge), By (actor email)
 - Sorted newest-first, capped at 200 rows (max 1000)
-- The API endpoint is `GET /api/entries/history` (admin-only)
+- The page reads audit rows directly through `src/features/audit/server.ts`; no audit-history read API is exposed.
 
 ### Deletion guards
 
-KPIs and categories **cannot be deleted** while live `monthly_entries` or `breakdown_entries` still reference them. `deleteKPI` / `deleteCategory` throw `DependentEntriesError` (HTTP 409) when dependents exist. The admin must delete the dependent entries first — each entry deletion records its own audit row — so no metadata deletion can hide a previously recorded change.
+KPIs and categories **cannot be deleted** while live `monthly_entries` or `breakdown_entries` still reference them. The catalog feature's `deleteKPI` / `deleteCategory` operations throw `DependentEntriesError` (HTTP 409) when dependents exist. The admin must delete the dependent entries first — each entry deletion records its own audit row — so no metadata deletion can hide a previously recorded change.
 
 ---
 
@@ -149,12 +154,16 @@ The dashboard does **not** generate annual summaries by rolling up monthly value
 
 ### Goal-based annual targets
 
-Goals (managed at `/admin/goals`) define a target for a KPI in a given year. A goal's full-year target is computed from the **prior year's actual** as the baseline:
+Goals (managed at `/admin/goals`) define a target year and a fixed baseline
+year. The baseline does not move when later actuals are entered:
 
 - **Percentage goals** (`goal_type = "pct"`): `target = baseline × (1 + target_value / 100)`
 - **Absolute goals** (`goal_type = "number"`): `target = baseline + target_value`
 
-If no prior-year data exists, the baseline is null and the target cannot be computed — the goal shows "—" and a message explains that prior-year data is needed.
+If no data exists for the selected baseline year, the target cannot be
+computed. The goal shows "—" and identifies the missing baseline year.
+Dashboard progress uses the selected reporting year; admin progress uses the
+current year.
 
 ### YTD pacing
 
@@ -174,14 +183,14 @@ Admin user
     │
     ▼  Zod validation + CSRF guard + requireAdmin()
     │
-    ▼  repository.upsertEntry()  — single transaction:
+    ▼  metrics.upsertEntry()  — single transaction:
     │      1. Read prior value
     │      2. UPSERT monthly_entries
     │      3. Read back by natural key (not lastInsertRowid)
     │      4. INSERT into entry_history (prev → new, snapshot labels)
     │
     ▼
-Dashboard pages read monthly_entries + breakdown_entries
+Dashboard pages read monthly_entries + breakdown_entries through the metrics feature
     │
     ▼  analytics.ts computes YoY %, YTD, deltas, isEmpty
     │
@@ -204,7 +213,10 @@ The roadmap explicitly calls out: *"Mirror the export with an import path on `/a
 - Schema migration testing
 
 ### What is already automated
-- **Schema seeding**: `npm run db:seed` populates 52 KPIs across 8 categories with 2024–2026 sample data. Bumping `src/lib/schema-version.json` triggers a clean KPI table reset on next access (users preserved).
+- **Schema seeding**: `npm run db:seed` populates 59 annual KPIs across 5 strategic priorities with 2024–2026 sample data and 25 target-bearing goals. The canonical definition lives in `src/features/catalog/strategic-plan.ts`.
+- **Period integrity**: annual/flexible KPIs accept only `month = 0`; monthly KPIs accept only `1–12`. The metrics feature enforces this on every entry upsert and the API returns 400 for mismatches.
+- **Schema 8 migration**: intentionally replaced the previous sample catalog, resetting KPI values and `entry_history` while preserving users. Back up production before crossing this boundary.
+- **Schema 9 migration**: additive. Preserves strategic data and freezes each existing goal to the latest available actual year before its target. New strategic goals explicitly use 2026.
 - **Bootstrap admin**: `ensureSeedAdmin()` runs at module load on every server start and creates the seed admin/viewer accounts on first DB access.
 - **Production startup**: `scripts/ensure-seeded.mjs` compares the mounted DB's schema version against `src/lib/schema-version.json` and auto-seeds if needed.
 - **Goal computation**: YTD pacing, full-year progress, and prorated targets are all computed server-side per request — no manual calculation needed.

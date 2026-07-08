@@ -1,8 +1,9 @@
 import { redirect } from "next/navigation";
-import { getCurrentUserReadOnly } from "@/lib/session";
+import { getCurrentUserReadOnly } from "@/features/auth/session";
 import { AppShell } from "@/components/AppShell";
 import { GoalsManagerClient } from "./GoalsManagerClient";
-import { listGoals, listKPIs } from "@/lib/repository";
+import { listKPIs } from "@/features/catalog/server";
+import { listGoals } from "@/features/goals";
 
 export const dynamic = "force-dynamic";
 
@@ -14,10 +15,14 @@ export default async function GoalsManagerPage() {
 
   // Show YTD pace through the current real-world month.
   const throughMonth = Math.min(new Date().getMonth() + 1, 12);
+  const asOfYear = new Date().getFullYear();
 
   return (
     <AppShell user={user}>
-      <GoalsManagerClient goals={listGoals({ throughMonth })} kpis={listKPIs()} />
+      <GoalsManagerClient
+        goals={listGoals({ throughMonth, asOfYear })}
+        kpis={listKPIs()}
+      />
     </AppShell>
   );
 }

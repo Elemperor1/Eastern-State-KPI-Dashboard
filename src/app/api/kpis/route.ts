@@ -1,26 +1,25 @@
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
-import { authErrorResponse, requireAdmin, requireSession } from "@/lib/session";
+import { authErrorResponse, requireAdmin } from "@/features/auth/session";
 import { assertMutationRequest } from "@/lib/request-guard";
 import {
   createKPI,
   deleteKPI,
   DependentEntriesError,
+  listCategories,
   listKPIs,
   updateKPI,
-} from "@/lib/repository";
+} from "@/features/catalog/server";
 
 const UnitTypeEnum = z.enum(["count", "percent", "currency", "attendance", "note", "breakdown"]);
 const FrequencyEnum = z.enum(["monthly", "annual", "flexible"]);
 const DirectionEnum = z.enum(["higher", "lower", "neutral"]);
 
-export async function GET() {
-  try {
-    await requireSession();
-  } catch (err) {
-    return authErrorResponse(err);
-  }
-  return NextResponse.json({ kpis: listKPIs() });
+function refreshedCatalogPayload() {
+  return {
+    kpis: listKPIs(),
+    categories: listCategories(),
+  };
 }
 
 const CreateSchema = z.object({
@@ -50,7 +49,7 @@ export async function POST(req: NextRequest) {
   }
   try {
     const kpi = createKPI(parsed.data);
-    return NextResponse.json({ kpi }, { status: 201 });
+    return NextResponse.json({ kpi, ...refreshedCatalogPayload() }, { status: 201 });
   } catch (err) {
     const message = err instanceof Error ? err.message : "Could not create KPI";
     return NextResponse.json({ error: message }, { status: 400 });
@@ -85,7 +84,7 @@ export async function PATCH(req: NextRequest) {
   }
   const { id, ...patch } = parsed.data;
   updateKPI(id, patch);
-  return NextResponse.json({ ok: true });
+  return NextResponse.json({ ok: true, ...refreshedCatalogPayload() });
 }
 
 const DeleteSchema = z.object({ id: z.number().int().positive() });
@@ -104,7 +103,7 @@ export async function DELETE(req: NextRequest) {
   }
   try {
     deleteKPI(parsed.data.id);
-    return NextResponse.json({ ok: true });
+    return NextResponse.json({ ok: true, ...refreshedCatalogPayload() });
   } catch (err) {
     if (err instanceof DependentEntriesError) {
       return NextResponse.json({ error: err.message, code: err.code }, { status: 409 });

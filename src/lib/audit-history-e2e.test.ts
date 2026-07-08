@@ -1,11 +1,11 @@
 /**
  * End-to-end audit-integrity regression suite for D8AD-CAN-005.
  *
- * Drives the REAL HTTP route handlers (categories, KPIs, entries, and the
- * admin history endpoint) against a real temp SQLite DB, exercising the
+ * Drives the REAL HTTP route handlers (categories, KPIs, and entries)
+ * against a real temp SQLite DB, exercising the
  * full stack: zod validation → requireAdmin → assertMutationRequest (CSRF)
- * → repository → entry_history snapshot writes → LEFT-joined history
- * retrieval. Only the cookie transport is faked (in-memory jar via
+ * → feature data access → entry_history snapshot writes → LEFT-joined history
+ * retrieval through the audit feature read model. Only the cookie transport is faked (in-memory jar via
  * vi.mock("next/headers")); iron-session, the revocation chokepoint, the
  * request guard, and every route handler run unchanged.
  *
@@ -14,11 +14,11 @@
  *   2. modify + delete entry values        → entryMutationsGenerateHistory
  *   3. rename KPI + category               → renameDoesNotRewriteHistory
  *   4. every supported deletion sequence   → deletionSequenceMatrix
- *   5. query history after each operation   → every test queries via the API
+ *   5. query history after each operation   → every test queries listEntryHistory
  *   6. every original event visible exactly once → lifecycleEventsRemainVisibleExactlyOnce
  *   7. snapshots retain understandable labels → snapshotLabelsAreUnderstandable
  *   8. deleted metadata represented explicitly  → deletedMetadataIsExplicit
- *   9. viewers + unauthenticated blocked    → historyAuthz
+ *   9. viewer/anonymous page access         → smoke/auth regression gates
  *  10. history rows immutable via ordinary ops → historyRowsAreImmutable
  */
 import fs from "node:fs";
@@ -31,7 +31,7 @@ import { NextRequest } from "next/server";
  * In-memory cookie jar (fakes only the transport). Hoisted so the
  * reference is available inside the hoisted vi.mock factory.
  * ------------------------------------------------------------------ */
-const { jar, resetSession, cookieStore } = vi.hoisted(() => {
+const { resetSession, cookieStore } = vi.hoisted(() => {
   const jar: Record<string, string> = {};
   function resetSession(): void {
     for (const k of Object.keys(jar)) delete jar[k];
@@ -50,7 +50,7 @@ const { jar, resetSession, cookieStore } = vi.hoisted(() => {
       }
     },
   };
-  return { jar, resetSession, cookieStore };
+  return { resetSession, cookieStore };
 });
 
 vi.mock("next/headers", () => ({
@@ -60,14 +60,14 @@ vi.mock("next/headers", () => ({
 
 // Real modules — imported AFTER vi.mock so they see the mocked cookies().
 import { dispatch } from "./auth-regression-helpers";
-import { createUser, ensureSeedAdmin } from "./auth";
+import { ensureSeedAdmin } from "@/features/auth/server";
+import { createUser } from "@/features/users/server";
 import { resetDb } from "@/lib/db";
 import { _resetForTests as resetThrottle } from "@/lib/login-throttle";
 import { POST as loginPost } from "@/app/api/auth/login/route";
-import { GET as historyGet } from "@/app/api/entries/history/route";
+import { listEntryHistory } from "@/features/audit/server";
+import { getKPI } from "@/features/catalog/server";
 import { getDb } from "@/lib/db";
-
-const COOKIE_NAME = "eastern_state_kpi_session";
 
 /* ------------------------------------------------------------------ *
  * Env / DB lifecycle
@@ -158,10 +158,6 @@ async function loginAs(acct: Account, ip = "10.0.0.10"): Promise<void> {
   expect(res.status).toBe(200);
 }
 
-function clearSession(): void {
-  resetSession();
-}
-
 /* ------------------------------------------------------------------ *
  * API helper wrappers (thin sugar over dispatch)
  * ------------------------------------------------------------------ */
@@ -243,48 +239,29 @@ interface HistoryRow {
   metadata_renamed: boolean;
 }
 
-async function historyViaApi(query: string): Promise<HistoryRow[]> {
-  // Call the history handler directly with a URL that carries the query
-  // string — dispatch() keys its handler table on the bare path, so it
-  // cannot route a query-bearing URL. The session still comes from the
-  // mocked cookies() jar, exactly as dispatch() arranges for GET.
-  const req = new NextRequest(`http://localhost/api/entries/history${query}`, {
-    method: "GET",
-    headers: { "content-type": "application/json" },
-  });
-  const res = await historyGet(req);
-  expect(res.status).toBe(200);
-  const body = await res.json();
-  return body.history as HistoryRow[];
+function historyRows(query: string): HistoryRow[] {
+  const params = new URLSearchParams(query.startsWith("?") ? query.slice(1) : query);
+  return listEntryHistory({
+    kpi_id: params.has("kpi_id") ? Number(params.get("kpi_id")) : undefined,
+    category_id: params.has("category_id") ? Number(params.get("category_id")) : undefined,
+    year: params.has("year") ? Number(params.get("year")) : undefined,
+    limit: params.has("limit") ? Number(params.get("limit")) : undefined,
+  }) as HistoryRow[];
 }
 
-/** History endpoint response + parsed body, for authz tests that need to
- *  inspect the body once (the shared assert helpers consume it). */
-async function historyRaw(query = ""): Promise<{ res: Response; body: unknown }> {
-  const req = new NextRequest(`http://localhost/api/entries/history${query}`, {
-    method: "GET",
-    headers: { "content-type": "application/json" },
-  });
-  const res = await historyGet(req);
-  const body = await res.json().catch(() => undefined);
-  return { res, body };
-}
-
-/** Build a query string for the history endpoint filtering to one KPI. */
+/** Build a query string for history filtering to one KPI. */
 function qForKpi(kpiId: number): string {
   return `?kpi_id=${kpiId}&limit=1000`;
 }
 
 /* ------------------------------------------------------------------ *
- * Fresh DB + active admin/viewer before each test.
+ * Fresh DB + active admin before each test.
  * ------------------------------------------------------------------ */
 let admin: Account;
-let viewer: Account;
 
 beforeEach(async () => {
   freshDb();
   admin = makeActiveAccount("admin", "e2e-admin@example.com", "E2EAdmin!2026");
-  viewer = makeActiveAccount("viewer", "e2e-viewer@example.com", "E2EViewer!2026");
   await loginAs(admin);
 });
 
@@ -302,7 +279,7 @@ describe("D8AD-CAN-005 end-to-end audit integrity", () => {
       await deleteEntryViaApi(entry.id);
 
       // After entry mutations: four history events (create, update, update, delete).
-      let rows = await historyViaApi(qForKpi(kpi.id));
+      let rows = historyRows(qForKpi(kpi.id));
       expect(rows).toHaveLength(4);
       const idsAfterEntryMutations = rows.map((r) => r.id);
       expect(new Set(idsAfterEntryMutations).size).toBe(4); // exactly once, no dupes
@@ -312,7 +289,7 @@ describe("D8AD-CAN-005 end-to-end audit integrity", () => {
       await renameCategoryViaApi(cat.id, "Lifecycle Category — Renamed");
 
       // 5/6. Query history after each rename: same four events, same ids.
-      rows = await historyViaApi(qForKpi(kpi.id));
+      rows = historyRows(qForKpi(kpi.id));
       expect(rows.map((r) => r.id).sort((a, b) => a - b)).toEqual(
         [...idsAfterEntryMutations].sort((a, b) => a - b),
       );
@@ -336,7 +313,7 @@ describe("D8AD-CAN-005 end-to-end audit integrity", () => {
       expect(catDelete.status).toBe(200);
 
       // 5/6. Query history after metadata deletion: STILL the same four events.
-      rows = await historyViaApi(qForKpi(kpi.id));
+      rows = historyRows(qForKpi(kpi.id));
       expect(rows).toHaveLength(4);
       expect(rows.map((r) => r.id).sort((a, b) => a - b)).toEqual(
         [...idsAfterEntryMutations].sort((a, b) => a - b),
@@ -358,7 +335,7 @@ describe("D8AD-CAN-005 end-to-end audit integrity", () => {
 
       // The unfiltered endpoint must also still surface the events (no
       // inner-join quietly dropping them out of the global feed).
-      const all = await historyViaApi("?limit=1000");
+      const all = historyRows("?limit=1000");
       const forKpi = all.filter((r) => r.kpi_id === kpi.id);
       expect(forKpi).toHaveLength(4);
     });
@@ -368,7 +345,7 @@ describe("D8AD-CAN-005 end-to-end audit integrity", () => {
       const kpi = await createKpiViaApi(cat.id, "snap-kpi", "Snap KPI");
       await upsertEntryViaApi(kpi.id, 2024, 6, 42);
 
-      const rows = await historyViaApi(qForKpi(kpi.id));
+      const rows = historyRows(qForKpi(kpi.id));
       expect(rows).toHaveLength(1);
       const r = rows[0];
       // Entry identity + year/period are present and readable.
@@ -392,7 +369,7 @@ describe("D8AD-CAN-005 end-to-end audit integrity", () => {
       const kpi = await createKpiViaApi(cat.id, "blk-kpi", "Block KPI");
       await upsertEntryViaApi(kpi.id, 2025, 1, 5);
 
-      const before = await historyViaApi(qForKpi(kpi.id));
+      const before = historyRows(qForKpi(kpi.id));
       const res = await deleteKpiViaApi(kpi.id);
       expect(res.status).toBe(409);
       const body = await res.json();
@@ -400,12 +377,10 @@ describe("D8AD-CAN-005 end-to-end audit integrity", () => {
       expect(body.error).toMatch(/Cannot delete KPI/);
 
       // History is unchanged — no new event, no missing event.
-      const after = await historyViaApi(qForKpi(kpi.id));
+      const after = historyRows(qForKpi(kpi.id));
       expect(after).toEqual(before);
       // The KPI is still there.
-      const live = await dispatch("GET", "/api/kpis");
-      const liveBody = await live.json();
-      expect(liveBody.kpis.some((k: { id: number }) => k.id === kpi.id)).toBe(true);
+      expect(getKPI(kpi.id)).not.toBeNull();
     });
 
     it("blocks category deletion while any KPI in it has live entries (409)", async () => {
@@ -425,17 +400,17 @@ describe("D8AD-CAN-005 end-to-end audit integrity", () => {
       const kpi = await createKpiViaApi(cat.id, "seqa-kpi", "Seq A KPI");
       const e = await upsertEntryViaApi(kpi.id, 2025, 2, 7);
 
-      const beforeCount = (await historyViaApi(qForKpi(kpi.id))).length;
+      const beforeCount = historyRows(qForKpi(kpi.id)).length;
 
       await deleteEntryViaApi(e.id); // tombstone event
-      const afterEntry = await historyViaApi(qForKpi(kpi.id));
+      const afterEntry = historyRows(qForKpi(kpi.id));
       expect(afterEntry.length).toBe(beforeCount + 1);
 
       const kpiDelete = await deleteKpiViaApi(kpi.id);
       expect(kpiDelete.status).toBe(200);
 
       // History survives the KPI deletion; every row now metadata_deleted.
-      const afterKpi = await historyViaApi(qForKpi(kpi.id));
+      const afterKpi = historyRows(qForKpi(kpi.id));
       expect(afterKpi.length).toBe(afterEntry.length);
       for (const r of afterKpi) {
         expect(r.metadata_deleted).toBe(true);
@@ -449,12 +424,12 @@ describe("D8AD-CAN-005 end-to-end audit integrity", () => {
       const e = await upsertEntryViaApi(kpi.id, 2025, 4, 9);
       await deleteEntryViaApi(e.id);
 
-      const before = (await historyViaApi(qForKpi(kpi.id))).length;
+      const before = historyRows(qForKpi(kpi.id)).length;
 
       expect((await deleteKpiViaApi(kpi.id)).status).toBe(200);
       expect((await deleteCategoryViaApi(cat.id)).status).toBe(200);
 
-      const after = await historyViaApi(qForKpi(kpi.id));
+      const after = historyRows(qForKpi(kpi.id));
       expect(after.length).toBe(before);
       for (const r of after) {
         expect(r.metadata_deleted).toBe(true);
@@ -472,7 +447,7 @@ describe("D8AD-CAN-005 end-to-end audit integrity", () => {
       const e = await upsertEntryViaApi(kpi.id, 2025, 5, 11);
       await deleteEntryViaApi(e.id);
 
-      const before = (await historyViaApi(qForKpi(kpi.id))).length;
+      const before = historyRows(qForKpi(kpi.id)).length;
 
       // Delete the category WITHOUT deleting the KPI first. The KPI has
       // no live entries (only history), so the category guard allows it;
@@ -480,7 +455,7 @@ describe("D8AD-CAN-005 end-to-end audit integrity", () => {
       const catDelete = await deleteCategoryViaApi(cat.id);
       expect(catDelete.status).toBe(200);
 
-      const after = await historyViaApi(qForKpi(kpi.id));
+      const after = historyRows(qForKpi(kpi.id));
       expect(after.length).toBe(before);
       for (const r of after) {
         expect(r.metadata_deleted).toBe(true);
@@ -491,7 +466,7 @@ describe("D8AD-CAN-005 end-to-end audit integrity", () => {
 
     it("category_id filter returns deleted-category history (snapshot-based)", async () => {
       // After a category and its KPI are deleted, the category_id filter
-      // on the history endpoint must still return the rows (the filter
+      // on the history read model must still return the rows (the filter
       // uses the SNAPSHOT h.category_id, not a live join). This is the
       // guarantee that makes the history of deleted items reachable.
       const cat = await createCategoryViaApi("cfilter-cat", "CFilter Cat");
@@ -503,9 +478,9 @@ describe("D8AD-CAN-005 end-to-end audit integrity", () => {
       await deleteKpiViaApi(kpi.id);
       await deleteCategoryViaApi(cat.id);
 
-      // Filter by the deleted category's id — the API must still return
+      // Filter by the deleted category's id — the read model must still return
       // the history rows using the snapshot category_id.
-      const rows = await historyViaApi(`?category_id=${cat.id}&limit=1000`);
+      const rows = historyRows(`?category_id=${cat.id}&limit=1000`);
       expect(rows.length).toBeGreaterThan(0);
       for (const r of rows) {
         expect(r.category_id).toBe(cat.id);
@@ -514,7 +489,7 @@ describe("D8AD-CAN-005 end-to-end audit integrity", () => {
       }
 
       // Filter by the deleted KPI's id — same guarantee.
-      const kpiRows = await historyViaApi(`?kpi_id=${kpi.id}&limit=1000`);
+      const kpiRows = historyRows(`?kpi_id=${kpi.id}&limit=1000`);
       expect(kpiRows.length).toBeGreaterThan(0);
       for (const r of kpiRows) {
         expect(r.kpi_id).toBe(kpi.id);
@@ -524,48 +499,13 @@ describe("D8AD-CAN-005 end-to-end audit integrity", () => {
     });
   });
 
-  describe("authorization (req 9)", () => {
-    it("a viewer cannot retrieve administrator audit history (403)", async () => {
-      // Seed at least one history row so the endpoint has something to
-      // protect — the authz gate runs before any read.
-      const cat = await createCategoryViaApi("authz-cat", "Authz Cat");
-      const kpi = await createKpiViaApi(cat.id, "authz-kpi", "Authz KPI");
-      await upsertEntryViaApi(kpi.id, 2025, 1, 1);
-
-      // Switch the jar to a viewer session.
-      clearSession();
-      await loginAs(viewer);
-
-      const { res, body } = await historyRaw();
-      expect(res.status).toBe(403);
-      expect((body as { error?: string }).error).toBe("Forbidden");
-      // No history leaked to an unauthorized role.
-      expect((body as { history?: unknown }).history).toBeUndefined();
-    });
-
-    it("an unauthenticated request cannot retrieve administrator audit history (401)", async () => {
-      clearSession();
-      const { res, body } = await historyRaw();
-      expect(res.status).toBe(401);
-      expect((body as { error?: string }).error).toBe("Unauthorized");
-      expect((body as { history?: unknown }).history).toBeUndefined();
-    });
-
-    it("the history endpoint is admin-only even when no history exists", async () => {
-      clearSession();
-      await loginAs(viewer);
-      const { res } = await historyRaw();
-      expect(res.status).toBe(403);
-    });
-  });
-
   describe("immutability (req 10)", () => {
-    it("history rows cannot be changed through ordinary repository or API operations", async () => {
+    it("history rows cannot be changed through ordinary feature or API operations", async () => {
       const cat = await createCategoryViaApi("immut-cat", "Immut Category");
       const kpi = await createKpiViaApi(cat.id, "immut-kpi", "Immut KPI");
       await upsertEntryViaApi(kpi.id, 2025, 7, 100);
 
-      const original = (await historyViaApi(qForKpi(kpi.id)))[0];
+      const original = historyRows(qForKpi(kpi.id))[0];
       // Capture the IMMUTABLE portion of the row: the event identity,
       // before/after values, and the snapshot labels. The *_current_*
       // and metadata_deleted/renamed fields are DERIVED from the live
@@ -603,7 +543,7 @@ describe("D8AD-CAN-005 end-to-end audit integrity", () => {
       await deleteCategoryViaApi(cat.id);
 
       // The captured row's immutable event + snapshot fields are byte-identical.
-      const all = await historyViaApi(qForKpi(kpi.id));
+      const all = historyRows(qForKpi(kpi.id));
       const sameRow = all.find((r) => r.id === original.id)!;
       expect(sameRow).toBeDefined();
       expect(JSON.stringify(immutableOf(sameRow))).toBe(snapshotBefore);
@@ -622,7 +562,7 @@ describe("D8AD-CAN-005 end-to-end audit integrity", () => {
     it("no API operation exposes an UPDATE or DELETE on entry_history", async () => {
       // The only state-changing endpoints that touch entry_history do so
       // by INSERT (upsertEntry / deleteEntry / upsertBreakdown /
-      // deleteBreakdown via the repository). There is no route that
+      // deleteBreakdown via the metrics feature). There is no route that
       // updates or deletes a history row. Verify at the schema level:
       // every history row written across a full lifecycle is retained.
       const cat = await createCategoryViaApi("noupd-cat", "NoUpdate Cat");
@@ -631,7 +571,7 @@ describe("D8AD-CAN-005 end-to-end audit integrity", () => {
       await upsertEntryViaApi(kpi.id, 2025, 8, 2);
       await deleteEntryViaApi(e.id);
 
-      const historyIds = (await historyViaApi(qForKpi(kpi.id))).map((r) => r.id);
+      const historyIds = historyRows(qForKpi(kpi.id)).map((r) => r.id);
 
       // Perform more ordinary ops, then assert the full set of prior ids
       // is still present (none silently removed).
@@ -640,12 +580,12 @@ describe("D8AD-CAN-005 end-to-end audit integrity", () => {
       await deleteEntryViaApi(again.id);
       await deleteKpiViaApi(kpi.id);
 
-      const final = await historyViaApi("?limit=1000");
+      const final = historyRows("?limit=1000");
       const finalIds = final.map((r) => r.id);
       for (const id of historyIds) {
         expect(finalIds).toContain(id);
       }
-      // And the direct DB count matches the API response (nothing hidden).
+      // And the direct DB count matches the read-model response (nothing hidden).
       const dbCount = (
         getDb().prepare("SELECT COUNT(*) AS n FROM entry_history").get() as { n: number }
       ).n;

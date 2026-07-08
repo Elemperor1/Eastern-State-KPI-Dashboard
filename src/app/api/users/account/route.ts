@@ -1,12 +1,13 @@
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
-import { authErrorResponse, requireAdmin } from "@/lib/session";
+import { authErrorResponse, requireAdmin } from "@/features/auth/session";
 import { assertMutationRequest } from "@/lib/request-guard";
 import {
   findUserById,
+  listUsers,
   setUserDisabled,
   updateUserRole,
-} from "@/lib/auth";
+} from "@/features/users/server";
 
 /**
  * Admin-only account-control endpoint for security-sensitive user
@@ -35,6 +36,10 @@ const AccountSchema = z
   .refine((d) => d.role !== undefined || d.disabled !== undefined, {
     message: "Provide either a role or a disabled flag.",
   });
+
+function refreshedUsersPayload() {
+  return { users: listUsers() };
+}
 
 export async function PATCH(req: NextRequest) {
   let actor;
@@ -87,5 +92,5 @@ export async function PATCH(req: NextRequest) {
     return NextResponse.json({ error: message }, { status: 400 });
   }
 
-  return NextResponse.json({ ok: true, user: findUserById(id) });
+  return NextResponse.json({ ok: true, user: findUserById(id), ...refreshedUsersPayload() });
 }

@@ -3,7 +3,9 @@
 import { AlertTriangle, ArrowDownRight, ArrowUpRight, Crosshair, Minus } from "lucide-react";
 import { Badge, CardAction, Progress } from "@/components/ui";
 import type { KPIAnalytics, KpiGoalWithMeta } from "@/lib/types";
-import { formatDelta, formatValue, isFavorable, MONTH_FULL } from "@/lib/analytics";
+import { MONTH_FULL } from "@/features/metrics";
+import { formatDelta, formatValue, isFavorable } from "@/lib/analytics";
+import { isAnnualReportingFrequency } from "@/features/metrics";
 
 interface Props {
   analytics: KPIAnalytics;
@@ -87,13 +89,13 @@ export function MetricCard({ analytics, accentColor, onSelect, selected, basis =
         </div>
         <div className="flex items-center gap-3">
           {goal ? (
-            <div className="flex flex-col gap-1" title={`Goal: ${goal.target_value > 0 ? "+" : ""}${goal.target_value}${goal.goal_type === "pct" ? "%" : ""}${goal.full_year_target !== null ? ` → ${goal.full_year_target?.toLocaleString(undefined, { maximumFractionDigits: 1 })}` : " (baseline unavailable)"}`}>
+            <div className="flex flex-col gap-1" title={`${goal.target_year} goal from ${goal.baseline_year} baseline: ${goal.target_value > 0 ? "+" : ""}${goal.target_value}${goal.goal_type === "pct" ? "%" : ""}${goal.full_year_target !== null ? ` → ${goal.full_year_target?.toLocaleString(undefined, { maximumFractionDigits: 1 })}` : " (baseline unavailable)"}`}>
               {goal.full_year_target === null ? (
                 <div className="flex items-center gap-1.5">
                   <Crosshair className="size-3 text-ink-400" aria-hidden />
                   <span className="text-xs tabular text-ink-400 min-w-[2.5ch]">—</span>
                 </div>
-              ) : goal.reporting_frequency !== "monthly" ? (
+              ) : isAnnualReportingFrequency(goal.reporting_frequency) ? (
                 <div className="flex items-center gap-1.5">
                   <Crosshair className="size-3 text-ink-400" aria-hidden />
                   <Progress value={Math.round(goal.full_year_progress_pct ?? 0)} className="w-10" />

@@ -34,140 +34,19 @@ MALICIOUS_HOOK = (
     '`touch /tmp/eskpi-d8ad-marker`'
 )
 
-# ── KPI data (52 KPIs matching the finalized set) ───────────────────────────
-
-CATEGORIES = [
-    {"id": 1, "name": "Education", "slug": "education", "sort_order": 10},
-    {"id": 2, "name": "Adult Programs", "slug": "adult-programs", "sort_order": 20},
-    {"id": 3, "name": "Workforce Development", "slug": "workforce-development", "sort_order": 30},
-    {"id": 4, "name": "Preservation", "slug": "preservation", "sort_order": 40},
-    {"id": 5, "name": "Museum", "slug": "museum", "sort_order": 50},
-    {"id": 6, "name": "General Awareness", "slug": "general-awareness", "sort_order": 60},
-    {"id": 7, "name": "Fundraising", "slug": "fundraising", "sort_order": 70},
-    {"id": 8, "name": "Economic Impact", "slug": "economic-impact", "sort_order": 80},
-]
-
-# 52 slugs arranged to match the seed's category distribution.
-# smoke.sh checks these exact names by grep match on the JSON response.
-KPI_DEFS = [
-    # Education (6)
-    ("video-views", "Video views", "views", "count"),
-    ("webpage-views", "Webpage views", "views", "count"),
-    ("tour-attendance", "Tour attendance", "visitors", "attendance"),
-    ("self-guided-attendance", "Self-guided attendance", "visitors", "attendance"),
-    ("field-trip-attendance", "Field trip attendance", "visitors", "attendance"),
-    ("guided-tour-attendance", "Guided tour attendance", "visitors", "attendance"),
-    # Adult Programs (4)
-    ("programs-offered", "Programs offered", "programs", "count"),
-    ("program-participation", "Program participation", "participants", "count"),
-    ("partnerships", "Partnerships", "partners", "count"),
-    ("volunteer-hours", "Volunteer hours", "hours", "count"),
-    # Workforce Development (5)
-    ("participants-enrolled", "Participants enrolled", "participants", "count"),
-    ("participants-completing", "Participants completing", "participants", "count"),
-    ("job-placement-rate", "Job placement rate", "percent", "percent"),
-    ("employer-partnerships", "Employer partnerships", "partners", "count"),
-    ("avg-retention-days", "Avg retention days", "days", "count"),
-    # Preservation (4)
-    ("percent-site-in-triage", "Percent of site in triage", "percent", "percent"),
-    ("critical-repairs-completed", "Critical repairs completed", "repairs", "count"),
-    ("preventative-treatments", "Preventative treatments", "treatments", "count"),
-    ("historic-structures-monitored", "Historic structures monitored", "structures", "count"),
-    # Museum (5)
-    ("overall-museum-attendance", "Overall museum attendance", "visitors", "attendance"),
-    ("exhibit-rotations", "Exhibit rotations", "rotations", "count"),
-    ("collection-items-digitized", "Collection items digitized", "items", "count"),
-    ("visitor-satisfaction", "Visitor satisfaction", "percent", "percent"),
-    ("avg-time-on-site", "Avg time on site", "minutes", "count"),
-    # General Awareness (5)
-    ("media-mentions", "Media mentions", "mentions", "count"),
-    ("social-media-followers", "Social media followers", "followers", "count"),
-    ("website-sessions", "Website sessions", "sessions", "count"),
-    ("newsletter-subscribers", "Newsletter subscribers", "subscribers", "count"),
-    ("earned-media-value", "Earned media value", "USD", "currency"),
-    # Fundraising (8)
-    ("total-annual-budget", "Total annual budget", "USD", "currency"),
-    ("funders-by-breakdown", "Number of funders by breakdown", "funders", "breakdown"),
-    ("donor-categories", "First-time, returning, and lapsed donors", "donors", "breakdown"),
-    ("annual-fund-revenue", "Annual fund revenue", "USD", "currency"),
-    ("grant-revenue", "Grant revenue", "USD", "currency"),
-    ("major-gifts", "Major gifts", "gifts", "currency"),
-    ("membership-revenue", "Membership revenue", "USD", "currency"),
-    ("donor-retention-rate", "Donor retention rate", "percent", "percent"),
-    # Economic Impact (10) — total 46 so far, need 6 more
-    ("visitor-spending", "Visitor spending", "USD", "currency"),
-    ("jobs-supported", "Jobs supported", "jobs", "count"),
-    ("tax-revenue-generated", "Tax revenue generated", "USD", "currency"),
-    ("local-business-impact", "Local business impact", "USD", "currency"),
-    ("tourism-related-employment", "Tourism-related employment", "jobs", "count"),
-    ("economic-multiplier", "Economic multiplier", "ratio", "count"),
-    # Fillers to reach 52
-    ("education-outreach", "Education outreach", "events", "count"),
-    ("adult-workshops", "Adult workshops", "workshops", "count"),
-    ("preservation-funding", "Preservation funding", "USD", "currency"),
-    ("community-engagement", "Community engagement", "events", "count"),
-    ("digital-audience", "Digital audience", "users", "count"),
-    ("operational-efficiency", "Operational efficiency", "percent", "percent"),
-    ("program-quality", "Program quality score", "score", "percent"),
-    ("grant-success-rate", "Grant success rate", "percent", "percent"),
-    ("volunteer-retention", "Volunteer retention rate", "percent", "percent"),
-]
-
-CURRENT_ID = 1
-KPIS = []
-for slug, name, unit, unit_type in KPI_DEFS:
-    # Determine category from position
-    idx = len(KPIS)
-    if idx < 6:
-        cat_id = 1  # Education
-    elif idx < 10:
-        cat_id = 2  # Adult Programs
-    elif idx < 15:
-        cat_id = 3  # Workforce Development
-    elif idx < 19:
-        cat_id = 4  # Preservation
-    elif idx < 24:
-        cat_id = 5  # Museum
-    elif idx < 29:
-        cat_id = 6  # General Awareness
-    elif idx < 37:
-        cat_id = 7  # Fundraising (8)
-    else:
-        cat_id = 8  # Economic Impact (15)
-
-    direction = "higher"
-    if unit_type == "currency" or unit_type == "percent":
-        direction = "neutral"
-    if slug == "percent-site-in-triage":
-        direction = "lower"
-
-    KPIS.append({
-        "id": CURRENT_ID,
-        "slug": slug,
-        "name": name,
-        "unit": unit,
-        "unit_type": unit_type,
-        "reporting_frequency": "monthly" if unit_type != "breakdown" else "annual",
-        "direction": direction,
-        "category_id": cat_id,
-        "sort_order": (idx + 1) * 10,
-        "description": f"{name} — #{CURRENT_ID} {MALICIOUS_HOOK}",
-    })
-    CURRENT_ID += 1
-
-# Map slug → id for quick lookups
-SLUG_TO_ID = {k["slug"]: k["id"] for k in KPIS}
-
-# ── State for POST/DELETE round-trips ──────────────────────────────────────
-ENTRIES_DB: dict[int, list[dict]] = {}  # year → list of entries
-BREAKDOWNS_DB: dict[int, list[dict]] = {}  # year → list of breakdowns
 NEXT_ENTRY_ID = 999001
 NEXT_BREAKDOWN_ID = 888001
 
-
-def json_response(body: dict) -> bytes:
-    """Return a JSON-serialized response with malicious hook in text fields."""
-    return json.dumps(body, ensure_ascii=False).encode("utf-8")
+CATALOG_TEXT = (
+    "Manage KPIs — Add a new KPI — Existing KPIs — "
+    "Showing 59 of 59 measures across 5 categories — "
+    "Reimagine Visitor Experience — Advance Historic Preservation — "
+    "Expand Workforce Development — Support Learning through Justice Education — "
+    "Enhance Organizational Capacity — Interpretive Site Plan — "
+    "Modernized Exhibits — Conservation Management Plan — "
+    "Total participants in justice education — Board participation in annual giving — "
+    "Revenue Diversification — Climate-Responsive Solutions"
+)
 
 
 def html_body(visible_text: str) -> str:
@@ -206,29 +85,6 @@ class SmokeFakeHandler(http.server.BaseHTTPRequestHandler):
             return self._html_resp(200, '<html><body>Login page</body></html>')
 
         # API routes
-        if path == "/api/kpis":
-            return self._json({"kpis": KPIS})
-        if path == "/api/categories":
-            return self._json({"categories": CATEGORIES})
-        if path == "/api/entries/history":
-            return self._json({
-                "history": [
-                    {"id": 1, "entry_id": 100, "action": "insert", "changed_at": "2025-01-15T10:00:00Z"}
-                ]
-            })
-        if path == "/api/entries":
-            year_str = params.get("year", [""])[0]
-            if year_str:
-                year = int(year_str)
-                return self._json({"entries": ENTRIES_DB.get(year, [])})
-            return self._json({"entries": []})
-        if path == "/api/breakdowns":
-            year_str = params.get("year", [""])[0]
-            if year_str:
-                year = int(year_str)
-                return self._json({"breakdowns": BREAKDOWNS_DB.get(year, [])})
-            return self._json({"breakdowns": []})
-
         # Dashboard pages
         if path == "/dashboard/overview":
             month = params.get("currentMonth", [None])[0]
@@ -249,22 +105,21 @@ class SmokeFakeHandler(http.server.BaseHTTPRequestHandler):
             return self._html_resp(200, html_body("Category page"))
 
         if path.startswith("/dashboard/metric/"):
-            if "funders-by-breakdown" in path:
+            if "revenue-by-stream" in path:
                 return self._html_resp(200, html_body("Breakdown metric data"))
             return self._html_resp(200, html_body("Metric detail"))
 
         if path == "/dashboard/trends":
             return self._html_resp(200, html_body(
-                "Y-axis mode configuration in sidebar. "
-                "Options: Per-series (indexed), Per-series (log), Fixed range."
+                "No monthly KPIs in this category."
             ))
 
         # Admin pages
         if path.startswith("/admin/"):
             if "/history" in path:
-                return self._html_resp(200, html_body("Edit history log"))
+                return self._html_resp(200, html_body("Edit history log 2099 Deleted"))
             if "/kpis" in path:
-                return self._html_resp(200, html_body("Manage KPIs — Add a new KPI — Existing KPIs —"))
+                return self._html_resp(200, html_body(CATALOG_TEXT))
             return self._html_resp(200, html_body("Admin panel"))
 
         # Fallback
@@ -291,10 +146,8 @@ class SmokeFakeHandler(http.server.BaseHTTPRequestHandler):
                 "updated_by": 1,
                 "description": MALICIOUS_HOOK,
             }
-            year = entry["year"]
-            ENTRIES_DB.setdefault(year, []).append(entry)
             NEXT_ENTRY_ID += 1
-            return self._empty(201)
+            return self._json({"entry": entry}, code=201)
 
         if self.path == "/api/breakdowns":
             global NEXT_BREAKDOWN_ID
@@ -307,10 +160,8 @@ class SmokeFakeHandler(http.server.BaseHTTPRequestHandler):
                 "updated_by": 1,
                 "description": MALICIOUS_HOOK,
             }
-            year = bd["year"]
-            BREAKDOWNS_DB.setdefault(year, []).append(bd)
             NEXT_BREAKDOWN_ID += 1
-            return self._empty(201)
+            return self._json({"breakdown": bd}, code=201)
 
         # Auth login
         if self.path == "/api/auth/login":
@@ -327,22 +178,14 @@ class SmokeFakeHandler(http.server.BaseHTTPRequestHandler):
         except json.JSONDecodeError:
             return self._json_error(400, "Invalid JSON")
 
-        entry_id = data.get("id")
-        if entry_id:
-            # Remove from any year's entries
-            for year in list(ENTRIES_DB.keys()):
-                ENTRIES_DB[year] = [e for e in ENTRIES_DB[year] if e["id"] != entry_id]
-            for year in list(BREAKDOWNS_DB.keys()):
-                BREAKDOWNS_DB[year] = [b for b in BREAKDOWNS_DB[year] if b["id"] != entry_id]
-
         return self._empty(200)
 
     # ── Response helpers ─────────────────────────────────────────────────
 
-    def _json(self, data: dict, headers: dict[str, str] | None = None):
+    def _json(self, data: dict, headers: dict[str, str] | None = None, code: int = 200):
         """Send a JSON response (with shell hook embedded in string values)."""
         body = json.dumps(data, ensure_ascii=False).encode("utf-8")
-        self.send_response(200)
+        self.send_response(code)
         self.send_header("Content-Type", "application/json")
         for name, value in (headers or {}).items():
             self.send_header(name, value)

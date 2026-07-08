@@ -12,6 +12,7 @@ import {
 } from "recharts";
 import { Table } from "@/components/ui";
 import { formatValue } from "@/lib/analytics";
+import { buildBreakdownComparisonModel } from "@/features/reporting/breakdown-comparison";
 import type { BreakdownEntryWithMeta, KPIWithCategory } from "@/lib/types";
 
 interface Props {
@@ -23,31 +24,9 @@ interface Props {
 }
 
 export function BreakdownChart({ kpi, data: breakdowns, currentYear, compareYear }: Props) {
-  const labels = Array.from(new Set(breakdowns.map((b) => b.label))).sort(
-    (a, b) =>
-      (breakdowns.find((d) => d.label === a)?.sort_order ?? 0) -
-      (breakdowns.find((d) => d.label === b)?.sort_order ?? 0),
-  );
-
-  const data = labels.map((label) => {
-    const cur = breakdowns
-      .filter((d) => d.label === label && d.year === currentYear)
-      .reduce((sum, d) => sum + d.value, 0);
-    const cmp = breakdowns
-      .filter((d) => d.label === label && d.year === compareYear)
-      .reduce((sum, d) => sum + d.value, 0);
-    return {
-      label,
-      [currentYear]: cur,
-      [compareYear]: cmp,
-    };
-  });
-
-  const totalCurrent = data.reduce((s, d) => s + (d[currentYear] as number), 0);
-  const totalCompare = data.reduce((s, d) => s + (d[compareYear] as number), 0);
-  const pctChange = totalCompare !== 0 ? ((totalCurrent - totalCompare) / totalCompare) * 100 : null;
+  const model = buildBreakdownComparisonModel({ breakdowns, currentYear, compareYear });
+  const { chartData, pctChange, rows, showCompare, totalCurrent } = model;
   const fmt = kpi.unit_type === "currency" ? "currency" : "number";
-  const showCompare = breakdowns.some((b) => b.year === compareYear);
 
   return (
     <div>
@@ -83,9 +62,9 @@ export function BreakdownChart({ kpi, data: breakdowns, currentYear, compareYear
         </div>
       </div>
 
-      <div style={{ height: Math.max(280, data.length * 48) }}>
+      <div style={{ height: Math.max(280, chartData.length * 48) }}>
         <ResponsiveContainer width="100%" height="100%">
-          <BarChart data={data} layout="vertical" margin={{ top: 8, right: 16, left: 0, bottom: 8 }}>
+          <BarChart data={chartData} layout="vertical" margin={{ top: 8, right: 16, left: 0, bottom: 8 }}>
             <CartesianGrid strokeDasharray="3 3" stroke="var(--chart-grid)" horizontal={false} />
             <XAxis
               type="number"
@@ -125,27 +104,24 @@ export function BreakdownChart({ kpi, data: breakdowns, currentYear, compareYear
             </tr>
           </thead>
           <tbody>
-            {data.map((d) => {
-              const c = d[currentYear] as number;
-              const p = d[compareYear] as number;
-              const change = c - p;
+            {rows.map((row) => {
               return (
-                <tr key={d.label} className="transition-colors hover:bg-ink-50/70">
-                  <td className="font-medium text-ink-900">{d.label}</td>
-                  {showCompare ? <td className="text-right tabular text-ink-600">{formatValue(p, fmt)}</td> : null}
-                  <td className="text-right tabular text-ink-900 font-medium">{formatValue(c, fmt)}</td>
+                <tr key={row.label} className="transition-colors hover:bg-ink-50/70">
+                  <td className="font-medium text-ink-900">{row.label}</td>
+                  {showCompare ? <td className="text-right tabular text-ink-600">{formatValue(row.compareValue, fmt)}</td> : null}
+                  <td className="text-right tabular text-ink-900 font-medium">{formatValue(row.currentValue, fmt)}</td>
                   {showCompare ? (
                     <td
                       className={`text-right tabular font-medium ${
-                        change > 0
+                        row.delta > 0
                           ? "text-[var(--color-success-text)]"
-                          : change < 0
+                          : row.delta < 0
                             ? "text-[var(--color-danger-text)]"
                             : "text-ink-500"
                       }`}
                     >
-                      {change > 0 ? "+" : ""}
-                      {formatValue(change, fmt, { signed: true })}
+                      {row.delta > 0 ? "+" : ""}
+                      {formatValue(row.delta, fmt, { signed: true })}
                     </td>
                   ) : null}
                 </tr>

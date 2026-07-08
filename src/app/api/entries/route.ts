@@ -1,43 +1,14 @@
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
-import { authErrorResponse, requireAdmin, requireSession } from "@/lib/session";
-import { assertMutationRequest } from "@/lib/request-guard";
 import {
+  EntryKpiNotFoundError,
+  EntryKpiTypeError,
+  EntryPeriodMismatchError,
   deleteEntry,
-  listEntries,
   upsertEntry,
-} from "@/lib/repository";
-import { parseYearFilters } from "@/lib/year-filter";
-
-export async function GET(req: NextRequest) {
-  try {
-    await requireSession();
-  } catch (err) {
-    return authErrorResponse(err);
-  }
-  const url = new URL(req.url);
-  const filter: Parameters<typeof listEntries>[0] = {};
-  const kpiId = url.searchParams.get("kpi_id");
-  if (kpiId) filter.kpi_id = Number(kpiId);
-  const categoryId = url.searchParams.get("category_id");
-  if (categoryId) filter.category_id = Number(categoryId);
-  // D8AD-CAN-006: bound and normalize repeated `year` filters before
-  // they reach the repository. An empty filter (no `year` params) is
-  // explicitly defined as "no year constraint"; malformed, duplicate-
-  // excessive, out-of-range, and over-limit input is rejected with a
-  // controlled, non-sensitive 400 body before listEntries() runs. SQL
-  // values stay parameter-bound in the repository's IN (?,...) list.
-  const yearsParam = url.searchParams.getAll("year");
-  const parsed = parseYearFilters(yearsParam);
-  if (!parsed.ok) {
-    return NextResponse.json(
-      { error: parsed.error },
-      { status: parsed.status },
-    );
-  }
-  if (parsed.years.length) filter.years = parsed.years;
-  return NextResponse.json({ entries: listEntries(filter) });
-}
+} from "@/features/metrics/server";
+import { authErrorResponse, requireAdmin } from "@/features/auth/session";
+import { assertMutationRequest } from "@/lib/request-guard";
 
 const UpsertSchema = z.object({
   kpi_id: z.number().int().positive(),
@@ -63,8 +34,24 @@ export async function POST(req: NextRequest) {
       { status: 400 },
     );
   }
-  const entry = upsertEntry({ ...parsed.data, updated_by: sessionUser.id });
-  return NextResponse.json({ entry }, { status: 201 });
+  try {
+    const entry = upsertEntry({ ...parsed.data, updated_by: sessionUser.id });
+    return NextResponse.json({ entry }, { status: 201 });
+  } catch (error) {
+    if (error instanceof EntryKpiNotFoundError) {
+      return NextResponse.json({ error: "KPI not found." }, { status: 404 });
+    }
+    if (error instanceof EntryKpiTypeError) {
+      return NextResponse.json(
+        { error: "Breakdown KPIs must use the breakdown endpoint." },
+        { status: 400 },
+      );
+    }
+    if (error instanceof EntryPeriodMismatchError) {
+      return NextResponse.json({ error: error.message }, { status: 400 });
+    }
+    throw error;
+  }
 }
 
 const DeleteSchema = z.object({ id: z.number().int().positive() });

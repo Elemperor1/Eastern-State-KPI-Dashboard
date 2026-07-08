@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
-import { verifyCredentials } from "@/lib/auth";
-import { getSession, AuthError } from "@/lib/session";
+import { verifyCredentials } from "@/features/auth/server";
+import { getSession, AuthError } from "@/features/auth/session";
 import { ensureCsrfCookie } from "@/lib/request-guard";
 import {
   clearFailures,

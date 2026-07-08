@@ -8,7 +8,7 @@ CI logs** (security finding **D8AD-CAN-001**).
 ## What the app does automatically
 
 On the first run against a fresh database, `ensureSeedAdmin()`
-(`src/lib/auth.ts`) creates two bootstrap accounts:
+(`src/features/auth/server.ts`) creates two bootstrap accounts:
 
 | Email                     | Role    | Env var consumed at seed time       |
 | ------------------------- | ------- | ----------------------------------- |

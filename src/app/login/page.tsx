@@ -52,7 +52,7 @@ export default function LoginPage() {
         style={{ backgroundImage: "url('/starfield.svg')", backgroundSize: "640px 640px" }}
       >
         <div className="relative z-10 flex items-center gap-3">
-          <BrandMark size="md" inverted />
+          <BrandMark size="md" />
           <div>
             <p className="text-sm font-semibold">Eastern State</p>
             <p className="text-[10px] uppercase tracking-[0.12em] text-white/55">KPI Intelligence</p>

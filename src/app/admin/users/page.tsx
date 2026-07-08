@@ -1,7 +1,7 @@
 import { redirect } from "next/navigation";
-import { getCurrentUserReadOnly } from "@/lib/session";
+import { getCurrentUserReadOnly } from "@/features/auth/session";
 import { AppShell } from "@/components/AppShell";
-import { listUsers } from "@/lib/auth";
+import { listUsers } from "@/features/users/server";
 import { UserManagerClient } from "./UserManagerClient";
 
 export const dynamic = "force-dynamic";

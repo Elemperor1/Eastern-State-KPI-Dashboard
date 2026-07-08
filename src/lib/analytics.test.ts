@@ -9,9 +9,9 @@ import {
   formatDelta,
   formatValue,
   isFavorable,
-  MONTH_LABELS,
   numericDirection,
 } from "@/lib/analytics";
+import { MONTH_LABELS, isMonthlyEntryMonth } from "@/features/metrics";
 
 function kpi(overrides: Partial<KPIWithCategory> = {}): KPIWithCategory {
   return {
@@ -397,7 +397,7 @@ describe("buildTrendPoints", () => {
     const points = buildTrendPoints(entries, [2024]);
     expect(points.length).toBe(12);
     // No 13th point — month=0 must not be plotted.
-    expect(points.every((p) => p.month >= 1 && p.month <= 12)).toBe(true);
+    expect(points.every((p) => isMonthlyEntryMonth(p.month))).toBe(true);
     // The month=0 value must not leak into January or any other month.
     expect(points[0][2024]).toBe(100);
   });

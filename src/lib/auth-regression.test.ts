@@ -2,10 +2,10 @@
  * Comprehensive regression suite for D8AD-CAN-003.
  *
  * Proves that a stale (revoked) session cookie cannot reach ANY
- * protected read or mutation route, across every revocation trigger
+ * protected mutation route, across every revocation trigger
  * (password reset, role change, account disablement, account
  * deletion), and that the shared authorization boundary
- * (`requireSession` / `requireAdmin` in `src/lib/session.ts`) enforces
+ * (`requireSession` / `requireAdmin` from `src/features/auth/session.ts`) enforces
  * a uniform 401 `{error:"Unauthorized"}` for revoked sessions and a
  * uniform 403 `{error:"Forbidden"}` for insufficient role — with no
  * account-detail leakage and no redirect loop.
@@ -71,13 +71,13 @@ vi.mock("next/headers", () => ({
 import {
   PROTECTED_API_ROUTES,
   assertForbidden,
-  assertOk,
   assertUnauthorized,
   dispatch,
 } from "./auth-regression-helpers";
-import { createUser, ensureSeedAdmin, findUserById } from "./auth";
+import { ensureSeedAdmin } from "@/features/auth/server";
+import { createUser, findUserById } from "@/features/users/server";
 import { resetDb } from "@/lib/db";
-import { getCurrentUser } from "@/lib/session";
+import { getCurrentUser } from "@/features/auth/session";
 import { _resetForTests as resetThrottle } from "@/lib/login-throttle";
 import { POST as loginPost } from "@/app/api/auth/login/route";
 import { GET as meGet } from "@/app/api/auth/me/route";
@@ -257,12 +257,10 @@ async function captureAndRevoke(trigger: Trigger, target: Account): Promise<stri
 }
 
 const ADMIN_GATED = PROTECTED_API_ROUTES.filter((r) => r.gate === "requireAdmin");
-const SESSION_GATED = PROTECTED_API_ROUTES.filter((r) => r.gate === "requireSession");
-
 /* ------------------------------------------------------------------ *
  * req 4 + req 6: a revoked/deleted session cannot reach ANY protected
- * route (every functional group: reads, writes, history, KPI
- * definitions, categories, entries, breakdowns, user management).
+ * route (every functional group: writes, history, KPI definitions,
+ * categories, entries, breakdowns, goals, user management).
  * ------------------------------------------------------------------ */
 function replayMatrix(trigger: Trigger, targetRole: "admin" | "viewer"): void {
   let revoked = "";
@@ -302,8 +300,7 @@ describe("revoked session (account deletion) vs every protected route", () => {
 });
 
 /* ------------------------------------------------------------------ *
- * req 5: a viewer session cannot reach administrator operations
- * (403), and CAN reach the shared read routes (200).
+ * req 5: a viewer session cannot reach administrator operations (403).
  * ------------------------------------------------------------------ */
 describe("viewer session cannot reach administrator operations (req 5)", () => {
   let viewerCookie = "";
@@ -320,12 +317,6 @@ describe("viewer session cannot reach administrator operations (req 5)", () => {
     replay(viewerCookie);
     const res = await dispatch(route.method, route.path);
     await assertForbidden(res);
-  });
-
-  it.each(SESSION_GATED)("permits viewer read on $method $path (200)", async (route) => {
-    replay(viewerCookie);
-    const res = await dispatch(route.method, route.path);
-    await assertOk(res);
   });
 });
 
@@ -359,12 +350,11 @@ describe("fresh session works after a legitimate reset (req 7)", () => {
 
     // Admin's own session is still valid (actor not self-affected).
     replay(adminCookie);
-    await assertOk(await dispatch("GET", "/api/users"));
-    await assertOk(await dispatch("GET", "/api/entries/history"));
+    await expect(getCurrentUser()).resolves.toMatchObject({ id: admin.id, role: "admin" });
 
     // Viewer's old cookie is revoked.
     replay(viewerOld);
-    await assertUnauthorized(await dispatch("GET", "/api/kpis"));
+    await expect(getCurrentUser()).resolves.toBeNull();
 
     // Viewer logs in with the temp credential (must_change).
     const tempLogin = await loginPost(
@@ -390,10 +380,9 @@ describe("fresh session works after a legitimate reset (req 7)", () => {
     expect(freshLogin.status).toBe(200);
     expect((await freshLogin.json()).mustChangePassword).toBe(false);
 
-    // Reads succeed; admin ops are forbidden (viewer role).
-    await assertOk(await dispatch("GET", "/api/kpis"));
-    await assertOk(await dispatch("GET", "/api/meta"));
-    await assertForbidden(await dispatch("GET", "/api/users"));
+    // The fresh viewer session is valid; admin-only adapters remain forbidden.
+    await expect(getCurrentUser()).resolves.toMatchObject({ id: viewer.id, role: "viewer" });
+    await assertForbidden(await dispatch("POST", "/api/entries"));
   });
 });
 
@@ -492,16 +481,15 @@ describe("route table coverage", () => {
   it("every protected API route is registered exactly once and covers all req-6 groups", () => {
     const keys = PROTECTED_API_ROUTES.map((r) => `${r.method} ${r.path}`);
     expect(new Set(keys).size).toBe(keys.length);
-    // Every functional group named in req 6 (reads, writes, history,
-    // KPI definitions, categories, entries, breakdowns, goals, user
+    // Every remaining protected API functional group named in req 6 (KPI
+    // definitions, categories, entries, breakdowns, goals, user
     // management) is represented. "writes" is covered by the presence
     // of mutation methods (POST/PATCH/DELETE) across the groups.
     const groups = new Set(PROTECTED_API_ROUTES.map((r) => r.group));
-    for (const g of ["history", "kpis", "categories", "entries", "breakdowns", "goals", "users", "reads"]) {
+    for (const g of ["kpis", "categories", "entries", "breakdowns", "goals", "users"]) {
       expect(groups.has(g as (typeof PROTECTED_API_ROUTES)[number]["group"])).toBe(true);
     }
     const methods = new Set(PROTECTED_API_ROUTES.map((r) => r.method));
-    expect(methods.has("GET")).toBe(true); // reads
     expect(methods.has("POST") || methods.has("PATCH") || methods.has("DELETE")).toBe(true); // writes
   });
 

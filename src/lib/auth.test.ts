@@ -3,7 +3,8 @@ import os from "node:os";
 import path from "node:path";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import bcrypt from "bcryptjs";
-import { createUser, ensureSeedAdmin, findUserByEmail, verifyCredentials } from "./auth";
+import { ensureSeedAdmin, verifyCredentials } from "@/features/auth/server";
+import { createUser, findUserByEmail } from "@/features/users/server";
 import { getDb, resetDb } from "./db";
 
 /**
