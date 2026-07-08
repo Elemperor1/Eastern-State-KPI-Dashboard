@@ -33,7 +33,8 @@ export function MetricGoalPanel({
       <Card className="overflow-hidden p-5 lg:p-6">
         <div className="mb-3 flex flex-wrap items-center justify-between gap-3">
           <p className="text-[10px] font-semibold uppercase tracking-[0.08em] text-ink-500">
-            <Crosshair className="mr-1 inline size-3" aria-hidden /> Goal
+            <Crosshair className="mr-1 inline size-3" aria-hidden />{" "}
+            {goal.target_year} Goal
           </p>
           <div className="flex items-center gap-1.5 no-print" role="group" aria-label="Display mode">
             <Chip

@@ -39,7 +39,7 @@ export function loadOverviewPageData(
     kpis: listKPIs(),
     entries: listEntries(),
     breakdowns: listBreakdowns(),
-    goals: listGoals({ enabledOnly: true, throughMonth: opts?.throughMonth, year: opts?.year }),
+    goals: listGoals({ enabledOnly: true, throughMonth: opts?.throughMonth }),
     ...pageMetadata(),
   };
 }
@@ -60,7 +60,6 @@ export function loadCategoryPageData(
       category_id: category.id,
       enabledOnly: true,
       throughMonth: opts?.throughMonth,
-      year: opts?.year,
     }),
     ...pageMetadata(),
   };
@@ -84,7 +83,6 @@ export function loadMetricDetailPageData(
       enabledOnly: true,
       kpi_id: kpi.id,
       throughMonth: opts?.throughMonth,
-      year: opts?.year,
     }),
     ...pageMetadata(),
   };

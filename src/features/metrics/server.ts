@@ -1,4 +1,10 @@
-export { listEntries, upsertEntry, deleteEntry, type EntryFilter } from "./entries";
+export {
+  EntryPeriodMismatchError,
+  listEntries,
+  upsertEntry,
+  deleteEntry,
+  type EntryFilter,
+} from "./entries";
 export {
   BreakdownEntryConflictError,
   BreakdownEntryNotFoundError,

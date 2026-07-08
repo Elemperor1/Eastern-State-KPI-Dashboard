@@ -52,27 +52,28 @@ The default development workflow runs with `AUTH_DISABLED=true` and never logs i
 
 Every KPI defines:
 
-- **category** — one of the 8 finalized Eastern State categories
+- **category** — one of the 5 Eastern State strategic priorities
 - **metric name**
 - **unit type** — `count`, `percent`, `currency`, `attendance`, `note`, or `breakdown`
 - **reporting frequency** — `monthly`, `annual`, or `flexible`
 - **direction** — `higher` is better, `lower` is better, or `neutral`
 - optional **notes** for context
 
-Annual-only metrics are stored as a single full-year value (month `0`) so they never require month-by-month entry. Breakdown metrics (funder breakdowns, donor categories) use a dedicated `breakdown_entries` table keyed by label × year.
+Annual-only metrics are stored as a single full-year value (month `0`) so they never require month-by-month entry. Breakdown metrics use a dedicated `breakdown_entries` table keyed by label × year.
 
-### Finalized metric set (8 categories · 52 metrics)
+### Strategic-plan metric set (5 priorities · 59 KPIs · 25 goals)
 
-- **Education** — Video views, Webpage views, Lesson downloads, Virtual program attendees, States and countries represented, Teachers attending in-person PDs, Teachers attending online PDs, State/national conferences with ES presence, Educational/program partners, Overall attendance in education programs
-- **Adult Programs** — Speaker program attendance onsite, Speaker program attendance online, YouTube views of videos
-- **Workforce Development** — Participants in open call event, Percent completing program, Programs offered, Percent job placement at completion, Percent job placement 1 year post-graduation, Percent female, Percent justice impacted, Community partners, Awareness of workforce programs
-- **Preservation** — Percent of site in triage, Articles on ES preservation work, Conferences presented, Items in collection, Percent of items in collection available online
-- **Museum** — Overall museum attendance, School groups attendance, Virtual exhibit participants, Festival attendees, Media mentions during festival, Festivals with partner sponsors
-- **General Awareness** — Public events as speaker, Broadcast/streaming/radio/podcast interviews, Print/online mentions, Overall media hits
-- **Fundraising** — People referred to development who became donors, Number of overall individual donors, Percent of revenue from development, **Number of funders by breakdown**, Percent of board engagement, Percent of board giving, Number of corporate sponsorships, Percent of donors retained, Percent of members converted to donors, Percent of donors converted to members, **First-time/returning/lapsed donors**
-- **Economic Impact** — Total annual budget, Economic impact, Jobs held at ES, Indirect jobs via vendors
+- **Reimagine Visitor Experience** — 16 KPIs, 13 with 2027/2029 targets
+- **Advance Historic Preservation** — 13 KPIs, 4 with targets
+- **Expand Workforce Development** — 9 KPIs, 3 with targets
+- **Support Learning through Justice Education** — 9 KPIs, 1 with a target
+- **Enhance Organizational Capacity** — 12 KPIs, 4 with targets
 
-Three metrics are **breakdowns** (Number of funders by breakdown; First-time/returning/lapsed donors; People referred to development who became donors) and render as group comparison bars + tables; the donor-conversion metric additionally shows a month-by-month referral and conversion table.
+All current strategic-plan KPIs are annual snapshots stored at `month = 0`.
+KPI names use `Strategic Goal — Measure` so category pages can group measures
+under their owning strategic goal. `Revenue Diversification — % of revenue
+from each major stream` is the current breakdown KPI and renders label-by-year
+comparison bars and tables.
 
 ### Dashboard views
 
@@ -138,11 +139,17 @@ AUTH_DISABLED=true PORT=3290 BASE=http://127.0.0.1:3290 bash ./scripts/smoke.sh
 # Stop the dev server before reusing :3290 for the production/auth-enabled flow.
 npm run build
 AUTH_DISABLED=false PORT=3290 node_modules/.bin/next start -p 3290 &
-SMOKE_EMAIL=kerry@easternstate.org SMOKE_PASSWORD='<printed first-run password>' \
+SMOKE_EMAIL=kerry@easternstate.org SMOKE_PASSWORD='<operator-provisioned password>' \
   AUTH_DISABLED=false PORT=3290 BASE=http://127.0.0.1:3290 bash ./scripts/smoke.sh
 ```
 
-It verifies the finalized metric set, all category/metric pages, through-month handling, admin pages, monthly/annual/breakdown entry round-trips, and the auth-bypass behavior of `POST /api/entries` (401 with no session when auth is enabled; 201 when the bypass is in effect). For curl mutations, the harness first fetches the `eastern_state_kpi_csrf` cookie from `/api/auth/me` and sends both `Origin` and `X-CSRF-Token`, matching the browser `apiFetch` path. Override the mutation origin with `SMOKE_ORIGIN=...` for production-like runs; otherwise the script uses `APP_CANONICAL_ORIGIN` when set and normalizes local `127.0.0.1` smoke runs to `localhost`.
+It verifies the 5-priority/59-KPI strategic catalog, every category page,
+representative annual percentage/currency/breakdown metrics, the annual-only
+Trend Explorer state, admin pages, mutation round-trips, and the auth-bypass
+behavior of `POST /api/entries` (401 with no session when auth is enabled; 201
+when the bypass is in effect). For curl mutations, the harness first fetches
+the `eastern_state_kpi_csrf` cookie from `/api/auth/me` and sends both `Origin`
+and `X-CSRF-Token`, matching the browser `apiFetch` path.
 
 ## Deployment Notes
 
@@ -178,8 +185,14 @@ password change flow — lives at `docs/qa-manual.md`. New engineers should
 walk the checklist end-to-end after their first checkout.
 
 Latest local runs:
-- `AUTH_DISABLED=true` via `next dev` → **56 passed, 0 failed**
-- `AUTH_DISABLED=false` via `next start` → **60 passed, 0 failed** (login + auth-wall checks included)
+- `AUTH_DISABLED=true` via `next dev` → **48 passed, 0 failed**
+- `AUTH_DISABLED=false` via `next start` → **52 passed, 0 failed**
+- `npm run test:e2e` → **4 passed**
+
+Schema version 8 intentionally replaces the former sample catalog with the
+strategic plan. That migration resets KPI data and audit history while
+preserving users. Back up a production database before deploying this version;
+see ADR 0020 for the rollout and rollback procedure.
 
 ## Data model (schema)
 

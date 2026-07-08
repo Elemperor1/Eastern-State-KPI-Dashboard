@@ -1,7 +1,7 @@
 import { expect, test, type Download, type Page } from "@playwright/test";
 import { readFile } from "node:fs/promises";
 
-const GOAL_KPI = "Indirect jobs held at ES via vendors";
+const GOAL_KPI = "Interpretive Site Plan — Milestones completed on schedule";
 const GOAL_YEAR = "2026";
 
 test.describe.configure({ mode: "serial" });
@@ -63,7 +63,9 @@ test("creates, edits, exports, and deletes a KPI goal", async ({ page }) => {
   const form = page.locator("form").filter({
     has: page.getByRole("heading", { name: "Add a new goal" }),
   });
-  await form.getByLabel("KPI").selectOption({ label: `${GOAL_KPI} (Economic Impact)` });
+  await form
+    .getByLabel("KPI")
+    .selectOption({ label: `${GOAL_KPI} (Reimagine Visitor Experience)` });
   await form.getByLabel("Target year").selectOption(GOAL_YEAR);
   await form.getByLabel("Percentage change").fill("17");
   await form.getByLabel("Notes (optional)").fill("Playwright acceptance goal");
@@ -85,12 +87,13 @@ test("creates, edits, exports, and deletes a KPI goal", async ({ page }) => {
   await expect(row).toContainText("+23%");
 
   await page.goto(
-    "/dashboard/metric/indirect-jobs-vendors?currentYear=2026&compareYear=2025&currentMonth=7",
+    "/dashboard/metric/interpretive-plan-milestones-on-schedule?currentYear=2026&compareYear=2025",
   );
   await expect(page.getByRole("heading", { name: GOAL_KPI })).toBeVisible();
   const goalPanel = page.locator("section").filter({
     has: page.getByRole("group", { name: "Display mode" }),
   });
+  await expect(goalPanel).toContainText("2026 Goal");
   await expect(goalPanel).toContainText("Goal: +23%");
   const pngPromise = page.waitForEvent("download");
   await page.getByRole("button", { name: "Export current view as PNG image" }).click();
@@ -102,24 +105,16 @@ test("creates, edits, exports, and deletes a KPI goal", async ({ page }) => {
   expect(browserErrors).toEqual([]);
 });
 
-test("shows a monthly save error, retries, and clears the saved value", async ({ page }) => {
+test("shows an annual save error, retries, and restores the sample value", async ({ page }) => {
   const browserErrors = collectBrowserErrors(page);
   await page.goto("/admin/data");
   await expect(
     page.getByRole("heading", { name: "Enter monthly, annual, and breakdown values" }),
   ).toBeVisible();
-  await page.getByLabel("Metric").selectOption("video-views");
+  await page
+    .getByLabel("Metric")
+    .selectOption("interpretive-plan-milestones-on-schedule");
   await page.getByLabel("Year").selectOption("2026");
-
-  const clearDecember = page.getByRole("button", { name: "Clear Dec" });
-  if (await clearDecember.isEnabled()) {
-    await clearDecember.click();
-    await page
-      .getByRole("alertdialog")
-      .getByRole("button", { name: "Clear value" })
-      .click();
-    await expect(page.getByRole("status")).toContainText("Cleared December 2026.");
-  }
 
   await page.route("**/api/entries", async (route) => {
     if (route.request().method() === "POST") {
@@ -133,22 +128,20 @@ test("shows a monthly save error, retries, and clears the saved value", async ({
     await route.continue();
   });
 
-  await page.getByLabel("Dec value").fill("4321");
-  await page.getByLabel("Dec notes").fill("Playwright retry proof");
-  await page.getByRole("button", { name: "Save Dec" }).click();
+  await page.getByPlaceholder("Enter 2026 value").fill("36");
+  await page.getByPlaceholder("Notes (optional)").fill("Playwright retry proof");
+  await page.getByRole("button", { name: "Save 2026 value" }).click();
   await expect(page.getByRole("status")).toContainText("Could not save: simulated failure");
 
   await page.unroute("**/api/entries");
-  await page.getByRole("button", { name: "Save Dec" }).click();
-  await expect(page.getByRole("status")).toContainText("Saved December 2026.");
+  await page.getByRole("button", { name: "Save 2026 value" }).click();
+  await expect(page.getByRole("status")).toContainText("Saved 2026.");
 
-  await page.getByRole("button", { name: "Clear Dec" }).click();
-  await page
-    .getByRole("alertdialog")
-    .getByRole("button", { name: "Clear value" })
-    .click();
-  await expect(page.getByRole("status")).toContainText("Cleared December 2026.");
-  await expect(page.getByLabel("Dec value")).toHaveValue("");
+  await page.getByPlaceholder("Enter 2026 value").fill("35");
+  await page.getByPlaceholder("Notes (optional)").fill("");
+  await page.getByRole("button", { name: "Save 2026 value" }).click();
+  await expect(page.getByRole("status")).toContainText("Saved 2026.");
+  await expect(page.getByPlaceholder("Enter 2026 value")).toHaveValue("35");
   expect(
     browserErrors.filter(
       (message) =>
@@ -180,32 +173,39 @@ test("navigates through desktop and mobile application shells", async ({ page })
   expect(browserErrors).toEqual([]);
 });
 
-test("downloads representative PNG/PDF exports and renders native print PDF", async ({
+test("downloads representative strategic-plan exports and renders native print PDF", async ({
   page,
 }) => {
   const browserErrors = collectBrowserErrors(page);
 
-  await page.goto("/dashboard/category/fundraising");
-  await expect(page.getByRole("heading", { name: "Fundraising" })).toBeVisible();
-  await expect(page.getByText("Donor conversion", { exact: true })).toBeVisible();
+  await page.goto("/dashboard/category/visitor-experience");
+  await expect(
+    page.getByRole("heading", { name: "Reimagine Visitor Experience" }),
+  ).toBeVisible();
+  await expect(
+    page.getByRole("heading", { name: "Interpretive Site Plan", exact: true }),
+  ).toBeVisible();
   let downloadPromise = page.waitForEvent("download");
   await page.getByRole("button", { name: "Export current view as PNG image" }).click();
   await expectPngDownload(await downloadPromise);
 
   await page.goto(
-    "/dashboard/category/education?currentYear=2099&compareYear=2098&currentMonth=12",
+    "/dashboard/category/visitor-experience?currentYear=2099&compareYear=2098",
   );
-  await expect(page.getByText("No data", { exact: true })).toHaveCount(10);
+  await expect(page.getByText("No data", { exact: true })).toHaveCount(16);
   downloadPromise = page.waitForEvent("download");
   await page.getByRole("button", { name: "Export current view as PNG image" }).click();
   await expectPngDownload(await downloadPromise);
 
-  await page.goto("/dashboard/category/education?legacy=1");
+  await page.goto("/dashboard/category/visitor-experience?legacy=1");
   downloadPromise = page.waitForEvent("download");
   await page.getByRole("button", { name: "Export current dashboard view as PDF" }).click();
   await expectPdfDownload(await downloadPromise);
 
-  await page.goto("/dashboard/metric/video-views?legacy=1");
+  await page.goto(
+    "/dashboard/metric/interpretive-plan-milestones-on-schedule?legacy=1",
+  );
+  await expect(page.getByText("2027 Goal", { exact: true })).toBeVisible();
   downloadPromise = page.waitForEvent("download");
   await page.getByRole("button", { name: "Export current dashboard view as PDF" }).click();
   await expectPdfDownload(await downloadPromise);

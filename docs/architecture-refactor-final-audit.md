@@ -10,12 +10,15 @@ refactor. It complements the requirement ledger in
 ## Server And Client Boundaries
 
 - Category pages now serialize only their category; metric pages serialize only
-  their KPI. Seeded payloads measured 82,471 bytes and 8,684 bytes respectively,
-  versus 273,363 bytes for the full overview dataset.
+  their KPI. The schema-8 strategic seed measures 34,355 bytes for Reimagine
+  Visitor Experience and 2,694 bytes for Interpretive Site Plan milestones,
+  versus 121,187 bytes for the full overview dataset.
 - Overview retains the full dataset because every category card recalculates
   immediately for period changes.
 - Trend Explorer retains all monthly non-breakdown series because any eligible
-  KPI can be toggled without a read.
+  KPI can be toggled without a read. The current annual-only strategic seed
+  produces a 1,720-byte empty-state payload while preserving that behavior for
+  future monthly KPIs.
 - `listAvailableYears()` owns the distinct-year query; reporting no longer loads
   every entry merely to derive control options.
 - `scripts/architecture-boundary-guard.sh` rejects server self-HTTP, client
@@ -37,10 +40,16 @@ Production SQL is confined to:
 The two `src/lib` files are narrow SQLite lifecycle/schema and application-meta
 infrastructure, not a generic repository.
 
+Canonical strategic-plan seed data lives in
+`src/features/catalog/strategic-plan.ts`. `scripts/seed.ts` is a transactional
+adapter over catalog, metrics, and goals feature operations; it does not own a
+parallel catalog model.
+
 ## Duplicate Rules
 
 Repository searches found no production direct `month === 0` classification
-outside the metrics period-rule surface. Percentage arithmetic remains in
+outside the metrics period-rule surface. Entry writes also validate KPI
+frequency against the requested month before mutation. Percentage arithmetic remains in
 separate authoritative rules with distinct meanings: KPI YoY analytics, goal
 progress, category rollups, breakdown comparison, donor conversion, and trend
 indexing. UI `Progress` only clamps a prepared display value.
@@ -81,6 +90,7 @@ removals.
 npm run architecture:guard
 npm run test:e2e
 npx tsc --noEmit --noUnusedLocals --noUnusedParameters
+node --import tsx -e "import {STRATEGIC_PLAN_CATEGORIES as c} from './src/features/catalog/strategic-plan.ts'; console.log(c.length, c.flatMap(x => [...x.annual, ...(x.breakdown ?? [])]).length)"
 rg -n "month\\s*(===|!==|==|!=)\\s*0" src --glob '*.ts' --glob '*.tsx'
 rg -n "current_value|goal_target|progress_pct|loadDashboardData" src
 rg -l "\\.prepare\\(|\\.exec\\(" src --glob '*.ts' --glob '!**/*.test.ts'

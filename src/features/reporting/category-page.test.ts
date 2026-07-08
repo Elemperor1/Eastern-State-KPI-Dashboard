@@ -111,7 +111,23 @@ function goal(overrides: Partial<KpiGoalWithMeta>): KpiGoalWithMeta {
   };
 }
 
-const visitorsKpi = kpi({ id: 1, slug: "visitors", name: "Visitors" });
+const visitorsKpi = kpi({
+  id: 1,
+  slug: "visitors",
+  name: "Visitor Experience — Visitors",
+});
+const satisfactionKpi = kpi({
+  id: 5,
+  slug: "satisfaction",
+  name: "Visitor Experience — Satisfaction",
+  reporting_frequency: "annual",
+});
+const accessibilityKpi = kpi({
+  id: 6,
+  slug: "accessibility",
+  name: "Amenities & Accessibility — Upgrades",
+  reporting_frequency: "annual",
+});
 const monthlyBreakdownKpi = kpi({
   id: 2,
   slug: "percent-cultivated-donors",
@@ -141,7 +157,14 @@ const period: ComparePeriod = {
 
 const data: DashboardData = {
   categories: [category],
-  kpis: [visitorsKpi, monthlyBreakdownKpi, annualBreakdownKpi, otherCategoryKpi],
+  kpis: [
+    visitorsKpi,
+    satisfactionKpi,
+    accessibilityKpi,
+    monthlyBreakdownKpi,
+    annualBreakdownKpi,
+    otherCategoryKpi,
+  ],
   entries: [
     entry({ id: 1, kpi_id: visitorsKpi.id, year: 2026, month: 1, value: 100 }),
     entry({ id: 2, kpi_id: visitorsKpi.id, year: 2026, month: 2, value: 50 }),
@@ -169,11 +192,40 @@ describe("reporting category page model", () => {
     const model = buildCategoryPageModel(data, category.slug, period);
 
     expect(model.category?.slug).toBe("museum");
-    expect(model.metricCards).toHaveLength(1);
+    expect(model.metricCards).toHaveLength(3);
     expect(model.metricCards[0].kpi.slug).toBe("visitors");
     expect(model.metricCards[0].goal?.target_year).toBe(2026);
     expect(model.metricCards[0].analytics.ytdComparison.currentValue).toBe(150);
     expect(model.metricCards[0].analytics.ytdComparison.compareValue).toBe(100);
+    expect(
+      model.metricGroups.map((group) => ({
+        goal: group.goal,
+        slugs: group.metrics.map((metric) => metric.kpi.slug),
+      })),
+    ).toEqual([
+      {
+        goal: "Visitor Experience",
+        slugs: ["visitors", "satisfaction"],
+      },
+      {
+        goal: "Amenities & Accessibility",
+        slugs: ["accessibility"],
+      },
+    ]);
+  });
+
+  it("uses the nearest upcoming strategic goal when the selected year has none", () => {
+    const strategicData = {
+      ...data,
+      goals: [
+        goal({ id: 3, kpi_id: visitorsKpi.id, target_year: 2029 }),
+        goal({ id: 4, kpi_id: visitorsKpi.id, target_year: 2027 }),
+      ],
+    };
+
+    const model = buildCategoryPageModel(strategicData, category.slug, period);
+
+    expect(model.metricCards[0].goal?.target_year).toBe(2027);
   });
 
   it("separates monthly and annual breakdown sections with chart-ready rows", () => {
@@ -200,6 +252,7 @@ describe("reporting category page model", () => {
 
     expect(model.category).toBeNull();
     expect(model.metricCards).toEqual([]);
+    expect(model.metricGroups).toEqual([]);
     expect(model.monthlyBreakdowns).toEqual([]);
     expect(model.annualBreakdowns).toEqual([]);
   });

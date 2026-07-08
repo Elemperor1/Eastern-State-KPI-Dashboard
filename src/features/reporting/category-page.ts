@@ -6,10 +6,38 @@ import {
 import type {
   CategoryBreakdownModel,
   CategoryMetricCardModel,
+  CategoryMetricGroupModel,
   CategoryPageModel,
   ComparePeriod,
   DashboardData,
 } from "./types";
+import { selectReportingGoal } from "./goal-selection";
+
+const STRATEGIC_GOAL_SEPARATOR = " — ";
+
+export function strategicGoalName(kpiName: string): string {
+  const separatorIndex = kpiName.indexOf(STRATEGIC_GOAL_SEPARATOR);
+  return separatorIndex > 0 ? kpiName.slice(0, separatorIndex) : "Other";
+}
+
+export function groupCategoryMetrics(
+  metrics: CategoryMetricCardModel[],
+): CategoryMetricGroupModel[] {
+  const groups = new Map<string, CategoryMetricCardModel[]>();
+  for (const metric of metrics) {
+    const goal = strategicGoalName(metric.kpi.name);
+    const group = groups.get(goal);
+    if (group) {
+      group.push(metric);
+    } else {
+      groups.set(goal, [metric]);
+    }
+  }
+  return Array.from(groups, ([goal, groupedMetrics]) => ({
+    goal,
+    metrics: groupedMetrics,
+  }));
+}
 
 export function buildCategoryPageModel(
   data: DashboardData,
@@ -21,6 +49,7 @@ export function buildCategoryPageModel(
     return {
       category: null,
       metricCards: [],
+      metricGroups: [],
       monthlyBreakdowns: [],
       annualBreakdowns: [],
     };
@@ -29,12 +58,6 @@ export function buildCategoryPageModel(
   const categoryKpis = data.kpis.filter((kpi) => kpi.category_slug === categorySlug);
   const nonBreakdownKpis = categoryKpis.filter((kpi) => kpi.unit_type !== "breakdown");
   const breakdownKpis = categoryKpis.filter((kpi) => kpi.unit_type === "breakdown");
-  const goalsByKpiId = new Map(
-    data.goals
-      .filter((goal) => goal.target_year === period.currentYear)
-      .map((goal) => [goal.kpi_id, goal]),
-  );
-
   const metricCards: CategoryMetricCardModel[] = nonBreakdownKpis.map((kpi) => {
     const entries = data.entries.filter((entry) => entry.kpi_id === kpi.id);
     return {
@@ -46,7 +69,7 @@ export function buildCategoryPageModel(
         compareYear: period.compareYear,
         currentMonth: period.currentMonth,
       }),
-      goal: goalsByKpiId.get(kpi.id) ?? null,
+      goal: selectReportingGoal(data.goals, kpi.id, period.currentYear),
     };
   });
 
@@ -71,6 +94,7 @@ export function buildCategoryPageModel(
   return {
     category,
     metricCards,
+    metricGroups: groupCategoryMetrics(metricCards),
     monthlyBreakdowns,
     annualBreakdowns,
   };

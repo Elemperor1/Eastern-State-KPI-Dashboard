@@ -95,7 +95,7 @@ export function CategoryPageClient({
         <DashboardControls state={state} availableYears={data.years} onChange={updateState} />
 
         <CategoryMetricGrid
-          metrics={model.metricCards}
+          groups={model.metricGroups}
           title={`${MONTH_FULL[state.currentMonth - 1]} ${state.currentYear} vs ${state.compareYear}`}
           onMetricSelect={(slug) => router.push(`/dashboard/metric/${slug}`)}
         />

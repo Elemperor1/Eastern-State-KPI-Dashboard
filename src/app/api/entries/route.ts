@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 import {
+  EntryPeriodMismatchError,
   deleteEntry,
   upsertEntry,
 } from "@/features/metrics/server";
@@ -31,8 +32,15 @@ export async function POST(req: NextRequest) {
       { status: 400 },
     );
   }
-  const entry = upsertEntry({ ...parsed.data, updated_by: sessionUser.id });
-  return NextResponse.json({ entry }, { status: 201 });
+  try {
+    const entry = upsertEntry({ ...parsed.data, updated_by: sessionUser.id });
+    return NextResponse.json({ entry }, { status: 201 });
+  } catch (error) {
+    if (error instanceof EntryPeriodMismatchError) {
+      return NextResponse.json({ error: error.message }, { status: 400 });
+    }
+    throw error;
+  }
 }
 
 const DeleteSchema = z.object({ id: z.number().int().positive() });

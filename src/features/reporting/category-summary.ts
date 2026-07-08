@@ -7,18 +7,21 @@ import type {
   BreakdownEntryWithMeta,
   Category,
   KPIWithCategory,
+  KpiGoalWithMeta,
   MonthlyEntryWithMeta,
 } from "@/lib/types";
 import type {
   CategoryMetricMovement,
   CategoryOverviewSummary,
   ComparePeriod,
+  DashboardData,
   ReportingData,
 } from "./types";
 
 interface BuildCategorySummaryArgs extends ReportingData {
   category: Category;
   period: ComparePeriod;
+  goals?: KpiGoalWithMeta[];
 }
 
 export function buildCategoryMetricMovement({
@@ -98,6 +101,7 @@ export function buildCategoryOverviewSummary({
   entries,
   breakdowns,
   period,
+  goals = [],
 }: BuildCategorySummaryArgs): CategoryOverviewSummary {
   const categoryKpis = kpis.filter((kpi) => kpi.category_id === category.id);
   const metrics = categoryKpis.map((kpi) =>
@@ -113,6 +117,21 @@ export function buildCategoryOverviewSummary({
     (a, b) => Math.abs(b.pct ?? 0) - Math.abs(a.pct ?? 0),
   );
   const topMover = sorted.find((metric) => metric.favorable && metric.pct !== null) ?? sorted[0] ?? null;
+  const activeGoals = goals.filter(
+    (goal) =>
+      goal.enabled &&
+      goal.category_id === category.id &&
+      goal.target_year >= period.currentYear,
+  );
+  const goalProgress = activeGoals.flatMap((goal) =>
+    goal.full_year_progress_pct === null ? [] : [goal.full_year_progress_pct],
+  );
+  const averageGoalProgress = goalProgress.length
+    ? Math.round(
+        goalProgress.reduce((sum, progress) => sum + progress, 0) /
+          goalProgress.length,
+      )
+    : null;
 
   return {
     category,
@@ -123,14 +142,21 @@ export function buildCategoryOverviewSummary({
     total,
     pctImproving,
     topMover,
+    goalCount: activeGoals.length,
+    averageGoalProgress,
   };
 }
 
 export function buildCategoryOverviewSummaries(
-  data: ReportingData,
+  data: DashboardData,
   period: ComparePeriod,
 ): CategoryOverviewSummary[] {
   return data.categories.map((category) =>
-    buildCategoryOverviewSummary({ ...data, category, period }),
+    buildCategoryOverviewSummary({
+      ...data,
+      category,
+      goals: data.goals,
+      period,
+    }),
   );
 }

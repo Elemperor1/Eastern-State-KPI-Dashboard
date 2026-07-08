@@ -10,6 +10,7 @@ import {
   isMonthlyEntryMonth,
 } from "@/features/metrics";
 import { buildMetricValueRows } from "./csv";
+import { selectReportingGoal } from "./goal-selection";
 import type {
   ComparePeriod,
   DashboardData,
@@ -67,9 +68,7 @@ export function buildMetricDetailModel(
       [ytd.currentYear]: ytd.currentValue,
     },
   ];
-  const goal = data.goals.find(
-    (item) => item.kpi_id === kpi.id && item.target_year === period.currentYear,
-  ) ?? null;
+  const goal = selectReportingGoal(data.goals, kpi.id, period.currentYear);
   const breakdowns = data.breakdowns.filter((breakdown) => breakdown.kpi_id === kpi.id);
   const hasMonthlyBreakdownRows = breakdowns.some((breakdown) =>
     isMonthlyEntryMonth(breakdown.month),

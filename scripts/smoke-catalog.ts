@@ -1,16 +1,16 @@
 import { listKPIs } from "../src/features/catalog/server";
 
 type SmokeCatalogIds = {
-  monthlyKpi: number;
-  annualKpi: number;
+  entryKpi: number;
+  currencyKpi: number;
   breakdownKpi: number;
   bypassKpi: number;
 };
 
 function fixtureIds(): SmokeCatalogIds {
   return {
-    monthlyKpi: 1,
-    annualKpi: 2,
+    entryKpi: 1,
+    currencyKpi: 2,
     breakdownKpi: 3,
     bypassKpi: 1,
   };
@@ -27,10 +27,10 @@ function realIds(): SmokeCatalogIds {
   };
 
   return {
-    monthlyKpi: idFor("video-views"),
-    annualKpi: idFor("programs-offered"),
-    breakdownKpi: idFor("donor-categories"),
-    bypassKpi: idFor("video-views"),
+    entryKpi: idFor("interpretive-plan-milestones-on-schedule"),
+    currencyKpi: idFor("conservation-funds-utilized"),
+    breakdownKpi: idFor("revenue-by-stream"),
+    bypassKpi: idFor("interpretive-plan-milestones-on-schedule"),
   };
 }
 

@@ -208,7 +208,9 @@ The roadmap explicitly calls out: *"Mirror the export with an import path on `/a
 - Schema migration testing
 
 ### What is already automated
-- **Schema seeding**: `npm run db:seed` populates 52 KPIs across 8 categories with 2024–2026 sample data. Bumping `src/lib/schema-version.json` triggers a clean KPI table reset on next access (users preserved).
+- **Schema seeding**: `npm run db:seed` populates 59 annual KPIs across 5 strategic priorities with 2024–2026 sample data and 25 target-bearing goals. The canonical definition lives in `src/features/catalog/strategic-plan.ts`.
+- **Period integrity**: annual/flexible KPIs accept only `month = 0`; monthly KPIs accept only `1–12`. The metrics feature enforces this on every entry upsert and the API returns 400 for mismatches.
+- **Schema 8 migration**: this release intentionally replaces the previous sample catalog. It resets KPI values and `entry_history` while preserving users. Back up the production database before rollout; ADR 0020 contains the rollback procedure.
 - **Bootstrap admin**: `ensureSeedAdmin()` runs at module load on every server start and creates the seed admin/viewer accounts on first DB access.
 - **Production startup**: `scripts/ensure-seeded.mjs` compares the mounted DB's schema version against `src/lib/schema-version.json` and auto-seeds if needed.
 - **Goal computation**: YTD pacing, full-year progress, and prorated targets are all computed server-side per request — no manual calculation needed.

@@ -233,6 +233,12 @@ function migrateSchema(raw: DatabaseSync): void {
     return;
   }
 
+  // v7 → v8 is intentionally handled by the reset path below. Version 8
+  // replaces the former sample catalog with a new strategic-plan dimension
+  // model (5 priorities, 59 annual KPIs, 25 goals); old KPI ids and audit
+  // snapshots cannot be mapped safely. Users remain intact. Production
+  // operators must back up the database before rollout (ADR 0020).
+
   // Any other version transition (fresh DB, or an older shape): drop the
   // KPI data tables and recreate cleanly. Users are preserved; the seed
   // script repopulates metrics + entries. entry_history references rows

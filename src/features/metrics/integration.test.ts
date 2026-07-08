@@ -43,6 +43,7 @@ describe("upsertEntry / upsertBreakdown audit integrity", () => {
   let categoryId: number;
   let kpiA: number;
   let kpiB: number;
+  let annualKpi: number;
 
   beforeAll(() => {
     tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "es-kpi-repo-test-"));
@@ -66,8 +67,19 @@ describe("upsertEntry / upsertBreakdown audit integrity", () => {
       `INSERT INTO kpis (category_id, slug, name, unit, unit_type, reporting_frequency, direction, sort_order)
        VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
     ).run(categoryId, "kpi-b", "KPI B", "count", "count", "monthly", "higher", 1);
+    db.prepare(
+      `INSERT INTO kpis (category_id, slug, name, unit, unit_type, reporting_frequency, direction, sort_order)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+    ).run(categoryId, "annual-kpi", "Annual KPI", "count", "count", "annual", "higher", 2);
     kpiA = Number((db.prepare("SELECT id FROM kpis WHERE slug = ?").get("kpi-a") as { id: number }).id);
     kpiB = Number((db.prepare("SELECT id FROM kpis WHERE slug = ?").get("kpi-b") as { id: number }).id);
+    annualKpi = Number(
+      (
+        db
+          .prepare("SELECT id FROM kpis WHERE slug = ?")
+          .get("annual-kpi") as { id: number }
+      ).id,
+    );
   });
 
   beforeEach(() => {
@@ -129,6 +141,46 @@ describe("upsertEntry / upsertBreakdown audit integrity", () => {
     expect(listEntries({ kpi_ids: [] })).toEqual([]);
   });
 
+  it("enforces month 0 for annual KPIs and calendar months for monthly KPIs", () => {
+    expect(() =>
+      upsertEntry({
+        kpi_id: annualKpi,
+        year: 2026,
+        month: 1,
+        value: 10,
+        updated_by: 1,
+      }),
+    ).toThrow("expected month 0");
+    expect(() =>
+      upsertEntry({
+        kpi_id: kpiA,
+        year: 2026,
+        month: 0,
+        value: 10,
+        updated_by: 1,
+      }),
+    ).toThrow("expected a month from 1 through 12");
+
+    expect(
+      upsertEntry({
+        kpi_id: annualKpi,
+        year: 2026,
+        month: 0,
+        value: 10,
+        updated_by: 1,
+      }).month,
+    ).toBe(0);
+    expect(
+      upsertEntry({
+        kpi_id: kpiA,
+        year: 2026,
+        month: 12,
+        value: 10,
+        updated_by: 1,
+      }).month,
+    ).toBe(12);
+  });
+
   it("loads the complete admin data-entry page model through the metrics feature", () => {
     const db = getDb();
     db.prepare(
@@ -152,7 +204,11 @@ describe("upsertEntry / upsertBreakdown audit integrity", () => {
     const model = loadAdminDataPageData();
 
     expect(model.categories.map((item) => item.name)).toEqual(["Test Category"]);
-    expect(model.kpis.map((item) => item.slug)).toEqual(["kpi-a", "kpi-b"]);
+    expect(model.kpis.map((item) => item.slug)).toEqual([
+      "kpi-a",
+      "kpi-b",
+      "annual-kpi",
+    ]);
     expect(model.entries.map((item) => item.id)).toEqual([monthly.id]);
     expect(model.breakdowns.map((item) => item.id)).toEqual([breakdown.id]);
     expect(model.years).toEqual([2024, 2025]);

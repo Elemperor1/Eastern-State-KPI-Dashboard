@@ -9,17 +9,17 @@
 | Dimension | State | Evidence |
 | --- | --- | --- |
 | Stack | Next.js 15.5.19 App Router + TS + Tailwind + `node:sqlite` + iron-session | `package.json`, `tsconfig.json` |
-| Finalized metric set | 8 categories · 52 KPIs · 2024–2026 (2026 partial through June) | `scripts/seed.ts` |
+| Strategic-plan metric set | 5 priorities · 59 annual KPIs · 25 goals · 2024–2026 | `src/features/catalog/strategic-plan.ts` |
 | Design language | Teal/navy/yellow + Galano Grotesque per `DESIGN.md` | `src/app/globals.css`, `tailwind.config.ts` |
 | Design-system library | 24 primitives in `src/components/ui/`, enforced by `scripts/design-system-guard.sh` | `src/components/ui/index.ts` |
 | Build | `npm run design-system:test` includes a production `next build` gate | `package.json` |
 | Lint | `npm run lint` runs design/security guards plus Next ESLint | `package.json`, `eslint.config.mjs` |
 | Type-check | standalone `npx tsc --noEmit` passes | local refactor verification |
-| Smoke harness | `scripts/smoke.sh` — curl-driven, 56 assertions under `AUTH_DISABLED=true` on the current bypass path | `scripts/smoke.sh` |
+| Smoke harness | `scripts/smoke.sh` — curl-driven, 48 assertions under `AUTH_DISABLED=true` on the strategic-plan path | `scripts/smoke.sh` |
 | Auth | iron-session; `AUTH_DISABLED=true` in `.env.local` bypasses login with a real `auth-disabled@local` users row, surfaced through `src/features/auth/session.ts` | `src/features/auth/server.ts`, `src/features/auth/session.ts`, `src/lib/auth-flag.ts`, `src/lib/session.ts` |
 | Visual regression | none | (no Playwright config checked in; only ad-hoc `output/playwright/*.png`) |
 
-The original critical bypass bug in this roadmap has been fixed: the development bypass now uses a real `auth-disabled@local` users row, and the current bypass smoke path reports `56 passed, 0 failed`.
+The original critical bypass bug in this roadmap has been fixed: the development bypass now uses a real `auth-disabled@local` users row, and the strategic-plan bypass smoke path reports `48 passed, 0 failed`.
 
 The seven `/goal` prompts at the bottom of this file each fix a coherent, verifiable slice of work. They are ordered by risk-weighted value: anything that breaks the smoke harness or the user's ability to enter data comes first; visual polish, exports, and future-facing features come last.
 
@@ -33,7 +33,7 @@ The seven `/goal` prompts at the bottom of this file each fix a coherent, verifi
 
 **Current shape:** `ensureSeedAdmin()` always upserts `auth-disabled@local` with stable id `-1`; `verifyCredentials()` rejects that reserved email; `getSession()` / `requireAdmin()` return the real row when `AUTH_DISABLED=true`; AppShell hides the account block by email, not a synthetic id.
 
-**Verification:** `npm run build` green; `AUTH_DISABLED=true node_modules/.bin/next dev -p 3290` + `scripts/smoke.sh` reports the current bypass pass count (`56 passed, 0 failed` as of this update) end-to-end with `AUTH_DISABLED=true` exported; the smoke harness verifies `POST /api/entries` returns a created row body, then `DELETE /api/entries` returns 200 with no FK error in server logs. Bypass verification must use `next dev`; `next start` runs in production mode and cannot serve app routes with `AUTH_DISABLED=true`.
+**Verification:** `npm run build` green; `AUTH_DISABLED=true node_modules/.bin/next dev -p 3290` + `scripts/smoke.sh` reports the current bypass pass count (`48 passed, 0 failed` as of the strategic-plan integration) end-to-end with `AUTH_DISABLED=true` exported; the smoke harness verifies `POST /api/entries` returns a created row body, then `DELETE /api/entries` returns 200 with no FK error in server logs. Bypass verification must use `next dev`; `next start` runs in production mode and cannot serve app routes with `AUTH_DISABLED=true`.
 
 ### 1.2 `scripts/smoke.sh` doesn't propagate `AUTH_DISABLED` into `npm run smoke`
 
@@ -71,11 +71,12 @@ The seven `/goal` prompts at the bottom of this file each fix a coherent, verifi
 
 ## 2. High — close the gaps the design audit already flagged
 
-### 2.1 KPI manager has no search/filter UI for 52 KPIs
+### 2.1 KPI manager search/filter for the strategic catalog
 
 **Where:** `src/app/admin/kpis/KPIManagerClient.tsx`, "Existing KPIs" table.
 
-**Evidence:** `docs/design-audit.md` § "Remaining product caveats" explicitly calls this out: *"KPI management still shows all 52 measures in one table because search/filter behavior would be a functional addition, not part of this visual migration."* The table currently renders all 52 rows at once.
+**Status:** completed. The KPI manager now has feature-owned search/category
+filtering for the 59-measure strategic catalog.
 
 **Fix shape:** add a category filter chip row + a free-text search input above the existing table. Reuse the existing `Chip` and `Input` primitives. Filter client-side; this is a small dataset.
 
@@ -150,7 +151,9 @@ Wire `npm test` into CI.
 
 **Fix shape:** in `buildKPIAnalytics`, when `currentValue === 0 && compareValue === 0` *and* both years have no entries for that month/quarter, set a new flag `analytics.monthlyComparison.isEmpty = true` and have `MetricCard` render a `Badge variant="warning"` saying "No data" instead of `±0%`.
 
-**Verification:** viewing `video-views` with `currentMonth=12` shows the warning badge and a tooltip explaining 2026 data only runs through June.
+**Verification:** the analytics unit tests retain missing-month behavior for
+monthly KPIs. The current strategic seed is annual-only, so category no-data
+behavior is verified with empty comparison years instead.
 
 ---
 
@@ -230,7 +233,7 @@ Every `/goal` prompt below should treat the following as its completion gate, on
 
 1. `npm run design-system:guard` passes.
 2. `npm run design-system:test` passes (guard + `tsc --noEmit` + `next build`).
-3. With a dev server started by `AUTH_DISABLED=true node_modules/.bin/next dev -p 3290`, `AUTH_DISABLED=true PORT=3290 BASE=http://127.0.0.1:3290 bash ./scripts/smoke.sh` reports `56 passed, 0 failed` *or the new higher number if smoke coverage is added*.
+3. With a dev server started by `AUTH_DISABLED=true node_modules/.bin/next dev -p 3290`, `AUTH_DISABLED=true PORT=3290 BASE=http://127.0.0.1:3290 bash ./scripts/smoke.sh` reports `48 passed, 0 failed` or the new higher number if smoke coverage is added.
 4. The visual changes are screenshotted at desktop (1440px) and mobile (390px) into `output/playwright/` and reviewed against `DESIGN.md`.
 5. The relevant section(s) of `docs/design-audit.md` are updated or replaced.
 6. Any new env vars or config keys are added to `AGENTS.md` under "Setup" and "Gotchas."

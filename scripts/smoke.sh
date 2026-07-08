@@ -1,14 +1,14 @@
 #!/usr/bin/env bash
 # Eastern State KPI Dashboard — repeatable smoke harness.
 #
-# Verifies, against a live server, the finalized 8-category metric set:
+# Verifies, against a live server, the finalized 5-priority strategic metric set:
 #   1.  The admin catalog page renders the seeded finalized metric set.
-#   2.  Dashboard overview renders all 8 categories.
+#   2.  Dashboard overview renders all 5 priorities.
 #   3.  Category pages render for each category.
 #   4.  Metric detail pages render (monthly, annual, breakdown).
 #   5.  Through-month URL parameter is respected.
 #   6.  Admin pages render successfully.
-#   7.  Monthly, annual, and breakdown entries round-trip via POST then DELETE.
+#   7.  Annual percentage, annual currency, and breakdown entries round-trip.
 #
 # D8AD-CAN-008: HTTP response bodies (body, me, kpis_html, ov, bdy,
 # trends_html, etc.) are NEVER interpolated into bash -c or eval strings. They are:
@@ -173,15 +173,15 @@ echo
 echo "Finalized metric set (KPIs & categories)"
 kpis_html=$(curl -sk -b "$cookie_jar" "$BASE/admin/kpis")
 kpis_text=$(printf "%s" "$kpis_html" | python3 -c "import sys,re,html as h; t=sys.stdin.read(); t=re.sub(r'<!--.*?-->', '', t, flags=re.S); t=re.sub(r'<[^>]+>', ' ', t); t=h.unescape(t); print(re.sub(r'\\s+', ' ', t))")
-check "admin catalog renders 52 finalized KPIs" grep -q "Showing 52 of 52 measures across 8 categories" <<< "$kpis_text"
-for cname in "Education" "Adult Programs" "Workforce Development" "Preservation" "Museum" "General Awareness" "Fundraising" "Economic Impact"; do
+check "admin catalog renders 59 finalized KPIs" grep -q "Showing 59 of 59 measures across 5 categories" <<< "$kpis_text"
+for cname in "Reimagine Visitor Experience" "Advance Historic Preservation" "Expand Workforce Development" "Support Learning through Justice Education" "Enhance Organizational Capacity"; do
   if grep -q "$cname" <<< "$kpis_text"; then
     check "category $cname present in admin catalog" true
   else
     check "category $cname present in admin catalog" false
   fi
 done
-for kpi in "Video views" "Webpage views" "Overall museum attendance" "Percent of site in triage" "Total annual budget" "Number of funders by breakdown" "First-time, returning, and lapsed donors"; do
+for kpi in "Interpretive Site Plan" "Modernized Exhibits" "Conservation Management Plan" "Total participants in justice education" "Board participation in annual giving" "Revenue Diversification" "Climate-Responsive Solutions"; do
   if grep -q "$kpi" <<< "$kpis_text"; then
     check "admin catalog includes $kpi" true
   else
@@ -207,18 +207,18 @@ fi
 
 echo
 echo "Category pages render"
-for slug in education adult-programs workforce-development preservation museum general-awareness fundraising economic-impact; do
+for slug in visitor-experience historic-preservation workforce-development justice-education organizational-capacity; do
   code=$(curl -sk -b "$cookie_jar" -o /dev/null -w '%{http_code}' "$BASE/dashboard/category/$slug")
   check "category $slug renders (200)" test "$code" = "200"
 done
 
 echo
 echo "Metric detail pages render"
-code=$(curl -sk -b "$cookie_jar" -o /dev/null -w '%{http_code}' "$BASE/dashboard/metric/video-views")
-check "monthly metric detail renders (200)" test "$code" = "200"
-code=$(curl -sk -b "$cookie_jar" -o /dev/null -w '%{http_code}' "$BASE/dashboard/metric/total-annual-budget")
+code=$(curl -sk -b "$cookie_jar" -o /dev/null -w '%{http_code}' "$BASE/dashboard/metric/interpretive-plan-milestones-on-schedule")
 check "annual metric detail renders (200)" test "$code" = "200"
-bdy=$(curl -sk -b "$cookie_jar" "$BASE/dashboard/metric/funders-by-breakdown")
+code=$(curl -sk -b "$cookie_jar" -o /dev/null -w '%{http_code}' "$BASE/dashboard/metric/conservation-funds-utilized")
+check "currency metric detail renders (200)" test "$code" = "200"
+bdy=$(curl -sk -b "$cookie_jar" "$BASE/dashboard/metric/revenue-by-stream")
 if grep -q "Breakdown" <<< "$bdy"; then
   check "breakdown metric detail renders breakdown" true
 else
@@ -245,7 +245,7 @@ fi
 echo
 echo "No-data badge when both years lack entries"
 # Pick a year that has no entries (2099) and a compare year with no entries either.
-empty_html=$(curl -sk -b "$cookie_jar" "$BASE/dashboard/category/education?currentYear=2099&compareYear=2098&currentMonth=12")
+empty_html=$(curl -sk -b "$cookie_jar" "$BASE/dashboard/category/visitor-experience?currentYear=2099&compareYear=2098&currentMonth=12")
 if grep -q "No data" <<< "$empty_html"; then
   check "category page surfaces 'No data' badge when both years empty" true
 else
@@ -253,24 +253,14 @@ else
 fi
 
 echo
-echo "Trend Explorer renders axis-mode control"
+echo "Trend Explorer renders the annual-only empty state"
 trends_html=$(curl -sk -b "$cookie_jar" "$BASE/dashboard/trends")
 code=$(curl -sk -b "$cookie_jar" -o /dev/null -w '%{http_code}' "$BASE/dashboard/trends")
 check "/dashboard/trends renders (200)" test "$code" = "200"
-if grep -q "Y-axis mode" <<< "$trends_html"; then
-  check "/dashboard/trends surfaces 'Y-axis mode' literal" true
+if grep -q "No monthly KPIs in this category" <<< "$trends_html"; then
+  check "/dashboard/trends explains that the strategic set is annual-only" true
 else
-  check "/dashboard/trends surfaces 'Y-axis mode' literal" false
-fi
-if grep -q "Per-series (indexed)" <<< "$trends_html"; then
-  check "/dashboard/trends exposes indexed tab label" true
-else
-  check "/dashboard/trends exposes indexed tab label" false
-fi
-if grep -q "Per-series (log)" <<< "$trends_html"; then
-  check "/dashboard/trends exposes log tab label" true
-else
-  check "/dashboard/trends exposes log tab label" false
+  check "/dashboard/trends explains that the strategic set is annual-only" false
 fi
 
 echo
@@ -294,32 +284,32 @@ else
 fi
 
 echo
-echo "Monthly entries round-trip"
-monthly_kpi=$(printf "%s" "$catalog_json" | python3 -c "import sys,json; print(json.load(sys.stdin)['ids']['monthlyKpi'])")
-mutation_request "$cookie_jar" POST "/api/entries" "{\"kpi_id\": $monthly_kpi, \"year\": 2099, \"month\": 1, \"value\": 12345}"
+echo "Annual percentage entries round-trip"
+entry_kpi=$(printf "%s" "$catalog_json" | python3 -c "import sys,json; print(json.load(sys.stdin)['ids']['entryKpi'])")
+mutation_request "$cookie_jar" POST "/api/entries" "{\"kpi_id\": $entry_kpi, \"year\": 2099, \"month\": 0, \"value\": 12345}"
 post="$MUTATION_STATUS"
-check "POST /api/entries (monthly) returns 201" test "$post" = "201"
-new_id=$(printf "%s" "$MUTATION_BODY" | python3 -c "import sys,json; d=json.load(sys.stdin); e=d.get('entry') or {}; print(e.get('id','') if e.get('value')==12345 and e.get('month')==1 else '')")
+check "POST /api/entries (annual percentage, month=0) returns 201" test "$post" = "201"
+new_id=$(printf "%s" "$MUTATION_BODY" | python3 -c "import sys,json; d=json.load(sys.stdin); e=d.get('entry') or {}; print(e.get('id','') if e.get('value')==12345 and e.get('month')==0 else '')")
 if [ -n "$new_id" ]; then
-  check "monthly entry returned from POST" true
+  check "annual percentage entry returned from POST" true
 else
-  check "monthly entry returned from POST" false
+  check "annual percentage entry returned from POST" false
 fi
 mutation_request "$cookie_jar" DELETE "/api/entries" "{\"id\": $new_id}"
 del="$MUTATION_STATUS"
 check "DELETE /api/entries returns 200" test "$del" = "200"
 
 echo
-echo "Annual entries round-trip"
-annual_kpi=$(printf "%s" "$catalog_json" | python3 -c "import sys,json; print(json.load(sys.stdin)['ids']['annualKpi'])")
-mutation_request "$cookie_jar" POST "/api/entries" "{\"kpi_id\": $annual_kpi, \"year\": 2099, \"month\": 0, \"value\": 7}"
+echo "Annual currency entries round-trip"
+currency_kpi=$(printf "%s" "$catalog_json" | python3 -c "import sys,json; print(json.load(sys.stdin)['ids']['currencyKpi'])")
+mutation_request "$cookie_jar" POST "/api/entries" "{\"kpi_id\": $currency_kpi, \"year\": 2099, \"month\": 0, \"value\": 765432}"
 post="$MUTATION_STATUS"
-check "POST /api/entries (annual, month=0) returns 201" test "$post" = "201"
-new_id=$(printf "%s" "$MUTATION_BODY" | python3 -c "import sys,json; d=json.load(sys.stdin); e=d.get('entry') or {}; print(e.get('id','') if e.get('value')==7 and e.get('month')==0 else '')")
+check "POST /api/entries (annual currency, month=0) returns 201" test "$post" = "201"
+new_id=$(printf "%s" "$MUTATION_BODY" | python3 -c "import sys,json; d=json.load(sys.stdin); e=d.get('entry') or {}; print(e.get('id','') if e.get('value')==765432 and e.get('month')==0 else '')")
 if [ -n "$new_id" ]; then
-  check "annual entry returned from POST (month=0)" true
+  check "annual currency entry returned from POST" true
 else
-  check "annual entry returned from POST (month=0)" false
+  check "annual currency entry returned from POST" false
 fi
 mutation_request "$cookie_jar" DELETE "/api/entries" "{\"id\": $new_id}"
 del="$MUTATION_STATUS"
@@ -346,9 +336,9 @@ echo "Auth-bypass flow on POST /api/entries (no cookie)"
 # $noauth_jar was created above and starts without a session cookie. The
 # mutation helper may add only the CSRF cookie, which is not an auth credential.
 bypass_kpi=$(printf "%s" "$catalog_json" | python3 -c "import sys,json; print(json.load(sys.stdin)['ids']['bypassKpi'])")
-mutation_request "$noauth_jar" POST "/api/entries" "{\"kpi_id\": $bypass_kpi, \"year\": 2099, \"month\": 2, \"value\": 54321}"
+mutation_request "$noauth_jar" POST "/api/entries" "{\"kpi_id\": $bypass_kpi, \"year\": 2099, \"month\": 0, \"value\": 54321}"
 bypass_status="$MUTATION_STATUS"
-bypass_id=$(printf "%s" "$MUTATION_BODY" | python3 -c "import sys,json; d=json.load(sys.stdin); e=d.get('entry') or {}; print(e.get('id','') if e.get('value')==54321 and e.get('month')==2 else '')")
+bypass_id=$(printf "%s" "$MUTATION_BODY" | python3 -c "import sys,json; d=json.load(sys.stdin); e=d.get('entry') or {}; print(e.get('id','') if e.get('value')==54321 and e.get('month')==0 else '')")
 if [ "$AUTH_DISABLED" = "true" ]; then
   check "no-cookie POST succeeds when AUTH_DISABLED=true (201)" test "$bypass_status" = "201"
   if [ -n "$bypass_id" ]; then

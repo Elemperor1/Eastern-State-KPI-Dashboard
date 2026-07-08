@@ -188,6 +188,20 @@ describe("reporting metric detail model", () => {
     expect(model.directionLabel).toBe("Higher is better");
   });
 
+  it("uses the nearest upcoming strategic goal when the selected year has none", () => {
+    const strategicData = {
+      ...data,
+      goals: [
+        goal({ id: 3, kpi_id: visitorsKpi.id, target_year: 2029 }),
+        goal({ id: 4, kpi_id: visitorsKpi.id, target_year: 2027 }),
+      ],
+    };
+
+    const model = buildMetricDetailModel(strategicData, visitorsKpi.slug, period);
+
+    expect(model.goal?.target_year).toBe(2027);
+  });
+
   it("builds annual models with full-year ytd bar labels and annual table rows", () => {
     const model = buildMetricDetailModel(data, annualKpi.slug, period);
 

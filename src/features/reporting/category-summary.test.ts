@@ -8,6 +8,7 @@ import type {
   BreakdownEntryWithMeta,
   Category,
   KPIWithCategory,
+  KpiGoalWithMeta,
   MonthlyEntryWithMeta,
 } from "@/lib/types";
 
@@ -81,6 +82,38 @@ function breakdown(overrides: Partial<BreakdownEntryWithMeta>): BreakdownEntryWi
   };
 }
 
+function goal(overrides: Partial<KpiGoalWithMeta>): KpiGoalWithMeta {
+  return {
+    id: 1,
+    kpi_id: visitorsKpi.id,
+    target_year: 2027,
+    goal_type: "number",
+    target_value: 10,
+    enabled: true,
+    notes: null,
+    created_by: null,
+    created_at: "2026-01-01",
+    updated_by: null,
+    updated_at: "2026-01-01",
+    kpi_name: visitorsKpi.name,
+    kpi_slug: visitorsKpi.slug,
+    kpi_unit: visitorsKpi.unit,
+    kpi_unit_type: visitorsKpi.unit_type,
+    category_id: category.id,
+    category_name: category.name,
+    category_slug: category.slug,
+    direction: visitorsKpi.direction,
+    reporting_frequency: visitorsKpi.reporting_frequency,
+    ytd_value: 80,
+    ytd_target: 100,
+    ytd_progress_pct: 80,
+    full_year_value: 80,
+    full_year_target: 100,
+    full_year_progress_pct: 80,
+    ...overrides,
+  };
+}
+
 const visitorsKpi = kpi({ id: 1, slug: "visitors", name: "Visitors" });
 const lowerIsBetterKpi = kpi({
   id: 2,
@@ -145,6 +178,11 @@ describe("reporting category summaries", () => {
       ...reportingData,
       category,
       period,
+      goals: [
+        goal({ id: 1, target_year: 2027, full_year_progress_pct: 80 }),
+        goal({ id: 2, target_year: 2029, full_year_progress_pct: null }),
+        goal({ id: 3, target_year: 2025, full_year_progress_pct: 100 }),
+      ],
     });
 
     expect(summary.total).toBe(5);
@@ -153,6 +191,8 @@ describe("reporting category summaries", () => {
     expect(summary.flat).toBe(1);
     expect(summary.pctImproving).toBe(60);
     expect(summary.topMover?.kpi.slug).toBe("visitors");
+    expect(summary.goalCount).toBe(2);
+    expect(summary.averageGoalProgress).toBe(80);
     expect(summary.metrics.map((metric) => [metric.kpi.slug, metric.delta])).toEqual([
       ["visitors", 100],
       ["triage", 10],

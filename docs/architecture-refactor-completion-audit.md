@@ -12,9 +12,9 @@ records the final evidence proving each required outcome.
 
 | Requirement | Current evidence | Status |
 | --- | --- | --- |
-| Finalized 8 categories / 52 KPIs and ordering | `scripts/seed.ts`; server-rendered catalog assertions in `scripts/smoke.sh` | Proven |
-| Existing schema and valid data preserved | No refactor schema bump; DB integration suites run against current schema | Proven for refactor code; final production-data verification still required before deployment |
-| Annual `month = 0` and monthly `1–12` behavior | `period-rules.test.ts`, `analytics.test.ts`, metrics integration tests, annual/monthly smoke round-trips | Proven |
+| Canonical 5 priorities / 59 KPIs / 25 goals and ordering | `strategic-plan.ts`, invariant tests, seeded DB query, server-rendered catalog smoke assertions | Proven |
+| Schema 8 catalog replacement is explicit and recoverable | ADR 0020, DB migration comment, operator docs; users preserved while old KPI data/history are intentionally reset | Proven; production backup remains an operator rollout requirement |
+| Annual `month = 0` and monthly `1–12` behavior | `period-rules.test.ts`, analytics tests, metrics integration enforcement, annual smoke round-trips | Proven |
 | Missing months, zero values, partial current year, completed prior year | Analytics, reporting model, period-rule, and admin draft tests | Proven |
 | Counts, percentages, percentage points, conversion rates, donor conversion, YoY | `analytics.test.ts`, `donor-conversion.test.ts`, category/metric reporting model tests | Proven |
 | Goal CRUD, supported years, fixed baseline, annual progress, YTD pacing, full-year completion | Goals calculation/integration/validation/route tests, auth regression matrix, and Playwright create/edit/goal-bearing export/delete workflow | Proven |
@@ -34,10 +34,10 @@ records the final evidence proving each required outcome.
 | Feature-owned data access | Production SQL is confined to feature data-access modules and narrow DB infrastructure; app/components are blocked by `architecture-boundary-guard.sh` | Proven for current source |
 | No server-side self-HTTP or obsolete read adapters | API boundary inventory plus architecture guard | Proven for current source |
 | Large components divided by responsibility | Admin, category, metric, trend, donor-conversion, and audit renderers have focused components; client coordinators retain only browser state, mutation orchestration, and composition | Proven by responsibility review |
-| Minimal serialized client props / server-first reads | Explicit reporting operations scope category and metric rows before serialization; seeded payloads measured 82,471 and 8,684 bytes versus 273,363 for overview. ADR 0018 documents why overview and trends retain broader data for instant controls | Proven for current dashboard boundaries |
+| Minimal serialized client props / server-first reads | Explicit operations scope category and metric rows before serialization; schema-8 payloads measure 34,355 and 2,694 bytes versus 121,187 for overview. ADR 0018 records the original decision baseline | Proven for current dashboard boundaries |
 | Required ADR topics | ADR 0017 defines the feature-oriented modular monolith, ADR 0018 defines server-first/client-payload strategy, and ADR 0019 defines centralized auth enforcement; earlier ADRs retain detailed feature decisions | Proven |
 | Obsolete abstractions, duplicate calculations, dead routes, compatibility paths removed | `architecture-refactor-final-audit.md` records SQL ownership, duplicate-rule review, removals, retained-path rationale, and rerunnable searches; strict TypeScript unused checks pass; the architecture guard blocks cross-feature internals and calculation-layer framework/DB imports | Proven for current source |
-| Full product acceptance | 615 Vitest tests; strict typecheck; lint; design/security/architecture gates; production build; 4 Playwright workflows; real bypass smoke 56/56; auth-enabled production smoke 60/60 | Proven |
+| Full product acceptance | 626 Vitest tests; strict typecheck; lint; design/security/architecture gates; production build; 4 Playwright workflows; real strategic-plan smoke 48/48 bypass and 52/52 auth-enabled | Proven |
 
 ## Current Completion Blockers
 
@@ -46,12 +46,19 @@ None.
 ## Latest Boundary Proof
 
 The forty-fifth protected slice added four serial Playwright/Chrome workflows:
-goal create/edit/goal-bearing PNG/delete; monthly save failure/retry/clear;
+goal create/edit/goal-bearing PNG/delete; entry save failure/retry/clear;
 desktop/mobile navigation; and conversion/no-data PNG plus category/metric
 legacy and native print PDFs. File signatures and dimensions are validated,
 temporary rows are removed, and unexpected console errors fail the suite. This
 proof found and fixed a real legacy-export hydration mismatch by making the
-server page own `legacy=1` parsing. Final acceptance passed 615 Vitest tests,
-strict typecheck, lint, all design/security/architecture gates, production
-build, 56/56 live bypass smoke checks, and 60/60 auth-enabled production smoke
-checks.
+server page own `legacy=1` parsing.
+
+The forty-sixth protected slice integrated the strategic-plan branch without
+moving canonical data or reporting calculations back into route/components.
+`src/features/catalog/strategic-plan.ts` owns the 5 priorities, 59 annual KPIs,
+and 25 goals; category grouping, upcoming-goal selection, and overview goal
+summaries remain pure reporting models; entry writes now reject
+frequency/month mismatches. Final
+acceptance passed 626 Vitest tests, strict typecheck, lint, all
+design/security/architecture gates, production build, 4 Playwright workflows,
+48/48 live bypass smoke checks, and 52/52 production-mode auth-enabled checks.

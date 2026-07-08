@@ -246,7 +246,6 @@ describe("reporting server page data", () => {
     expect(listGoalsMock).toHaveBeenCalledWith({
       enabledOnly: true,
       throughMonth: 6,
-      year: 2026,
     });
   });
 
@@ -269,7 +268,6 @@ describe("reporting server page data", () => {
       category_id: education.id,
       enabledOnly: true,
       throughMonth: 6,
-      year: 2026,
     });
   });
 
@@ -292,7 +290,6 @@ describe("reporting server page data", () => {
       enabledOnly: true,
       kpi_id: videoViews.id,
       throughMonth: 6,
-      year: 2026,
     });
   });
 

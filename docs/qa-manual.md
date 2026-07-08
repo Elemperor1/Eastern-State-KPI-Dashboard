@@ -70,15 +70,15 @@ Before starting, complete these one-time steps:
    ```
 
    Playwright starts its own loopback-only dev server and uses the installed
-   Google Chrome channel. The four serial workflows cover goal CRUD, a
-   monthly-entry failure/retry/clear cycle, desktop/mobile navigation, and
+   Google Chrome channel. The four serial workflows cover goal CRUD, an
+   annual-entry failure/retry/restore cycle, desktop/mobile navigation, and
    representative PNG, legacy PDF, and native print-PDF output. Temporary
    goals and entries are deleted before the suite exits.
 
-> **Conventions.** "Year" means the dropdown year (default `2025`),
-> "month" means the through-month (default `12`, full year). The metric pages
-> and admin data-entry grid use the same year/month controls; resetting them
-> is part of every relevant step.
+> **Conventions.** "Year" means the dropdown year (default `2025`). A
+> through-month applies only to monthly KPIs; the canonical strategic set is
+> annual-only. The metric pages and admin data-entry grid use the same period
+> rules.
 
 ---
 
@@ -123,7 +123,7 @@ Before starting, complete these one-time steps:
 
 ---
 
-## Step 2 — Monthly entry round-trip
+## Step 2 — Annual percentage entry round-trip
 
 **Precondition.** Logged in as admin (step 1). Dashboard is on
 `/dashboard/overview`.
@@ -131,23 +131,25 @@ Before starting, complete these one-time steps:
 **Action.**
 
 1. Navigate to `/admin/data`.
-2. Pick **Education → Video views** (a monthly `count` metric).
-3. Set the year to `2099` (an out-of-range year, so the grid is empty).
-4. Type `12345` into the **January** cell. Click **Save** on that cell.
-5. Open a new tab → `/dashboard/metric/video-views?currentYear=2099&compareYear=2098&currentMonth=1`.
-6. Confirm the January value renders as `12,345`.
-7. Return to `/admin/data`. Click **Clear** on the January cell. Confirm the
+2. Pick **Reimagine Visitor Experience → Interpretive Site Plan — Milestones completed on schedule**.
+3. Set the year to `2099` (an out-of-range year, so the annual field is empty).
+4. Type `42` into the **Annual** cell. Click **Save**.
+5. Open a new tab → `/dashboard/metric/interpretive-plan-milestones-on-schedule?currentYear=2099&compareYear=2098`.
+6. Confirm the current value renders as `42%`.
+7. Return to `/admin/data`. Click **Clear** on the annual cell. Confirm the
    inline confirmation dialog, then verify the cell empties and the metric
-   page now shows a "No data" badge for January 2099.
+   page now shows a "No data" badge for 2099.
 
 **Expected outcome.**
 
 - `POST /api/entries` returns `201`.
-- The metric page reads `12,345` in the January column of the values table and
-  in the "Current" stat card.
+- The metric page reads `42%` in the annual values table and "Current" card.
+- The API rejects the same KPI with `month = 1` as a `400` frequency/month
+  mismatch; annual/flexible KPIs may only use `month = 0`.
 - `DELETE /api/entries` returns `200` and the row disappears.
 - An audit row appears at `/admin/history` for both the upsert and the delete,
-  with `kpi=Video views`, `month=1`, `year=2099`, `changed_by=admin`.
+  with `kpi=Interpretive Site Plan — Milestones completed on schedule`,
+  `month=0`, `year=2099`, `changed_by=admin`.
 
 **Screenshot placeholder.** `[Insert screenshot: admin data grid + metric page + history row]`
 
@@ -159,17 +161,16 @@ Before starting, complete these one-time steps:
 
 **Action.**
 
-1. `/admin/data`. Pick **Workforce Development → Programs offered** (annual
-   metric).
-2. Set year to `2099`. Type `7` into the single "Annual" cell. Save.
-3. Visit `/dashboard/metric/programs-offered?currentYear=2099&compareYear=2098`.
-4. Verify the page shows the current value `7` (formatted without a unit
-   suffix because it's a `count`).
+1. `/admin/data`. Pick **Advance Historic Preservation → Conservation
+   Management Plan — Total funds utilized for conservation**.
+2. Set year to `2099`. Type `700000` into the single "Annual" cell. Save.
+3. Visit `/dashboard/metric/conservation-funds-utilized?currentYear=2099&compareYear=2098`.
+4. Verify the page shows the current value `$700,000`.
 5. Return to `/admin/data`, clear the cell, confirm.
 
 **Expected outcome.**
 
-- Save returns `201`. The metric detail page shows `7` as the current-year
+- Save returns `201`. The metric detail page shows `$700,000` as the current-year
   total. The "Through month" / YTD controls are hidden (annual metric — only
   the annual comparison is meaningful).
 - Clear returns `200`; metric page shows the "No data" badge.
@@ -185,18 +186,19 @@ Before starting, complete these one-time steps:
 
 **Action.**
 
-1. `/admin/data`. Pick **Fundraising → Number of funders by breakdown**
+1. `/admin/data`. Pick **Enhance Organizational Capacity → Revenue
+   Diversification — % of revenue from each major stream**
    (`unit_type: breakdown`).
 2. Set year to `2099`. The grid switches to label/value rows.
 3. Click **Add row**. Enter label `Test row`, value `99`. Save.
-4. Visit `/dashboard/metric/funders-by-breakdown?currentYear=2099`.
+4. Visit `/dashboard/metric/revenue-by-stream?currentYear=2099`.
 5. Verify the breakdown chart shows a `Test row` bar with value `99`.
 6. Return to `/admin/data`. Delete the `Test row` via the row's trash icon.
    Confirm the inline dialog.
 
 **Expected outcome.**
 
-- The breakdown chart renders the new label alongside the seeded funders.
+- The breakdown chart renders the new label alongside the seeded revenue streams.
   The values table on the metric page lists `Test row: 99`.
 - Deleting the row removes it from both the chart and the values table on
   reload.
@@ -211,12 +213,12 @@ Before starting, complete these one-time steps:
 ## Step 5 — Breakdown row add/delete (UI only — no reorder)
 
 **Precondition.** Logged in as admin. On
-`/dashboard/metric/funders-by-breakdown?currentYear=2099`.
+`/dashboard/metric/revenue-by-stream?currentYear=2099`.
 
 **Action.**
 
-1. Go to `/admin/data`. Filter to **Fundraising → Number of funders by
-   breakdown**, year `2099`.
+1. Go to `/admin/data`. Filter to **Enhance Organizational Capacity → Revenue
+   Diversification — % of revenue from each major stream**, year `2099`.
 2. Add three rows: `Alpha=10`, `Bravo=20`, `Charlie=30`. Save each.
 3. Delete the middle row (`Bravo`). Confirm.
 4. Add `Delta=40`.
@@ -245,7 +247,7 @@ Before starting, complete these one-time steps:
 **Action.**
 
 1. `/admin/kpis`. On the **KPIs** tab, fill in the "Add a new KPI" form:
-   - Category: **Museum**
+   - Category: **Reimagine Visitor Experience**
    - Slug: `qa-test-metric-{timestamp}` (must match `^[a-z0-9-]+$`)
    - Name: `QA test metric`
    - Unit: `visits`
@@ -253,7 +255,7 @@ Before starting, complete these one-time steps:
    - Frequency: `monthly`
    - Direction: `higher`
 2. Submit. Verify a green status banner: "KPI created."
-3. Reload `/dashboard/category/museum`. Confirm `QA test metric` appears in
+3. Reload `/dashboard/category/visitor-experience`. Confirm `QA test metric` appears in
    the category's metric grid.
 4. Reload `/dashboard/metric/qa-test-metric-{timestamp}`. Confirm the page
    renders (no 404) and shows "No data" badges because no entries exist yet.
@@ -280,7 +282,7 @@ Before starting, complete these one-time steps:
 
 1. `/admin/kpis`. On the **KPIs** tab, find `QA test metric` in the existing
    list. Click its trash icon. Confirm.
-2. Reload `/dashboard/category/museum`. Confirm `QA test metric` no longer
+2. Reload `/dashboard/category/visitor-experience`. Confirm `QA test metric` no longer
    appears.
 3. Visit `/dashboard/metric/qa-test-metric-{timestamp}`. Confirm the page
    either 404s or redirects back to the category (verify the chosen
@@ -410,16 +412,13 @@ known gap if it doesn't appear). If `AUTH_DISABLED=true` is active, the
 1. Click **Export PNG**, then **Export PDF**. Open both overview files.
 2. Confirm the PDF is landscape Letter and has three compact pages at this
    desktop width. No category card may be split between pages.
-3. Visit the monthly metric
-   `/dashboard/metric/video-views?currentYear=2026&compareYear=2025&currentMonth=6`.
-   Export PNG and CSV. Confirm July–December 2026 remain visibly blank while
-   the 2025 comparison values remain present.
+3. Visit the annual percentage metric
+   `/dashboard/metric/interpretive-plan-milestones-on-schedule?currentYear=2026&compareYear=2025`.
+   Export PNG and CSV.
 4. Repeat PNG/CSV for annual currency:
-   `/dashboard/metric/total-annual-budget?currentYear=2026&compareYear=2025`.
-5. Repeat PNG/CSV for the long annual percentage metric:
-   `/dashboard/metric/percent-job-placement-1yr?currentYear=2026&compareYear=2025`.
-6. Repeat for a breakdown metric
-   (`/dashboard/metric/funders-by-breakdown`).
+   `/dashboard/metric/conservation-funds-utilized?currentYear=2026&compareYear=2025`.
+5. Repeat for the breakdown metric
+   (`/dashboard/metric/revenue-by-stream`).
 7. On metric/category pages, use **Print / PDF** for the supported native PDF
    path. To exercise the legacy raster fallback, append `legacy=1` to the
    query string; this intentionally reveals **Export PDF** on those pages.
@@ -434,11 +433,11 @@ known gap if it doesn't appear). If `AUTH_DISABLED=true` is active, the
 - Overview raster PDF has no blank pages and keeps each category-card row
   intact. Render every page to images when validating a code change; a
   successful download alone is not sufficient.
-- Monthly/annual PNGs include visible KPI values, charts, legends, and values
-  tables. Annual output has no through-month control; percentages use
+- Annual PNGs include visible KPI values, charts, legends, and values tables.
+  Annual output has no through-month control; percentages use
   percentage-point deltas.
-- CSV has a header row + one row per month (monthly metric), one row for
-  the year (annual metric), or one row per label (breakdown metric). Open in
+- CSV has a header row + one row for the year (annual metric) or one row per
+  label (breakdown metric). Open in
   a spreadsheet — values should sort numerically and not have stray commas
   inside quoted fields.
 - Print preview hides the side nav and the action buttons via the print
@@ -461,10 +460,10 @@ exactly 390 px wide.
    - Category cards stack vertically.
    - No horizontal scroll bar at the page level.
 2. Tap the hamburger. Side drawer opens from the left. Close it.
-3. Visit `/dashboard/category/museum`. Verify cards stack and toolbar
+3. Visit `/dashboard/category/visitor-experience`. Verify cards stack and toolbar
    controls wrap (year / month / compare-year dropdowns become full-width
    or wrap cleanly).
-4. Visit `/dashboard/metric/video-views`. Verify the three stat cards
+4. Visit `/dashboard/metric/interpretive-plan-milestones-on-schedule`. Verify the three stat cards
    stack, the chart resizes, and the values table scrolls horizontally
    inside its card (not the page).
 5. Visit `/admin/data`. Verify the category/KPI/year filters become a

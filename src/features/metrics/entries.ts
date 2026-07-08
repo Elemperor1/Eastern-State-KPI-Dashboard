@@ -1,7 +1,29 @@
 import { getDb, transaction } from "@/lib/db";
-import type { MonthlyEntry, MonthlyEntryWithMeta } from "@/lib/types";
+import type {
+  MonthlyEntry,
+  MonthlyEntryWithMeta,
+  ReportingFrequency,
+} from "@/lib/types";
 import { asEntry, asEntryWithMeta } from "./records";
 import { recordMetricEntryHistory } from "./history";
+import {
+  isAnnualEntryMonth,
+  isAnnualReportingFrequency,
+  isMonthlyEntryMonth,
+} from "./period-rules";
+
+export class EntryPeriodMismatchError extends Error {
+  constructor(reportingFrequency: ReportingFrequency, month: number) {
+    const expected = isAnnualReportingFrequency(reportingFrequency)
+      ? "month 0"
+      : "a month from 1 through 12";
+    const article = reportingFrequency === "annual" ? "an" : "a";
+    super(
+      `Entry month ${month} is invalid for ${article} ${reportingFrequency} KPI; expected ${expected}.`,
+    );
+    this.name = "EntryPeriodMismatchError";
+  }
+}
 
 export interface EntryFilter {
   kpi_id?: number;
@@ -65,6 +87,22 @@ export function upsertEntry(input: {
   // point at the row we just changed. A key match is asserted before history.
   return transaction(() => {
     const db = getDb();
+    const kpi = db
+      .prepare("SELECT reporting_frequency FROM kpis WHERE id = ?")
+      .get(input.kpi_id) as
+      | { reporting_frequency: ReportingFrequency }
+      | undefined;
+    if (kpi) {
+      const validMonth = isAnnualReportingFrequency(kpi.reporting_frequency)
+        ? isAnnualEntryMonth(input.month)
+        : isMonthlyEntryMonth(input.month);
+      if (!validMonth) {
+        throw new EntryPeriodMismatchError(
+          kpi.reporting_frequency,
+          input.month,
+        );
+      }
+    }
     const prior = db
       .prepare(
         "SELECT id, value, notes FROM monthly_entries WHERE kpi_id = ? AND year = ? AND month = ?",

@@ -39,12 +39,13 @@ NEXT_BREAKDOWN_ID = 888001
 
 CATALOG_TEXT = (
     "Manage KPIs — Add a new KPI — Existing KPIs — "
-    "Showing 52 of 52 measures across 8 categories — "
-    "Education — Adult Programs — Workforce Development — Preservation — "
-    "Museum — General Awareness — Fundraising — Economic Impact — "
-    "Video views — Webpage views — Overall museum attendance — "
-    "Percent of site in triage — Total annual budget — "
-    "Number of funders by breakdown — First-time, returning, and lapsed donors"
+    "Showing 59 of 59 measures across 5 categories — "
+    "Reimagine Visitor Experience — Advance Historic Preservation — "
+    "Expand Workforce Development — Support Learning through Justice Education — "
+    "Enhance Organizational Capacity — Interpretive Site Plan — "
+    "Modernized Exhibits — Conservation Management Plan — "
+    "Total participants in justice education — Board participation in annual giving — "
+    "Revenue Diversification — Climate-Responsive Solutions"
 )
 
 
@@ -104,14 +105,13 @@ class SmokeFakeHandler(http.server.BaseHTTPRequestHandler):
             return self._html_resp(200, html_body("Category page"))
 
         if path.startswith("/dashboard/metric/"):
-            if "funders-by-breakdown" in path:
+            if "revenue-by-stream" in path:
                 return self._html_resp(200, html_body("Breakdown metric data"))
             return self._html_resp(200, html_body("Metric detail"))
 
         if path == "/dashboard/trends":
             return self._html_resp(200, html_body(
-                "Y-axis mode configuration in sidebar. "
-                "Options: Per-series (indexed), Per-series (log), Fixed range."
+                "No monthly KPIs in this category."
             ))
 
         # Admin pages

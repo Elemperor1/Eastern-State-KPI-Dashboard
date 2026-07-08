@@ -1,6 +1,6 @@
 "use client";
 
-import { ChevronRight, TrendingUp, TrendingDown, Minus } from "lucide-react";
+import { ChevronRight, Crosshair, TrendingUp, TrendingDown, Minus } from "lucide-react";
 import clsx from "clsx";
 import { CardAction, Progress } from "@/components/ui";
 import type { CategoryOverviewSummary } from "@/features/reporting/types";
@@ -14,7 +14,17 @@ export function CategoryOverviewCard({
   summary,
   accent,
 }: Props) {
-  const { category, improving, declining, flat, total, pctImproving, topMover } = summary;
+  const {
+    category,
+    improving,
+    declining,
+    flat,
+    total,
+    pctImproving,
+    topMover,
+    goalCount,
+    averageGoalProgress,
+  } = summary;
 
   return (
     <CardAction as="a" href={`/dashboard/category/${category.slug}`} className="relative overflow-hidden p-5">
@@ -70,6 +80,24 @@ export function CategoryOverviewCard({
           <Minus className="w-3.5 h-3.5" aria-hidden /> {flat}
         </span>
       </div>
+
+      {goalCount > 0 ? (
+        <div className="mt-5 border-t border-ink-100 pt-4">
+          <div className="mb-2 flex items-center justify-between">
+            <span className="inline-flex items-center gap-1.5 text-[10px] font-semibold uppercase tracking-[0.08em] text-ink-500">
+              <Crosshair className="size-3" aria-hidden /> Goals ({goalCount})
+            </span>
+            <span className="text-sm font-semibold tabular text-ink-900">
+              {averageGoalProgress !== null ? `${averageGoalProgress}%` : "—"}
+            </span>
+          </div>
+          {averageGoalProgress !== null ? (
+            <Progress value={averageGoalProgress} color={accent} />
+          ) : (
+            <p className="text-xs text-ink-400">No target-year data yet</p>
+          )}
+        </div>
+      ) : null}
 
       {topMover && topMover.pct !== null ? (
         <div

@@ -46,7 +46,7 @@ On the first run against a fresh database, the seed creates `kerry@easternstate.
 | `npm run setup:admin`         | Operator-only: set a known password on a bootstrap account (`SETUP_ADMIN_PASSWORD=...`), clears `must_change_password`. Never logs the password. |
 | `npm run architecture:guard`  | Fails if server-owned source calls the app's own `/api/*` routes, client components import server-only data access, or removed internal read routes reappear in `src/` or smoke scripts. |
 | `npm test`                    | Vitest unit tests (`src/lib/analytics.test.ts` covers `analytics.ts`) |
-| `npm run test:e2e`            | Playwright/Chrome acceptance suite for goal CRUD, monthly retry/clear, desktop/mobile navigation, and representative PNG/PDF output. Starts a loopback dev server automatically. |
+| `npm run test:e2e`            | Playwright/Chrome acceptance suite for goal CRUD, annual retry/restore, desktop/mobile navigation, and representative PNG/PDF output. Starts a loopback dev server automatically. |
 | `npm run test:coverage`       | Vitest with v8 line coverage (≥ 90% on `src/lib/analytics.ts`) |
 
 ## Loading skeletons & favicon
@@ -78,11 +78,11 @@ AUTH_DISABLED=true PORT=3290 BASE=http://127.0.0.1:3290 bash ./scripts/smoke.sh
 # Stop the dev server before reusing :3290 for production/auth-enabled smoke.
 npm run build
 AUTH_DISABLED=false PORT=3290 node_modules/.bin/next start -p 3290 &
-SMOKE_EMAIL=kerry@easternstate.org SMOKE_PASSWORD='<printed first-run password>' \
+SMOKE_EMAIL=kerry@easternstate.org SMOKE_PASSWORD='<operator-provisioned password>' \
   AUTH_DISABLED=false PORT=3290 BASE=http://127.0.0.1:3290 bash ./scripts/smoke.sh
 ```
 
-Tests login, all 8 category pages, monthly/annual/breakdown metric pages, through-month URL params, POST/DELETE round-trips on `/api/entries` and `/api/breakdowns`, the auth-bypass flow on `POST /api/entries` (401/403 when auth is enabled, 201 when bypassed), the no-data badge on the category page when both years lack entries, and the read-only `/admin/history` audit-trail browser. Expects the server-rendered `/admin/kpis` page to show 52 KPIs and the exact category names listed in `scripts/smoke.sh`; `scripts/smoke-catalog.ts` supplies local KPI IDs for mutation round-trips without restoring catalog read APIs. Reports `56 passed, 0 failed` under `AUTH_DISABLED=true` and `60 passed, 0 failed` under `AUTH_DISABLED=false` on a clean checkout.
+Tests all 5 strategic-priority pages, representative annual percentage/currency/breakdown metric pages, the annual-only Trend Explorer state, POST/DELETE round-trips on `/api/entries` and `/api/breakdowns`, the auth-bypass flow on `POST /api/entries`, the no-data badge, and the read-only `/admin/history` browser. Expects `/admin/kpis` to show 59 KPIs and the exact priority names listed in `scripts/smoke.sh`; `scripts/smoke-catalog.ts` supplies local KPI IDs for mutation round-trips without restoring catalog read APIs. Reports `48 passed, 0 failed` under `AUTH_DISABLED=true` and `52 passed, 0 failed` under production-mode `AUTH_DISABLED=false`.
 
 Unit tests live in `src/lib/analytics.test.ts` (Vitest, coverage ≥ 90% line coverage on `analytics.ts`). Run with `npm test`; the smoke harness does not exercise this code path.
 
@@ -98,7 +98,8 @@ signatures and dimensions, and cleans up every temporary goal/entry it creates.
 - `src/components/ui/` — **shared design-system library**. Import via `@/components/ui`; never hand-roll buttons/inputs/selects/tables outside this folder (`design-system:guard` enforces it).
 - `src/components/` — feature components (AppShell, MetricCard, TrendChart, etc.).
 - `src/lib/` — `db.ts` (sqlite singleton + migrations), `session.ts` (iron-session helpers), `auth-flag.ts` (AUTH_DISABLED guard), `request-guard.ts` (CSRF/mutation guard), `analytics.ts` (comparison/YTD math), `types.ts`.
-- `scripts/seed.ts` — sample data definition; bumping `src/lib/schema-version.json` resets all KPI tables (users preserved).
+- `src/features/catalog/strategic-plan.ts` — canonical 5-priority, 59-KPI, 25-goal strategic-plan data.
+- `scripts/seed.ts` — transactional seed adapter; bumping `src/lib/schema-version.json` resets all KPI tables (users preserved).
 - `DESIGN.md` (root) — visual language authority. `docs/design-system.md` translates it into component rules.
 
 ## Data model quirks
@@ -106,7 +107,8 @@ signatures and dimensions, and cleans up every temporary goal/entry it creates.
 - Annual-only metrics are stored with `month = 0` in `monthly_entries` (single full-year value). See `src/lib/types.ts:60`.
 - `unit_type` ∈ `count | percent | currency | attendance | note | breakdown`. Breakdown KPIs write to `breakdown_entries` (label × year), not `monthly_entries`.
 - Direction (`higher | lower | neutral`) drives good/bad coloring — read it instead of hardcoding sign.
-- Schema bump: edit `src/lib/schema-version.json`. A fresh/older DB drops KPI tables + `entry_history` on next access; rerun `npm run db:seed`. **Exception — v4→v5 (D8AD-CAN-005):** the bump is in-place and preserves `entry_history`, adding immutable snapshot columns (`kpi_name/slug/unit`, `category_id/name/slug`, `changed_by_email`) and backfilling them from current metadata. Rows whose KPI was already deleted before the bump stay NULL — that NULL is the "deleted metadata" tombstone. Production startup uses `scripts/ensure-seeded.mjs` to compare the mounted DB's `meta.schema_version` with that same file before deciding whether seeding can be skipped.
+- Schema bump: edit `src/lib/schema-version.json`. A fresh/older DB drops KPI tables + `entry_history` on next access; rerun `npm run db:seed`. **Schema 8 is an intentional catalog replacement:** it removes the former 8-category/52-KPI sample data and seeds the 5 strategic priorities, 59 annual KPIs, and 25 goals. Back up production first; users survive, KPI values and audit history do not. ADR 0020 records rollout and rollback. **Exception — v4→v5 (D8AD-CAN-005):** the bump is in-place and preserves `entry_history`, adding immutable snapshot columns and backfilling them from current metadata.
+- Entry period integrity is enforced by `src/features/metrics/entries.ts`: annual/flexible KPIs accept only `month = 0`, and monthly KPIs accept only `1–12`. The API returns 400 for a frequency/month mismatch.
 - Every `upsertEntry` / `deleteEntry` / `upsertBreakdown` / `deleteBreakdown` call writes a row to `entry_history` (before/after values, changed_by, changed_at, **plus an immutable snapshot of the KPI/category/actor label at change time**). The audit trail survives deletes of the source entry — `entry_id` may refer to a row that no longer exists. Browsable at `/admin/history`; the page reads through `src/features/audit/server.ts`.
 - **Audit-history immutability (D8AD-CAN-005).** `listEntryHistory` LEFT-joins the live `kpis`/`categories`/`users` tables; the historical label comes from the immutable snapshot columns, never the current (possibly renamed) label, and a missing live row never drops an event. The response surfaces `kpi_current_*`/`category_current_*` (null when deleted), `metadata_deleted` (live KPI/category gone), and `metadata_renamed` (live label differs from snapshot). Filtering by `category_id` uses the SNAPSHOT `h.category_id`, so a row stays visible for its original category even after the category/KPI is deleted. Renaming KPI/category metadata therefore does NOT retroactively rewrite historical labels — this is the documented, intended behavior.
 - **Deletion guards (D8AD-CAN-005).** `deleteKPI` / `deleteCategory` throw `DependentEntriesError` (routes return **409**) when live `monthly_entries`/`breakdown_entries` still reference them (including child KPIs for a parent). The admin must delete the dependent entries first — each entry deletion records a tombstone audit row — so no metadata deletion can hide a previously recorded change. The seed script bypasses the guard with raw `DELETE`s after already clearing entries.
@@ -129,12 +131,12 @@ signatures and dimensions, and cleans up every temporary goal/entry it creates.
 - API handlers follow the pattern `try { await requireSession()/requireAdmin() } catch { return 401/403 }`. POST/DELETE require admin; GET requires any session.
 - Use `zod` for request body validation on API routes.
 - Server dashboard pages call the explicit reporting operations in `src/features/reporting/server.ts`; client components must not import `getDb()` or server-only feature modules.
-- New KPIs/categories are added at runtime via `/admin/kpis` (no code change required), but the **finalized metric set** (8 categories, 52 KPIs) is defined in `scripts/seed.ts`. Update both if changing the canonical set, then rerun `npm run db:seed`.
+- New KPIs/categories are added at runtime via `/admin/kpis`, but the canonical strategic-plan set is defined in `src/features/catalog/strategic-plan.ts`. Update that feature-owned definition and its invariant test when changing the seeded set, then rerun `npm run db:seed`.
 
 ## Gotchas
 
 - `node:sqlite` is a built-in Node module — Next.js does not need bundler externalization (`next.config.mjs` is intentionally empty).
 - `tsconfig.tsbuildinfo` is gitignored; expect `tsc --noEmit` to be slow on first run after a clean.
-- 2026 sample data only covers January–June; later-month queries return nulls by design.
+- The current strategic-plan sample set is annual-only for 2024–2026; all seeded entries use `month = 0`.
 - `iron-session` requires `cookies()` to be awaited — all `getSession()` calls are `async`.
 - Tailwind theme tokens (`ink`, `brand`, `accent`) live in `tailwind.config.ts`; do not hardcode hex values in components.

@@ -45,12 +45,19 @@ export interface CategoryOverviewSummary {
   total: number;
   pctImproving: number;
   topMover: CategoryMetricMovement | null;
+  goalCount: number;
+  averageGoalProgress: number | null;
 }
 
 export interface CategoryMetricCardModel {
   kpi: KPIWithCategory;
   analytics: KPIAnalytics;
   goal: KpiGoalWithMeta | null;
+}
+
+export interface CategoryMetricGroupModel {
+  goal: string;
+  metrics: CategoryMetricCardModel[];
 }
 
 export interface CategoryBreakdownModel {
@@ -61,6 +68,7 @@ export interface CategoryBreakdownModel {
 export interface CategoryPageModel {
   category: Category | null;
   metricCards: CategoryMetricCardModel[];
+  metricGroups: CategoryMetricGroupModel[];
   monthlyBreakdowns: CategoryBreakdownModel[];
   annualBreakdowns: CategoryBreakdownModel[];
 }
