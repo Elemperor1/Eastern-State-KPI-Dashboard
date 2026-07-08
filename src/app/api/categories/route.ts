@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
-import { authErrorResponse, requireAdmin, requireSession } from "@/features/auth/session";
+import { authErrorResponse, requireAdmin } from "@/features/auth/session";
 import { assertMutationRequest } from "@/lib/request-guard";
 import {
   createCategory,
@@ -17,15 +17,6 @@ const CreateSchema = z.object({
   description: z.string().optional().nullable(),
   sort_order: z.number().int().optional(),
 });
-
-export async function GET() {
-  try {
-    await requireSession();
-  } catch (err) {
-    return authErrorResponse(err);
-  }
-  return NextResponse.json({ categories: listCategories() });
-}
 
 function refreshedCatalogPayload() {
   return {

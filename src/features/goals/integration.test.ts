@@ -119,7 +119,7 @@ describe("goals database integration", () => {
     return goal!;
   }
 
-  it("computes goals from a fixed prior-year baseline and preserves legacy aliases", () => {
+  it("computes goals from a fixed prior-year baseline", () => {
     upsertEntry({ kpi_id: kpiA, year: 2024, month: 1, value: 100, updated_by: 1 });
     upsertEntry({ kpi_id: kpiA, year: 2025, month: 1, value: 90, updated_by: 1 });
     saveGoal(kpiA);
@@ -128,9 +128,6 @@ describe("goals database integration", () => {
     expect(goal.full_year_value).toBe(90);
     expect(goal.full_year_target).toBe(120);
     expect(goal.full_year_progress_pct).toBe(75);
-    expect(goal.current_value).toBe(90);
-    expect(goal.goal_target).toBe(120);
-    expect(goal.progress_pct).toBe(75);
   });
 
   it("uses month 0 for annual and flexible KPIs", () => {
@@ -278,6 +275,7 @@ describe("goals database integration", () => {
     saveGoal(kpiB, 2024);
     expect(listGoals({ year: 2025 }).map((g) => g.kpi_id)).toEqual([kpiA]);
     expect(listGoals({ year: 2024 }).map((g) => g.kpi_id).sort()).toEqual([kpiA, kpiB].sort());
+    expect(listGoals({ year: 2024, kpi_id: kpiB }).map((g) => g.kpi_id)).toEqual([kpiB]);
   });
 
   it("distinguishes annual zero values from missing annual data", () => {

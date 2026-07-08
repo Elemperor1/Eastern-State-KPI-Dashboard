@@ -63,6 +63,18 @@ Before starting, complete these one-time steps:
    Expect `✅ Design-tokens guard passed`, `✅ Design System guard passed`,
    then a clean `tsc --noEmit` and `next build`.
 
+5. **Run the automated browser acceptance layer.**
+
+   ```bash
+   npm run test:e2e
+   ```
+
+   Playwright starts its own loopback-only dev server and uses the installed
+   Google Chrome channel. The four serial workflows cover goal CRUD, a
+   monthly-entry failure/retry/clear cycle, desktop/mobile navigation, and
+   representative PNG, legacy PDF, and native print-PDF output. Temporary
+   goals and entries are deleted before the suite exits.
+
 > **Conventions.** "Year" means the dropdown year (default `2025`),
 > "month" means the through-month (default `12`, full year). The metric pages
 > and admin data-entry grid use the same year/month controls; resetting them
@@ -299,11 +311,13 @@ name `QA test category`).
    tombstones are recorded, then retry the category delete.
 3. Reload `/dashboard/overview`. Verify the deleted category is gone from the
    executive summary grid.
-4. `GET /api/categories` should not include the deleted category.
+4. `/admin/kpis` should not include the deleted category, and
+   `/dashboard/overview` should not render it in the executive summary grid.
 
 **Expected outcome.**
 
-- After deletion, `GET /api/categories` excludes `qa-test-cat-{timestamp}`.
+- After deletion, `/admin/kpis` and `/dashboard/overview` exclude
+  `qa-test-cat-{timestamp}`.
 - The catalog deletion guard blocks categories with live metric entries.
   Once those dependents are gone, deleting the category removes its child
   KPIs through the schema cascade; no orphaned KPIs remain.
@@ -386,25 +400,43 @@ known gap if it doesn't appear). If `AUTH_DISABLED=true` is active, the
 
 ---
 
-## Step 11 — PDF + CSV export
+## Step 11 — PNG + PDF + CSV export
 
-**Precondition.** Logged in. On
-`/dashboard/metric/video-views?currentYear=2025&compareYear=2024`.
+**Precondition.** Logged in. Start on
+`/dashboard/overview?currentYear=2026&compareYear=2025&currentMonth=6`.
 
 **Action.**
 
-1. Click **Export PDF**. Wait for the download. Open the file.
-2. Click **Export CSV**. Wait for the download. Open the file.
-3. Repeat for an annual metric (`/dashboard/metric/programs-offered`).
-4. Repeat for a breakdown metric (`/dashboard/metric/funders-by-breakdown`).
-5. Try the **Print** button. Confirm the print preview is clean (no nav, no
-   export buttons).
+1. Click **Export PNG**, then **Export PDF**. Open both overview files.
+2. Confirm the PDF is landscape Letter and has three compact pages at this
+   desktop width. No category card may be split between pages.
+3. Visit the monthly metric
+   `/dashboard/metric/video-views?currentYear=2026&compareYear=2025&currentMonth=6`.
+   Export PNG and CSV. Confirm July–December 2026 remain visibly blank while
+   the 2025 comparison values remain present.
+4. Repeat PNG/CSV for annual currency:
+   `/dashboard/metric/total-annual-budget?currentYear=2026&compareYear=2025`.
+5. Repeat PNG/CSV for the long annual percentage metric:
+   `/dashboard/metric/percent-job-placement-1yr?currentYear=2026&compareYear=2025`.
+6. Repeat for a breakdown metric
+   (`/dashboard/metric/funders-by-breakdown`).
+7. On metric/category pages, use **Print / PDF** for the supported native PDF
+   path. To exercise the legacy raster fallback, append `legacy=1` to the
+   query string; this intentionally reveals **Export PDF** on those pages.
+8. Confirm the print preview is clean: no navigation, filters, or export
+   buttons, and only one branded report header.
 
 **Expected outcome.**
 
-- PDF contains the branded report header/footer chrome, the visible KPI
-  cards, charts, and the values table; chart legends are not cut off;
-  pagination is intact across multi-page metrics.
+- PNG/PDF contain one branded report header, the active filter context, and a
+  complete confidentiality footer. Long headings and labels wrap without
+  clipping or colliding with values.
+- Overview raster PDF has no blank pages and keeps each category-card row
+  intact. Render every page to images when validating a code change; a
+  successful download alone is not sufficient.
+- Monthly/annual PNGs include visible KPI values, charts, legends, and values
+  tables. Annual output has no through-month control; percentages use
+  percentage-point deltas.
 - CSV has a header row + one row per month (monthly metric), one row for
   the year (annual metric), or one row per label (breakdown metric). Open in
   a spreadsheet — values should sort numerically and not have stray commas
@@ -412,7 +444,7 @@ known gap if it doesn't appear). If `AUTH_DISABLED=true` is active, the
 - Print preview hides the side nav and the action buttons via the print
   stylesheet; only the metric content is visible.
 
-**Screenshot placeholder.** `[Insert screenshot: exported PDF + CSV preview + print preview]`
+**Screenshot placeholder.** `[Insert screenshot: overview PNG/PDF pages + representative metric PNG/CSV + print preview]`
 
 ---
 

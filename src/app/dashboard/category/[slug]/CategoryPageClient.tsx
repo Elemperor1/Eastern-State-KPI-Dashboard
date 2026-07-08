@@ -4,24 +4,26 @@ import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { LegacyExportPDFButton } from "@/components/LegacyExportPDFButton";
 import { DashboardControls, type CompareState } from "@/components/DashboardControls";
-import { MetricCard } from "@/components/MetricCard";
-import { BreakdownChart } from "@/components/BreakdownChart";
-import { DonorConversionCard } from "@/components/DonorConversionCard";
-import { Breadcrumb, Card, ExportCSVButton, ExportPNGButton, PageHeader, PrintButton, PrintReportFooter, PrintReportHeader } from "@/components/ui";
+import { CategoryAnnualBreakdowns } from "@/components/CategoryAnnualBreakdowns";
+import { CategoryMetricGrid } from "@/components/CategoryMetricGrid";
+import { CategoryMonthlyBreakdowns } from "@/components/CategoryMonthlyBreakdowns";
+import { Breadcrumb, ExportCSVButton, ExportPNGButton, PageHeader, PrintButton, PrintReportFooter, PrintReportHeader } from "@/components/ui";
 import { SampleDataBadge } from "@/components/SampleDataBadge";
 import { buildCategoryPageModel } from "@/features/reporting/category-page";
 import { buildCategoryCsvExport } from "@/features/reporting/csv";
-import { CHART_COLORS, MONTH_FULL } from "@/lib/analytics";
+import { MONTH_FULL } from "@/features/metrics";
 import type { DashboardData } from "@/features/reporting/types";
 
 export function CategoryPageClient({
   data,
   categorySlug,
   initialState,
+  legacyPdfEnabled,
 }: {
   data: DashboardData;
   categorySlug: string;
   initialState: CompareState;
+  legacyPdfEnabled: boolean;
 }) {
   const router = useRouter();
   const [state, setState] = useState<CompareState>(initialState);
@@ -68,6 +70,7 @@ export function CategoryPageClient({
         <Breadcrumb href="/dashboard/overview" label="All categories" />
 
         <PageHeader
+          className="no-print"
           eyebrow={category.name}
           title={category.name}
           subtitle={category.description}
@@ -83,6 +86,7 @@ export function CategoryPageClient({
               <LegacyExportPDFButton
                 targetId={printId}
                 fileName={`eastern-state-${categorySlug}.pdf`}
+                enabled={legacyPdfEnabled}
               />
             </>
           }
@@ -90,68 +94,25 @@ export function CategoryPageClient({
 
         <DashboardControls state={state} availableYears={data.years} onChange={updateState} />
 
-        {model.metricCards.length > 0 ? (
-          <section className="mb-10">
-            <div className="section-head">
-              <p className="section-eyebrow">Metrics</p>
-              <h2 className="section-title">
-                {MONTH_FULL[state.currentMonth - 1]} {state.currentYear} vs {state.compareYear}
-              </h2>
-            </div>
-            <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
-              {model.metricCards.map((metric, idx) => (
-                <MetricCard
-                  key={metric.kpi.id}
-                  analytics={metric.analytics}
-                  accentColor={CHART_COLORS[idx % CHART_COLORS.length]}
-                  onSelect={() => router.push(`/dashboard/metric/${metric.kpi.slug}`)}
-                  goal={metric.goal}
-                />
-              ))}
-            </div>
-          </section>
-        ) : null}
+        <CategoryMetricGrid
+          metrics={model.metricCards}
+          title={`${MONTH_FULL[state.currentMonth - 1]} ${state.currentYear} vs ${state.compareYear}`}
+          onMetricSelect={(slug) => router.push(`/dashboard/metric/${slug}`)}
+        />
 
-        {model.monthlyBreakdowns.length > 0 ? (
-          <section className="mb-10 space-y-6">
-            <div className="section-head">
-              <p className="section-eyebrow">Monthly breakdowns</p>
-              <h2 className="section-title">
-                Through {MONTH_FULL[state.currentMonth - 1]} {state.currentYear}
-              </h2>
-            </div>
-            {model.monthlyBreakdowns.map((section) => (
-              <Card key={section.kpi.id} className="p-5 lg:p-6">
-                <DonorConversionCard
-                  kpi={section.kpi}
-                  data={section.breakdowns}
-                  currentYear={state.currentYear}
-                  compareYear={state.compareYear}
-                  currentMonth={state.currentMonth}
-                />
-              </Card>
-            ))}
-          </section>
-        ) : null}
+        <CategoryMonthlyBreakdowns
+          sections={model.monthlyBreakdowns}
+          title={`Through ${MONTH_FULL[state.currentMonth - 1]} ${state.currentYear}`}
+          currentYear={state.currentYear}
+          compareYear={state.compareYear}
+          currentMonth={state.currentMonth}
+        />
 
-        {model.annualBreakdowns.length > 0 ? (
-          <section className="mb-10 space-y-6">
-            <div className="section-head">
-              <p className="section-eyebrow">Breakdowns</p>
-              <h2 className="section-title">Composition metrics</h2>
-            </div>
-            {model.annualBreakdowns.map((section) => (
-              <Card key={section.kpi.id} className="p-5 lg:p-6">
-                <BreakdownChart
-                  kpi={section.kpi}
-                  data={section.breakdowns}
-                  currentYear={state.currentYear}
-                  compareYear={state.compareYear}
-                />
-              </Card>
-            ))}
-          </section>
-        ) : null}
+        <CategoryAnnualBreakdowns
+          sections={model.annualBreakdowns}
+          currentYear={state.currentYear}
+          compareYear={state.compareYear}
+        />
         <PrintReportFooter />
       </div>
     </div>

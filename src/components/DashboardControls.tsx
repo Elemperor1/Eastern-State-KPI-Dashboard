@@ -2,7 +2,7 @@
 
 import { Calendar, Layers } from "lucide-react";
 import { FilterToolbar, FormField, Select } from "@/components/ui";
-import { MONTH_LABELS } from "@/lib/analytics";
+import { MONTH_LABELS } from "@/features/metrics";
 
 export interface CompareState {
   currentYear: number;

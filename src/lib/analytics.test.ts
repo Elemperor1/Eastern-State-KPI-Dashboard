@@ -9,10 +9,9 @@ import {
   formatDelta,
   formatValue,
   isFavorable,
-  MONTH_LABELS,
   numericDirection,
 } from "@/lib/analytics";
-import { isMonthlyEntryMonth } from "@/features/metrics";
+import { MONTH_LABELS, isMonthlyEntryMonth } from "@/features/metrics";
 
 function kpi(overrides: Partial<KPIWithCategory> = {}): KPIWithCategory {
   return {

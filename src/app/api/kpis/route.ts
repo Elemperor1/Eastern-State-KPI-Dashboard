@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
-import { authErrorResponse, requireAdmin, requireSession } from "@/features/auth/session";
+import { authErrorResponse, requireAdmin } from "@/features/auth/session";
 import { assertMutationRequest } from "@/lib/request-guard";
 import {
   createKPI,
@@ -14,15 +14,6 @@ import {
 const UnitTypeEnum = z.enum(["count", "percent", "currency", "attendance", "note", "breakdown"]);
 const FrequencyEnum = z.enum(["monthly", "annual", "flexible"]);
 const DirectionEnum = z.enum(["higher", "lower", "neutral"]);
-
-export async function GET() {
-  try {
-    await requireSession();
-  } catch (err) {
-    return authErrorResponse(err);
-  }
-  return NextResponse.json({ kpis: listKPIs() });
-}
 
 function refreshedCatalogPayload() {
   return {

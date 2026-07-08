@@ -24,7 +24,11 @@ The reporting feature builds a `CategoryPageModel` containing:
 - monthly breakdown sections with all rows for the KPI
 - annual breakdown sections filtered to month `0` rows for the current and comparison years
 
-`CategoryPageClient` remains the interactive renderer. It owns URL updates, navigation, export buttons, and the component tree, while the feature module owns the reporting data shape that those components consume.
+`CategoryPageClient` remains the route-level interactive renderer. It owns URL updates, metric navigation, export buttons, and high-level composition, while the feature module owns the reporting data shape that those components consume.
+
+`src/components/CategoryMetricGrid.tsx` owns the metric-card section. `src/components/CategoryMonthlyBreakdowns.tsx` owns donor-conversion style monthly breakdown sections, and `src/components/CategoryAnnualBreakdowns.tsx` owns annual composition breakdown sections. The route client passes prepared category page model slices and the active comparison period into those renderers.
+
+Annual breakdown comparison rows, totals, chart rows, and percent-change calculations are owned by `src/features/reporting/breakdown-comparison.ts`, which is shared by the breakdown renderer used on category and metric detail pages.
 
 ## Alternatives Considered
 
@@ -34,6 +38,7 @@ The reporting feature builds a `CategoryPageModel` containing:
 
 ## Consequences
 
-- Category page metric analytics, selected-year goals, and breakdown section membership now have direct unit coverage.
+- Category page metric analytics, selected-year goals, breakdown section membership, and annual breakdown comparison behavior now have direct unit coverage.
 - `CategoryPageClient` no longer imports KPI analytics or metric period-rule helpers directly.
+- `CategoryPageClient` no longer imports metric-card, donor-conversion, breakdown-chart, or card primitives directly; those section renderers now live in focused components.
 - The page still receives the broad dashboard dataset; future slices can narrow server-prepared props once metric and trend page models are protected.

@@ -67,9 +67,8 @@ function grow(base: number[], factor: number): number[] {
 
 // 2026 only has data through June (months 1–6).
 function monthsFor(year: number): number[] {
-  return year === CURRENT_YEAR
-    ? [1, 2, 3, 4, 5, 6]
-    : [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12];
+  const count = year === CURRENT_YEAR ? THROUGH_MONTH : 12;
+  return Array.from({ length: count }, (_, index) => index + 1);
 }
 
 const CATEGORIES: CategorySpec[] = [

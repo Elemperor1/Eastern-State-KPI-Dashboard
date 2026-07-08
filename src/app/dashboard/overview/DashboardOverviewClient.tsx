@@ -9,7 +9,8 @@ import { ExportCSVButton, ExportPNGButton, PageHeader, PrintButton, PrintReportF
 import { SampleDataBadge } from "@/components/SampleDataBadge";
 import { buildCategoryOverviewSummaries } from "@/features/reporting/category-summary";
 import { buildOverviewCsvExport } from "@/features/reporting/csv";
-import { CHART_COLORS, MONTH_FULL } from "@/lib/analytics";
+import { MONTH_FULL } from "@/features/metrics";
+import { CHART_COLORS } from "@/lib/analytics";
 import type { DashboardData } from "@/features/reporting/types";
 
 export function DashboardOverviewClient({
@@ -59,6 +60,7 @@ export function DashboardOverviewClient({
           ]}
         />
         <PageHeader
+          className="no-print"
           eyebrow="KPI Intelligence Dashboard"
           title="Organizational Performance"
           subtitle={

@@ -31,7 +31,10 @@ export function CategoryOverviewCard({
             aria-hidden
           />
           <div className="min-w-0">
-            <h3 className="truncate text-lg font-semibold leading-tight text-ink-900">
+            <h3
+              className="truncate text-lg font-semibold leading-tight text-ink-900"
+              data-raster-export-text
+            >
               {category.name}
             </h3>
             <p className="mt-1 text-sm text-ink-500">{total} metrics</p>
@@ -69,9 +72,17 @@ export function CategoryOverviewCard({
       </div>
 
       {topMover && topMover.pct !== null ? (
-        <div className="mt-5 hidden items-baseline gap-1 text-sm sm:flex">
+        <div
+          className="mt-5 hidden items-baseline gap-1 text-sm sm:flex"
+          data-raster-export-text
+        >
           <span className="shrink-0 whitespace-nowrap text-ink-500">Top mover: </span>
-          <span className="min-w-0 truncate font-medium text-ink-900">{topMover.kpi.name}</span>
+          <span
+            className="min-w-0 truncate font-medium text-ink-900"
+            data-raster-export-text
+          >
+            {topMover.kpi.name}
+          </span>
           <span
             className={clsx(
               "tabular ml-auto shrink-0 font-medium",

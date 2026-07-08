@@ -120,14 +120,17 @@ function buildGoalWithMeta(
     direction,
     reporting_frequency: frequency,
     ...computed,
-    current_value: computed.full_year_value,
-    goal_target: computed.full_year_target,
-    progress_pct: computed.full_year_progress_pct,
   };
 }
 
 export function listGoals(
-  opts?: { enabledOnly?: boolean; year?: number; throughMonth?: number },
+  opts?: {
+    enabledOnly?: boolean;
+    year?: number;
+    throughMonth?: number;
+    category_id?: number;
+    kpi_id?: number;
+  },
 ): KpiGoalWithMeta[] {
   const db = getDb();
   const where: string[] = [];
@@ -138,6 +141,14 @@ export function listGoals(
   if (opts?.year !== undefined) {
     where.push("g.target_year = ?");
     params.push(opts.year);
+  }
+  if (opts?.category_id !== undefined) {
+    where.push("k.category_id = ?");
+    params.push(opts.category_id);
+  }
+  if (opts?.kpi_id !== undefined) {
+    where.push("g.kpi_id = ?");
+    params.push(opts.kpi_id);
   }
   const clause = where.length ? `WHERE ${where.join(" AND ")}` : "";
   const throughMonth = opts?.throughMonth ?? 12;

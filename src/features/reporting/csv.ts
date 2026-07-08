@@ -1,9 +1,9 @@
 import {
   buildKPIAnalytics,
-  MONTH_FULL,
-  MONTH_LABELS,
 } from "@/lib/analytics";
 import {
+  MONTH_FULL,
+  MONTH_LABELS,
   MONTH_NUMBERS,
   isAnnualEntryMonth,
   isAnnualReportingFrequency,

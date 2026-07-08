@@ -3,7 +3,8 @@
 import { AlertTriangle, ArrowDownRight, ArrowUpRight, Crosshair, Minus } from "lucide-react";
 import { Badge, CardAction, Progress } from "@/components/ui";
 import type { KPIAnalytics, KpiGoalWithMeta } from "@/lib/types";
-import { formatDelta, formatValue, isFavorable, MONTH_FULL } from "@/lib/analytics";
+import { MONTH_FULL } from "@/features/metrics";
+import { formatDelta, formatValue, isFavorable } from "@/lib/analytics";
 import { isAnnualReportingFrequency } from "@/features/metrics";
 
 interface Props {

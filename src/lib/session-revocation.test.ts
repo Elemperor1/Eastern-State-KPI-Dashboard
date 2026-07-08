@@ -81,7 +81,7 @@ import { getDb, resetDb } from "@/lib/db";
 import { _resetForTests as resetThrottle } from "@/lib/login-throttle";
 import { POST as loginPost } from "@/app/api/auth/login/route";
 import { POST as changePasswordPost } from "@/app/api/auth/change-password/route";
-import { GET as kpisGet } from "@/app/api/kpis/route";
+import { POST as usersPost } from "@/app/api/users/route";
 import { PATCH as usersPatch } from "@/app/api/users/route";
 import { DELETE as usersDelete } from "@/app/api/users/route";
 import { PATCH as accountPatch } from "@/app/api/users/account/route";
@@ -249,10 +249,10 @@ describe("req 10a — password reset invalidates prior sessions", () => {
     expect(await getCurrentUser()).toBeNull();
     // The invalid cookie was cleared (req 8).
     expect(sessionCookie()).toBeUndefined();
-    // The data API gate returns a consistent 401 (req 8).
-    const kpis = await kpisGet();
-    expect(kpis.status).toBe(401);
-    expect((await kpis.json()).error).toBe("Unauthorized");
+    // A protected API gate returns a consistent 401 (req 8).
+    const protectedMutation = await usersPost(jsonReq("http://localhost/api/users", "POST", {}));
+    expect(protectedMutation.status).toBe(401);
+    expect((await protectedMutation.json()).error).toBe("Unauthorized");
   });
 });
 
@@ -442,9 +442,9 @@ describe("req 10d — role downgrade invalidates prior sessions", () => {
     replay(oldCookie);
     expect(await getCurrentUser()).toBeNull();
     expect(sessionCookie()).toBeUndefined();
-    // The admin-only data gate rejects the revoked session with 401.
-    const kpis = await kpisGet();
-    expect(kpis.status).toBe(401);
+    // The admin-only API gate rejects the revoked session with 401.
+    const protectedMutation = await usersPost(jsonReq("http://localhost/api/users", "POST", {}));
+    expect(protectedMutation.status).toBe(401);
   });
 });
 
@@ -483,8 +483,8 @@ describe("req 10e — self-service credential change invalidates prior sessions"
   });
 });
 
-describe("req 8 — consistent unauthorized response across data APIs", () => {
-  it("a revoked session gets 401 {error:'Unauthorized'} from a requireSession gate", async () => {
+describe("req 8 — consistent unauthorized response across protected APIs", () => {
+  it("a revoked session gets 401 {error:'Unauthorized'} from a protected API gate", async () => {
     const v = createUser({
       email: "viewer-f@example.com",
       name: "Viewer F",
@@ -497,9 +497,9 @@ describe("req 8 — consistent unauthorized response across data APIs", () => {
     setUserDisabled(v.id, true);
 
     replay(oldCookie);
-    // GET /api/kpis is gated by requireSession; the revoked session
-    // yields a consistent 401 (not 403, not 500).
-    const res = await kpisGet();
+    // POST /api/users reaches the shared session chokepoint first;
+    // the revoked session yields a consistent 401 (not 403, not 500).
+    const res = await usersPost(jsonReq("http://localhost/api/users", "POST", {}));
     expect(res.status).toBe(401);
     const body = await res.json();
     expect(body.error).toBe("Unauthorized");

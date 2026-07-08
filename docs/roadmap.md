@@ -57,7 +57,9 @@ The seven `/goal` prompts at the bottom of this file each fix a coherent, verifi
 
 ### 1.4 `GET /api/categories` is unauthenticated and inconsistent with siblings
 
-**Where:** `src/app/api/categories/route.ts:18-20` returns categories without `requireSession()`, while `entries`, `breakdowns`, `kpis`, `meta` all call `requireSession()` on `GET`.
+**Superseded:** the catalog read adapters were later removed during the modular-monolith refactor. `/admin/kpis` now reads categories directly through `src/features/catalog/server.ts`, and `/api/categories` is a mutation-only adapter.
+
+**Original where:** `src/app/api/categories/route.ts:18-20` returned categories without `requireSession()`, while `entries`, `breakdowns`, `kpis`, `meta` all called `requireSession()` on `GET`.
 
 **Evidence:** `grep -n requireSession src/app/api/*/route.ts` shows that only `categories/route.ts` GET handler omits the check.
 
@@ -89,15 +91,15 @@ The seven `/goal` prompts at the bottom of this file each fix a coherent, verifi
 
 **Verification:** with two KPIs selected, switching modes recomputes the chart (verify by checking the chart's path data via `getByTestId('trend-svg')` or screenshot diff); `npm run build` passes; smoke harness still 49/49.
 
-### 2.3 `BreakdownChart` leaks unbounded breakdowns into the chart
+### 2.3 `BreakdownChart` breakdown comparison model
 
-**Where:** `src/components/BreakdownChart.tsx:23-40`, `src/features/reporting/metric-detail.ts`, and `src/app/dashboard/metric/[slug]/MetricDetailClient.tsx`.
+**Where:** `src/components/BreakdownChart.tsx`, `src/features/reporting/breakdown-comparison.ts`, `src/features/reporting/metric-detail.ts`, and `src/features/reporting/category-page.ts`.
 
-**Evidence:** `BreakdownChart` receives the *entire* `breakdowns` array for the KPI and filters internally to two years. If a future seed adds 50 components per year, the chart silently renders only the two selected but the data passed in is unbounded.
+**Status:** resolved for the current architecture refactor. Category and metric detail models pass current/compare annual rows, and `BreakdownChart` renders `buildBreakdownComparisonModel()` output instead of calculating label order, totals, and deltas inline.
 
-**Fix shape:** tighten the prop signature to `{ data: BreakdownEntryWithMeta[]; currentYear; compareYear; ... }` and have the reporting metric-detail model filter before passing. While we're there, hide the comparison table when only one year has data — currently it always renders.
+**Remaining watch item:** keep future breakdown views on the reporting model, and avoid passing broader-than-needed breakdown arrays into the renderer.
 
-**Verification:** a unit-style smoke check that asserts `breakdowns.length === 4` for `funders-by-breakdown` after filtering; the rendered table doesn't show empty `<td>` for years with no entries.
+**Verification:** `src/features/reporting/breakdown-comparison.test.ts`, category/metric detail model tests, `npm run design-system:test`, and live `scripts/smoke.sh`.
 
 ### 2.4 `ExportPDFButton` (html2canvas + jspdf) is fragile
 
@@ -119,7 +121,7 @@ The seven `/goal` prompts at the bottom of this file each fix a coherent, verifi
 
 **Evidence:** `monthly_entries` and `breakdown_entries` track `updated_by` and `updated_at` but never persist what the value was *before*. Admin users cannot undo a bad data entry; they have to remember what they overwrote. The login page advertises "Activity is logged for audit purposes" (`src/app/login/page.tsx:131`) but no log exists.
 
-**Fix shape:** add `entry_history` table (`id, entry_type, entry_id, kpi_id, year, month_or_label, prev_value, new_value, prev_notes, new_notes, changed_by, changed_at`). On any metric `upsert*` or `delete*`, write the before/after row. Add a `GET /api/entries/history?kpi_id=…&year=…` endpoint (admin-only) that renders a read-only `/admin/history` page. Bumping `src/lib/schema-version.json` to 4 will trigger a clean reset for first-time deploys.
+**Fix shape:** add `entry_history` table (`id, entry_type, entry_id, kpi_id, year, month_or_label, prev_value, new_value, prev_notes, new_notes, changed_by, changed_at`). On any metric `upsert*` or `delete*`, write the before/after row. Render a read-only `/admin/history` page for admins. Bumping `src/lib/schema-version.json` to 4 will trigger a clean reset for first-time deploys.
 
 **Verification:** editing an entry creates a history row visible at `/admin/history?kpi_id=…`; deleting it creates one with `new_value=NULL`; existing 49/49 smoke harness still passes.
 
@@ -241,14 +243,14 @@ Each prompt below is sized for one focused session. They are ordered. Tackle 7.1
 
 ### `/goal` 7.1 — Fix the bypass-admin FK bug and harden the smoke harness
 
-**Goal:** the smoke harness is green (49 passed, 0 failed) under both `AUTH_DISABLED=true` and `AUTH_DISABLED=false`; the bypass admin is a real `users.id`; the `useSearchParams` dead import is gone; `GET /api/categories` requires a session.
+**Goal:** the smoke harness is green (49 passed, 0 failed) under both `AUTH_DISABLED=true` and `AUTH_DISABLED=false`; the bypass admin is a real `users.id`; the `useSearchParams` dead import is gone; the catalog category read path is authenticated or removed.
 
 **Tasks:**
 
 1. `src/features/auth/server.ts` — change `ensureSeedAdmin()` so that, in addition to the two named seed admins, it always ensures a deterministic `auth-disabled@local` admin row exists with a known bcrypt-hashed password and a stable id. The hash can be a fixed bcrypt of an obviously-not-real value; the point is that the row exists so FK constraints succeed.
 2. Completed: `src/lib/session.ts` looks up the `auth-disabled@local` row and returns its real `users.id`; `src/components/AppShell.tsx` checks `user.email === "auth-disabled@local"`.
 3. `src/app/dashboard/overview/DashboardOverviewClient.tsx` — delete the unused `useSearchParams` import and call.
-4. `src/app/api/categories/route.ts` — add `requireSession()` to the `GET` handler.
+4. Superseded by the later API-boundary refactor: `src/app/api/categories/route.ts` no longer exposes a `GET` handler.
 5. `package.json` + `README.md` — drop the `npm run smoke` wrapper; document the canonical invocation `AUTH_DISABLED=true PORT=3290 BASE=http://127.0.0.1:3290 bash ./scripts/smoke.sh`.
 6. Add a new smoke assertion in `scripts/smoke.sh` for the auth-bypass flow: `curl -sk -X POST …/api/entries` with no cookie should return 401 when `AUTH_DISABLED=false` and 201 when `AUTH_DISABLED=true` (or equivalent coverage).
 
@@ -256,13 +258,13 @@ Each prompt below is sized for one focused session. They are ordered. Tackle 7.1
 
 ### `/goal` 7.2 — Search/filter the KPI manager table and tighten `BreakdownChart`
 
-**Goal:** the KPI manager handles 52 KPIs without forcing a single 52-row scroll; `BreakdownChart` receives a bounded prop and the metric detail page no longer leaks extra breakdown rows.
+**Status:** complete. The KPI manager has local search/category filtering, the smoke harness asserts `/admin/kpis` renders the expected controls, and `BreakdownChart` renders a bounded, feature-built comparison model.
 
-**Tasks:**
+**Completed tasks:**
 
 1. `src/app/admin/kpis/KPIManagerClient.tsx` — add a search input (filters on `name` and `slug` substring) and a category chip row (using the existing `Chip` primitive) above the "Existing KPIs" table. Filter state is local; no backend change.
-2. `src/components/BreakdownChart.tsx` — change the prop signature to require `{ data: BreakdownEntryWithMeta[]; currentYear: number; compareYear: number; ... }` and have the component trust the caller for filtering.
-3. `src/features/reporting/metric-detail.ts` — pre-filter `data.breakdowns` to the two selected years before `MetricDetailClient` passes them into `BreakdownChart`. Hide the comparison `<tbody>` row for years with zero entries.
+2. `src/components/BreakdownChart.tsx` — render the feature-owned breakdown comparison model while trusting caller-filtered rows.
+3. `src/features/reporting/metric-detail.ts` / `category-page.ts` — pre-filter annual breakdown rows to the selected current/compare years before rendering.
 4. Add one smoke assertion: `/admin/kpis` renders `Add a new KPI` plus `Existing KPIs` strings (currently missing).
 
 **Verification:** smoke harness still 49/49; the KPI manager loads with 52 rows at desktop width and progressively reveals results as the user types; `BreakdownChart` receives ≤ 8 rows for any seeded KPI.
@@ -279,7 +281,7 @@ Each prompt below is sized for one focused session. They are ordered. Tackle 7.1
 4. `src/components/MetricCard.tsx` — when `comparison.isEmpty`, render a `Badge variant="warning"` saying "No data" and skip the percent change.
 5. `src/lib/schema-version.json` + `src/lib/db.ts` — bump the schema version to 4 and create `entry_history` table (`id, entry_type, entry_id, kpi_id, year, month_or_label, prev_value, new_value, prev_notes, new_notes, changed_by, changed_at`).
 6. `src/features/metrics/entries.ts` and `src/features/metrics/breakdowns.ts` — wrap `upsertEntry`, `deleteEntry`, `upsertBreakdown`, `deleteBreakdown` to write history rows before/after.
-7. `src/app/api/entries/history/route.ts` (admin-only) — read endpoint.
+7. Superseded by the later API-boundary refactor: `/admin/history` now reads the audit feature directly; no audit-history read endpoint remains.
 8. `src/app/admin/history/page.tsx` — read-only history browser.
 
 **Verification:** `npm test` exits 0 with ≥ 90 % coverage on `analytics.ts`; `npm run build` passes; `npm run design-system:guard` passes; smoke harness still 49/49.
@@ -369,7 +371,7 @@ npm run design-system:test
 | --- | --- |
 | 7.1 | `src/features/auth/server.ts`, `src/lib/session.ts`, `src/components/AppShell.tsx`, `src/app/api/categories/route.ts`, `src/app/dashboard/overview/DashboardOverviewClient.tsx`, `package.json`, `README.md`, `scripts/smoke.sh` |
 | 7.2 | `src/app/admin/kpis/KPIManagerClient.tsx`, `src/components/BreakdownChart.tsx`, `src/app/dashboard/metric/[slug]/MetricDetailClient.tsx`, `scripts/smoke.sh` |
-| 7.3 | `package.json`, `vitest.config.ts` (new), `src/lib/analytics.ts`, `src/components/MetricCard.tsx`, `src/lib/db.ts`, `src/features/metrics/server.ts`, `src/features/audit/server.ts`, `src/app/api/entries/history/route.ts` (new), `src/app/admin/history/page.tsx` (new), `scripts/seed.ts`, `scripts/smoke.sh` |
+| 7.3 | `package.json`, `vitest.config.ts` (new), `src/lib/analytics.ts`, `src/components/MetricCard.tsx`, `src/lib/db.ts`, `src/features/metrics/server.ts`, `src/features/audit/server.ts`, `src/app/admin/history/page.tsx` (new), `scripts/seed.ts`, `scripts/smoke.sh` |
 | 7.4 | `src/app/dashboard/trends/TrendExplorerClient.tsx`, `scripts/smoke.sh` |
 | 7.5 | `src/components/ui/ExportCSVButton.tsx` (new), `src/components/ui/PrintButton.tsx` (new), `src/app/print/...` (new), `src/app/dashboard/metric/[slug]/MetricDetailClient.tsx`, `src/app/dashboard/category/[slug]/CategoryPageClient.tsx`, `src/components/ExportPDFButton.tsx` |
 | 7.6 | `src/app/dashboard/overview/loading.tsx`, `src/app/dashboard/category/[slug]/loading.tsx`, `src/app/dashboard/metric/[slug]/loading.tsx`, `src/app/dashboard/trends/loading.tsx`, `src/app/admin/{data,kpis,users}/loading.tsx`, `src/app/login/loading.tsx`, `public/favicon.ico` (new), `src/app/layout.tsx`, `README.md`, `AGENTS.md` |

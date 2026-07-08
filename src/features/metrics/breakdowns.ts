@@ -12,6 +12,20 @@ export interface BreakdownFilter {
   month?: number;
 }
 
+export class BreakdownEntryNotFoundError extends Error {
+  constructor(id: number) {
+    super(`Breakdown entry ${id} was not found.`);
+    this.name = "BreakdownEntryNotFoundError";
+  }
+}
+
+export class BreakdownEntryConflictError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "BreakdownEntryConflictError";
+  }
+}
+
 export function listBreakdowns(filter?: BreakdownFilter): BreakdownEntryWithMeta[] {
   const db = getDb();
   const where: string[] = [];
@@ -50,6 +64,7 @@ export function listBreakdowns(filter?: BreakdownFilter): BreakdownEntryWithMeta
 }
 
 export function upsertBreakdown(input: {
+  id?: number | null;
   kpi_id: number;
   year: number;
   month?: number;
@@ -59,53 +74,119 @@ export function upsertBreakdown(input: {
   notes?: string | null;
   updated_by?: number | null;
 }): BreakdownEntry {
-  // See upsertEntry for the rationale: the upsert + readback + history is
-  // wrapped in a transaction, the post-write read uses the natural unique
-  // key (kpi_id, year, month, label) instead of `lastInsertRowid`, and a key
-  // mismatch throws so a wrong-row bug cannot silently corrupt the audit trail.
+  // New rows use the natural key. Existing admin drafts carry a durable row
+  // id so editing a label updates that row instead of inserting a duplicate.
   return transaction(() => {
     const db = getDb();
     const month = input.month ?? ANNUAL_ENTRY_MONTH;
     const label = input.label.trim();
-    const prior = db
-      .prepare(
-        "SELECT id, value, notes FROM breakdown_entries WHERE kpi_id = ? AND year = ? AND month = ? AND label = ?",
-      )
-      .get(input.kpi_id, input.year, month, label) as
-      | { id: number; value: number; notes: string | null }
+    const requestedId = input.id ?? null;
+    const prior = (
+      requestedId === null
+        ? db
+            .prepare(
+              "SELECT id, kpi_id, year, month, label, value, sort_order, notes FROM breakdown_entries WHERE kpi_id = ? AND year = ? AND month = ? AND label = ?",
+            )
+            .get(input.kpi_id, input.year, month, label)
+        : db
+            .prepare(
+              "SELECT id, kpi_id, year, month, label, value, sort_order, notes FROM breakdown_entries WHERE id = ?",
+            )
+            .get(requestedId)
+    ) as
+      | {
+          id: number;
+          kpi_id: number;
+          year: number;
+          month: number;
+          label: string;
+          value: number;
+          sort_order: number;
+          notes: string | null;
+        }
       | undefined;
-    db.prepare(
-      `INSERT INTO breakdown_entries (kpi_id, year, month, label, value, sort_order, notes, updated_by, updated_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, datetime('now'))
-       ON CONFLICT(kpi_id, year, month, label) DO UPDATE SET
-        value = excluded.value,
-        sort_order = excluded.sort_order,
-        notes = excluded.notes,
-        updated_by = excluded.updated_by,
-        updated_at = datetime('now')`,
-    ).run(
-      input.kpi_id,
-      input.year,
-      month,
-      label,
-      input.value,
-      input.sort_order ?? 0,
-      input.notes ?? null,
-      input.updated_by ?? null,
-    );
-    const row = db
-      .prepare(
-        "SELECT * FROM breakdown_entries WHERE kpi_id = ? AND year = ? AND month = ? AND label = ?",
-      )
-      .get(input.kpi_id, input.year, month, label) as
-      | Record<string, unknown>
-      | undefined;
+
+    if (requestedId !== null) {
+      if (!prior) {
+        throw new BreakdownEntryNotFoundError(requestedId);
+      }
+      if (
+        Number(prior.kpi_id) !== input.kpi_id ||
+        Number(prior.year) !== input.year ||
+        Number(prior.month) !== month
+      ) {
+        throw new BreakdownEntryConflictError(
+          "The saved breakdown row does not belong to the selected KPI period.",
+        );
+      }
+      const conflictingRow = db
+        .prepare(
+          `SELECT id FROM breakdown_entries
+           WHERE kpi_id = ? AND year = ? AND month = ? AND label = ? AND id <> ?`,
+        )
+        .get(input.kpi_id, input.year, month, label, requestedId) as
+        | { id: number }
+        | undefined;
+      if (conflictingRow) {
+        throw new BreakdownEntryConflictError(
+          `A breakdown row named "${label}" already exists for this KPI period.`,
+        );
+      }
+      db.prepare(
+        `UPDATE breakdown_entries
+         SET label = ?, value = ?, sort_order = ?, notes = ?,
+             updated_by = ?, updated_at = datetime('now')
+         WHERE id = ?`,
+      ).run(
+        label,
+        input.value,
+        input.sort_order ?? prior.sort_order,
+        input.notes ?? null,
+        input.updated_by ?? null,
+        requestedId,
+      );
+    } else {
+      db.prepare(
+        `INSERT INTO breakdown_entries (kpi_id, year, month, label, value, sort_order, notes, updated_by, updated_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, datetime('now'))
+         ON CONFLICT(kpi_id, year, month, label) DO UPDATE SET
+          value = excluded.value,
+          sort_order = excluded.sort_order,
+          notes = excluded.notes,
+          updated_by = excluded.updated_by,
+          updated_at = datetime('now')`,
+      ).run(
+        input.kpi_id,
+        input.year,
+        month,
+        label,
+        input.value,
+        input.sort_order ?? 0,
+        input.notes ?? null,
+        input.updated_by ?? null,
+      );
+    }
+
+    const row = (
+      requestedId === null
+        ? db
+            .prepare(
+              "SELECT * FROM breakdown_entries WHERE kpi_id = ? AND year = ? AND month = ? AND label = ?",
+            )
+            .get(input.kpi_id, input.year, month, label)
+        : db
+            .prepare("SELECT * FROM breakdown_entries WHERE id = ?")
+            .get(requestedId)
+    ) as Record<string, unknown> | undefined;
     if (!row) {
       throw new Error(
-        `upsertBreakdown: row not found after upsert for kpi_id=${input.kpi_id} year=${input.year} month=${month} label=${label}`,
+        requestedId === null
+          ? `upsertBreakdown: row not found after upsert for kpi_id=${input.kpi_id} year=${input.year} month=${month} label=${label}`
+          : `upsertBreakdown: row not found after update for id=${requestedId}`,
       );
     }
     if (
+      (requestedId !== null && Number(row.id) !== requestedId) ||
       Number(row.kpi_id) !== input.kpi_id ||
       Number(row.year) !== input.year ||
       Number(row.month ?? ANNUAL_ENTRY_MONTH) !== month ||

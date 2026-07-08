@@ -17,10 +17,13 @@ The module exposes:
 
 - `ANNUAL_ENTRY_MONTH` for the annual full-year row (`0`)
 - `MONTH_NUMBERS` for valid monthly entry months (`1` through `12`)
+- `MONTH_LABELS` and `MONTH_FULL` for the shared short and full calendar labels
 - `isAnnualReportingFrequency` and `isMonthlyReportingFrequency`
 - `isAnnualEntryMonth`, `isMonthlyEntryMonth`, and `isMonthlyEntryThrough`
 
 Goals, analytics, admin data entry, dashboard export prep, metric detail chart routing, trend filtering, donor conversion rows, metric cards, goal manager display, and history labels use this shared rule surface.
+
+Admin data-entry selection, period labels, draft construction, saved-row identity, and breakdown edit-month selection live in `src/features/metrics/admin-data-entry.ts`. That helper uses the same period vocabulary to build annual month `0` drafts, monthly month `1-12` drafts, and monthly breakdown editor state without falling back to the annual slot. Saved entry drafts retain their database id so Clear uses the entry mutation adapter's identity-based delete contract.
 
 ## Alternatives Considered
 
@@ -32,5 +35,5 @@ Goals, analytics, admin data entry, dashboard export prep, metric detail chart r
 
 - Annual versus monthly behavior now has one reusable vocabulary.
 - Searches for raw annual/monthly condition literals in app/component/lib/feature TypeScript are meaningful again because most call sites should use the shared predicates.
-- Metric entry and breakdown data access now lives in `src/features/metrics`; future metric extraction should continue applying these rules at any remaining query and mutation boundaries.
-- The module is intentionally small and does not decide presentation copy beyond period classification.
+- Metric entry and breakdown data access plus admin draft construction now live in `src/features/metrics`; future metric extraction should continue applying these rules at any remaining query, mutation, and edit-state boundaries.
+- The module is intentionally small; its only presentation vocabulary is the authoritative short/full calendar month labels used across dashboard, export, audit, and data-entry surfaces.

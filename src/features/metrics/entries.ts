@@ -5,18 +5,25 @@ import { recordMetricEntryHistory } from "./history";
 
 export interface EntryFilter {
   kpi_id?: number;
+  kpi_ids?: number[];
   category_id?: number;
   year?: number;
   years?: number[];
 }
 
 export function listEntries(filter?: EntryFilter): MonthlyEntryWithMeta[] {
+  if (filter?.kpi_ids && filter.kpi_ids.length === 0) return [];
+
   const db = getDb();
   const where: string[] = [];
   const params: (string | number)[] = [];
   if (filter?.kpi_id !== undefined) {
     where.push("e.kpi_id = ?");
     params.push(filter.kpi_id);
+  }
+  if (filter?.kpi_ids) {
+    where.push(`e.kpi_id IN (${filter.kpi_ids.map(() => "?").join(",")})`);
+    params.push(...filter.kpi_ids);
   }
   if (filter?.category_id !== undefined) {
     where.push("k.category_id = ?");

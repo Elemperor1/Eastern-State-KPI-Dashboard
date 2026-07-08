@@ -3,7 +3,7 @@ import { getDb } from "@/lib/db";
 /**
  * Sentinel slug/name helper used when a KPI/category snapshot column is NULL
  * (legacy migrated row whose metadata was already deleted, or a seed write
- * with no metadata). The history endpoint renders this distinctly: it is the
+ * with no metadata). The history read model renders this distinctly: it is the
  * "deleted metadata" tombstone, not a real label.
  *
  * D8AD-CAN-005: see db.ts migrateEntryHistorySnapshots.

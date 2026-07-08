@@ -5,8 +5,11 @@ import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { ensureSeedAdmin } from "@/features/auth/server";
 import { getDb, resetDb, transaction } from "@/lib/db";
 import {
+  BreakdownEntryConflictError,
   deleteBreakdown,
   deleteEntry,
+  listEntries,
+  loadAdminDataPageData,
   upsertBreakdown,
   upsertEntry,
 } from "@/features/metrics/server";
@@ -106,6 +109,56 @@ describe("upsertEntry / upsertBreakdown audit integrity", () => {
       | undefined;
   }
 
+  it("filters entry reads to an explicit KPI set and treats an empty set as empty", () => {
+    upsertEntry({
+      kpi_id: kpiA,
+      year: 2025,
+      month: 1,
+      value: 10,
+      updated_by: 1,
+    });
+    upsertEntry({
+      kpi_id: kpiB,
+      year: 2025,
+      month: 1,
+      value: 20,
+      updated_by: 1,
+    });
+
+    expect(listEntries({ kpi_ids: [kpiB] }).map((row) => row.kpi_id)).toEqual([kpiB]);
+    expect(listEntries({ kpi_ids: [] })).toEqual([]);
+  });
+
+  it("loads the complete admin data-entry page model through the metrics feature", () => {
+    const db = getDb();
+    db.prepare(
+      "INSERT INTO meta (key, value) VALUES ('sample_data', '1') ON CONFLICT(key) DO UPDATE SET value = excluded.value",
+    ).run();
+    const monthly = upsertEntry({
+      kpi_id: kpiA,
+      year: 2025,
+      month: 1,
+      value: 10,
+      updated_by: 1,
+    });
+    const breakdown = upsertBreakdown({
+      kpi_id: kpiB,
+      year: 2024,
+      label: "Foundation",
+      value: 3,
+      updated_by: 1,
+    });
+
+    const model = loadAdminDataPageData();
+
+    expect(model.categories.map((item) => item.name)).toEqual(["Test Category"]);
+    expect(model.kpis.map((item) => item.slug)).toEqual(["kpi-a", "kpi-b"]);
+    expect(model.entries.map((item) => item.id)).toEqual([monthly.id]);
+    expect(model.breakdowns.map((item) => item.id)).toEqual([breakdown.id]);
+    expect(model.years).toEqual([2024, 2025]);
+    expect(model.sampleData).toBe(true);
+  });
+
   it("returns the upsert target row, not an unrelated prior insert", () => {
     // The original bug: a prior insert on the same connection leaves
     // `lastInsertRowid` set to its row id. A subsequent conflict update on a
@@ -198,6 +251,98 @@ describe("upsertEntry / upsertBreakdown audit integrity", () => {
     expect(h!.month_or_label).toBe("0|Group A");
     expect(h!.new_value).toBe(42);
     expect(h!.prev_value).toBe(10);
+  });
+
+  it("updates a saved breakdown by durable id when its label changes", () => {
+    const created = upsertBreakdown({
+      kpi_id: kpiA,
+      year: 2025,
+      label: "Original label",
+      value: 10,
+      sort_order: 4,
+      notes: "before",
+      updated_by: 1,
+    });
+
+    const updated = upsertBreakdown({
+      id: created.id,
+      kpi_id: kpiA,
+      year: 2025,
+      label: "Renamed label",
+      value: 15,
+      notes: "after",
+      updated_by: 1,
+    });
+
+    expect(updated).toMatchObject({
+      id: created.id,
+      label: "Renamed label",
+      value: 15,
+      sort_order: 4,
+      notes: "after",
+    });
+    const rows = getDb()
+      .prepare(
+        "SELECT id, label, value FROM breakdown_entries WHERE kpi_id = ? ORDER BY id",
+      )
+      .all(kpiA);
+    expect(rows).toEqual([
+      { id: created.id, label: "Renamed label", value: 15 },
+    ]);
+
+    const h = lastHistory("breakdown");
+    expect(h).toMatchObject({
+      entry_id: created.id,
+      month_or_label: "0|Renamed label",
+      prev_value: 10,
+      new_value: 15,
+      prev_notes: "before",
+      new_notes: "after",
+    });
+  });
+
+  it("rolls back an id-based label edit that conflicts with another row", () => {
+    const first = upsertBreakdown({
+      kpi_id: kpiA,
+      year: 2025,
+      label: "First label",
+      value: 10,
+      updated_by: 1,
+    });
+    const second = upsertBreakdown({
+      kpi_id: kpiA,
+      year: 2025,
+      label: "Second label",
+      value: 20,
+      updated_by: 1,
+    });
+
+    expect(() =>
+      upsertBreakdown({
+        id: first.id,
+        kpi_id: kpiA,
+        year: 2025,
+        label: "Second label",
+        value: 99,
+        updated_by: 1,
+      }),
+    ).toThrow(BreakdownEntryConflictError);
+
+    const rows = getDb()
+      .prepare(
+        "SELECT id, label, value FROM breakdown_entries WHERE kpi_id = ? ORDER BY id",
+      )
+      .all(kpiA);
+    expect(rows).toEqual([
+      { id: first.id, label: "First label", value: 10 },
+      { id: second.id, label: "Second label", value: 20 },
+    ]);
+    const historyCount = getDb()
+      .prepare(
+        "SELECT COUNT(*) AS count FROM entry_history WHERE entry_type = 'breakdown'",
+      )
+      .get() as { count: number };
+    expect(historyCount.count).toBe(2);
   });
 
   it("returns a stable row id for the same (kpi, year, month) across repeated upserts", () => {

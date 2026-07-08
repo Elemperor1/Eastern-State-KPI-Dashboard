@@ -11,9 +11,11 @@
     "db:seed": "tsx scripts/seed.ts",
     "setup:admin": "tsx scripts/setup-admin.ts",
     "d8ad-can-008:test": "bash ./scripts/d8ad-can-008-ci-gate.sh",
-    "design-system:guard": "bash ./scripts/design-tokens-guard.sh && bash ./scripts/design-system-guard.sh && bash ./scripts/auth-bypass-guard.sh",
-    "design-system:test": "bash ./scripts/design-tokens-guard.sh && bash ./scripts/design-system-guard.sh && bash ./scripts/auth-bypass-guard.sh && bash ./scripts/d8ad-can-008-ci-gate.sh && npx tsc --noEmit && AUTH_DISABLED= npx next build",
+    "architecture:guard": "bash ./scripts/architecture-boundary-guard.sh",
+    "design-system:guard": "bash ./scripts/design-tokens-guard.sh && bash ./scripts/design-system-guard.sh && bash ./scripts/auth-bypass-guard.sh && bash ./scripts/architecture-boundary-guard.sh",
+    "design-system:test": "bash ./scripts/design-tokens-guard.sh && bash ./scripts/design-system-guard.sh && bash ./scripts/auth-bypass-guard.sh && bash ./scripts/architecture-boundary-guard.sh && bash ./scripts/d8ad-can-008-ci-gate.sh && npx tsc --noEmit && AUTH_DISABLED= npx next build",
     "test": "vitest run",
+    "test:e2e": "playwright test",
     "test:coverage": "vitest run --coverage",
     "prelint": "npm run design-system:guard"
   },
@@ -33,6 +35,7 @@
   },
   "devDependencies": {
     "@eslint/eslintrc": "^3.3.5",
+    "@playwright/test": "^1.61.1",
     "@types/bcryptjs": "^2.4.6",
     "@types/node": "^22.7.5",
     "@types/react": "^19.0.0",

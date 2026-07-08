@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 import {
+  BreakdownEntryConflictError,
+  BreakdownEntryNotFoundError,
   deleteBreakdown,
   upsertBreakdown,
 } from "@/features/metrics/server";
@@ -8,6 +10,7 @@ import { authErrorResponse, requireAdmin } from "@/features/auth/session";
 import { assertMutationRequest } from "@/lib/request-guard";
 
 const UpsertSchema = z.object({
+  id: z.number().int().positive().nullable().optional(),
   kpi_id: z.number().int().positive(),
   year: z.number().int().min(1900).max(2100),
   month: z.number().int().min(0).max(12).optional(),
@@ -33,8 +36,24 @@ export async function POST(req: NextRequest) {
       { status: 400 },
     );
   }
-  const breakdown = upsertBreakdown({ ...parsed.data, updated_by: sessionUser.id });
-  return NextResponse.json({ breakdown }, { status: 201 });
+  try {
+    const breakdown = upsertBreakdown({
+      ...parsed.data,
+      updated_by: sessionUser.id,
+    });
+    return NextResponse.json({ breakdown }, { status: 201 });
+  } catch (err) {
+    if (err instanceof BreakdownEntryNotFoundError) {
+      return NextResponse.json(
+        { error: "Breakdown entry not found." },
+        { status: 404 },
+      );
+    }
+    if (err instanceof BreakdownEntryConflictError) {
+      return NextResponse.json({ error: err.message }, { status: 409 });
+    }
+    throw err;
+  }
 }
 
 const DeleteSchema = z.object({ id: z.number().int().positive() });

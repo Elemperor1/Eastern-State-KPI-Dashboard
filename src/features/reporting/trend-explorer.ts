@@ -1,10 +1,11 @@
-import { MONTH_LABELS } from "@/lib/analytics";
+import { MONTH_LABELS } from "@/features/metrics";
 import {
   MONTH_NUMBERS,
   isMonthlyReportingFrequency,
 } from "@/features/metrics";
 import { buildTrendCsvExport, type CsvExport } from "./csv";
 import type {
+  Category,
   ComparisonPoint,
   KPIWithCategory,
   MonthlyEntryWithMeta,
@@ -37,6 +38,14 @@ export interface TrendExplorerSelection {
   kpiSlugs: string[];
   selectedYears: number[];
   axisMode: TrendAxisMode;
+}
+
+export type TrendExplorerInitialSelection = TrendExplorerSelection;
+
+export interface TrendExplorerPageData extends TrendExplorerData {
+  categories: Category[];
+  years: number[];
+  initialSelection: TrendExplorerInitialSelection;
 }
 
 export interface TrendExplorerSeries {
@@ -91,6 +100,26 @@ export function defaultTrendYears(years: number[]): number[] {
 
 export function defaultTrendAxisMode(kpiSlugs: string[]): TrendAxisMode {
   return kpiSlugs.length > 1 ? "indexed" : "shared";
+}
+
+export function listTrendExplorerYears(entries: MonthlyEntryWithMeta[]): number[] {
+  return Array.from(new Set(entries.map((entry) => entry.year))).sort((a, b) => a - b);
+}
+
+export function buildTrendExplorerInitialSelection({
+  kpis,
+  years,
+}: {
+  kpis: KPIWithCategory[];
+  years: number[];
+}): TrendExplorerInitialSelection {
+  const kpiSlugs = selectInitialTrendKpiSlugs(kpis);
+  return {
+    categorySlug: "all",
+    kpiSlugs,
+    selectedYears: defaultTrendYears(years),
+    axisMode: defaultTrendAxisMode(kpiSlugs),
+  };
 }
 
 export function filterVisibleTrendKpis(

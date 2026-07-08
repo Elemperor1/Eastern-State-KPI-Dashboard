@@ -22,7 +22,7 @@ The audit feature exposes:
 
 `listEntryHistory` filters by the immutable snapshot `kpi_id` and `category_id` columns, not by live joins. It LEFT JOINs current KPI/category rows only to populate nullable `*_current_*` fields and compute `metadata_deleted` / `metadata_renamed`. Deleted category and KPI filter options are also derived from `entry_history` snapshots with LEFT JOIN checks.
 
-The admin history page and `/api/entries/history` route remain the user-facing adapters. They preserve the existing admin authorization path and response shape.
+The admin history page is the user-facing adapter. It preserves the admin-only authorization path while avoiding a same-application HTTP read boundary.
 
 `src/lib/repository.ts` has been removed rather than kept as a compatibility wrapper.
 

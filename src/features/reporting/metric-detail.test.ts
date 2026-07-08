@@ -107,9 +107,6 @@ function goal(overrides: Partial<KpiGoalWithMeta>): KpiGoalWithMeta {
     full_year_value: 150,
     full_year_target: 200,
     full_year_progress_pct: 75,
-    current_value: 150,
-    goal_target: 200,
-    progress_pct: 75,
     ...overrides,
   };
 }

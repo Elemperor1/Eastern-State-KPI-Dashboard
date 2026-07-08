@@ -1,12 +1,12 @@
 import { redirect } from "next/navigation";
 import { getCurrentUserReadOnly } from "@/features/auth/session";
 import { AppShell } from "@/components/AppShell";
-import { MetricDetailClient, type GoalDisplayMode } from "./MetricDetailClient";
-import { getKPIBySlug } from "@/features/catalog/server";
+import { MetricDetailClient } from "./MetricDetailClient";
+import type { GoalDisplayMode } from "@/components/MetricGoalPanel";
 import { resolveDashboardCompareState } from "@/features/reporting/period";
 import {
   listDashboardYears,
-  loadDashboardData,
+  loadMetricDetailPageData,
 } from "@/features/reporting/server";
 
 export const dynamic = "force-dynamic";
@@ -20,12 +20,10 @@ export default async function MetricDetailPage({
 }) {
   const { slug } = await params;
   const sp = await searchParams;
+  const rawLegacy = Array.isArray(sp.legacy) ? sp.legacy[0] : sp.legacy;
   const user = await getCurrentUserReadOnly();
   if (!user) redirect("/login");
   if (user.must_change_password) redirect("/setup-password");
-
-  const kpi = getKPIBySlug(slug);
-  if (!kpi) redirect("/dashboard/overview");
 
   const initialState = resolveDashboardCompareState(sp, listDashboardYears());
 
@@ -36,10 +34,11 @@ export default async function MetricDetailPage({
       ? (rawGoalDisplay as GoalDisplayMode)
       : undefined;
 
-  const data = loadDashboardData({
+  const data = loadMetricDetailPageData(slug, {
     throughMonth: initialState.currentMonth,
     year: initialState.currentYear,
   });
+  if (!data) redirect("/dashboard/overview");
 
   return (
     <AppShell user={user}>
@@ -48,6 +47,7 @@ export default async function MetricDetailPage({
         kpiSlug={slug}
         initialState={initialState}
         initialGoalDisplay={goalDisplay}
+        legacyPdfEnabled={rawLegacy === "1"}
       />
     </AppShell>
   );

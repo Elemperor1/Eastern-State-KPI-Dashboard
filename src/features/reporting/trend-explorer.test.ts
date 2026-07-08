@@ -2,10 +2,12 @@ import { describe, expect, it } from "vitest";
 import {
   buildIndexedTrendBaselines,
   buildRawTrendData,
+  buildTrendExplorerInitialSelection,
   buildTrendExplorerModel,
   defaultTrendAxisMode,
   defaultTrendYears,
   filterVisibleTrendKpis,
+  listTrendExplorerYears,
   selectInitialTrendKpiSlugs,
   transformTrendData,
 } from "./trend-explorer";
@@ -140,6 +142,24 @@ describe("reporting trend explorer model", () => {
     expect(defaultTrendYears([2022, 2023, 2024, 2025, 2026])).toEqual([2024, 2025, 2026]);
     expect(defaultTrendAxisMode(["visitors"])).toBe("shared");
     expect(defaultTrendAxisMode(["visitors", "revenue"])).toBe("indexed");
+  });
+
+  it("prepares page-level years and initial selection from feature data", () => {
+    const entries = [
+      entry(visitorsKpi, { id: 1, year: 2026, month: 1 }),
+      entry(visitorsKpi, { id: 2, year: 2024, month: 12 }),
+      entry(revenueKpi, { id: 3, year: 2025, month: 6 }),
+      entry(annualKpi, { id: 4, year: 2026, month: 0 }),
+    ];
+    const years = listTrendExplorerYears(entries);
+
+    expect(years).toEqual([2024, 2025, 2026]);
+    expect(buildTrendExplorerInitialSelection({ kpis: allKpis, years })).toEqual({
+      categorySlug: "all",
+      kpiSlugs: ["visitors", "revenue", "annual-budget"],
+      selectedYears: [2024, 2025, 2026],
+      axisMode: "indexed",
+    });
   });
 
   it("shows only monthly non-breakdown KPIs in the category selector list", () => {

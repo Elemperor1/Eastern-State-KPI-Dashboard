@@ -1,8 +1,8 @@
 import { buildKPIAnalytics, isFavorable } from "@/lib/analytics";
 import {
-  MONTH_NUMBERS,
   isMonthlyEntryMonth,
 } from "@/features/metrics";
+import { donorConversionRate } from "./donor-conversion";
 import type {
   BreakdownEntryWithMeta,
   Category,
@@ -90,33 +90,6 @@ function buildBreakdownMetricMovement({
     favorable: isFavorable(kpi.direction, delta),
     delta,
   };
-}
-
-function donorConversionRate(
-  breakdowns: BreakdownEntryWithMeta[],
-  year: number,
-  throughMonth: number,
-): number | null {
-  let referred = 0;
-  let donors = 0;
-  const months = Math.min(throughMonth, 12);
-  for (const month of MONTH_NUMBERS.slice(0, months)) {
-    referred +=
-      breakdowns.find(
-        (breakdown) =>
-          breakdown.year === year &&
-          breakdown.month === month &&
-          breakdown.label === "Referred",
-      )?.value ?? 0;
-    donors +=
-      breakdowns.find(
-        (breakdown) =>
-          breakdown.year === year &&
-          breakdown.month === month &&
-          breakdown.label === "Donors",
-      )?.value ?? 0;
-  }
-  return referred > 0 ? (donors / referred) * 100 : null;
 }
 
 export function buildCategoryOverviewSummary({

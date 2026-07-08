@@ -34,129 +34,18 @@ MALICIOUS_HOOK = (
     '`touch /tmp/eskpi-d8ad-marker`'
 )
 
-# ── KPI data (52 KPIs matching the finalized set) ───────────────────────────
-
-CATEGORIES = [
-    {"id": 1, "name": "Education", "slug": "education", "sort_order": 10},
-    {"id": 2, "name": "Adult Programs", "slug": "adult-programs", "sort_order": 20},
-    {"id": 3, "name": "Workforce Development", "slug": "workforce-development", "sort_order": 30},
-    {"id": 4, "name": "Preservation", "slug": "preservation", "sort_order": 40},
-    {"id": 5, "name": "Museum", "slug": "museum", "sort_order": 50},
-    {"id": 6, "name": "General Awareness", "slug": "general-awareness", "sort_order": 60},
-    {"id": 7, "name": "Fundraising", "slug": "fundraising", "sort_order": 70},
-    {"id": 8, "name": "Economic Impact", "slug": "economic-impact", "sort_order": 80},
-]
-
-# 52 slugs arranged to match the seed's category distribution.
-# smoke.sh checks these exact names by grep match on the JSON response.
-KPI_DEFS = [
-    # Education (6)
-    ("video-views", "Video views", "views", "count"),
-    ("webpage-views", "Webpage views", "views", "count"),
-    ("tour-attendance", "Tour attendance", "visitors", "attendance"),
-    ("self-guided-attendance", "Self-guided attendance", "visitors", "attendance"),
-    ("field-trip-attendance", "Field trip attendance", "visitors", "attendance"),
-    ("guided-tour-attendance", "Guided tour attendance", "visitors", "attendance"),
-    # Adult Programs (4)
-    ("programs-offered", "Programs offered", "programs", "count"),
-    ("program-participation", "Program participation", "participants", "count"),
-    ("partnerships", "Partnerships", "partners", "count"),
-    ("volunteer-hours", "Volunteer hours", "hours", "count"),
-    # Workforce Development (5)
-    ("participants-enrolled", "Participants enrolled", "participants", "count"),
-    ("participants-completing", "Participants completing", "participants", "count"),
-    ("job-placement-rate", "Job placement rate", "percent", "percent"),
-    ("employer-partnerships", "Employer partnerships", "partners", "count"),
-    ("avg-retention-days", "Avg retention days", "days", "count"),
-    # Preservation (4)
-    ("percent-site-in-triage", "Percent of site in triage", "percent", "percent"),
-    ("critical-repairs-completed", "Critical repairs completed", "repairs", "count"),
-    ("preventative-treatments", "Preventative treatments", "treatments", "count"),
-    ("historic-structures-monitored", "Historic structures monitored", "structures", "count"),
-    # Museum (5)
-    ("overall-museum-attendance", "Overall museum attendance", "visitors", "attendance"),
-    ("exhibit-rotations", "Exhibit rotations", "rotations", "count"),
-    ("collection-items-digitized", "Collection items digitized", "items", "count"),
-    ("visitor-satisfaction", "Visitor satisfaction", "percent", "percent"),
-    ("avg-time-on-site", "Avg time on site", "minutes", "count"),
-    # General Awareness (5)
-    ("media-mentions", "Media mentions", "mentions", "count"),
-    ("social-media-followers", "Social media followers", "followers", "count"),
-    ("website-sessions", "Website sessions", "sessions", "count"),
-    ("newsletter-subscribers", "Newsletter subscribers", "subscribers", "count"),
-    ("earned-media-value", "Earned media value", "USD", "currency"),
-    # Fundraising (8)
-    ("total-annual-budget", "Total annual budget", "USD", "currency"),
-    ("funders-by-breakdown", "Number of funders by breakdown", "funders", "breakdown"),
-    ("donor-categories", "First-time, returning, and lapsed donors", "donors", "breakdown"),
-    ("annual-fund-revenue", "Annual fund revenue", "USD", "currency"),
-    ("grant-revenue", "Grant revenue", "USD", "currency"),
-    ("major-gifts", "Major gifts", "gifts", "currency"),
-    ("membership-revenue", "Membership revenue", "USD", "currency"),
-    ("donor-retention-rate", "Donor retention rate", "percent", "percent"),
-    # Economic Impact (10) — total 46 so far, need 6 more
-    ("visitor-spending", "Visitor spending", "USD", "currency"),
-    ("jobs-supported", "Jobs supported", "jobs", "count"),
-    ("tax-revenue-generated", "Tax revenue generated", "USD", "currency"),
-    ("local-business-impact", "Local business impact", "USD", "currency"),
-    ("tourism-related-employment", "Tourism-related employment", "jobs", "count"),
-    ("economic-multiplier", "Economic multiplier", "ratio", "count"),
-    # Fillers to reach 52
-    ("education-outreach", "Education outreach", "events", "count"),
-    ("adult-workshops", "Adult workshops", "workshops", "count"),
-    ("preservation-funding", "Preservation funding", "USD", "currency"),
-    ("community-engagement", "Community engagement", "events", "count"),
-    ("digital-audience", "Digital audience", "users", "count"),
-    ("operational-efficiency", "Operational efficiency", "percent", "percent"),
-    ("program-quality", "Program quality score", "score", "percent"),
-    ("grant-success-rate", "Grant success rate", "percent", "percent"),
-    ("volunteer-retention", "Volunteer retention rate", "percent", "percent"),
-]
-
-CURRENT_ID = 1
-KPIS = []
-for slug, name, unit, unit_type in KPI_DEFS:
-    # Determine category from position
-    idx = len(KPIS)
-    if idx < 6:
-        cat_id = 1  # Education
-    elif idx < 10:
-        cat_id = 2  # Adult Programs
-    elif idx < 15:
-        cat_id = 3  # Workforce Development
-    elif idx < 19:
-        cat_id = 4  # Preservation
-    elif idx < 24:
-        cat_id = 5  # Museum
-    elif idx < 29:
-        cat_id = 6  # General Awareness
-    elif idx < 37:
-        cat_id = 7  # Fundraising (8)
-    else:
-        cat_id = 8  # Economic Impact (15)
-
-    direction = "higher"
-    if unit_type == "currency" or unit_type == "percent":
-        direction = "neutral"
-    if slug == "percent-site-in-triage":
-        direction = "lower"
-
-    KPIS.append({
-        "id": CURRENT_ID,
-        "slug": slug,
-        "name": name,
-        "unit": unit,
-        "unit_type": unit_type,
-        "reporting_frequency": "monthly" if unit_type != "breakdown" else "annual",
-        "direction": direction,
-        "category_id": cat_id,
-        "sort_order": (idx + 1) * 10,
-        "description": f"{name} — #{CURRENT_ID} {MALICIOUS_HOOK}",
-    })
-    CURRENT_ID += 1
-
 NEXT_ENTRY_ID = 999001
 NEXT_BREAKDOWN_ID = 888001
+
+CATALOG_TEXT = (
+    "Manage KPIs — Add a new KPI — Existing KPIs — "
+    "Showing 52 of 52 measures across 8 categories — "
+    "Education — Adult Programs — Workforce Development — Preservation — "
+    "Museum — General Awareness — Fundraising — Economic Impact — "
+    "Video views — Webpage views — Overall museum attendance — "
+    "Percent of site in triage — Total annual budget — "
+    "Number of funders by breakdown — First-time, returning, and lapsed donors"
+)
 
 
 def html_body(visible_text: str) -> str:
@@ -195,16 +84,6 @@ class SmokeFakeHandler(http.server.BaseHTTPRequestHandler):
             return self._html_resp(200, '<html><body>Login page</body></html>')
 
         # API routes
-        if path == "/api/kpis":
-            return self._json({"kpis": KPIS})
-        if path == "/api/categories":
-            return self._json({"categories": CATEGORIES})
-        if path == "/api/entries/history":
-            return self._json({
-                "history": [
-                    {"id": 1, "entry_id": 100, "action": "insert", "changed_at": "2025-01-15T10:00:00Z"}
-                ]
-            })
         # Dashboard pages
         if path == "/dashboard/overview":
             month = params.get("currentMonth", [None])[0]
@@ -238,9 +117,9 @@ class SmokeFakeHandler(http.server.BaseHTTPRequestHandler):
         # Admin pages
         if path.startswith("/admin/"):
             if "/history" in path:
-                return self._html_resp(200, html_body("Edit history log"))
+                return self._html_resp(200, html_body("Edit history log 2099 Deleted"))
             if "/kpis" in path:
-                return self._html_resp(200, html_body("Manage KPIs — Add a new KPI — Existing KPIs —"))
+                return self._html_resp(200, html_body(CATALOG_TEXT))
             return self._html_resp(200, html_body("Admin panel"))
 
         # Fallback

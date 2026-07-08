@@ -2,11 +2,10 @@ import { redirect } from "next/navigation";
 import { getCurrentUserReadOnly } from "@/features/auth/session";
 import { AppShell } from "@/components/AppShell";
 import { CategoryPageClient } from "./CategoryPageClient";
-import { getCategoryBySlug } from "@/features/catalog/server";
 import { resolveDashboardCompareState } from "@/features/reporting/period";
 import {
   listDashboardYears,
-  loadDashboardData,
+  loadCategoryPageData,
 } from "@/features/reporting/server";
 
 export const dynamic = "force-dynamic";
@@ -20,26 +19,27 @@ export default async function CategoryPage({
 }) {
   const { slug } = await params;
   const sp = await searchParams;
+  const rawLegacy = Array.isArray(sp.legacy) ? sp.legacy[0] : sp.legacy;
   const user = await getCurrentUserReadOnly();
   if (!user) redirect("/login");
   if (user.must_change_password) redirect("/setup-password");
 
-  const category = getCategoryBySlug(slug);
-  if (!category) redirect("/dashboard/overview");
-
   const initialState = resolveDashboardCompareState(sp, listDashboardYears());
 
-  // Single load with the correct year + through-month. Goals are computed
-  // for exactly the selected year and pacing period — no stale values
-  // from other years, no wasted double-load.
-  const data = loadDashboardData({
+  const data = loadCategoryPageData(slug, {
     throughMonth: initialState.currentMonth,
     year: initialState.currentYear,
   });
+  if (!data) redirect("/dashboard/overview");
 
   return (
     <AppShell user={user}>
-      <CategoryPageClient data={data} categorySlug={slug} initialState={initialState} />
+      <CategoryPageClient
+        data={data}
+        categorySlug={slug}
+        initialState={initialState}
+        legacyPdfEnabled={rawLegacy === "1"}
+      />
     </AppShell>
   );
 }

@@ -28,6 +28,6 @@ DB-backed goal behavior tests live with the feature in `src/features/goals/integ
 ## Consequences
 
 - Goal math now has direct pure unit coverage in `src/features/goals/calculations.test.ts`.
-- Repository integration tests continue to protect DB-backed behavior and compatibility aliases.
+- Database integration tests continue to protect DB-backed goal behavior.
 - Future goals refactor slices can move UI/server mutation boundaries behind the same feature surface without also relocating calculation, validation, or data-access rules.
 - The goals feature depends on the catalog feature for KPI existence checks and test setup, and on the metrics feature for entry setup. Those are explicit cross-feature calls through public server surfaces.

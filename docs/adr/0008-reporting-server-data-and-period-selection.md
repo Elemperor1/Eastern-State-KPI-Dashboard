@@ -5,7 +5,9 @@ Date: 2026-07-07
 
 ## Context
 
-Dashboard overview, category, and metric pages all need the same broad reporting dataset, the same list of years available for reporting controls, and the same URL search-parameter behavior for current year, comparison year, and through-month selection.
+Dashboard overview, category, and metric pages share reporting-period behavior,
+but they do not need the same row scope. Overview compares all categories;
+category and metric pages only need rows for their selected scope.
 
 Before this decision, the broad dashboard loader lived in a generic lib module while each server page carried its own period parsing helper. That kept pages locally understandable, but it duplicated reporting-period rules and made dashboard data ownership less clear now that metrics, catalog metadata, goals, CSV exports, and audit history have feature-owned modules.
 
@@ -15,12 +17,17 @@ Dashboard reporting data loading and reporting-period selection are owned by `sr
 
 The reporting feature now exposes:
 
-- `loadDashboardData` for the broad dashboard dataset used by overview, category, and metric pages.
+- `loadOverviewPageData` for the complete overview dataset.
+- `loadCategoryPageData` for one category's KPI/entry/breakdown/goal rows.
+- `loadMetricDetailPageData` for one KPI's rows and category.
+- `loadTrendExplorerPageData` for monthly non-breakdown trend series.
 - `listDashboardYears` for the year list behind dashboard comparison controls.
 - `resolveDashboardCompareState` and `parseThroughMonth` for URL period selection.
 - Shared reporting data types consumed by dashboard clients and CSV builders.
 
-The dashboard pages still own auth redirects, route params, slug existence checks, and browser route state handoff to their client components. The reporting feature owns only the reusable reporting data and period rules.
+The dashboard pages still own auth redirects, route params, and browser route
+state handoff. Reporting server operations own slug validation, row scoping,
+reporting data, and period rules.
 
 ## Alternatives Considered
 
@@ -30,7 +37,9 @@ The dashboard pages still own auth redirects, route params, slug existence check
 
 ## Consequences
 
-- Overview, category, and metric pages now share one tested period resolver.
+- Overview, category, and metric pages share one tested period resolver while
+  receiving page-scoped server data.
 - The obsolete generic dashboard loader is removed.
 - Reporting owns the server data surface used by CSV exports and dashboard pages.
-- Dashboard client components still receive broad datasets and perform some page-specific chart/table shaping; those can be moved later behind focused tests.
+- Overview/trends intentionally retain broad interactive datasets; category and
+  metric payloads are narrowed without changing instant browser controls.

@@ -180,16 +180,6 @@ export interface KpiGoalWithMeta extends KpiGoal {
   full_year_target: number | null;
   /** Full-year completion percentage (0–100). Compares full-year actual vs full-year target. Null when target is unavailable. */
   full_year_progress_pct: number | null;
-
-  /**
-   * @deprecated Use ytd_progress_pct or full_year_progress_pct instead.
-   * Kept for backward compat during migration — equals full_year_progress_pct.
-   */
-  current_value: number | null;
-  /** @deprecated Use full_year_target instead. */
-  goal_target: number | null;
-  /** @deprecated Use ytd_progress_pct or full_year_progress_pct instead. */
-  progress_pct: number | null;
 }
 
 /**

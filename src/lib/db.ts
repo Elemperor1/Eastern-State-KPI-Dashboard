@@ -197,7 +197,7 @@ function migrateSchema(raw: DatabaseSync): void {
   // preserved and backfilled from whatever current metadata still
   // exists. Rows whose KPI/category was already deleted before the
   // migration stay NULL in the snapshot columns — that NULL is the
-  // tombstone that lets the history endpoint represent deleted metadata
+  // tombstone that lets the history read model represent deleted metadata
   // distinctly (see listEntryHistory).
   //
   // v5 → v6 adds a `month` column to `breakdown_entries` and updates

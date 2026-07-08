@@ -11,13 +11,14 @@ Before this decision, `CategoryOverviewCard` calculated those values directly. T
 
 ## Decision
 
-Overview category summary calculations are owned by `src/features/reporting/category-summary.ts`.
+Overview category summary calculations are owned by `src/features/reporting/category-summary.ts`. The shared donor referral-to-donor conversion rule and chart/table model are owned by `src/features/reporting/donor-conversion.ts` so overview rollups and the donor conversion card use the same denominator and percentage-point behavior.
 
 The reporting feature exposes pure builders for:
 
 - per-metric category movement
 - per-category overview summaries
 - all overview category summaries for a reporting dataset and comparison period
+- donor conversion monthly rows, totals, chart rows, and percentage-point movement
 
 `CategoryOverviewCard` now receives a prepared `CategoryOverviewSummary` and renders it. The overview client still owns browser state and routing, but it calls the reporting feature to derive the summary for the active comparison period.
 
@@ -29,6 +30,6 @@ The reporting feature exposes pure builders for:
 
 ## Consequences
 
-- Category-card rollups now have direct unit coverage for monthly KPIs, lower-is-better direction, flat movement, annual breakdown totals, monthly donor conversion, and zero-denominator conversion behavior.
+- Category-card rollups and donor conversion display models now have direct unit coverage for monthly KPIs, lower-is-better direction, flat movement, annual breakdown totals, monthly donor conversion, chart rows, and zero-denominator conversion behavior.
 - The overview card becomes a presentation component and no longer imports KPI analytics or metric period rules.
 - Dashboard overview still passes the broad reporting dataset to the client; further slices can prepare narrower page view models once protected by tests.

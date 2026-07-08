@@ -5,7 +5,7 @@ import { DashboardOverviewClient } from "./DashboardOverviewClient";
 import { resolveDashboardCompareState } from "@/features/reporting/period";
 import {
   listDashboardYears,
-  loadDashboardData,
+  loadOverviewPageData,
 } from "@/features/reporting/server";
 
 export const dynamic = "force-dynamic";
@@ -21,7 +21,7 @@ export default async function DashboardOverviewPage({
   if (user.must_change_password) redirect("/setup-password");
 
   const initialState = resolveDashboardCompareState(sp, listDashboardYears());
-  const data = loadDashboardData({
+  const data = loadOverviewPageData({
     throughMonth: initialState.currentMonth,
     year: initialState.currentYear,
   });

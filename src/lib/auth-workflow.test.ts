@@ -4,7 +4,7 @@
  *
  * These tests exercise the REAL route handlers (`/api/auth/login`,
  * `/api/auth/change-password`, `/api/auth/me`, `/api/auth/logout`) and
- * the REAL data-API gate (`/api/kpis`) against a real temp SQLite DB.
+ * a REAL protected mutation gate (`/api/users`) against a real temp SQLite DB.
  * Only the cookie transport is faked: `next/headers` `cookies()` is
  * mocked with an in-memory jar, so the real `getIronSession` and the
  * real `getCurrentUser`/`requireSession`/`requireAdmin` (including the
@@ -81,7 +81,7 @@ import { POST as loginPost } from "@/app/api/auth/login/route";
 import { POST as changePasswordPost } from "@/app/api/auth/change-password/route";
 import { GET as meGet } from "@/app/api/auth/me/route";
 import { POST as logoutPost } from "@/app/api/auth/logout/route";
-import { GET as kpisGet } from "@/app/api/kpis/route";
+import { POST as usersPost } from "@/app/api/users/route";
 import { PATCH as usersPatch } from "@/app/api/users/route";
 
 const ADMIN_EMAIL = "kerry@easternstate.org";
@@ -264,13 +264,13 @@ describe("route blocking for a must_change account", () => {
     await loginAsAdmin();
   });
 
-  it("blocks a data API behind requireSession with a 403 AuthError", async () => {
+  it("blocks a protected API behind requireSession with a 403 AuthError", async () => {
     // The underlying gate is requireSession throwing 403 for must_change.
     await expect(requireSession()).rejects.toMatchObject({
       name: "AuthError",
       status: 403,
     });
-    const res = await kpisGet();
+    const res = await usersPost(jsonReq("http://localhost/api/users", "POST", {}));
     expect(res.status).toBeGreaterThanOrEqual(400);
     expect(res.status).toBeLessThan(500);
     const body = await res.json();
@@ -453,12 +453,12 @@ describe("session invalidation across credential changes (req 6)", () => {
     expect(data.mustChangePassword).toBe(false);
 
     // Fresh session is valid (issuedAt >= watermark) and no longer
-    // owes a rotation, so data APIs succeed.
+    // owes a rotation, so protected mutation gates can proceed to validation.
     const user = await getCurrentUser();
     expect(user?.must_change_password).toBe(false);
     await expect(requireSession()).resolves.toMatchObject({ email: ADMIN_EMAIL });
-    const kpis = await kpisGet();
-    expect(kpis.status).toBe(200);
+    const protectedMutation = await usersPost(jsonReq("http://localhost/api/users", "POST", {}));
+    expect(protectedMutation.status).toBe(400);
   });
 });
 

@@ -4,10 +4,9 @@ import { useState } from "react";
 import { ImageDown, Loader2 } from "lucide-react";
 import { Button } from "./Button";
 import {
-  showExportOnly,
   getPageBackground,
-  hideActionsForExport,
-} from "@/lib/export-helpers";
+  prepareRasterExportTarget,
+} from "@/features/exports/dom-capture";
 
 interface Props {
   targetId: string;
@@ -37,8 +36,7 @@ export function ExportPNGButton({
     setError(null);
     try {
       const html2canvas = (await import("html2canvas")).default;
-      const restoreExport = showExportOnly(target);
-      const restoreActions = hideActionsForExport(target);
+      const restoreTarget = prepareRasterExportTarget(target);
       try {
         const canvas = await html2canvas(target, {
           scale: 2,
@@ -58,8 +56,7 @@ export function ExportPNGButton({
         a.click();
         document.body.removeChild(a);
       } finally {
-        restoreExport();
-        restoreActions();
+        restoreTarget();
       }
     } catch (err) {
       console.error("PNG export failed", err);

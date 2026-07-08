@@ -119,8 +119,7 @@ In scope (the guard runs on every state-changing handler):
 
 Out of scope (deliberate, documented exclusions):
 
-- `GET` handlers (`/api/kpis`, `/api/categories`, `/api/entries/history`,
-  `/api/auth/me`) — read-only
+- `GET /api/auth/me` — minimum auth/CSRF-bootstrap read route
   list/detail reads.
   No state-changing `GET` exists; were one added, it would join the
   in-scope list.

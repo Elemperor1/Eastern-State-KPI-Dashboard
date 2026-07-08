@@ -2,9 +2,9 @@ import {
   buildKPIAnalytics,
   buildTrendPoints,
   isFavorable,
-  MONTH_FULL,
 } from "@/lib/analytics";
 import {
+  MONTH_FULL,
   isAnnualEntryMonth,
   isAnnualReportingFrequency,
   isMonthlyEntryMonth,

@@ -2,6 +2,8 @@ import { describe, expect, it } from "vitest";
 import {
   ANNUAL_ENTRY_MONTH,
   LAST_MONTH,
+  MONTH_FULL,
+  MONTH_LABELS,
   MONTH_NUMBERS,
   isAnnualEntryMonth,
   isAnnualReportingFrequency,
@@ -32,6 +34,13 @@ describe("metric period rules", () => {
     expect(isMonthlyEntryMonth(1)).toBe(true);
     expect(isMonthlyEntryMonth(12)).toBe(true);
     expect(isMonthlyEntryMonth(13)).toBe(false);
+  });
+
+  it("keeps short and full month labels aligned with calendar month numbers", () => {
+    expect(MONTH_LABELS).toHaveLength(12);
+    expect(MONTH_FULL).toHaveLength(12);
+    expect(MONTH_LABELS[0]).toBe("Jan");
+    expect(MONTH_FULL[LAST_MONTH - 1]).toBe("December");
   });
 
   it("classifies monthly entries through a selected reporting month", () => {

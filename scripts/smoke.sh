@@ -2,7 +2,7 @@
 # Eastern State KPI Dashboard — repeatable smoke harness.
 #
 # Verifies, against a live server, the finalized 8-category metric set:
-#   1.  KPIs and categories APIs return the seeded finalized metric set.
+#   1.  The admin catalog page renders the seeded finalized metric set.
 #   2.  Dashboard overview renders all 8 categories.
 #   3.  Category pages render for each category.
 #   4.  Metric detail pages render (monthly, annual, breakdown).
@@ -10,8 +10,8 @@
 #   6.  Admin pages render successfully.
 #   7.  Monthly, annual, and breakdown entries round-trip via POST then DELETE.
 #
-# D8AD-CAN-008: HTTP response bodies (body, me, kpis, cats, ov, bdy, trends_html,
-# etc.) are NEVER interpolated into bash -c or eval strings. They are:
+# D8AD-CAN-008: HTTP response bodies (body, me, kpis_html, ov, bdy,
+# trends_html, etc.) are NEVER interpolated into bash -c or eval strings. They are:
 #   - piped through stdin to parsers (echo "$var" | python3 -c ...)
 #   - passed via here-string to grep (grep -q ... <<< "$var")
 #   - tested with [ ] or [[ ]] conditionals directly
@@ -33,6 +33,8 @@ PORT="${PORT:-3100}"
 BASE="${BASE:-http://127.0.0.1:$PORT}"
 AUTH_DISABLED="${AUTH_DISABLED:-false}"
 CSRF_COOKIE_NAME="eastern_state_kpi_csrf"
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 
 if [ -n "${SMOKE_ORIGIN:-}" ]; then
   BASE_ORIGIN="${SMOKE_ORIGIN%/}"
@@ -140,8 +142,15 @@ if [ "$AUTH_DISABLED" != "true" ]; then
 
   echo
   echo "Auth wall"
-  code=$(curl -sk -o /dev/null -w '%{http_code}' "$BASE/api/kpis")
-  check "API rejects anonymous request (401)" test "$code" = "401"
+  code=$(curl -sk -o /dev/null -w '%{http_code}' \
+    -X POST "$BASE/api/entries" \
+    -H "Content-Type: application/json" \
+    --data '{"kpi_id":1,"year":2099,"month":1,"value":1}')
+  if [ "$code" = "401" ] || [ "$code" = "403" ]; then
+    check "mutation API rejects anonymous request (401/403)" true
+  else
+    check "mutation API rejects anonymous request (401/403)" false
+  fi
 
   body=$(curl -sk "$BASE/dashboard/overview")
   check "dashboard redirects anonymous to /login" grep -qE 'NEXT_REDIRECT.*login|http-equiv="refresh".*url=/login' <<< "$body"
@@ -162,24 +171,24 @@ fi
 
 echo
 echo "Finalized metric set (KPIs & categories)"
-kpis=$(curl -sk -b "$cookie_jar" "$BASE/api/kpis")
-count=$(echo "$kpis" | python3 -c "import sys,json; print(len(json.load(sys.stdin)['kpis']))")
-check "KPIs API returns 52 finalized KPIs" test "$count" = "52"
-cats=$(curl -sk -b "$cookie_jar" "$BASE/api/categories")
+kpis_html=$(curl -sk -b "$cookie_jar" "$BASE/admin/kpis")
+kpis_text=$(printf "%s" "$kpis_html" | python3 -c "import sys,re,html as h; t=sys.stdin.read(); t=re.sub(r'<!--.*?-->', '', t, flags=re.S); t=re.sub(r'<[^>]+>', ' ', t); t=h.unescape(t); print(re.sub(r'\\s+', ' ', t))")
+check "admin catalog renders 52 finalized KPIs" grep -q "Showing 52 of 52 measures across 8 categories" <<< "$kpis_text"
 for cname in "Education" "Adult Programs" "Workforce Development" "Preservation" "Museum" "General Awareness" "Fundraising" "Economic Impact"; do
-  if grep -q "$cname" <<< "$cats"; then
-    check "category $cname present" true
+  if grep -q "$cname" <<< "$kpis_text"; then
+    check "category $cname present in admin catalog" true
   else
-    check "category $cname present" false
+    check "category $cname present in admin catalog" false
   fi
 done
 for kpi in "Video views" "Webpage views" "Overall museum attendance" "Percent of site in triage" "Total annual budget" "Number of funders by breakdown" "First-time, returning, and lapsed donors"; do
-  if grep -q "$kpi" <<< "$kpis"; then
-    check "KPIs include $kpi" true
+  if grep -q "$kpi" <<< "$kpis_text"; then
+    check "admin catalog includes $kpi" true
   else
-    check "KPIs include $kpi" false
+    check "admin catalog includes $kpi" false
   fi
 done
+catalog_json="$("$REPO_ROOT/node_modules/.bin/tsx" "$REPO_ROOT/scripts/smoke-catalog.ts")"
 
 echo
 echo "Dashboard overview renders"
@@ -278,13 +287,6 @@ if grep -q "Edit history" <<< "$history_body"; then
 else
   check "/admin/history shows 'Edit history' heading" false
 fi
-api_history=$(curl -sk -b "$cookie_jar" "$BASE/api/entries/history?limit=5")
-if echo "$api_history" | python3 -c "import sys,json; d=json.load(sys.stdin); sys.exit(0 if isinstance(d.get('history'), list) else 1)"; then
-  check "/api/entries/history returns array" true
-else
-  check "/api/entries/history returns array" false
-fi
-kpis_html=$(curl -sk -b "$cookie_jar" "$BASE/admin/kpis")
 if grep -q "Add a new KPI" <<< "$kpis_html" && grep -q "Existing KPIs" <<< "$kpis_html"; then
   check "/admin/kpis renders 'Add a new KPI' + 'Existing KPIs'" true
 else
@@ -293,7 +295,7 @@ fi
 
 echo
 echo "Monthly entries round-trip"
-monthly_kpi=$(echo "$kpis" | python3 -c "import sys,json; d=json.load(sys.stdin); print([k['id'] for k in d['kpis'] if k['slug']=='video-views'][0])")
+monthly_kpi=$(printf "%s" "$catalog_json" | python3 -c "import sys,json; print(json.load(sys.stdin)['ids']['monthlyKpi'])")
 mutation_request "$cookie_jar" POST "/api/entries" "{\"kpi_id\": $monthly_kpi, \"year\": 2099, \"month\": 1, \"value\": 12345}"
 post="$MUTATION_STATUS"
 check "POST /api/entries (monthly) returns 201" test "$post" = "201"
@@ -309,7 +311,7 @@ check "DELETE /api/entries returns 200" test "$del" = "200"
 
 echo
 echo "Annual entries round-trip"
-annual_kpi=$(echo "$kpis" | python3 -c "import sys,json; d=json.load(sys.stdin); print([k['id'] for k in d['kpis'] if k['slug']=='programs-offered'][0])")
+annual_kpi=$(printf "%s" "$catalog_json" | python3 -c "import sys,json; print(json.load(sys.stdin)['ids']['annualKpi'])")
 mutation_request "$cookie_jar" POST "/api/entries" "{\"kpi_id\": $annual_kpi, \"year\": 2099, \"month\": 0, \"value\": 7}"
 post="$MUTATION_STATUS"
 check "POST /api/entries (annual, month=0) returns 201" test "$post" = "201"
@@ -325,7 +327,7 @@ check "DELETE annual entry returns 200" test "$del" = "200"
 
 echo
 echo "Breakdown entries round-trip"
-brk_kpi=$(echo "$kpis" | python3 -c "import sys,json; d=json.load(sys.stdin); print([k['id'] for k in d['kpis'] if k['slug']=='donor-categories'][0])")
+brk_kpi=$(printf "%s" "$catalog_json" | python3 -c "import sys,json; print(json.load(sys.stdin)['ids']['breakdownKpi'])")
 mutation_request "$cookie_jar" POST "/api/breakdowns" "{\"kpi_id\": $brk_kpi, \"year\": 2099, \"label\": \"Test row\", \"value\": 99}"
 post="$MUTATION_STATUS"
 check "POST /api/breakdowns returns 201" test "$post" = "201"
@@ -343,7 +345,7 @@ echo
 echo "Auth-bypass flow on POST /api/entries (no cookie)"
 # $noauth_jar was created above and starts without a session cookie. The
 # mutation helper may add only the CSRF cookie, which is not an auth credential.
-bypass_kpi=$(echo "$kpis" | python3 -c "import sys,json; d=json.load(sys.stdin); print([k['id'] for k in d['kpis'] if k['slug']=='video-views'][0])")
+bypass_kpi=$(printf "%s" "$catalog_json" | python3 -c "import sys,json; print(json.load(sys.stdin)['ids']['bypassKpi'])")
 mutation_request "$noauth_jar" POST "/api/entries" "{\"kpi_id\": $bypass_kpi, \"year\": 2099, \"month\": 2, \"value\": 54321}"
 bypass_status="$MUTATION_STATUS"
 bypass_id=$(printf "%s" "$MUTATION_BODY" | python3 -c "import sys,json; d=json.load(sys.stdin); e=d.get('entry') or {}; print(e.get('id','') if e.get('value')==54321 and e.get('month')==2 else '')")
@@ -378,6 +380,13 @@ else
   else
     check "no-cookie POST returned no created row" false
   fi
+fi
+
+history_after_mutations=$(curl -sk -b "$cookie_jar" "$BASE/admin/history")
+if grep -q "2099" <<< "$history_after_mutations" && grep -q "Deleted" <<< "$history_after_mutations"; then
+  check "/admin/history renders smoke mutation audit rows" true
+else
+  check "/admin/history renders smoke mutation audit rows" false
 fi
 
 echo

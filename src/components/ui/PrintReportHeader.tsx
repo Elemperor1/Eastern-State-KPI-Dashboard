@@ -39,7 +39,10 @@ export function PrintReportHeader({
   });
 
   return (
-    <header className={cn("export-only print-report-header", className)}>
+    <header
+      className={cn("export-only print-report-header", className)}
+      data-pdf-keep-together
+    >
       {/* Brand bar — the navy→teal gradient strip with the org name. */}
       <div className="print-report-brand-bar">
         <div className="print-report-brand-text">

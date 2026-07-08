@@ -33,6 +33,8 @@ The page presents three filter controls:
 
 The UI then adapts based on the KPI's `unit_type` and `reporting_frequency`:
 
+Architecture note: the `/admin/data` server page performs authentication/role redirects and renders the feature-built result from `loadAdminDataPageData()`. `AdminDataClient` owns browser state, confirmations, and guarded mutation calls. Deterministic KPI selection, period labels, draft setup, saved-row identity, and breakdown month-selection rules live in `src/features/metrics/admin-data-entry.ts`, while `src/components/AdminDataFilters.tsx`, `src/components/AdminAnnualEntryEditor.tsx`, `src/components/AdminMonthlyEntryEditor.tsx`, and `src/components/AdminBreakdownEntryEditor.tsx` own the filter and editor rendering. The metrics feature is responsible for annual `month = 0` drafts, monthly `1–12` drafts, zero-valued saved entries, and keeping monthly breakdown editing away from the annual slot.
+
 ### Monthly KPIs (`reporting_frequency = "monthly"`)
 
 Shows 12 rows (Jan–Dec). Each row has:
@@ -62,15 +64,17 @@ Shows a variable-row table where each row is a labeled component (e.g. "Foundati
 
 ### Saving a value
 
-Clicking **Save** on any field sends a `POST /api/entries` (or `POST /api/breakdowns`) request with `{ kpi_id, year, month, value, notes }`. The backend uses an **upsert** (INSERT ... ON CONFLICT DO UPDATE) keyed on the natural unique key `(kpi_id, year, month)`. This means:
+Clicking **Save** on any field sends a `POST /api/entries` (or `POST /api/breakdowns`) request. Monthly/annual entries use an **upsert** keyed on `(kpi_id, year, month)`. New breakdown rows use `(kpi_id, year, month, label)`; once saved, the browser also sends the durable breakdown row `id` so changing its label updates that same row instead of creating a duplicate. This means:
 
 - **First save** creates the entry.
 - **Subsequent saves** overwrite the existing value and notes in place. There is no separate "edit" or "correction" mode — the user just types the new value and clicks Save again.
+- **Breakdown label edits** preserve the original row id, sort order, and audit lineage. A stale id returns 404; a label that would duplicate another row in the same KPI period returns 409 without changing either row.
 - The `updated_by` and `updated_at` columns on `monthly_entries` / `breakdown_entries` are refreshed on every save.
+- Successful entry writes return `{ entry }`; successful breakdown writes return `{ breakdown }`. The browser validates the matching response shape through the metrics feature before replacing its local draft, so malformed success payloads produce an error banner rather than a partial or crashed editor state.
 
 ### Clearing a value
 
-Clicking the trash icon opens a confirmation dialog ("Clear [Month] [Year]?"). Confirming sends a `DELETE /api/entries` with `{ kpi_id, year, month }`. The row is removed from the database entirely. A cleared month shows an empty input on the data-entry page and renders as "—" on the dashboard.
+Clicking the trash icon opens a confirmation dialog ("Clear [Month] [Year]?"). Each saved draft retains its `monthly_entries.id`; confirming sends `DELETE /api/entries` with `{ id }`. The row is removed from the database entirely. A cleared month shows an empty input on the data-entry page and renders as "—" on the dashboard. This identity-based contract also preserves clearing a legitimate zero-valued month.
 
 ### Validation
 
@@ -117,7 +121,7 @@ The KPI/category/user name columns are **immutable snapshots** frozen at the mom
 
 ### Transactional integrity
 
-The upsert + read-back + history insert runs inside a single SQLite transaction. If any step fails, the entire operation rolls back — no torn audit rows. The read-back uses the natural key `(kpi_id, year, month)`, not `lastInsertRowid`, to avoid a known SQLite pitfall where ON CONFLICT updates produce a stale row id.
+The write + read-back + history insert runs inside a single SQLite transaction. If any step fails, the entire operation rolls back — no torn audit rows. Monthly/annual entries and new breakdown rows read back by natural key rather than `lastInsertRowid`, avoiding a known SQLite stale-row pitfall. Saved breakdown edits read back by their durable row id after verifying the row still belongs to the requested KPI/year/month.
 
 ### Browsing the audit trail
 
@@ -125,7 +129,7 @@ The `/admin/history` page (admin-only, sidebar → Manage → History) renders t
 - Filter by category, KPI, or year (URL-synced, deep-linkable)
 - Columns: When, KPI (with category chip + renamed/deleted badges), Period, Change (prev → new with Created/Updated/Deleted badge), By (actor email)
 - Sorted newest-first, capped at 200 rows (max 1000)
-- The API endpoint is `GET /api/entries/history` (admin-only)
+- The page reads audit rows directly through `src/features/audit/server.ts`; no audit-history read API is exposed.
 
 ### Deletion guards
 

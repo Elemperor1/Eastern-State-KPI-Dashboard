@@ -183,7 +183,7 @@ SERVER_PID=$!
 # Wait for the server to be ready
 # shellcheck disable=SC2034
 for i in $(seq 1 20); do
-  if curl -s -o /dev/null -m 1 "http://127.0.0.1:$PORT/api/kpis" 2>/dev/null; then
+  if curl -s -o /dev/null -m 1 "http://127.0.0.1:$PORT/api/auth/me" 2>/dev/null; then
     break
   fi
   sleep 0.2
@@ -196,6 +196,7 @@ echo "  Fake server on 127.0.0.1:$PORT (PID $SERVER_PID)"
 # doesn't implement real auth, but the endpoints still return 200 if hit).
 export AUTH_DISABLED=true
 export BASE="http://127.0.0.1:$PORT"
+export SMOKE_CATALOG_FIXTURE=true
 
 echo "  Running smoke.sh ..."
 echo

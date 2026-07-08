@@ -19,22 +19,18 @@
  * yields 401 `{error:"Unauthorized"}` on ALL of them, because
  * `requireAdmin` calls `requireSession` first and `getCurrentUser`
  * returns null for a revoked cookie. A valid viewer session yields
- * 403 `{error:"Forbidden"}` on the admin-gated routes and 200 on the
- * read routes.
+ * 403 `{error:"Forbidden"}` on the admin-gated routes.
  *
  *   POST   /api/breakdowns        requireAdmin     (breakdowns write)
  *   DELETE /api/breakdowns        requireAdmin     (breakdowns write)
- *   GET    /api/categories        requireSession   (categories read)
  *   POST   /api/categories        requireAdmin     (categories write)
  *   PATCH  /api/categories        requireAdmin     (categories write)
  *   DELETE /api/categories        requireAdmin     (categories write)
  *   POST   /api/entries           requireAdmin     (entries write)
  *   DELETE /api/entries           requireAdmin     (entries write)
- *   GET    /api/entries/history   requireAdmin     (audit history)
  *   POST   /api/goals             requireAdmin     (goals write)
  *   PATCH  /api/goals             requireAdmin     (goals write)
  *   DELETE /api/goals             requireAdmin     (goals write)
- *   GET    /api/kpis              requireSession   (KPI definitions read)
  *   POST   /api/kpis              requireAdmin     (KPI definitions write)
  *   PATCH  /api/kpis              requireAdmin     (KPI definitions write)
  *   DELETE /api/kpis              requireAdmin     (KPI definitions write)
@@ -85,7 +81,6 @@ import type { User } from "./types";
 import * as breakdowns from "@/app/api/breakdowns/route";
 import * as categories from "@/app/api/categories/route";
 import * as entries from "@/app/api/entries/route";
-import * as entriesHistory from "@/app/api/entries/history/route";
 import * as goals from "@/app/api/goals/route";
 import * as kpis from "@/app/api/kpis/route";
 import * as users from "@/app/api/users/route";
@@ -101,7 +96,6 @@ export interface ProtectedRoute {
   /** Functional group, for the requirement-6 coverage matrix. */
   group:
     | "writes"
-    | "history"
     | "kpis"
     | "categories"
     | "entries"
@@ -120,17 +114,14 @@ export interface ProtectedRoute {
 export const PROTECTED_API_ROUTES: ProtectedRoute[] = [
   { method: "POST", path: "/api/breakdowns", gate: "requireAdmin", group: "breakdowns", takesReq: true },
   { method: "DELETE", path: "/api/breakdowns", gate: "requireAdmin", group: "breakdowns", takesReq: true },
-  { method: "GET", path: "/api/categories", gate: "requireSession", group: "categories", takesReq: false },
   { method: "POST", path: "/api/categories", gate: "requireAdmin", group: "categories", takesReq: true },
   { method: "PATCH", path: "/api/categories", gate: "requireAdmin", group: "categories", takesReq: true },
   { method: "DELETE", path: "/api/categories", gate: "requireAdmin", group: "categories", takesReq: true },
   { method: "POST", path: "/api/entries", gate: "requireAdmin", group: "entries", takesReq: true },
   { method: "DELETE", path: "/api/entries", gate: "requireAdmin", group: "entries", takesReq: true },
-  { method: "GET", path: "/api/entries/history", gate: "requireAdmin", group: "history", takesReq: true },
   { method: "POST", path: "/api/goals", gate: "requireAdmin", group: "goals", takesReq: true },
   { method: "PATCH", path: "/api/goals", gate: "requireAdmin", group: "goals", takesReq: true },
   { method: "DELETE", path: "/api/goals", gate: "requireAdmin", group: "goals", takesReq: true },
-  { method: "GET", path: "/api/kpis", gate: "requireSession", group: "kpis", takesReq: false },
   { method: "POST", path: "/api/kpis", gate: "requireAdmin", group: "kpis", takesReq: true },
   { method: "PATCH", path: "/api/kpis", gate: "requireAdmin", group: "kpis", takesReq: true },
   { method: "DELETE", path: "/api/kpis", gate: "requireAdmin", group: "kpis", takesReq: true },
@@ -145,17 +136,14 @@ type Handler = (req?: NextRequest) => Promise<Response>;
 const HANDLERS: Record<string, Handler> = {
   "POST /api/breakdowns": breakdowns.POST as Handler,
   "DELETE /api/breakdowns": breakdowns.DELETE as Handler,
-  "GET /api/categories": categories.GET as Handler,
   "POST /api/categories": categories.POST as Handler,
   "PATCH /api/categories": categories.PATCH as Handler,
   "DELETE /api/categories": categories.DELETE as Handler,
   "POST /api/entries": entries.POST as Handler,
   "DELETE /api/entries": entries.DELETE as Handler,
-  "GET /api/entries/history": entriesHistory.GET as Handler,
   "POST /api/goals": goals.POST as Handler,
   "PATCH /api/goals": goals.PATCH as Handler,
   "DELETE /api/goals": goals.DELETE as Handler,
-  "GET /api/kpis": kpis.GET as Handler,
   "POST /api/kpis": kpis.POST as Handler,
   "PATCH /api/kpis": kpis.PATCH as Handler,
   "DELETE /api/kpis": kpis.DELETE as Handler,
@@ -262,10 +250,6 @@ export async function assertForbidden(res: Response): Promise<void> {
 }
 
 /** 2xx (default 200) — the gate let an authenticated caller through. */
-export async function assertOk(res: Response, status = 200): Promise<void> {
-  expect(res.status).toBe(status);
-}
-
 /** Routes whose handlers do not accept a NextRequest argument. */
 export function routeKey(r: ProtectedRoute): string {
   return `${r.method} ${r.path}`;
