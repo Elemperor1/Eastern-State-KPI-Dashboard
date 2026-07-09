@@ -60,7 +60,7 @@ models and call guarded JSON mutation routes through `apiFetch`.
 | Targets | `kpi_targets`, legacy `kpi_goals` | Annual targets are selected by reporting year; full-plan targets are separate records. The 25 legacy per-KPI delta targets remain readable but are not named goals. |
 | Raw values | strategy value-entry operations and routes | KPI observations, component entries, and distribution responses preserve first-class raw inputs and typed periods instead of flattening them through legacy scalar values. |
 | Calculations | `src/features/strategy/calculations.ts` and reporting adapters | Typed formulas return explicit missing/invalid states, uncapped actual progress, capped visual progress, and separate annual pacing/full-plan progress. |
-| Dashboard/detail | reporting loaders and strategic UI components | Organization/priority `X of Y goals completed`, excluded reasons, typed category cards, formula/raw-input history, component/distribution, and board-report sections are wired into overview and KPI detail models. |
+| Dashboard/detail | reporting loaders and strategic UI components | The landing page intentionally stays executive: one organization `X of Y goals completed` score and five typed performance-area cards. Priority/named-goal detail, excluded reasons, formulas, raw inputs, components, and distributions remain in drill-downs, administration, and board reports. |
 | Administration | `/admin/strategy-data`, `/admin/kpis/[id]`, `/admin/strategic-goals`, `/admin/configuration-gaps` | First-class data entry, effective configuration, target/component/band editing, named-goal rules and KPI membership, lifecycle controls, and gap workflow supplement the legacy admin pages. |
 | Export | strategic board-report model and `/api/strategy/export` | Detailed CSV/native Print-PDF and compact overview PNG/raster-PDF adapters consume the same sanitized reporting layer; the server read is session-protected and private/no-store. |
 | Auth and CSRF | auth feature, session layer, route guards, `request-guard.ts` | The exhaustive matrix contains 35 protected route/method combinations: 33 admin-gated and two session-gated reads. Strategic mutations are in the shared CSRF/origin/content-type suites. |
@@ -448,8 +448,9 @@ artifact evidence before the overall goal can be called complete.
 3. Gate: design-system guard, accessibility semantics, responsive browser
    checks, selected-year correctness.
 
-The organization/priority summary, category KPI cards, KPI detail, responsive
-navigation, and retained browser captures are complete.
+The compact organization summary, five performance-area cards, KPI detail,
+responsive navigation, and retained browser captures are complete. Priority
+and named-goal detail is deliberately deferred to drill-downs and exports.
 
 ### Slice E - administration and gaps — Complete
 

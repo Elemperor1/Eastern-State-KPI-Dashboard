@@ -495,11 +495,12 @@ read-only checks as a viewer with auth enabled.
 
 1. Open `/dashboard/overview?currentYear=2026&compareYear=2025`. Confirm the
    first summary says “X of Y goals completed,” includes a percentage, and
-   lists excluded goals separately. The denominator must be named goals, not
-   KPIs.
-2. Inspect all five priority cards and several named goal cards. Confirm the
-   raw counts match the percentage and an excluded goal is not presented as
-   failed.
+   shows the number of goals pending setup. The denominator must be named
+   goals, not KPIs.
+2. Inspect all five performance-area cards. Confirm each card shows one
+   strategic-goal result and one selected-year comparison without expanding
+   priority cards, the 22 named-goal cards, or configuration-reason lists on
+   the landing page.
 3. Switch to 2025, 2027, and 2029. Confirm selected-year configurations and
    targets change deliberately; missing future actuals render “Not started,”
    never `NaN`, `Infinity`, or zero-as-missing.

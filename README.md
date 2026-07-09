@@ -98,7 +98,7 @@ never exposed as a user-selectable month.
 
 ### Dashboard views
 
-- **Organization overview** (`/dashboard/overview`) — organization and priority-level “X of Y goals completed,” all named goals, excluded configuration reasons, and secondary selected-year comparison context.
+- **Organization overview** (`/dashboard/overview`) — one organization-level “X of Y goals completed” score followed by five concise performance-area cards. Priority, named-goal, and configuration detail stays in drill-downs and board exports instead of expanding the landing page.
 - **Individual category pages** (`/dashboard/category/[slug]`) — every metric in the category as a direction-aware summary card, plus breakdown charts where applicable.
 - **Individual metric detail** (`/dashboard/metric/[slug]`) — calculated result, formula, raw inputs, target description, annual and full-plan progress, components/distributions/revenue, history, and exports.
 - **Trend Explorer** (`/dashboard/trends`) — multi-KPI, multi-year overlays (monthly metrics).
