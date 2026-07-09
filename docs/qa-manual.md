@@ -485,6 +485,68 @@ exactly 390 px wide.
 
 ---
 
+## Step 13 — Strategic goal, configuration, and board-report acceptance
+
+**Precondition.** Seeded schema-10 database. Run as an admin, then repeat the
+read-only checks as a viewer with auth enabled.
+
+**Action.**
+
+1. Open `/dashboard/overview?currentYear=2026&compareYear=2025`. Confirm the
+   first summary says “X of Y goals completed,” includes a percentage, and
+   lists excluded goals separately. The denominator must be named goals, not
+   KPIs.
+2. Inspect all five priority cards and several named goal cards. Confirm the
+   raw counts match the percentage and an excluded goal is not presented as
+   failed.
+3. Switch to 2025, 2027, and 2029. Confirm selected-year configurations and
+   targets change deliberately; missing future actuals render “Not started,”
+   never `NaN`, `Infinity`, or zero-as-missing.
+4. Open representative KPI details for binary, cumulative, percentage,
+   average, multi-component, distribution, revenue, unresolved, and
+   year-over-year measures. Confirm measurement type, formula, current result,
+   prominent target description, annual/full-plan progress, and raw inputs are
+   semantically correct. Only the year-over-year KPI may use that label as its
+   measurement.
+5. Open `/admin/configuration-gaps`. Exercise every filter. Confirm each row
+   identifies the priority, named goal, missing fields, unresolved question,
+   owner/due/review fields, and links to the correct KPI editor.
+6. In the strategic KPI editor, update a qualitative target description
+   without changing its numeric value, save a zero target, add/reorder/archive/
+   restore a component, and add/reorder/archive/restore a distribution band.
+   Reload after every operation.
+7. Enter one monthly, quarterly, annual, cumulative, one-time, percentage,
+   average, component, and distribution observation. Confirm the UI never
+   exposes month `0` and retains numerator/denominator/respondent/score inputs.
+8. Open `/admin/history`; verify the strategic tab shows immutable snapshots
+   for the edits. Archive and restore a strategic entity and confirm its prior
+   display name remains readable.
+9. From the overview, download board CSV, PNG, and PDF. The output must include
+   organization/priority/goal completion, KPI results, target descriptions,
+   both target scopes, components, demographic labels/respondent totals,
+   revenue streams, and unresolved reasons. Render every PDF page to images.
+10. With auth enabled, request
+    `/api/strategy/export?year=2026&format=csv` as an anonymous user, viewer,
+    and admin. Expect 401, 200, and 200 respectively; the response must be
+    `private, no-store`.
+
+**Expected outcome.**
+
+- Goal completion and export values agree because both consume the shared
+  calculated report model.
+- Missing target and numeric zero remain visibly distinct.
+- Over-target text retains the actual percentage while visual fill caps at
+  100%.
+- Undefined KPIs/goals are surfaced in the gap workflow and excluded from
+  completion denominators.
+- No user-facing `month 0`, `NaN`, `undefined`, or `Infinity` appears.
+- Viewer reads work, viewer/admin boundaries hold, and every mutation is both
+  CSRF-protected and audit logged.
+
+**Screenshot placeholder.** `[Insert screenshot: goal summary + strategic KPI detail + configuration gaps/editor + strategic audit + rendered board PDF pages]`
+
+---
+
 ## After the run
 
 When every step has been exercised, run the automated gates one more time

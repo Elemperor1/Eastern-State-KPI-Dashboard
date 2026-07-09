@@ -1,6 +1,6 @@
 # Eastern State KPI Intelligence Dashboard
 
-A production-quality internal KPI Intelligence Dashboard for **Eastern State Penitentiary Historic Site**. Built for executive leadership (Curry, Zach, and board-facing exports) to instantly understand organizational performance through intuitive visualizations, year-over-year comparisons, and clean executive summaries.
+A production-quality internal KPI Intelligence Dashboard for **Eastern State Penitentiary Historic Site**. Built for executive leadership and board reporting to understand completion of the 2025–2029 strategic plan, annual pacing, full-plan progress, unresolved measurement definitions, and supporting year comparisons.
 
 ## Quick start
 
@@ -8,16 +8,26 @@ A production-quality internal KPI Intelligence Dashboard for **Eastern State Pen
 # 1. Install dependencies
 npm install
 
-# 2. Seed the database with realistic sample data (2024–2026)
+# 2. Create/reset a disposable development database with sample data (2024–2026)
 npm run db:seed
 
-# 3. Build and run
-npm run build
-npm start          # production server on :3000
-
-# Or for development
+# 3. Start the loopback-only development server
 npm run dev
 ```
+
+For an existing schema-9 database, especially a production SQLite volume, back
+up the database and its WAL/SHM files and run the additive migration instead of
+the destructive sample seed:
+
+```bash
+DATABASE_PATH=/absolute/path/to/kpi.db npm run db:migrate
+npm run build
+npm start
+```
+
+`npm run db:seed` intentionally replaces KPI-owned sample values, definitions,
+and audit history while preserving users. It is for disposable/sample
+databases, not production migration.
 
 Open <http://localhost:3000> and sign in.
 
@@ -50,18 +60,28 @@ The default development workflow runs with `AUTH_DISABLED=true` and never logs i
 
 ### Data model
 
-Every KPI defines:
+The legacy KPI catalog remains intact. Schema 10 adds a normalized strategic
+sidecar so every KPI can explicitly define:
 
 - **category** — one of the 5 Eastern State strategic priorities
 - **metric name**
-- **unit type** — `count`, `percent`, `currency`, `attendance`, `note`, or `breakdown`
-- **reporting frequency** — `monthly`, `annual`, or `flexible`
+- **measurement type** — `binary`, `milestone`, `count`, `percentage`,
+  `average`, `cumulative`, `year_over_year`, `distribution`, `currency`,
+  `ratio`, or `multi_component`
+- **reporting frequency** — `monthly`, `quarterly`, `annual`, `cumulative`, or
+  `one_time`
+- raw calculation inputs, components, annual/full-plan targets, target
+  descriptions, board status, and configuration-gap ownership
 - **direction** — `higher` is better, `lower` is better, or `neutral`
 - optional **notes** for context
 
-Annual-only metrics are stored as a single full-year value (month `0`) so they never require month-by-month entry. Breakdown metrics use a dedicated `breakdown_entries` table keyed by label × year.
+Legacy annual-only values remain stored as a single full-year value at internal
+`month = 0`. Schema-10 observations use an explicit `period_type` and
+`period_index`; annual, cumulative, and one-time records use internal index `0`,
+which is rendered as a human label and never offered as a month. Legacy
+breakdown metrics continue to use `breakdown_entries` keyed by label × year.
 
-### Strategic-plan metric set (5 priorities · 59 KPIs · 25 goals)
+### Strategic-plan metric set (5 priorities · 22 named goals · 59 KPIs)
 
 - **Reimagine Visitor Experience** — 16 KPIs, 13 with 2027/2029 targets
 - **Advance Historic Preservation** — 13 KPIs, 4 with targets
@@ -69,17 +89,18 @@ Annual-only metrics are stored as a single full-year value (month `0`) so they n
 - **Support Learning through Justice Education** — 9 KPIs, 1 with a target
 - **Enhance Organizational Capacity** — 12 KPIs, 4 with targets
 
-All current strategic-plan KPIs are annual snapshots stored at `month = 0`.
-KPI names use `Strategic Goal — Measure` so category pages can group measures
-under their owning strategic goal. `Revenue Diversification — % of revenue
-from each major stream` is the current breakdown KPI and renders label-by-year
-comparison bars and tables.
+The source dashboard is mapped explicitly by stable slug. It includes 45
+component definitions and preserves every TK/TBD target as an unresolved
+configuration item rather than inventing a zero. The older 25 per-KPI target
+rows remain available for backward compatibility; they are not the named goal
+count. Legacy annual values continue to use internal `month = 0`, which is
+never exposed as a user-selectable month.
 
 ### Dashboard views
 
-- **Category overview** (`/dashboard/overview`) — executive summary card per category showing YoY improving/declining mix, top mover, and a sample-data badge.
+- **Organization overview** (`/dashboard/overview`) — organization and priority-level “X of Y goals completed,” all named goals, excluded configuration reasons, and secondary selected-year comparison context.
 - **Individual category pages** (`/dashboard/category/[slug]`) — every metric in the category as a direction-aware summary card, plus breakdown charts where applicable.
-- **Individual metric detail** (`/dashboard/metric/[slug]`) — single-metric deep dive: summary stats, trend/YTD/annual-over-year charts, breakdown view, values table, and PDF export.
+- **Individual metric detail** (`/dashboard/metric/[slug]`) — calculated result, formula, raw inputs, target description, annual and full-plan progress, components/distributions/revenue, history, and exports.
 - **Trend Explorer** (`/dashboard/trends`) — multi-KPI, multi-year overlays (monthly metrics).
 
 Comparison logic adapts to unit type:
@@ -88,12 +109,18 @@ Comparison logic adapts to unit type:
 - Annual metrics compare full-year values directly; YTD/through-month is hidden.
 - Percent metrics show percentage-point deltas (pts) in addition to relative change.
 - Direction-aware coloring marks an increase as good/bad depending on whether higher or lower is better.
-- PDF export renders the current dashboard view via `html2canvas` + `jspdf`.
+- Board CSV/PNG/PDF exports consume the same sanitized report model as the UI; the server export route is session-protected.
 
 ### Admin
 
 - **Data entry** (`/admin/data`) — pick category, metric, and year. Monthly metrics get a 12-month grid; annual metrics get a single full-year value; breakdown metrics get editable label/value rows. Optional notes per entry.
-- **KPIs & categories** (`/admin/kpis`) — add/remove KPIs (with unit type, frequency, direction) and categories without code changes.
+- **Strategic data entry** (`/admin/strategy-data`) — enter or remove first-class KPI observations, component entries, and distribution responses using the configured period and raw-input shape.
+- **KPIs & categories** (`/admin/kpis`) — manage legacy catalog metadata and open the strategic editor for formulas, targets, components, and bands.
+- **Strategic KPI editor** (`/admin/kpis/[id]`) — edit effective-dated measurement configuration, annual/full-plan targets, components, and distribution bands.
+- **Legacy KPI goals** (`/admin/goals`) — maintain the backward-compatible per-KPI baseline/delta targets.
+- **Strategic goals** (`/admin/strategic-goals`) — edit named-goal rules, status, ownership, and lifecycle.
+- **Configuration gaps** (`/admin/configuration-gaps`) — filter unresolved targets and definitions by priority, goal, owner, year, status, and frequency.
+- **History** (`/admin/history`) — browse value-entry and immutable strategic-configuration audit events.
 - **Users** (`/admin/users`) — invite viewers, reset passwords.
 
 ## Architecture
@@ -109,7 +136,7 @@ Comparison logic adapts to unit type:
 | PDF export  | `html2canvas` + `jspdf` (client-side)             |
 | Icons       | `lucide-react`                                    |
 
-The schema is versioned (`src/lib/schema-version.json` mirrored into `meta.schema_version`); bumping the version cleanly resets KPI tables while preserving users. All sample data is flagged via `meta.sample_data` and surfaced as a "Sample data" badge throughout the UI.
+The schema is versioned (`src/lib/schema-version.json` mirrored into `meta.schema_version`). Schema 10 migrates schema 9 transactionally and additively; it does not reset legacy KPI values, targets, IDs, users, or audit history. All sample data is flagged via `meta.sample_data` and surfaced as a "Sample data" badge throughout the UI.
 
 ## Routes
 
@@ -121,8 +148,36 @@ The schema is versioned (`src/lib/schema-version.json` mirrored into `meta.schem
 | `/dashboard/metric/[slug]`     | Individual metric detail view               | viewer + admin      |
 | `/dashboard/trends`            | Multi-KPI, multi-year trend explorer         | viewer + admin      |
 | `/admin/data`                  | Data entry (monthly/annual/breakdown)       | admin only          |
+| `/admin/strategy-data`         | Strategic raw-value data entry              | admin only          |
 | `/admin/kpis`                  | Manage KPIs and categories                  | admin only          |
+| `/admin/kpis/[id]`             | Edit strategic KPI configuration            | admin only          |
+| `/admin/goals`                 | Manage legacy per-KPI targets               | admin only          |
+| `/admin/strategic-goals`       | Manage named strategic goals                | admin only          |
+| `/admin/configuration-gaps`    | Resolve strategic KPI configuration gaps   | admin only          |
+| `/admin/history`               | Value and strategic audit history           | admin only          |
 | `/admin/users`                 | Manage team members                         | admin only          |
+
+### Strategic API surfaces
+
+Schema-10 data is first class; the UI does not serialize raw strategic inputs
+through legacy scalar entry routes:
+
+- `GET /api/strategy/export` returns the session-protected board-report model
+  or CSV for a reporting year.
+- `POST`/`DELETE /api/strategy/observations`,
+  `/api/strategy/component-entries`, and `/api/strategy/distributions` write or
+  remove raw KPI, component, and distribution values.
+- `GET`/`POST`/`PATCH /api/strategy/distribution-bands` reads effective bands
+  and creates, updates, reorders, archives, or restores them.
+- `POST`/`PATCH /api/strategy/configurations`,
+  `/api/strategy/components`, and `/api/strategy/targets` manage effective
+  configuration, component definitions, and annual/full-plan targets.
+- `PATCH /api/strategy/goals` manages named-goal rules and lifecycle.
+
+The exhaustive auth regression matrix currently contains 34 protected
+route/method combinations: 32 admin-gated mutations and two session-gated
+reads (`strategy/export` and `strategy/distribution-bands`). Every mutation is
+also enrolled in the shared same-origin, JSON content-type, and CSRF checks.
 
 ## Verification
 
@@ -158,7 +213,10 @@ Fly deploys through `Dockerfile` + `fly.toml` with SQLite mounted at
 the proxy-provided client IP instead of collapsing every failed attempt into the
 `unknown` bucket. The production startup script runs `scripts/ensure-seeded.mjs`;
 that probe compares the mounted database's `meta.schema_version` with
-`src/lib/schema-version.json` before it skips seeding. Docker builds point
+`src/lib/schema-version.json`, runs `db:migrate` for a populated additive
+predecessor such as schema 9, refuses a destructive reseed if migration does
+not produce a ready database, and seeds only a missing/disposable sample
+database. Docker builds point
 `DATABASE_PATH` at a disposable `/tmp` database and remove `/app/data` before the
 final image copy, so build-time SQLite files and one-time seed passwords are not
 baked into the runtime image.
@@ -184,17 +242,20 @@ covers — plus mobile rendering at 390 px, exports, and the self-service
 password change flow — lives at `docs/qa-manual.md`. New engineers should
 walk the checklist end-to-end after their first checkout.
 
-Latest local runs:
-- `npm test` → **642 passed**
-- `AUTH_DISABLED=true` via `next dev` → **48 passed, 0 failed**
-- `AUTH_DISABLED=false` via `next start` → **52 passed, 0 failed**
-- `npm run test:e2e` → **4 passed**
+Current schema-10 automated verification: `npm test` passed **76 files / 1,231
+tests**, and `npx tsc --noEmit` passed. Run `npm run design-system:test`, both
+smoke modes, and `npm run test:e2e` before release. This README does not assert
+fresh browser, PNG, PDF, smoke, e2e, or production-build results that were not
+run and recorded.
 
 Schema 8 intentionally replaced the former sample catalog with the strategic
 plan, resetting KPI data and audit history while preserving users. Schema 9 is
 additive: it gives every goal a fixed baseline year so 2027/2029 progress can
-be measured against the 2026 strategic baseline. Back up a production database
-before crossing the schema-8 replacement; see ADR 0020.
+be measured against the 2026 strategic baseline. Schema 10 is also additive
+from schema 9: `npm run db:migrate` creates the strategic sidecars and
+idempotently maps the existing catalog without resetting legacy IDs, values,
+targets, users, or audit history. Back up a production database before any
+migration; see ADR 0020 and `docs/migration-notes.md`.
 
 ## Data model (schema)
 
@@ -202,5 +263,11 @@ before crossing the schema-8 replacement; see ADR 0020.
 - **kpis** — category, optional parent, slug, name, unit label, `unit_type`, `reporting_frequency`, `direction`, description, sort order, active flag
 - **monthly_entries** — KPI × year × month (1–12 monthly, 0 annual) = value + notes; unique per (kpi, year, month)
 - **breakdown_entries** — KPI × year × month × label = value + notes; `month = 0` for annual breakdowns, `1–12` for monthly breakdowns; unique per (kpi, year, month, label)
+- **strategic_goals / goal_kpis** — 22 named goals and explicit, effective-dated membership for all 59 KPIs
+- **kpi_measurement_configs / kpi_targets** — typed formulas, frequencies, statuses, configuration gaps, and distinct annual/full-plan targets
+- **kpi_observations** — first-class KPI values and raw calculation inputs by typed period
+- **kpi_components / kpi_component_entries** — 45 canonical component definitions plus raw component values
+- **distribution_bands / distribution_observations / distribution_values** — effective band definitions, respondent totals, counts, and immutable label snapshots
+- **strategic_audit_events** — immutable snapshots for strategic configuration, lifecycle, and value changes
 - **users** — name, email, bcrypt-hashed password, role
 - **meta** — schema version + sample-data flag
