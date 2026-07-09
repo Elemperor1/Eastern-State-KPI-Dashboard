@@ -173,9 +173,11 @@ through legacy scalar entry routes:
   `/api/strategy/components`, and `/api/strategy/targets` manage effective
   configuration, component definitions, and annual/full-plan targets.
 - `PATCH /api/strategy/goals` manages named-goal rules and lifecycle.
+- `PATCH /api/strategy/memberships` manages effective KPI completion role,
+  weight, and display order within a named goal.
 
-The exhaustive auth regression matrix currently contains 34 protected
-route/method combinations: 32 admin-gated mutations and two session-gated
+The exhaustive auth regression matrix currently contains 35 protected
+route/method combinations: 33 admin-gated mutations and two session-gated
 reads (`strategy/export` and `strategy/distribution-bands`). Every mutation is
 also enrolled in the shared same-origin, JSON content-type, and CSRF checks.
 
@@ -242,11 +244,14 @@ covers — plus mobile rendering at 390 px, exports, and the self-service
 password change flow — lives at `docs/qa-manual.md`. New engineers should
 walk the checklist end-to-end after their first checkout.
 
-Current schema-10 automated verification: `npm test` passed **76 files / 1,231
-tests**, and `npx tsc --noEmit` passed. Run `npm run design-system:test`, both
-smoke modes, and `npm run test:e2e` before release. This README does not assert
-fresh browser, PNG, PDF, smoke, e2e, or production-build results that were not
-run and recorded.
+Current schema-10 verification recorded on July 9, 2026: `npm test` passed
+**81 files / 1,277 tests**; `npm run design-system:test` passed its guards,
+typecheck, and production build; the development smoke passed **64/64** checks;
+and `npm run test:e2e` passed **5/5** serial workflows. Manual Chrome review
+also retained a valid 1664×14,886 overview PNG and a readable 15-page,
+Letter-landscape, 1.5 MB overview PDF. Auth behavior is covered by the
+35-route regression matrix; run the documented auth-enabled smoke with an
+operator-provisioned credential before a production release.
 
 Schema 8 intentionally replaced the former sample catalog with the strategic
 plan, resetting KPI data and audit history while preserving users. Schema 9 is
