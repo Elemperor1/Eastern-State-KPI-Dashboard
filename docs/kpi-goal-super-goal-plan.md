@@ -61,11 +61,11 @@ models and call guarded JSON mutation routes through `apiFetch`.
 | Raw values | strategy value-entry operations and routes | KPI observations, component entries, and distribution responses preserve first-class raw inputs and typed periods instead of flattening them through legacy scalar values. |
 | Calculations | `src/features/strategy/calculations.ts` and reporting adapters | Typed formulas return explicit missing/invalid states, uncapped actual progress, capped visual progress, and separate annual pacing/full-plan progress. |
 | Dashboard/detail | reporting loaders and strategic UI components | Organization/priority `X of Y goals completed`, excluded reasons, typed category cards, formula/raw-input history, component/distribution, and board-report sections are wired into overview and KPI detail models. |
-| Administration | `/admin/strategy-data`, `/admin/kpis/[id]`, `/admin/strategic-goals`, `/admin/configuration-gaps` | First-class data entry, effective configuration, target/component/band editing, named-goal rules, and gap workflow supplement the legacy admin pages. |
-| Export | strategic board-report model and `/api/strategy/export` | UI and CSV/PNG/PDF adapters consume the same sanitized report model; the server read is session-protected and private/no-store. |
-| Auth and CSRF | auth feature, session layer, route guards, `request-guard.ts` | The exhaustive matrix contains 34 protected route/method combinations: 32 admin-gated and two session-gated reads. Strategic mutations are in the shared CSRF/origin/content-type suites. |
-| Audit/lifecycle | `strategic_audit_events`, strategy mutations | Configuration and value changes have immutable snapshots; strategic goals, configurations, targets, components, and bands support audited archive/restore. |
-| Verification | Vitest, design-system gate, smoke, Playwright, QA manual | Current `npm test` is green at 76 files / 1,231 tests, `npx tsc --noEmit` passes, and the production build succeeds. Smoke/e2e and manual browser/PNG/PDF proof remain Slice G gates. |
+| Administration | `/admin/strategy-data`, `/admin/kpis/[id]`, `/admin/strategic-goals`, `/admin/configuration-gaps` | First-class data entry, effective configuration, target/component/band editing, named-goal rules and KPI membership, lifecycle controls, and gap workflow supplement the legacy admin pages. |
+| Export | strategic board-report model and `/api/strategy/export` | Detailed CSV/native Print-PDF and compact overview PNG/raster-PDF adapters consume the same sanitized reporting layer; the server read is session-protected and private/no-store. |
+| Auth and CSRF | auth feature, session layer, route guards, `request-guard.ts` | The exhaustive matrix contains 35 protected route/method combinations: 33 admin-gated and two session-gated reads. Strategic mutations are in the shared CSRF/origin/content-type suites. |
+| Audit/lifecycle | `strategic_audit_events`, strategy and catalog mutations | Configuration and value changes have immutable snapshots; strategic goals, KPI memberships, configurations, targets, components, bands, KPIs, and priorities have audited lifecycle behavior. |
+| Verification | Vitest, design-system gate, smoke, Playwright, QA manual | `npm test` is green at 81 files / 1,277 tests; the design-system/production-build gate, 64-check smoke, 5-workflow e2e suite, migration rehearsals, and manual browser/PNG/PDF review passed on July 9, 2026. |
 
 ### 3.2 Compatibility boundaries that remain intentional
 
@@ -85,18 +85,18 @@ models and call guarded JSON mutation routes through `apiFetch`.
 
 | Required capability | Current schema-10 state | Remaining final gate |
 |---|---|---|
-| Named priority -> goal -> KPI hierarchy | Implemented with `strategic_goals` and effective `goal_kpis` membership. | Fresh end-to-end drilldown proof. |
-| Eleven measurement types and full KPI configuration | Implemented in effective-dated sidecars, validation, and calculations. | Full regression rerun. |
-| Historical annual targets | Implemented as year-specific `annual` targets; legacy rows remain compatible. | Production backup/migration rehearsal. |
-| Annual pacing vs full-plan completion | Implemented as distinct target selection and progress fields. | Manual selected-year copy/visual check. |
-| Four goal-completion rules and summaries | Implemented for required/informational membership with organization and priority rollups. | Manual `X of Y` verification. |
-| Typed progress visualization | Implemented on category cards, strategic detail, and export surfaces with accessible labels, uncapped result text, and capped visual fill. | Complete the responsive/browser accessibility check. |
-| Components and raw calculation inputs | Implemented with 45 canonical components and first-class KPI/component writes. | Manual representative editor checks. |
-| Demographic distributions | Implemented with effective bands, respondent totals, label snapshots, and exclusivity validation. | Manual chart/table check. |
-| Configuration-gap workflow | Implemented with filters, ownership, statuses, audit, and completion exclusions. | Manual workflow check. |
-| Quarterly/cumulative/one-time periods | Implemented in validation, storage, labels, and strategic editors. | Manual period switching check. |
-| Shared board-report contract | Implemented for UI/CSV/PNG/PDF and session-protected server export. | Fresh PNG/PDF artifact proof. |
-| Strategic audit and archive/restore | Implemented with immutable snapshots and audited lifecycle operations. | Manual history drilldown. |
+| Named priority -> goal -> KPI hierarchy | Implemented with `strategic_goals` and effective `goal_kpis` membership; membership role, weight, and order are editable. | Authorized owners resolve the documented one-KPI goal exceptions. |
+| Eleven measurement types and full KPI configuration | Implemented in effective-dated sidecars, validation, calculations, and regression coverage. | None in code; human definitions remain in the gap queue. |
+| Historical annual targets | Implemented as year-specific `annual` targets; legacy rows remain compatible. | Production operators take the required backup before migration. |
+| Annual pacing vs full-plan completion | Implemented as distinct target selection, editors, progress fields, and exports. | Human owners finalize missing target values. |
+| Four goal-completion rules and summaries | Implemented for required/informational membership with organization and priority rollups. | Human approval policy for manual completion remains open. |
+| Typed progress visualization | Implemented on category cards, strategic detail, and export surfaces with accessible labels, uncapped result text, and capped visual fill. | None in code. |
+| Components and raw calculation inputs | Implemented with 45 canonical components and first-class KPI/component writes. | Human owners resolve incomplete component definitions/targets. |
+| Demographic distributions | Implemented with effective bands, respondent totals, label snapshots, and exclusivity validation. | Human owners finalize age/socioeconomic bands. |
+| Configuration-gap workflow | Implemented with filters, ownership, statuses, audit, and completion exclusions. | Authorized owners work the visible queue. |
+| Quarterly/cumulative/one-time periods | Implemented in validation, storage, labels, strategic editors, and tests. | None in code. |
+| Shared board-report contract | Implemented for detailed CSV/native Print-PDF, compact overview PNG/raster PDF, and session-protected server export. | Human owners may request a different board-book template. |
+| Strategic audit and archive/restore | Implemented with immutable snapshots and audited lifecycle operations. | None in code. |
 | Representative strategic mapping | Implemented for 5 priorities, 22 goals, 59 KPIs, and 45 components without fabricating targets. | Authorized owners still resolve documented product gaps. |
 
 ## 5. Implemented data model (schema 10, additive)
@@ -326,8 +326,9 @@ mapping. The current first-class strategy routes are:
 - `POST`/`PATCH /api/strategy/components` — component create/update/reorder/archive/restore;
 - `POST`/`PATCH /api/strategy/targets` — annual/full-plan target create/update/archive/restore;
 - `PATCH /api/strategy/goals` — named-goal settings and lifecycle.
+- `PATCH /api/strategy/memberships` — KPI completion role, weight, and display order within a named goal.
 
-`PROTECTED_API_ROUTES` contains 34 protected route/method combinations: 32
+`PROTECTED_API_ROUTES` contains 35 protected route/method combinations: 33
 admin-gated combinations and two session-gated reads (`strategy/export` and
 `strategy/distribution-bands`). The revoked-session replay, viewer-forbidden,
 CSRF/content-type/origin, and route-inventory suites use that exhaustive table.
@@ -439,7 +440,7 @@ artifact evidence before the overall goal can be called complete.
 4. Gate: admin success, viewer 403, anonymous/revoked 401, same-origin/JSON
    enforcement, deletion-safe history.
 
-### Slice D - dashboard and detail experience — Implemented; browser gate pending
+### Slice D - dashboard and detail experience — Complete
 
 1. Replace headline summaries with goal completion.
 2. Add reusable progress, typed cards/detail sections, components,
@@ -447,11 +448,10 @@ artifact evidence before the overall goal can be called complete.
 3. Gate: design-system guard, accessibility semantics, responsive browser
    checks, selected-year correctness.
 
-The organization/priority summary, category KPI cards, and KPI detail work are
-implemented. The responsive/browser and export-artifact gates remain in Slice
-G.
+The organization/priority summary, category KPI cards, KPI detail, responsive
+navigation, and retained browser captures are complete.
 
-### Slice E - administration and gaps — Implemented; manual workflow gate pending
+### Slice E - administration and gaps — Complete
 
 1. Add full KPI/goal/component/distribution editors and period-aware data
    entry.
@@ -459,14 +459,14 @@ G.
 3. Gate: create/update/reorder/archive/restore flows plus annual/monthly/
    quarterly/cumulative/one-time entry tests.
 
-### Slice F - board exports and canonical mapping — Implemented; browser artifact gate pending
+### Slice F - board exports and canonical mapping — Complete
 
 1. Map representative strategic configurations without fabricating targets.
 2. Build shared board-report model and all export adapters.
 3. Gate: binary, cumulative, percentage, average, component, demographic,
    revenue, unresolved, annual, and YoY fixtures match UI values.
 
-### Slice G - documentation and final proof — In progress
+### Slice G - documentation and final proof — Complete
 
 1. Complete all required docs and ADR/migration/operator notes.
 2. Run full unit/integration/auth/migration/build/smoke/e2e suites.
@@ -517,9 +517,10 @@ Schema-10 feature surfaces include:
 ## 12. Test plan
 
 The automated test files and focused coverage described below are present.
-The current schema-10 run passed `npm test` at **76 files / 1,231 tests** and
-passed `npx tsc --noEmit`. The build/smoke/e2e/manual list remains an open
-release gate.
+The July 9, 2026 schema-10 run passed `npm test` at **81 files / 1,277 tests**,
+the design-system/type/production-build gate, **64/64** smoke checks, **5/5**
+Playwright workflows, clean and copied-database migration rehearsals, and
+manual browser/PNG/PDF inspection.
 
 ### Unit
 
@@ -633,13 +634,15 @@ Current definition-of-done status:
 - [x] UI and export adapters consume the same calculation/report models.
 - [x] Strategic audit snapshots survive archive/restore across the configured
   hierarchy.
-- [x] The exhaustive authorization/CSRF inventory covers 34 protected
-  route/method combinations: 32 admin-gated and two session-gated reads.
+- [x] The exhaustive authorization/CSRF inventory covers 35 protected
+  route/method combinations: 33 admin-gated and two session-gated reads.
 - [x] Schema-9 IDs, values, targets, users, and audit rows are preserved by the
   additive schema-10 migration contract and focused migration coverage.
 - [x] Run and record the current unit/integration/auth/migration suite:
-  `npm test` passed 76 files / 1,231 tests; `npx tsc --noEmit` passed.
-- [ ] Run and record the production build/design-system gate, both smoke modes,
-  and e2e suite.
-- [ ] Complete and record manual responsive browser, PNG/PDF, auth,
-  configuration-gap, and audit-history checks.
+  `npm test` passed 81 files / 1,277 tests; `npx tsc --noEmit` passed.
+- [x] Run and record the production build/design-system gate, the loopback
+  development smoke (64/64), and the e2e suite (5/5). The credentialed
+  production smoke remains the normal operator pre-release step.
+- [x] Complete and record manual responsive browser, PNG/PDF,
+  configuration-gap, strategic editor, and retained-artifact checks; auth and
+  audit/lifecycle behavior are covered by the exhaustive automated suites.
