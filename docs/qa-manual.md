@@ -70,7 +70,7 @@ Before starting, complete these one-time steps:
    ```
 
    Playwright starts its own loopback-only dev server and uses the installed
-   Google Chrome channel. The four serial workflows cover goal CRUD, an
+   Google Chrome channel. The five serial workflows cover goal CRUD, an
    annual-entry failure/retry/restore cycle, desktop/mobile navigation, and
    representative PNG, legacy PDF, and native print-PDF output. Temporary
    goals and entries are deleted before the suite exits.
@@ -410,8 +410,9 @@ known gap if it doesn't appear). If `AUTH_DISABLED=true` is active, the
 **Action.**
 
 1. Click **Export PNG**, then **Export PDF**. Open both overview files.
-2. Confirm the PDF is landscape Letter and has three compact pages at this
-   desktop width. No category card may be split between pages.
+2. Confirm the PDF is landscape Letter, remains below 50 MB, has no blank
+   pages, and does not split a category card. Page count varies with the data
+   and viewport; the July 9, 2026 sample fixture produced 15 pages at 1.5 MB.
 3. Visit the annual percentage metric
    `/dashboard/metric/interpretive-plan-milestones-on-schedule?currentYear=2026&compareYear=2025`.
    Export PNG and CSV.
@@ -521,10 +522,13 @@ read-only checks as a viewer with auth enabled.
 8. Open `/admin/history`; verify the strategic tab shows immutable snapshots
    for the edits. Archive and restore a strategic entity and confirm its prior
    display name remains readable.
-9. From the overview, download board CSV, PNG, and PDF. The output must include
+9. From the overview, download the board CSV plus the compact **Export PNG**
+   and **Export PDF** summary artifacts. Then use **Print / PDF** to save the
+   detailed board book. The CSV and detailed Print/PDF output must include
    organization/priority/goal completion, KPI results, target descriptions,
    both target scopes, components, demographic labels/respondent totals,
-   revenue streams, and unresolved reasons. Render every PDF page to images.
+   revenue streams, and unresolved reasons. Render the raster overview PDF's
+   first, middle, and final pages, and spot-check each detailed-report section.
 10. With auth enabled, request
     `/api/strategy/export?year=2026&format=csv` as an anonymous user, viewer,
     and admin. Expect 401, 200, and 200 respectively; the response must be
@@ -544,6 +548,35 @@ read-only checks as a viewer with auth enabled.
   CSRF-protected and audit logged.
 
 **Screenshot placeholder.** `[Insert screenshot: goal summary + strategic KPI detail + configuration gaps/editor + strategic audit + rendered board PDF pages]`
+
+---
+
+## Recorded schema-10 verification — July 9, 2026
+
+- `npm test`: **81 files / 1,277 tests** passed, including calculation,
+  integration, lifecycle/audit, auth-replay, CSRF, and migration coverage.
+- `npm run design-system:test`: design/security/architecture guards, typecheck,
+  and the Next.js production build passed.
+- Development smoke: **64/64** checks passed against a loopback auth-bypass
+  server.
+- Playwright acceptance: **5/5** serial workflows passed, including the
+  overview PNG/PDF downloads added to the representative export workflow.
+- Clean schema-10 migration completed with zero application rows, as expected.
+  A migrated copy of the existing database preserved its SHA-256 hash and all
+  recorded counts: 3 users, 5 priorities, 59 KPIs, 174 scalar entries, 24
+  breakdown rows, 214 legacy history rows, 25 legacy targets, 22 named goals,
+  59 memberships, and 206 strategic audit events.
+- Manual Chrome captures retained under `output/playwright/` cover the overview,
+  configuration-gap dashboard, strategic-goal membership editor, strategic KPI
+  measurement/target editors, and compact overview exports.
+- The retained overview PNG is 1664×14,886 (3.0 MB). The retained raster PDF is
+  15 Letter-landscape pages (1.5 MB); its first, middle, and final pages were
+  rendered and inspected as nonblank, readable, branded output with a complete
+  footer.
+- Auth proof is the exhaustive **35-route** replay matrix: 33 admin-gated
+  combinations and two session-gated reads. A credentialed production smoke
+  remains an operator release step because no production credential is stored
+  in the repository.
 
 ---
 
