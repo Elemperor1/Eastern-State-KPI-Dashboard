@@ -614,8 +614,9 @@ organizational answers must come from an authorized human owner:
     uses calendar quarters.
 12. Confirm the authoritative owners/due dates/source references for every
     unresolved KPI.
-13. Confirm whether the board PDF should be one organization summary, one page
-    per priority, or both.
+13. Confirm which artifact should be the board's default: the compact overview
+    PDF or the detailed native Print/PDF board book. Both are available; a
+    future branded template can standardize one without changing calculations.
 
 Until answered, these items use `needs_definition` or `needs_target`, remain
 visible in the gap dashboard and exports, and are excluded from goal-completion

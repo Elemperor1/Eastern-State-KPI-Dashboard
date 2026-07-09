@@ -93,11 +93,11 @@ SMOKE_EMAIL=kerry@easternstate.org SMOKE_PASSWORD='<operator-provisioned passwor
   AUTH_DISABLED=false PORT=3290 BASE=http://127.0.0.1:3290 bash ./scripts/smoke.sh
 ```
 
-Tests all 5 strategic-priority pages, representative annual percentage/currency/breakdown metric pages, the annual-only Trend Explorer state, POST/DELETE round-trips on `/api/entries` and `/api/breakdowns`, the auth-bypass flow on `POST /api/entries`, the no-data badge, and the read-only `/admin/history` browser. Expects `/admin/kpis` to show 59 KPIs and the exact priority names listed in `scripts/smoke.sh`; `scripts/smoke-catalog.ts` supplies local KPI IDs for mutation round-trips without restoring catalog read APIs. Run both modes and record fresh counts before release; this file does not claim a current schema-10 browser result.
+Tests all 5 strategic-priority pages, representative annual percentage/currency/breakdown metric pages, the annual-only Trend Explorer state, POST/DELETE round-trips on `/api/entries` and `/api/breakdowns`, the auth-bypass flow on `POST /api/entries`, the no-data badge, and the read-only `/admin/history` browser. Expects `/admin/kpis` to show 59 KPIs and the exact priority names listed in `scripts/smoke.sh`; `scripts/smoke-catalog.ts` supplies local KPI IDs for mutation round-trips without restoring catalog read APIs. The July 9, 2026 loopback development run passed 64/64 checks. Run the credentialed auth-enabled mode again before release.
 
-Current schema-10 automated evidence: `npm test` passed **81 files / 1,277
-tests**, and `npx tsc --noEmit` passed. This is not a substitute for the smoke,
-e2e, production-build, or manual browser/export gates.
+Current schema-10 evidence: `npm test` passed **81 files / 1,277 tests**;
+`npm run design-system:test`, the 64-check smoke, the 5-workflow e2e suite,
+and manual browser/PNG/PDF inspection passed on July 9, 2026.
 
 Unit tests live in `src/lib/analytics.test.ts` (Vitest, coverage ≥ 90% line coverage on `analytics.ts`). Run with `npm test`; the smoke harness does not exercise this code path.
 
