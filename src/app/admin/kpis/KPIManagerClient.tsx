@@ -28,6 +28,7 @@ type Tab = "kpis" | "categories";
 interface CatalogMutationPayload {
   kpis?: KPIWithCategory[];
   categories?: Category[];
+  lifecycle?: "archived" | "restored" | "deleted";
   error?: string;
 }
 
@@ -86,7 +87,27 @@ export function KPIManagerClient({
       return;
     }
     applyCatalogPayload(data);
-    setFeedback({ message: "KPI deleted.", variant: "success" });
+    setFeedback({
+      message:
+        data.lifecycle === "archived"
+          ? "Strategic KPI archived. History and configuration were preserved."
+          : "Legacy KPI deleted.",
+      variant: "success",
+    });
+  }
+
+  async function restoreKPI(id: number) {
+    const res = await apiFetch("/api/kpis", {
+      method: "PATCH",
+      body: { action: "restore", id },
+    });
+    const data = await res.json() as CatalogMutationPayload;
+    if (!res.ok) {
+      setFeedback({ message: `Could not restore KPI: ${data.error}`, variant: "error" });
+      return;
+    }
+    applyCatalogPayload(data);
+    setFeedback({ message: "Strategic KPI restored.", variant: "success" });
   }
 
   async function createCategory(form: FormData) {
@@ -115,7 +136,30 @@ export function KPIManagerClient({
       return;
     }
     applyCatalogPayload(data);
-    setFeedback({ message: "Category deleted.", variant: "success" });
+    setFeedback({
+      message:
+        data.lifecycle === "archived"
+          ? "Strategic priority archived. Its goals, KPIs, and history were preserved."
+          : "Legacy category deleted.",
+      variant: "success",
+    });
+  }
+
+  async function restoreCategory(id: number) {
+    const res = await apiFetch("/api/categories", {
+      method: "PATCH",
+      body: { action: "restore", id },
+    });
+    const data = await res.json() as CatalogMutationPayload;
+    if (!res.ok) {
+      setFeedback({
+        message: `Could not restore category: ${data.error}`,
+        variant: "error",
+      });
+      return;
+    }
+    applyCatalogPayload(data);
+    setFeedback({ message: "Strategic priority restored.", variant: "success" });
   }
 
   function requestDeleteKPI(id: number, name: string) {
@@ -170,7 +214,10 @@ export function KPIManagerClient({
 
       {tab === "kpis" ? (
         <div className="space-y-6">
-          <AdminKpiCreateForm categories={categories} onSubmit={handleCreateKpi} />
+          <AdminKpiCreateForm
+            categories={categories.filter((category) => !category.archived_at)}
+            onSubmit={handleCreateKpi}
+          />
           <AdminKpisTable
             kpis={filteredKpis}
             totalKpis={kpis.length}
@@ -181,6 +228,7 @@ export function KPIManagerClient({
             onQueryChange={setQuery}
             onCategoryFilterChange={setCategoryFilter}
             onDelete={requestDeleteKPI}
+            onRestore={(id) => restoreKPI(id)}
           />
         </div>
       ) : (
@@ -189,6 +237,7 @@ export function KPIManagerClient({
           <AdminCategoriesList
             categories={categories}
             onDelete={requestDeleteCategory}
+            onRestore={(id) => restoreCategory(id)}
           />
         </div>
       )}

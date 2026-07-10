@@ -21,6 +21,11 @@ import {
 } from "./dom-capture";
 import { planRasterPdfPages } from "./raster-layout";
 
+const RASTER_SCALE = 1.5;
+const JPEG_QUALITY = 0.86;
+const MAX_RASTER_DIMENSION = 32_767;
+const MAX_RASTER_PIXELS = 80_000_000;
+
 export interface ExportPdfOptions {
   /** id of the element to rasterize. */
   targetId: string;
@@ -48,6 +53,7 @@ export async function exportElementToPdf({
       orientation: "landscape",
       unit: "pt",
       format: "letter",
+      compress: true,
     });
     const pageWidth = pdf.internal.pageSize.getWidth();
     const pageHeight = pdf.internal.pageSize.getHeight();
@@ -55,9 +61,21 @@ export async function exportElementToPdf({
     const pageBackground = getPageBackground();
     let targetHeight = target.scrollHeight;
     let keepTogetherRanges: Array<{ start: number; end: number }> = [];
+    const rasterWidth = target.scrollWidth * RASTER_SCALE;
+    const rasterHeight = target.scrollHeight * RASTER_SCALE;
+
+    if (
+      rasterWidth > MAX_RASTER_DIMENSION ||
+      rasterHeight > MAX_RASTER_DIMENSION ||
+      rasterWidth * rasterHeight > MAX_RASTER_PIXELS
+    ) {
+      throw new Error(
+        "This report is too large for a raster PDF. Use Print / PDF for the detailed report.",
+      );
+    }
 
     const canvas = await html2canvas(target, {
-      scale: 2,
+      scale: RASTER_SCALE,
       backgroundColor: pageBackground,
       logging: false,
       useCORS: true,
@@ -102,12 +120,14 @@ export async function exportElementToPdf({
 
       if (pages.length === 1) {
         pdf.addImage(
-          canvas.toDataURL("image/png"),
-          "PNG",
+          canvas.toDataURL("image/jpeg", JPEG_QUALITY),
+          "JPEG",
           margin,
           margin,
           page.renderWidth,
           page.renderHeight,
+          undefined,
+          "FAST",
         );
       } else {
         const sliceCanvas = document.createElement("canvas");
@@ -129,12 +149,14 @@ export async function exportElementToPdf({
           page.sourceHeight,
         );
         pdf.addImage(
-          sliceCanvas.toDataURL("image/png"),
-          "PNG",
+          sliceCanvas.toDataURL("image/jpeg", JPEG_QUALITY),
+          "JPEG",
           margin,
           margin,
           page.renderWidth,
           page.renderHeight,
+          undefined,
+          "FAST",
         );
       }
     }

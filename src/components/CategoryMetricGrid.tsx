@@ -40,6 +40,7 @@ export function CategoryMetricGrid({
                   accentColor={CHART_COLORS[idx % CHART_COLORS.length]}
                   onSelect={() => onMetricSelect(metric.kpi.slug)}
                   goal={metric.goal}
+                  strategic={metric.strategic}
                 />
               ))}
             </div>

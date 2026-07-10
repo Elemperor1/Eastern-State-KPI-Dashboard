@@ -5,10 +5,12 @@ import { useRouter } from "next/navigation";
 import { ExportPDFButton } from "@/components/ExportPDFButton";
 import { DashboardControls, type CompareState } from "@/components/DashboardControls";
 import { CategoryOverviewCard } from "@/components/CategoryOverviewCard";
+import { GoalCompletionSummary } from "@/components/GoalCompletionSummary";
+import { StrategicBoardReport } from "@/components/StrategicBoardReport";
 import { ExportCSVButton, ExportPNGButton, PageHeader, PrintButton, PrintReportFooter, PrintReportHeader } from "@/components/ui";
 import { SampleDataBadge } from "@/components/SampleDataBadge";
 import { buildCategoryOverviewSummaries } from "@/features/reporting/category-summary";
-import { buildOverviewCsvExport } from "@/features/reporting/csv";
+import { buildStrategicBoardCsvExport } from "@/features/reporting/strategic-board-report";
 import { MONTH_FULL } from "@/features/metrics";
 import { CHART_COLORS } from "@/lib/analytics";
 import type { DashboardData } from "@/features/reporting/types";
@@ -40,7 +42,10 @@ export function DashboardOverviewClient({
 
   const monthLabel = MONTH_FULL[state.currentMonth - 1];
 
-  const csvExport = buildOverviewCsvExport(data, state);
+  const csvExport = useMemo(
+    () => buildStrategicBoardCsvExport(data.strategicBoardReport),
+    [data.strategicBoardReport],
+  );
   const categorySummaries = useMemo(
     () => buildCategoryOverviewSummaries(data, state),
     [data, state],
@@ -48,11 +53,11 @@ export function DashboardOverviewClient({
 
   return (
     <div className="page-content page-content-wide page-enter">
-      <div id="dashboard-print-root">
+      <div id="dashboard-print-root" data-print="hide">
         <PrintReportHeader
           eyebrow="KPI Intelligence Dashboard"
           title="Organizational Performance"
-          subtitle={`${monthLabel} ${state.currentYear} compared with ${state.compareYear} · ${data.categories.length} categories · ${data.kpis.length} metrics`}
+          subtitle={`${monthLabel} ${state.currentYear} compared with ${state.compareYear} · ${data.categories.length} performance areas`}
           filters={[
             { label: "Current Year", value: String(state.currentYear) },
             { label: "Compare Year", value: String(state.compareYear) },
@@ -66,13 +71,13 @@ export function DashboardOverviewClient({
           subtitle={
             <>
               {monthLabel} {state.currentYear} compared with {state.compareYear} ·{" "}
-              {data.categories.length} categories · {data.kpis.length} metrics
+              {data.categories.length} performance areas
             </>
           }
           actions={
             <>
               <SampleDataBadge sample={data.sampleData} />
-              <ExportCSVButton rows={csvExport.rows} columns={csvExport.columns} filename={csvExport.filename} />
+              <ExportCSVButton rows={csvExport.rows} columns={[...csvExport.columns]} filename={csvExport.filename} />
               <PrintButton />
               <ExportPNGButton
                 targetId="dashboard-print-root"
@@ -92,10 +97,16 @@ export function DashboardOverviewClient({
           onChange={updateState}
         />
 
+        <div className="mb-12">
+          <GoalCompletionSummary
+            organization={data.strategicSummary.organization}
+          />
+        </div>
+
         <section aria-label="Categories" className="mb-12">
           <div className="mb-5 flex flex-wrap items-end justify-between gap-4">
             <div>
-              <p className="section-eyebrow">Category Overview</p>
+              <p className="section-eyebrow">Executive overview</p>
               <h2 className="text-2xl font-medium tracking-[-0.02em] text-ink-900">Performance by area</h2>
             </div>
             <p className="max-w-md text-sm leading-6 text-ink-600 text-pretty">
@@ -113,6 +124,9 @@ export function DashboardOverviewClient({
           </div>
         </section>
         <PrintReportFooter />
+      </div>
+      <div id="strategic-board-export-root">
+        <StrategicBoardReport report={data.strategicBoardReport} />
       </div>
     </div>
   );

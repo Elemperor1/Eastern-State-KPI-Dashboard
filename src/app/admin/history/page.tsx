@@ -9,6 +9,7 @@ import {
 import { listCategories, listKPIs } from "@/features/catalog/server";
 import { HistoryClient } from "./HistoryClient";
 import type { Category, KPIWithCategory } from "@/lib/types";
+import { listStrategicAuditEvents } from "@/features/strategy/server";
 
 export const dynamic = "force-dynamic";
 
@@ -48,6 +49,7 @@ export default async function HistoryPage({
         kpis={mergedKpis}
         categories={mergedCategories}
         activeFilter={filter}
+        strategicEvents={listStrategicAuditEvents({ limit: 500 })}
       />
     </AppShell>
   );

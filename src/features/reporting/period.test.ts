@@ -36,4 +36,14 @@ describe("reporting period selection", () => {
       ),
     ).toEqual({ currentYear: 2026, compareYear: 2025, currentMonth: 7 });
   });
+
+  it("defaults to the real current year when future strategic-plan years are selectable", () => {
+    expect(
+      resolveDashboardCompareState(
+        {},
+        [2024, 2025, 2026, 2027, 2028, 2029],
+        new Date("2026-07-07T12:00:00Z"),
+      ),
+    ).toEqual({ currentYear: 2026, compareYear: 2025, currentMonth: 7 });
+  });
 });

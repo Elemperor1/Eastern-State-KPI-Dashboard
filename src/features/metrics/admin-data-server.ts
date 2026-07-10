@@ -1,5 +1,6 @@
 import { listCategories, listKPIs } from "@/features/catalog/server";
 import { isSampleDataEnabled } from "@/lib/app-meta";
+import { STRATEGIC_PLAN_REPORTING_YEARS } from "@/features/strategy";
 import type {
   BreakdownEntryWithMeta,
   Category,
@@ -29,6 +30,7 @@ export function loadAdminDataPageData(): AdminDataPageData {
     breakdowns,
     years: Array.from(
       new Set([
+        ...STRATEGIC_PLAN_REPORTING_YEARS,
         ...entries.map((entry) => entry.year),
         ...breakdowns.map((breakdown) => breakdown.year),
       ]),

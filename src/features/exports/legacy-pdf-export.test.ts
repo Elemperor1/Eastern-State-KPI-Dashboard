@@ -119,7 +119,7 @@ describe("legacy raster PDF adapter", () => {
     expect(prepareRasterExportTargetMock).toHaveBeenCalledWith(target);
     expect(html2canvasMock).toHaveBeenCalledTimes(1);
     expect(html2canvasMock).toHaveBeenCalledWith(target, {
-      scale: 2,
+      scale: 1.5,
       backgroundColor: "white",
       logging: false,
       useCORS: true,
@@ -129,6 +129,8 @@ describe("legacy raster PDF adapter", () => {
     });
     expect(addPageMock).toHaveBeenCalledTimes(2);
     expect(addImageMock).toHaveBeenCalledTimes(3);
+    expect(addImageMock.mock.calls.every((call) => call[1] === "JPEG")).toBe(true);
+    expect(addImageMock.mock.calls.every((call) => call[7] === "FAST")).toBe(true);
     expect(drawImageMock.mock.calls.map((call) => call.slice(1, 5))).toEqual([
       [0, 0, 1000, 650],
       [0, 650, 1000, 758],
@@ -152,5 +154,22 @@ describe("legacy raster PDF adapter", () => {
     ).rejects.toThrow("raster failed");
     expect(restoreTargetMock).toHaveBeenCalledTimes(1);
     expect(saveMock).not.toHaveBeenCalled();
+  });
+
+  it("rejects an oversized raster target before the browser creates a blank canvas", async () => {
+    const target = {
+      querySelectorAll: () => [],
+      scrollWidth: 1440,
+      scrollHeight: 30_000,
+    } as unknown as HTMLElement;
+    installDocument({ target });
+
+    await expect(
+      exportElementToPdf({ targetId: "strategic-board-export-root" }),
+    ).rejects.toThrow("too large for a raster PDF");
+
+    expect(html2canvasMock).not.toHaveBeenCalled();
+    expect(saveMock).not.toHaveBeenCalled();
+    expect(restoreTargetMock).toHaveBeenCalledTimes(1);
   });
 });

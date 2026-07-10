@@ -41,6 +41,8 @@ export interface Category {
   name: string;
   description: string | null;
   sort_order: number;
+  /** Schema-10 strategic lifecycle marker. Omitted by pre-v10 fixtures. */
+  archived_at?: string | null;
 }
 
 /** Unit type drives how a value is stored, formatted, and compared. */
@@ -71,6 +73,8 @@ export interface KPI {
   sort_order: number;
   is_active: number; // sqlite boolean
   created_at: string;
+  /** Schema-10 strategic lifecycle marker. Omitted by pre-v10 fixtures. */
+  archived_at?: string | null;
 }
 
 export interface MonthlyEntry {
@@ -235,6 +239,8 @@ export interface EntryHistoryWithMeta extends EntryHistory {
 export interface KPIWithCategory extends KPI {
   category_name: string;
   category_slug: string;
+  /** Present on catalog-admin reads that include archived priorities. */
+  category_archived_at?: string | null;
   children?: KPIWithCategory[]; // populated for breakdown parents
 }
 

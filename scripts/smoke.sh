@@ -9,6 +9,8 @@
 #   5.  Through-month URL parameter is respected.
 #   6.  Admin pages render successfully.
 #   7.  Annual percentage, annual currency, and breakdown entries round-trip.
+#   8.  Strategic goal summaries, configuration surfaces, exports, and raw
+#       percentage observations use the schema-10 calculation path.
 #
 # D8AD-CAN-008: HTTP response bodies (body, me, kpis_html, ov, bdy,
 # trends_html, etc.) are NEVER interpolated into bash -c or eval strings. They are:
@@ -194,16 +196,28 @@ echo
 echo "Dashboard overview renders"
 ov=$(curl -sk -b "$cookie_jar" "$BASE/dashboard/overview")
 check "overview renders (200)" grep -q "Organizational Performance" <<< "$ov"
-if grep -q "Category Overview" <<< "$ov"; then
-  check "overview shows category overview section" true
+if grep -q "Performance by area" <<< "$ov"; then
+  check "overview shows performance-area section" true
 else
-  check "overview shows category overview section" false
+  check "overview shows performance-area section" false
 fi
 if grep -q "Sample data" <<< "$ov"; then
   check "overview marks sample data" true
 else
   check "overview marks sample data" false
 fi
+check "overview shows the strategic plan progress summary" grep -q "Strategic plan progress" <<< "$ov"
+if grep -q "Goal completion by priority" <<< "$ov"; then
+  check "overview omits the expanded priority grid" false
+else
+  check "overview omits the expanded priority grid" true
+fi
+if grep -q "Goal-level completion" <<< "$ov"; then
+  check "overview omits the expanded named-goal grid" false
+else
+  check "overview omits the expanded named-goal grid" true
+fi
+check "overview renders a raw completed-goal count" grep -qE '[0-9]+ of [0-9]+ goals completed' <<< "$ov"
 
 echo
 echo "Category pages render"
@@ -228,14 +242,14 @@ fi
 echo
 echo "Through-month URL parameter respected"
 html=$(curl -sk -b "$cookie_jar" "$BASE/dashboard/overview?currentYear=2025&compareYear=2024&currentMonth=11")
-text=$(echo "$html" | python3 -c "import sys, re; t=sys.stdin.read(); m=re.search(r'Organizational Performance</h1>\s*<(p|div)[^>]*>(.*?)</\1>', t, re.DOTALL); print(re.sub(r'<!--.*?-->','', m.group(2)).strip() if m else '')")
+text=$(printf "%s" "$html" | python3 -c "import sys,re,html as h; t=sys.stdin.read(); t=re.sub(r'<!--.*?-->', '', t, flags=re.S); t=re.sub(r'<[^>]+>', ' ', t); t=h.unescape(t); print(re.sub(r'\s+', ' ', t))")
 if grep -q "November 2025" <<< "$text"; then
   check "November through-month rendered" true
 else
   check "November through-month rendered" false
 fi
 html=$(curl -sk -b "$cookie_jar" "$BASE/dashboard/overview?currentYear=2025&compareYear=2024&currentMonth=3")
-text=$(echo "$html" | python3 -c "import sys, re; t=sys.stdin.read(); m=re.search(r'Organizational Performance</h1>\s*<(p|div)[^>]*>(.*?)</\1>', t, re.DOTALL); print(re.sub(r'<!--.*?-->','', m.group(2)).strip() if m else '')")
+text=$(printf "%s" "$html" | python3 -c "import sys,re,html as h; t=sys.stdin.read(); t=re.sub(r'<!--.*?-->', '', t, flags=re.S); t=re.sub(r'<[^>]+>', ' ', t); t=h.unescape(t); print(re.sub(r'\s+', ' ', t))")
 if grep -q "March 2025" <<< "$text"; then
   check "March through-month rendered" true
 else
@@ -265,7 +279,7 @@ fi
 
 echo
 echo "Admin pages render"
-for path in /admin/data /admin/kpis /admin/users; do
+for path in /admin /admin/data /admin/strategy-data /admin/kpis /admin/goals /admin/strategic-goals /admin/configuration-gaps /admin/users; do
   code=$(curl -sk -b "$cookie_jar" -o /dev/null -w '%{http_code}' "$BASE$path")
   check "$path renders (200)" test "$code" = "200"
 done
@@ -281,6 +295,41 @@ if grep -q "Add a new KPI" <<< "$kpis_html" && grep -q "Existing KPIs" <<< "$kpi
   check "/admin/kpis renders 'Add a new KPI' + 'Existing KPIs'" true
 else
   check "/admin/kpis renders 'Add a new KPI' + 'Existing KPIs'" false
+fi
+
+configuration_gaps_body=$(curl -sk -b "$cookie_jar" "$BASE/admin/configuration-gaps")
+check "/admin/configuration-gaps shows target and definition readiness" grep -q "Need targets" <<< "$configuration_gaps_body"
+check "/admin/configuration-gaps links to KPI editors" grep -q "/admin/kpis/" <<< "$configuration_gaps_body"
+
+administration_body=$(curl -sk -b "$cookie_jar" "$BASE/admin")
+check "/admin provides the consolidated administration hub" grep -q "Configure and review" <<< "$administration_body"
+
+echo
+echo "Strategic board export renders"
+strategy_export=$(curl -sk -b "$cookie_jar" "$BASE/api/strategy/export?year=2026&format=json")
+check "authorized strategic JSON export includes the organization" grep -q "Eastern State Penitentiary Historic Site" <<< "$strategy_export"
+strategy_csv=$(curl -sk -b "$cookie_jar" "$BASE/api/strategy/export?year=2026&format=csv")
+check "strategic CSV export includes annual pacing and full-plan columns" grep -q "Annual Pacing Target.*Full Plan Actual" <<< "$strategy_csv"
+if grep -qE 'NaN|undefined|Infinity' <<< "$strategy_csv"; then
+  check "strategic CSV export has no unsafe numeric artifacts" false
+else
+  check "strategic CSV export has no unsafe numeric artifacts" true
+fi
+
+echo
+echo "First-class raw percentage observation round-trip"
+strategy_percentage_kpi=$(printf "%s" "$catalog_json" | python3 -c "import sys,json; print(json.load(sys.stdin)['ids']['strategyPercentageKpi'])")
+strategy_percentage_year=$(printf "%s" "$catalog_json" | python3 -c "import sys,json; print(json.load(sys.stdin)['ids']['strategyPercentageYear'])")
+mutation_request "$cookie_jar" POST "/api/strategy/observations" "{\"kpi_id\": $strategy_percentage_kpi, \"reporting_year\": $strategy_percentage_year, \"numerator\": 2, \"denominator\": 4, \"source_reference\": \"Smoke test; delete after verification\"}"
+strategy_post="$MUTATION_STATUS"
+check "POST /api/strategy/observations stores raw percentage inputs (201)" test "$strategy_post" = "201"
+strategy_observation_id=$(printf "%s" "$MUTATION_BODY" | python3 -c "import sys,json; d=json.load(sys.stdin); e=d.get('observation') or {}; print(e.get('id','') if e.get('numerator')==2 and e.get('denominator')==4 and e.get('scalar_value') is None else '')")
+if [ -n "$strategy_observation_id" ]; then
+  check "strategic percentage response preserves raw inputs without a stored result" true
+  mutation_request "$cookie_jar" DELETE "/api/strategy/observations" "{\"id\": $strategy_observation_id}"
+  check "DELETE /api/strategy/observations returns 200" test "$MUTATION_STATUS" = "200"
+else
+  check "strategic percentage response preserves raw inputs without a stored result" false
 fi
 
 echo

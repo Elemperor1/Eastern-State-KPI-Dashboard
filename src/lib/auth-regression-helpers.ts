@@ -38,6 +38,24 @@
  *   PATCH  /api/users             requireAdmin     (user management write — password reset)
  *   DELETE /api/users             requireAdmin     (user management write — deletion)
  *   PATCH  /api/users/account     requireAdmin     (user management write — role/disable)
+ *   GET    /api/strategy/export   requireSession   (board report export)
+ *   POST   /api/strategy/observations        requireAdmin (strategic KPI value write)
+ *   DELETE /api/strategy/observations        requireAdmin (strategic KPI value delete)
+ *   POST   /api/strategy/component-entries   requireAdmin (component value write)
+ *   DELETE /api/strategy/component-entries   requireAdmin (component value delete)
+ *   POST   /api/strategy/distributions       requireAdmin (distribution value write)
+ *   DELETE /api/strategy/distributions       requireAdmin (distribution value delete)
+ *   GET    /api/strategy/distribution-bands  requireSession (effective band definitions)
+ *   POST   /api/strategy/distribution-bands  requireAdmin (band definition create)
+ *   PATCH  /api/strategy/distribution-bands  requireAdmin (band lifecycle mutation)
+ *   POST   /api/strategy/configurations      requireAdmin (measurement configuration create)
+ *   PATCH  /api/strategy/configurations      requireAdmin (measurement configuration lifecycle)
+ *   POST   /api/strategy/components          requireAdmin (component definition create)
+ *   PATCH  /api/strategy/components          requireAdmin (component definition lifecycle)
+ *   POST   /api/strategy/targets             requireAdmin (target create)
+ *   PATCH  /api/strategy/targets             requireAdmin (target lifecycle)
+ *   PATCH  /api/strategy/goals               requireAdmin (strategic goal settings/lifecycle)
+ *   PATCH  /api/strategy/memberships         requireAdmin (goal membership settings)
  *
  * ## Routes that CANNOT use the shared authorization boundary
  *
@@ -85,6 +103,16 @@ import * as goals from "@/app/api/goals/route";
 import * as kpis from "@/app/api/kpis/route";
 import * as users from "@/app/api/users/route";
 import * as usersAccount from "@/app/api/users/account/route";
+import * as strategyExport from "@/app/api/strategy/export/route";
+import * as strategyObservations from "@/app/api/strategy/observations/route";
+import * as strategyComponentEntries from "@/app/api/strategy/component-entries/route";
+import * as strategyDistributions from "@/app/api/strategy/distributions/route";
+import * as strategyDistributionBands from "@/app/api/strategy/distribution-bands/route";
+import * as strategyConfigurations from "@/app/api/strategy/configurations/route";
+import * as strategyComponents from "@/app/api/strategy/components/route";
+import * as strategyTargets from "@/app/api/strategy/targets/route";
+import * as strategyGoals from "@/app/api/strategy/goals/route";
+import * as strategyMemberships from "@/app/api/strategy/memberships/route";
 
 export type HttpMethod = "GET" | "POST" | "PATCH" | "DELETE";
 export type Gate = "requireSession" | "requireAdmin";
@@ -101,7 +129,10 @@ export interface ProtectedRoute {
     | "entries"
     | "breakdowns"
     | "goals"
-    | "users";
+    | "users"
+    | "exports"
+    | "strategy_values"
+    | "strategy_configuration";
   /** Whether the handler signature accepts a NextRequest argument. */
   takesReq: boolean;
 }
@@ -112,6 +143,24 @@ export interface ProtectedRoute {
  * whole replay/forbidden/ok matrix extends automatically.
  */
 export const PROTECTED_API_ROUTES: ProtectedRoute[] = [
+  { method: "GET", path: "/api/strategy/export", gate: "requireSession", group: "exports", takesReq: true },
+  { method: "POST", path: "/api/strategy/observations", gate: "requireAdmin", group: "strategy_values", takesReq: true },
+  { method: "DELETE", path: "/api/strategy/observations", gate: "requireAdmin", group: "strategy_values", takesReq: true },
+  { method: "POST", path: "/api/strategy/component-entries", gate: "requireAdmin", group: "strategy_values", takesReq: true },
+  { method: "DELETE", path: "/api/strategy/component-entries", gate: "requireAdmin", group: "strategy_values", takesReq: true },
+  { method: "POST", path: "/api/strategy/distributions", gate: "requireAdmin", group: "strategy_values", takesReq: true },
+  { method: "DELETE", path: "/api/strategy/distributions", gate: "requireAdmin", group: "strategy_values", takesReq: true },
+  { method: "GET", path: "/api/strategy/distribution-bands", gate: "requireSession", group: "strategy_values", takesReq: true },
+  { method: "POST", path: "/api/strategy/distribution-bands", gate: "requireAdmin", group: "strategy_values", takesReq: true },
+  { method: "PATCH", path: "/api/strategy/distribution-bands", gate: "requireAdmin", group: "strategy_values", takesReq: true },
+  { method: "POST", path: "/api/strategy/configurations", gate: "requireAdmin", group: "strategy_configuration", takesReq: true },
+  { method: "PATCH", path: "/api/strategy/configurations", gate: "requireAdmin", group: "strategy_configuration", takesReq: true },
+  { method: "POST", path: "/api/strategy/components", gate: "requireAdmin", group: "strategy_configuration", takesReq: true },
+  { method: "PATCH", path: "/api/strategy/components", gate: "requireAdmin", group: "strategy_configuration", takesReq: true },
+  { method: "POST", path: "/api/strategy/targets", gate: "requireAdmin", group: "strategy_configuration", takesReq: true },
+  { method: "PATCH", path: "/api/strategy/targets", gate: "requireAdmin", group: "strategy_configuration", takesReq: true },
+  { method: "PATCH", path: "/api/strategy/goals", gate: "requireAdmin", group: "strategy_configuration", takesReq: true },
+  { method: "PATCH", path: "/api/strategy/memberships", gate: "requireAdmin", group: "strategy_configuration", takesReq: true },
   { method: "POST", path: "/api/breakdowns", gate: "requireAdmin", group: "breakdowns", takesReq: true },
   { method: "DELETE", path: "/api/breakdowns", gate: "requireAdmin", group: "breakdowns", takesReq: true },
   { method: "POST", path: "/api/categories", gate: "requireAdmin", group: "categories", takesReq: true },
@@ -134,6 +183,24 @@ export const PROTECTED_API_ROUTES: ProtectedRoute[] = [
 type Handler = (req?: NextRequest) => Promise<Response>;
 
 const HANDLERS: Record<string, Handler> = {
+  "GET /api/strategy/export": strategyExport.GET as Handler,
+  "POST /api/strategy/observations": strategyObservations.POST as Handler,
+  "DELETE /api/strategy/observations": strategyObservations.DELETE as Handler,
+  "POST /api/strategy/component-entries": strategyComponentEntries.POST as Handler,
+  "DELETE /api/strategy/component-entries": strategyComponentEntries.DELETE as Handler,
+  "POST /api/strategy/distributions": strategyDistributions.POST as Handler,
+  "DELETE /api/strategy/distributions": strategyDistributions.DELETE as Handler,
+  "GET /api/strategy/distribution-bands": strategyDistributionBands.GET as Handler,
+  "POST /api/strategy/distribution-bands": strategyDistributionBands.POST as Handler,
+  "PATCH /api/strategy/distribution-bands": strategyDistributionBands.PATCH as Handler,
+  "POST /api/strategy/configurations": strategyConfigurations.POST as Handler,
+  "PATCH /api/strategy/configurations": strategyConfigurations.PATCH as Handler,
+  "POST /api/strategy/components": strategyComponents.POST as Handler,
+  "PATCH /api/strategy/components": strategyComponents.PATCH as Handler,
+  "POST /api/strategy/targets": strategyTargets.POST as Handler,
+  "PATCH /api/strategy/targets": strategyTargets.PATCH as Handler,
+  "PATCH /api/strategy/goals": strategyGoals.PATCH as Handler,
+  "PATCH /api/strategy/memberships": strategyMemberships.PATCH as Handler,
   "POST /api/breakdowns": breakdowns.POST as Handler,
   "DELETE /api/breakdowns": breakdowns.DELETE as Handler,
   "POST /api/categories": categories.POST as Handler,

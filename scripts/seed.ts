@@ -16,9 +16,25 @@ import {
 import { upsertGoal } from "../src/features/goals";
 import { upsertBreakdown, upsertEntry } from "../src/features/metrics/server";
 import { getDb, transaction } from "../src/lib/db";
+import { ensureStrategicPlanConfiguration } from "../src/features/strategy/server";
 
 function resetStrategicPlanData(): void {
   const db = getDb();
+  // Schema-10 strategy sidecars use RESTRICT foreign keys so no strategic
+  // history or definition can disappear through an ordinary entity delete.
+  // `db:seed` is the one explicit disposable-data reset, so clear those rows
+  // deliberately in dependency order before replacing the legacy sample set.
+  db.exec("DELETE FROM strategic_audit_events;");
+  db.exec("DELETE FROM distribution_values;");
+  db.exec("DELETE FROM distribution_observations;");
+  db.exec("DELETE FROM distribution_bands;");
+  db.exec("DELETE FROM kpi_component_entries;");
+  db.exec("DELETE FROM kpi_targets;");
+  db.exec("DELETE FROM kpi_components;");
+  db.exec("DELETE FROM kpi_observations;");
+  db.exec("DELETE FROM goal_kpis;");
+  db.exec("DELETE FROM strategic_goals;");
+  db.exec("DELETE FROM kpi_measurement_configs;");
   db.exec("DELETE FROM entry_history;");
   db.exec("DELETE FROM breakdown_entries;");
   db.exec("DELETE FROM monthly_entries;");
@@ -114,10 +130,11 @@ function main(): void {
     }
   });
 
+  const strategicConfiguration = ensureStrategicPlanConfiguration();
   ensureSeedAdmin();
   const kpis = listKPIs();
   console.log(
-    `\nSeed complete. ${kpis.length} KPIs ready across ${STRATEGIC_PLAN_YEARS[0]}–${STRATEGIC_PLAN_YEARS[STRATEGIC_PLAN_YEARS.length - 1]} (${entryCount} values, ${goalCount} goals).`,
+    `\nSeed complete. ${kpis.length} KPIs and ${strategicConfiguration.goals.created + strategicConfiguration.goals.updated + strategicConfiguration.goals.unchanged} strategic goals ready across ${STRATEGIC_PLAN_YEARS[0]}–${STRATEGIC_PLAN_YEARS[STRATEGIC_PLAN_YEARS.length - 1]} (${entryCount} values, ${goalCount} legacy KPI targets).`,
   );
 }
 

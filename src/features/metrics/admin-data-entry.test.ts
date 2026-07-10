@@ -175,6 +175,12 @@ describe("admin data-entry draft helpers", () => {
     expect(isMonthlyBreakdownKpi(breakdownKpi, rows)).toBe(true);
     expect(listBreakdownEditMonths({ kpi: breakdownKpi, breakdowns: rows, year: 2026 })).toEqual([1, 2]);
     expect(isMonthlyBreakdownKpi(kpi({ unit_type: "count" }), rows)).toBe(false);
+    expect(
+      isMonthlyBreakdownKpi(
+        kpi({ id: 8, unit_type: "breakdown", reporting_frequency: "monthly" }),
+        [],
+      ),
+    ).toBe(true);
   });
 
   it("keeps monthly breakdown editing away from the annual month-zero slot", () => {
@@ -247,6 +253,7 @@ describe("admin data-entry draft helpers", () => {
     const rows = [
       breakdown({ id: 1, kpi_id: 7, year: 2026, month: ANNUAL_ENTRY_MONTH, label: "Foundations", value: 10 }),
       breakdown({ id: 2, kpi_id: 7, year: 2025, month: ANNUAL_ENTRY_MONTH, label: "Foundations", value: 8 }),
+      breakdown({ id: 3, kpi_id: 7, year: 2026, month: 4, label: "Stray monthly", value: 99 }),
     ];
 
     expect(buildBreakdownDrafts({

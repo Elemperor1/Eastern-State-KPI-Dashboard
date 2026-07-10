@@ -34,6 +34,19 @@ async function expectPdfDownload(download: Download): Promise<void> {
   const bytes = await readFile(filePath!);
   expect(bytes.subarray(0, 5).toString("ascii")).toBe("%PDF-");
   expect(bytes.byteLength).toBeGreaterThan(10_000);
+  expect(bytes.byteLength).toBeLessThan(50_000_000);
+}
+
+async function expectStrategicCsvDownload(download: Download): Promise<void> {
+  expect(download.suggestedFilename()).toMatch(/\.csv$/);
+  const filePath = await download.path();
+  expect(filePath).not.toBeNull();
+  const body = await readFile(filePath!, "utf8");
+  expect(body).toContain("Organization Completion Percentage");
+  expect(body).toContain("Annual Pacing Target");
+  expect(body).toContain("Full Plan Actual Progress Percentage");
+  expect(body).toContain("Demographic Respondent Total");
+  expect(body).not.toMatch(/(?:NaN|undefined|Infinity)/);
 }
 
 async function deleteGoalIfPresent(page: Page): Promise<void> {
@@ -157,6 +170,15 @@ test("shows an annual save error, retries, and restores the sample value", async
 test("navigates through desktop and mobile application shells", async ({ page }) => {
   const browserErrors = collectBrowserErrors(page);
   await page.goto("/dashboard/overview");
+  const desktopNavigation = page.getByRole("navigation", { name: "Primary" });
+  await expect(desktopNavigation.getByRole("link")).toHaveCount(4);
+  await expect(desktopNavigation.getByRole("link", { name: "Overview" })).toBeVisible();
+  await expect(desktopNavigation.getByRole("link", { name: "Trends" })).toBeVisible();
+  await expect(desktopNavigation.getByRole("link", { name: "Data entry" })).toBeVisible();
+  await expect(desktopNavigation.getByRole("link", { name: "Administration" })).toBeVisible();
+  await expect(desktopNavigation.getByRole("link", { name: "Strategic values" })).toHaveCount(0);
+  await expect(desktopNavigation.getByRole("link", { name: "Strategic goals" })).toHaveCount(0);
+  await expect(desktopNavigation.getByRole("link", { name: "Configuration gaps" })).toHaveCount(0);
   await page.getByRole("link", { name: "Trends" }).click();
   await expect(page).toHaveURL(/\/dashboard\/trends$/);
   await expect(
@@ -166,12 +188,71 @@ test("navigates through desktop and mobile application shells", async ({ page })
   await page.setViewportSize({ width: 390, height: 844 });
   await page.goto("/dashboard/overview");
   await page.getByRole("button", { name: "Open navigation" }).click();
-  await expect(page.getByRole("navigation", { name: "Primary" })).toBeVisible();
+  const mobileNavigation = page.getByRole("navigation", { name: "Primary" });
+  await expect(mobileNavigation).toBeVisible();
+  await expect(mobileNavigation.getByRole("link")).toHaveCount(4);
   await page.getByRole("link", { name: "Data entry" }).click();
   await expect(page).toHaveURL(/\/admin\/data$/);
   await expect(
     page.getByRole("heading", { name: "Enter monthly, annual, and breakdown values" }),
   ).toBeVisible();
+  expect(browserErrors).toEqual([]);
+});
+
+test("keeps the executive overview concise and exposes strategic administration", async ({
+  page,
+}) => {
+  const browserErrors = collectBrowserErrors(page);
+  await page.goto("/dashboard/overview?currentYear=2026&compareYear=2025");
+  await expect(
+    page.getByRole("heading", { name: "Strategic plan progress" }),
+  ).toBeVisible();
+  await expect(page.getByText("Goals completed", { exact: true })).toBeVisible();
+  await expect(
+    page
+      .getByLabel("Strategic plan progress")
+      .getByText(/\d+ of \d+ goals completed/)
+      .first(),
+  ).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Performance by area" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Goal completion by priority" })).toHaveCount(0);
+  await expect(page.locator("section[aria-labelledby='strategic-goals-overview-title']")).toHaveCount(0);
+  await expect(page.locator("section[aria-label='Categories']").getByRole("link")).toHaveCount(5);
+
+  await page.goto("/admin/configuration-gaps");
+  await expect(page.getByRole("heading", { name: "Configuration gaps", level: 1 })).toBeVisible();
+  await expect(page.getByText("Need targets", { exact: true })).toBeVisible();
+  await expect(page.getByText("Need definitions", { exact: true })).toBeVisible();
+  const editorLink = page.getByRole("link", { name: /Open KPI editor for/ }).first();
+  await expect(editorLink).toBeVisible();
+  await editorLink.click();
+  await expect(page).toHaveURL(/\/admin\/kpis\/\d+$/);
+  await expect(page.getByText("Measurement", { exact: true })).toBeVisible();
+  await expect(page.getByText(/Targets \(\d+\)/)).toBeVisible();
+  await expect(page.getByText(/Components \(\d+\)/)).toBeVisible();
+
+  await page.goto("/admin/strategy-data");
+  await expect(page.getByRole("heading", { name: "Strategic data entry" })).toBeVisible();
+  await page.getByLabel("Strategic KPI", { exact: true }).selectOption({
+    label:
+      "Modernized Exhibits — Exhibits with interactive/digital elements — Reimagine Visitor Experience",
+  });
+  await expect(page).toHaveURL(/\/admin\/strategy-data\?year=\d{4}&kpi=\d+/);
+  await expect(page.getByText("No month selector is required for this frequency.")).toBeVisible();
+  await expect(page.getByLabel("Month")).toHaveCount(0);
+  await expect(page.getByText(/month 0/i)).toHaveCount(0);
+
+  await page.goto("/admin/strategic-goals");
+  await expect(page.getByRole("heading", { name: "Strategic goals" })).toBeVisible();
+  await expect(page.getByText("Completion logic", { exact: true })).toBeVisible();
+  await expect(page.getByText("KPI membership", { exact: true })).toBeVisible();
+
+  await page.goto("/admin");
+  await expect(page.getByRole("heading", { name: "Administration", level: 1 })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Enter data" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Configure and review" })).toBeVisible();
+  await expect(page.getByRole("link", { name: /Strategic data entry/ })).toBeVisible();
+  await expect(page.getByRole("link", { name: /Configuration gaps/ })).toBeVisible();
   expect(browserErrors).toEqual([]);
 });
 
@@ -181,16 +262,31 @@ test("downloads representative strategic-plan exports and renders native print P
   const browserErrors = collectBrowserErrors(page);
 
   await page.goto("/dashboard/overview");
-  await expect(page.getByText(/Goals \(13\)/)).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Performance by area" })).toBeVisible();
+  let downloadPromise = page.waitForEvent("download");
+  await page
+    .getByRole("button", { name: /Download .*\.csv$/ })
+    .click();
+  await expectStrategicCsvDownload(await downloadPromise);
+
+  downloadPromise = page.waitForEvent("download");
+  await page.getByRole("button", { name: "Export current view as PNG image" }).click();
+  await expectPngDownload(await downloadPromise);
+
+  downloadPromise = page.waitForEvent("download");
+  await page.getByRole("button", { name: "Export current dashboard view as PDF" }).click();
+  await expectPdfDownload(await downloadPromise);
 
   await page.goto("/dashboard/category/visitor-experience");
   await expect(
     page.getByRole("heading", { name: "Reimagine Visitor Experience" }),
   ).toBeVisible();
   await expect(
-    page.getByRole("heading", { name: "Interpretive Site Plan", exact: true }),
+    page.getByRole("heading", {
+      name: /Interpretive Site Plan — Milestones completed on schedule/,
+    }),
   ).toBeVisible();
-  let downloadPromise = page.waitForEvent("download");
+  downloadPromise = page.waitForEvent("download");
   await page.getByRole("button", { name: "Export current view as PNG image" }).click();
   await expectPngDownload(await downloadPromise);
 

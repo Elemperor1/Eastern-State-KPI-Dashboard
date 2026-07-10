@@ -72,15 +72,38 @@ vi.mock("@/features/users/server", () => ({
 }));
 
 vi.mock("@/features/catalog/server", () => ({
+  CatalogEntityNotFoundError: class CatalogEntityNotFoundError extends Error {},
+  DependentEntriesError: class DependentEntriesError extends Error {},
   listKPIs: vi.fn(() => []),
+  getKPI: vi.fn(() => ({ id: 1 })),
   createKPI: vi.fn(() => ({ id: 1 })),
   updateKPI: vi.fn(() => {}),
   deleteKPI: vi.fn(() => {}),
+  archiveKPI: vi.fn(() => {}),
+  restoreKPI: vi.fn(() => {}),
+  retireOrDeleteKPI: vi.fn(() => "deleted"),
   listCategories: vi.fn(() => []),
   createCategory: vi.fn(() => ({ id: 1 })),
   updateCategory: vi.fn(() => {}),
   deleteCategory: vi.fn(() => {}),
+  archiveCategory: vi.fn(() => {}),
+  restoreCategory: vi.fn(() => {}),
+  retireOrDeleteCategory: vi.fn(() => "deleted"),
 }));
+
+vi.mock("@/features/goals", async () => {
+  const actual = await vi.importActual<typeof import("@/features/goals")>(
+    "@/features/goals",
+  );
+  return {
+    ...actual,
+    listGoals: vi.fn(() => []),
+    upsertGoal: vi.fn(() => ({ id: 1 })),
+    updateGoal: vi.fn(() => {}),
+    toggleGoal: vi.fn(() => {}),
+    deleteGoal: vi.fn(() => {}),
+  };
+});
 
 vi.mock("@/features/metrics/server", () => ({
   listEntries: vi.fn(() => []),
@@ -91,6 +114,48 @@ vi.mock("@/features/metrics/server", () => ({
   deleteBreakdown: vi.fn(() => {}),
 }));
 
+vi.mock("@/features/strategy/server", async () => {
+  const actual = await vi.importActual<typeof import("@/features/strategy/server")>(
+    "@/features/strategy/server",
+  );
+  return {
+    ...actual,
+    upsertStrategyObservation: vi.fn(() => ({ id: 1 })),
+    deleteStrategyObservation: vi.fn(() => {}),
+    upsertStrategyComponentEntry: vi.fn(() => ({ id: 1 })),
+    deleteStrategyComponentEntry: vi.fn(() => {}),
+    upsertStrategyDistribution: vi.fn(() => ({ id: 1, bands: [] })),
+    deleteStrategyDistribution: vi.fn(() => {}),
+    createStrategyDistributionBand: vi.fn(() => ({ id: 1 })),
+    updateStrategyDistributionBand: vi.fn(() => ({ id: 1 })),
+    reorderStrategyDistributionBands: vi.fn(() => []),
+    archiveStrategyDistributionBand: vi.fn(() => ({ id: 1 })),
+    restoreStrategyDistributionBand: vi.fn(() => ({ id: 1 })),
+    listEffectiveDistributionBands: vi.fn(() => []),
+    createMeasurementConfiguration: vi.fn(() => ({ id: 1 })),
+    updateMeasurementConfiguration: vi.fn(() => ({ id: 1 })),
+    archiveMeasurementConfig: vi.fn(() => {}),
+    restoreMeasurementConfig: vi.fn(() => {}),
+    getMeasurementConfigRecord: vi.fn(() => ({ id: 1 })),
+    createStrategyComponent: vi.fn(() => ({ id: 1 })),
+    updateStrategyComponent: vi.fn(() => ({ id: 1 })),
+    reorderStrategyComponents: vi.fn(() => []),
+    archiveComponent: vi.fn(() => {}),
+    restoreComponent: vi.fn(() => {}),
+    getComponentRecord: vi.fn(() => ({ id: 1 })),
+    createStrategicTarget: vi.fn(() => ({ id: 1 })),
+    updateStrategicTarget: vi.fn(() => ({ id: 1 })),
+    archiveTarget: vi.fn(() => {}),
+    restoreTarget: vi.fn(() => {}),
+    getTargetRecord: vi.fn(() => ({ id: 1 })),
+    updateStrategicGoalSettings: vi.fn(() => ({ id: 1 })),
+    updateStrategicGoalMembership: vi.fn(() => ({ id: 1 })),
+    archiveStrategicGoal: vi.fn(() => {}),
+    restoreStrategicGoal: vi.fn(() => {}),
+    getStrategicGoalRecord: vi.fn(() => ({ id: 1 })),
+  };
+});
+
 // Handlers under test.
 import * as users from "@/app/api/users/route";
 import * as usersAccount from "@/app/api/users/account/route";
@@ -99,6 +164,16 @@ import * as entries from "@/app/api/entries/route";
 import * as breakdowns from "@/app/api/breakdowns/route";
 import * as kpis from "@/app/api/kpis/route";
 import * as categories from "@/app/api/categories/route";
+import * as goals from "@/app/api/goals/route";
+import * as strategyObservations from "@/app/api/strategy/observations/route";
+import * as strategyComponentEntries from "@/app/api/strategy/component-entries/route";
+import * as strategyDistributions from "@/app/api/strategy/distributions/route";
+import * as strategyDistributionBands from "@/app/api/strategy/distribution-bands/route";
+import * as strategyConfigurations from "@/app/api/strategy/configurations/route";
+import * as strategyComponents from "@/app/api/strategy/components/route";
+import * as strategyTargets from "@/app/api/strategy/targets/route";
+import * as strategyGoals from "@/app/api/strategy/goals/route";
+import * as strategyMemberships from "@/app/api/strategy/memberships/route";
 
 const CSRF_COOKIE = "eastern_state_kpi_csrf";
 const TOKEN = "test-csrf-token-0123456789abcdef";
@@ -115,6 +190,38 @@ interface Case {
 }
 
 const CASES: Case[] = [
+  { name: "POST /api/strategy/observations", method: "POST", path: "/api/strategy/observations", handler: strategyObservations.POST, okStatus: 201,
+    body: { kpi_id: 1, reporting_year: 2026, value: 10 } },
+  { name: "DELETE /api/strategy/observations", method: "DELETE", path: "/api/strategy/observations", handler: strategyObservations.DELETE, okStatus: 200,
+    body: { id: 1 } },
+  { name: "POST /api/strategy/component-entries", method: "POST", path: "/api/strategy/component-entries", handler: strategyComponentEntries.POST, okStatus: 201,
+    body: { component_id: 1, reporting_year: 2026, value: 10 } },
+  { name: "DELETE /api/strategy/component-entries", method: "DELETE", path: "/api/strategy/component-entries", handler: strategyComponentEntries.DELETE, okStatus: 200,
+    body: { id: 1 } },
+  { name: "POST /api/strategy/distributions", method: "POST", path: "/api/strategy/distributions", handler: strategyDistributions.POST, okStatus: 201,
+    body: { kpi_id: 1, reporting_year: 2026, respondent_count: 1, bands: [{ slug: "known", label: "Known", count: 1, display_order: 0 }] } },
+  { name: "DELETE /api/strategy/distributions", method: "DELETE", path: "/api/strategy/distributions", handler: strategyDistributions.DELETE, okStatus: 200,
+    body: { id: 1 } },
+  { name: "POST /api/strategy/distribution-bands", method: "POST", path: "/api/strategy/distribution-bands", handler: strategyDistributionBands.POST, okStatus: 201,
+    body: { kpi_id: 1, slug: "known", label: "Known", effective_from_year: 2025, display_order: 0 } },
+  { name: "PATCH /api/strategy/distribution-bands", method: "PATCH", path: "/api/strategy/distribution-bands", handler: strategyDistributionBands.PATCH, okStatus: 200,
+    body: { action: "archive", id: 1 } },
+  { name: "POST /api/strategy/configurations", method: "POST", path: "/api/strategy/configurations", handler: strategyConfigurations.POST, okStatus: 201,
+    body: { kpi_id: 1, measurement_type: "count", unit: "items", numerator_label: null, denominator_label: null, fixed_denominator: null, baseline_value: null, reporting_frequency: "annual", aggregation_method: "none", board_level_status: "not_reported", calculation_precision: 1, allow_score_over_max: false, effective_start_year: 2025, effective_end_year: 2029, configuration_status: "active", unresolved_question: null, owner: null, due_date: null, resolution_notes: null, source_reference: null, last_reviewed_date: null } },
+  { name: "PATCH /api/strategy/configurations", method: "PATCH", path: "/api/strategy/configurations", handler: strategyConfigurations.PATCH, okStatus: 200,
+    body: { action: "archive", id: 1 } },
+  { name: "POST /api/strategy/components", method: "POST", path: "/api/strategy/components", handler: strategyComponents.POST, okStatus: 201,
+    body: { configuration_id: 1, slug: "visits", label: "Visits", measurement_type: "count", unit: "visits", display_order: 0, configuration_status: "draft" } },
+  { name: "PATCH /api/strategy/components", method: "PATCH", path: "/api/strategy/components", handler: strategyComponents.PATCH, okStatus: 200,
+    body: { action: "archive", id: 1 } },
+  { name: "POST /api/strategy/targets", method: "POST", path: "/api/strategy/targets", handler: strategyTargets.POST, okStatus: 201,
+    body: { kpi_id: 1, target_scope: "full_plan", target_year: 2029, target_value: 0 } },
+  { name: "PATCH /api/strategy/targets", method: "PATCH", path: "/api/strategy/targets", handler: strategyTargets.PATCH, okStatus: 200,
+    body: { action: "archive", id: 1 } },
+  { name: "PATCH /api/strategy/goals", method: "PATCH", path: "/api/strategy/goals", handler: strategyGoals.PATCH, okStatus: 200,
+    body: { action: "archive", id: 1 } },
+  { name: "PATCH /api/strategy/memberships", method: "PATCH", path: "/api/strategy/memberships", handler: strategyMemberships.PATCH, okStatus: 200,
+    body: { id: 1, role: "informational", weight: 1, display_order: 0 } },
   { name: "POST /api/users", method: "POST", path: "/api/users", handler: users.POST, okStatus: 201,
     body: { email: "new@x.test", name: "New", password: "password123", role: "viewer" } },
   { name: "PATCH /api/users", method: "PATCH", path: "/api/users", handler: users.PATCH, okStatus: 200,
@@ -144,6 +251,12 @@ const CASES: Case[] = [
   { name: "PATCH /api/categories", method: "PATCH", path: "/api/categories", handler: categories.PATCH, okStatus: 200,
     body: { id: 1, name: "C2" } },
   { name: "DELETE /api/categories", method: "DELETE", path: "/api/categories", handler: categories.DELETE, okStatus: 200,
+    body: { id: 1 } },
+  { name: "POST /api/goals", method: "POST", path: "/api/goals", handler: goals.POST, okStatus: 201,
+    body: { kpi_id: 1, target_year: 2029, baseline_year: 2026, goal_type: "number", target_value: 3 } },
+  { name: "PATCH /api/goals", method: "PATCH", path: "/api/goals", handler: goals.PATCH, okStatus: 200,
+    body: { id: 1, enabled: true } },
+  { name: "DELETE /api/goals", method: "DELETE", path: "/api/goals", handler: goals.DELETE, okStatus: 200,
     body: { id: 1 } },
 ];
 

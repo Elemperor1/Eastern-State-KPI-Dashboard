@@ -1,8 +1,6 @@
 "use client";
 
 import { cn } from "@/lib/utils";
-import { Input } from "./Input";
-import { Select } from "./Select";
 
 export interface FormFieldProps extends React.HTMLAttributes<HTMLDivElement> {
   label: React.ReactNode;
@@ -22,5 +20,3 @@ export function FormField({ label, htmlFor, hint, children, className, ...props 
     </div>
   );
 }
-
-export { Input, Select };

@@ -165,7 +165,9 @@ export function listUsers(): User[] {
  *
  * The hash write, the flag write, and the sessions_valid_after watermark bump
  * all run in a single transaction so a torn update can never leave a row with a
- * new hash but stale revocation state.
+ * new hash but stale revocation state. The SQL bump is strictly monotonic: even
+ * when a session and this change share the same Date.now() millisecond, the new
+ * watermark is at least the previous value + 1 and therefore revokes it.
  */
 export function updateUserPassword(
   id: number,
@@ -177,34 +179,45 @@ export function updateUserPassword(
   const now = Date.now();
   transaction(() => {
     db.prepare(
-      "UPDATE users SET password_hash = ?, must_change_password = ?, sessions_valid_after = ? WHERE id = ?",
+      `UPDATE users
+       SET password_hash = ?,
+           must_change_password = ?,
+           sessions_valid_after = MAX(?, sessions_valid_after + 1)
+       WHERE id = ?`,
     ).run(hash, mustChange ? 1 : 0, now, id);
   });
 }
 
 /**
- * Change a user's role and bump the revocation watermark atomically so every
- * currently issued session is invalidated immediately.
+ * Change a user's role and bump the revocation watermark atomically and
+ * monotonically so every currently issued session is invalidated immediately.
  */
 export function updateUserRole(id: number, role: Role): void {
   const db = getDb();
   const now = Date.now();
   transaction(() => {
     db.prepare(
-      "UPDATE users SET role = ?, sessions_valid_after = ? WHERE id = ?",
+      `UPDATE users
+       SET role = ?,
+           sessions_valid_after = MAX(?, sessions_valid_after + 1)
+       WHERE id = ?`,
     ).run(role, now, id);
   });
 }
 
 /**
- * Enable or disable a user account and bump the revocation watermark atomically.
+ * Enable or disable a user account and bump the revocation watermark atomically
+ * and monotonically.
  */
 export function setUserDisabled(id: number, disabled: boolean): void {
   const db = getDb();
   const now = Date.now();
   transaction(() => {
     db.prepare(
-      "UPDATE users SET disabled = ?, sessions_valid_after = ? WHERE id = ?",
+      `UPDATE users
+       SET disabled = ?,
+           sessions_valid_after = MAX(?, sessions_valid_after + 1)
+       WHERE id = ?`,
     ).run(disabled ? 1 : 0, now, id);
   });
 }

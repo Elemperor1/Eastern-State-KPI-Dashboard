@@ -96,10 +96,10 @@ describe("admin catalog view helpers", () => {
         name: "Overall donors",
       }),
     ).toEqual({
-      title: "Delete “Overall donors”?",
+      title: "Archive or delete “Overall donors”?",
       description:
-        "This KPI can be deleted only after its monthly and breakdown entries are cleared. Clearing those entries first preserves their audit history.",
-      confirmLabel: "Delete KPI",
+        "Configured strategic KPIs are archived so their configuration and history remain restorable. Unconfigured legacy KPIs are deleted only after their monthly and breakdown entries are cleared.",
+      confirmLabel: "Continue",
     });
   });
 
@@ -111,10 +111,10 @@ describe("admin catalog view helpers", () => {
         name: "Fundraising",
       }),
     ).toEqual({
-      title: "Delete “Fundraising”?",
+      title: "Archive or delete “Fundraising”?",
       description:
-        "This category can be deleted only after entries for all of its KPIs are cleared. Deleting the category then removes its KPI definitions while preserving recorded audit history.",
-      confirmLabel: "Delete category",
+        "Configured strategic priorities are archived with their goals, KPIs, and history preserved. Unconfigured legacy categories are deleted only after dependent entries are cleared.",
+      confirmLabel: "Continue",
     });
   });
 

@@ -53,6 +53,17 @@ export function CategoryPageClient({
 
   const printId = `category-${categorySlug}-print`;
   const { category } = model;
+  const allowMonth =
+    model.monthlyBreakdowns.length > 0 ||
+    model.metricCards.some((metric) => {
+      const frequency = metric.strategic?.reportingFrequency;
+      if (frequency) {
+        return frequency === "monthly" ||
+          frequency === "quarterly" ||
+          frequency === "flexible";
+      }
+      return metric.kpi.reporting_frequency === "monthly";
+    });
 
   return (
     <div className="page-content page-content-wide page-enter">
@@ -64,7 +75,9 @@ export function CategoryPageClient({
           filters={[
             { label: "Current Year", value: String(state.currentYear) },
             { label: "Compare Year", value: String(state.compareYear) },
-            { label: "Through Month", value: MONTH_FULL[state.currentMonth - 1] },
+            ...(allowMonth
+              ? [{ label: "Through Month", value: MONTH_FULL[state.currentMonth - 1] }]
+              : []),
           ]}
         />
         <Breadcrumb href="/dashboard/overview" label="All categories" />
@@ -92,11 +105,20 @@ export function CategoryPageClient({
           }
         />
 
-        <DashboardControls state={state} availableYears={data.years} onChange={updateState} />
+        <DashboardControls
+          state={state}
+          availableYears={data.years}
+          onChange={updateState}
+          allowMonth={allowMonth}
+        />
 
         <CategoryMetricGrid
           groups={model.metricGroups}
-          title={`${MONTH_FULL[state.currentMonth - 1]} ${state.currentYear} vs ${state.compareYear}`}
+          title={
+            allowMonth
+              ? `${MONTH_FULL[state.currentMonth - 1]} ${state.currentYear} vs ${state.compareYear}`
+              : `${state.currentYear} vs ${state.compareYear}`
+          }
           onMetricSelect={(slug) => router.push(`/dashboard/metric/${slug}`)}
         />
 

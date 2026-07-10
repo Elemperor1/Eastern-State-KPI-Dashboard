@@ -22,6 +22,7 @@ interface BuildCategorySummaryArgs extends ReportingData {
   category: Category;
   period: ComparePeriod;
   goals?: KpiGoalWithMeta[];
+  strategicSummary?: DashboardData["strategicSummary"];
 }
 
 export function buildCategoryMetricMovement({
@@ -102,6 +103,7 @@ export function buildCategoryOverviewSummary({
   breakdowns,
   period,
   goals = [],
+  strategicSummary,
 }: BuildCategorySummaryArgs): CategoryOverviewSummary {
   const categoryKpis = kpis.filter((kpi) => kpi.category_id === category.id);
   const metrics = categoryKpis.map((kpi) =>
@@ -133,6 +135,9 @@ export function buildCategoryOverviewSummary({
           goalProgress.length,
       )
     : null;
+  const strategicPriority = strategicSummary?.priorities.find(
+    (priority) => priority.priorityId === String(category.id),
+  );
 
   return {
     category,
@@ -145,6 +150,11 @@ export function buildCategoryOverviewSummary({
     topMover,
     goalCount: activeGoals.length,
     averageGoalProgress,
+    completedStrategicGoals: strategicPriority?.completedGoalsCount ?? 0,
+    eligibleStrategicGoals: strategicPriority?.totalEligibleGoalsCount ?? 0,
+    strategicGoalCompletionPercentage:
+      strategicPriority?.completionPercentage ?? null,
+    excludedStrategicGoals: strategicPriority?.excludedGoalsCount ?? 0,
   };
 }
 
@@ -157,6 +167,7 @@ export function buildCategoryOverviewSummaries(
       ...data,
       category,
       goals: data.goals,
+      strategicSummary: data.strategicSummary,
       period,
     }),
   );

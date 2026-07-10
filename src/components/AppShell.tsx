@@ -5,13 +5,10 @@ import { usePathname } from "next/navigation";
 import { useState } from "react";
 import {
   BarChart3,
-  Crosshair,
-  History,
   LayoutDashboard,
   Menu,
   Settings,
   TrendingUp,
-  Users,
   X,
 } from "lucide-react";
 import { Avatar, BrandMark, Button } from "@/components/ui";
@@ -19,14 +16,53 @@ import { LogoutButton } from "./LogoutButton";
 import type { SessionUser } from "@/lib/types";
 
 const NAV = [
-  { href: "/dashboard/overview", label: "Overview", icon: LayoutDashboard, group: "Explore" },
-  { href: "/dashboard/trends", label: "Trends", icon: TrendingUp, group: "Explore" },
-  { href: "/admin/data", label: "Data entry", icon: BarChart3, adminOnly: true, group: "Manage" },
-  { href: "/admin/kpis", label: "KPIs", icon: Settings, adminOnly: true, group: "Manage" },
-  { href: "/admin/goals", label: "Goals", icon: Crosshair, adminOnly: true, group: "Manage" },
-  { href: "/admin/history", label: "History", icon: History, adminOnly: true, group: "Manage" },
-  { href: "/admin/users", label: "Team", icon: Users, adminOnly: true, group: "Manage" },
+  {
+    href: "/dashboard/overview",
+    label: "Overview",
+    icon: LayoutDashboard,
+    group: "Dashboard",
+    matches: ["/dashboard/overview"],
+  },
+  {
+    href: "/dashboard/trends",
+    label: "Trends",
+    icon: TrendingUp,
+    group: "Dashboard",
+    matches: ["/dashboard/trends"],
+  },
+  {
+    href: "/admin/data",
+    label: "Data entry",
+    icon: BarChart3,
+    adminOnly: true,
+    group: "Admin",
+    matches: ["/admin/data", "/admin/strategy-data"],
+  },
+  {
+    href: "/admin",
+    label: "Administration",
+    icon: Settings,
+    adminOnly: true,
+    group: "Admin",
+    matches: [
+      "/admin",
+      "/admin/kpis",
+      "/admin/goals",
+      "/admin/strategic-goals",
+      "/admin/configuration-gaps",
+      "/admin/history",
+      "/admin/users",
+    ],
+  },
 ];
+
+function navItemIsActive(item: (typeof NAV)[number], pathname: string): boolean {
+  return item.matches.some((route) =>
+    route === "/admin"
+      ? pathname === route
+      : pathname === route || pathname.startsWith(`${route}/`),
+  );
+}
 
 function NavItem({
   item,
@@ -77,7 +113,7 @@ function ShellNavigation({
                 <NavItem
                   key={item.href}
                   item={item}
-                  active={pathname === item.href || pathname.startsWith(`${item.href}/`)}
+                  active={navItemIsActive(item, pathname)}
                   onClick={onNavigate}
                 />
               ))}
