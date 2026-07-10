@@ -119,7 +119,8 @@ signatures and dimensions, and cleans up every temporary goal/entry it creates.
 - `scripts/migrate.ts` — idempotent production-safe schema/configuration migration; `scripts/seed.ts` is the explicit destructive disposable-data reset (users preserved).
 - `DESIGN.md` (root) — visual language authority. `docs/design-system.md` translates it into component rules.
 
-Current admin surfaces are `/admin/data`, `/admin/strategy-data`,
+Current admin surfaces are `/admin` (the consolidated navigation hub),
+`/admin/data`, `/admin/strategy-data`,
 `/admin/kpis`, `/admin/kpis/[id]`, `/admin/goals`,
 `/admin/strategic-goals`, `/admin/configuration-gaps`, `/admin/history`, and
 `/admin/users`.
