@@ -35,3 +35,14 @@ output/playwright/
 .idea/
 *.swp
 *.swo
+
+# Local AI and editor integrations
+.claude/
+.cursor/
+.opencode/
+.pi/
+.codex/skills/
+
+# OpenKnowledge workspace metadata
+.ok/
+.okignore
