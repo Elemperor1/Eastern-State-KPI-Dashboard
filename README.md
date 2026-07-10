@@ -147,6 +147,7 @@ The schema is versioned (`src/lib/schema-version.json` mirrored into `meta.schem
 | `/dashboard/category/[slug]`   | Individual category page                    | viewer + admin      |
 | `/dashboard/metric/[slug]`     | Individual metric detail view               | viewer + admin      |
 | `/dashboard/trends`            | Multi-KPI, multi-year trend explorer         | viewer + admin      |
+| `/admin`                       | Consolidated administration hub            | admin only          |
 | `/admin/data`                  | Data entry (monthly/annual/breakdown)       | admin only          |
 | `/admin/strategy-data`         | Strategic raw-value data entry              | admin only          |
 | `/admin/kpis`                  | Manage KPIs and categories                  | admin only          |
