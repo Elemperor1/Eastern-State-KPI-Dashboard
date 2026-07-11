@@ -22,16 +22,20 @@ vi.mock("@/features/auth/session", () => ({
 }));
 
 const {
+  archiveCategoryMock,
   createCategoryMock,
-  deleteCategoryMock,
   listCategoriesMock,
   listKPIsMock,
+  restoreCategoryMock,
+  retireOrDeleteCategoryMock,
   updateCategoryMock,
 } = vi.hoisted(() => ({
+  archiveCategoryMock: vi.fn(),
   createCategoryMock: vi.fn(),
-  deleteCategoryMock: vi.fn(),
   listCategoriesMock: vi.fn(),
   listKPIsMock: vi.fn(),
+  restoreCategoryMock: vi.fn(),
+  retireOrDeleteCategoryMock: vi.fn(),
   updateCategoryMock: vi.fn(),
 }));
 
@@ -41,10 +45,12 @@ vi.mock("@/features/catalog/server", async () => {
   );
   return {
     ...actual,
+    archiveCategory: archiveCategoryMock,
     createCategory: createCategoryMock,
-    deleteCategory: deleteCategoryMock,
     listCategories: listCategoriesMock,
     listKPIs: listKPIsMock,
+    restoreCategory: restoreCategoryMock,
+    retireOrDeleteCategory: retireOrDeleteCategoryMock,
     updateCategory: updateCategoryMock,
   };
 });
@@ -88,10 +94,12 @@ function mutationReq(method: "POST" | "PATCH" | "DELETE", body: object): NextReq
 }
 
 beforeEach(() => {
+  archiveCategoryMock.mockReset();
   createCategoryMock.mockReset();
-  deleteCategoryMock.mockReset();
   listCategoriesMock.mockReset();
   listKPIsMock.mockReset();
+  restoreCategoryMock.mockReset();
+  retireOrDeleteCategoryMock.mockReset();
   updateCategoryMock.mockReset();
 
   createCategoryMock.mockReturnValue({
@@ -101,6 +109,7 @@ beforeEach(() => {
   });
   listCategoriesMock.mockReturnValue(REFRESHED_CATEGORIES);
   listKPIsMock.mockReturnValue(REFRESHED_KPIS);
+  retireOrDeleteCategoryMock.mockReturnValue("deleted");
 });
 
 describe("/api/categories refreshed mutation payloads", () => {
@@ -149,13 +158,28 @@ describe("/api/categories refreshed mutation payloads", () => {
     });
   });
 
+  it("PATCH restores an archived strategic priority with the authenticated actor", async () => {
+    const res = await PATCH(
+      mutationReq("PATCH", { action: "restore", id: 8 }),
+    );
+
+    expect(res.status).toBe(200);
+    expect(restoreCategoryMock).toHaveBeenCalledWith(8, ADMIN.id);
+    expect(updateCategoryMock).not.toHaveBeenCalled();
+    await expect(res.json()).resolves.toMatchObject({
+      ok: true,
+      lifecycle: "restored",
+    });
+  });
+
   it("DELETE returns refreshed catalog data after removing a category", async () => {
     const res = await DELETE(mutationReq("DELETE", { id: 8 }));
 
     expect(res.status).toBe(200);
-    expect(deleteCategoryMock).toHaveBeenCalledWith(8);
+    expect(retireOrDeleteCategoryMock).toHaveBeenCalledWith(8, ADMIN.id);
     await expect(res.json()).resolves.toMatchObject({
       ok: true,
+      lifecycle: "deleted",
       categories: REFRESHED_CATEGORIES,
       kpis: REFRESHED_KPIS,
     });

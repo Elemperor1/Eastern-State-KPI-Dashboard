@@ -158,6 +158,32 @@ const period: ComparePeriod = {
 };
 
 const data: DashboardData = {
+  strategicBoardReport: {
+    organizationName: "Eastern State",
+    selectedYear: 2026,
+    organizationGoalCompletion: {
+      completedGoalsCount: 0,
+      totalEligibleGoalsCount: 0,
+      completionPercentage: null,
+      excludedGoalsCount: 0,
+      excludedGoalReasons: [],
+      countLabel: "0 of 0 goals completed",
+    },
+    priorities: [],
+    unresolvedReasons: [],
+  },
+  strategicSummary: {
+    selectedYear: 2026,
+    organization: {
+      completedGoalsCount: 0,
+      totalEligibleGoalsCount: 0,
+      completionPercentage: null,
+      excludedGoalsCount: 0,
+      excludedGoalReasons: [],
+    },
+    priorities: [],
+    goals: [],
+  },
   categories: [category],
   kpis: [
     visitorsKpi,

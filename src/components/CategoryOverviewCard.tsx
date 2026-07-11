@@ -1,7 +1,6 @@
 "use client";
 
-import { ChevronRight, Crosshair, TrendingUp, TrendingDown, Minus } from "lucide-react";
-import clsx from "clsx";
+import { ChevronRight, TrendingUp, TrendingDown, Minus } from "lucide-react";
 import { CardAction, Progress } from "@/components/ui";
 import type { CategoryOverviewSummary } from "@/features/reporting/types";
 
@@ -20,10 +19,10 @@ export function CategoryOverviewCard({
     declining,
     flat,
     total,
-    pctImproving,
-    topMover,
-    goalCount,
-    averageGoalProgress,
+    completedStrategicGoals,
+    eligibleStrategicGoals,
+    strategicGoalCompletionPercentage,
+    excludedStrategicGoals,
   } = summary;
 
   return (
@@ -62,14 +61,37 @@ export function CategoryOverviewCard({
       <div className="mb-4">
         <div className="mb-2 flex items-center justify-between">
           <span className="text-[10px] font-semibold uppercase tracking-[0.08em] text-ink-500">
-            Improving YoY
+            Strategic goals completed
           </span>
-          <span className="text-sm font-semibold tabular text-ink-900">{pctImproving}%</span>
+          <span className="text-sm font-semibold tabular text-ink-900">
+            {strategicGoalCompletionPercentage === null
+              ? "Not available"
+              : `${strategicGoalCompletionPercentage}%`}
+          </span>
         </div>
-        <Progress value={pctImproving} color={accent} />
+        <Progress
+          value={strategicGoalCompletionPercentage ?? 0}
+          color={accent}
+          aria-label={`${category.name} strategic goal completion`}
+          aria-valuetext={`${completedStrategicGoals} of ${eligibleStrategicGoals} goals completed`}
+        />
+        <div className="mt-2 flex flex-wrap items-center justify-between gap-2 text-sm">
+          <span className="font-semibold tabular text-ink-900">
+            {completedStrategicGoals} of {eligibleStrategicGoals} goals completed
+          </span>
+          {excludedStrategicGoals > 0 ? (
+            <span className="font-medium text-[var(--color-warning-text)]">
+              {excludedStrategicGoals} excluded
+            </span>
+          ) : null}
+        </div>
       </div>
 
-      <div className="flex items-center gap-4 text-sm">
+      <div className="border-t border-ink-100 pt-4">
+        <p className="mb-2 text-[10px] font-semibold uppercase tracking-[0.08em] text-ink-500">
+          Selected-year comparison
+        </p>
+        <div className="flex items-center gap-4 text-sm">
         <span className="inline-flex items-center gap-1.5 font-medium text-[var(--color-success-text)]" aria-label={`${improving} improving`}>
           <TrendingUp className="w-3.5 h-3.5" aria-hidden /> {improving}
         </span>
@@ -79,50 +101,9 @@ export function CategoryOverviewCard({
         <span className="inline-flex items-center gap-1.5 font-medium text-ink-500" aria-label={`${flat} unchanged`}>
           <Minus className="w-3.5 h-3.5" aria-hidden /> {flat}
         </span>
+        </div>
       </div>
 
-      {goalCount > 0 ? (
-        <div className="mt-5 border-t border-ink-100 pt-4">
-          <div className="mb-2 flex items-center justify-between">
-            <span className="inline-flex items-center gap-1.5 text-[10px] font-semibold uppercase tracking-[0.08em] text-ink-500">
-              <Crosshair className="size-3" aria-hidden /> Goals ({goalCount})
-            </span>
-            <span className="text-sm font-semibold tabular text-ink-900">
-              {averageGoalProgress !== null ? `${averageGoalProgress}%` : "—"}
-            </span>
-          </div>
-          {averageGoalProgress !== null ? (
-            <Progress value={averageGoalProgress} color={accent} />
-          ) : (
-            <p className="text-xs text-ink-400">No target-year data yet</p>
-          )}
-        </div>
-      ) : null}
-
-      {topMover && topMover.pct !== null ? (
-        <div
-          className="mt-5 hidden items-baseline gap-1 text-sm sm:flex"
-          data-raster-export-text
-        >
-          <span className="shrink-0 whitespace-nowrap text-ink-500">Top mover: </span>
-          <span
-            className="min-w-0 truncate font-medium text-ink-900"
-            data-raster-export-text
-          >
-            {topMover.kpi.name}
-          </span>
-          <span
-            className={clsx(
-              "tabular ml-auto shrink-0 font-medium",
-              topMover.favorable ? "text-[var(--color-success-text)]" : "text-[var(--color-danger-text)]",
-            )}
-          >
-            {topMover.kpi.unit_type === "percent"
-              ? `${topMover.pct > 0 ? "+" : ""}${topMover.pct.toFixed(1)} pts`
-              : `${topMover.pct > 0 ? "+" : ""}${topMover.pct.toFixed(1)}%`}
-          </span>
-        </div>
-      ) : null}
     </CardAction>
   );
 }

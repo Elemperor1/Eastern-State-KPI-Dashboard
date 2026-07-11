@@ -4,7 +4,11 @@ import path from "node:path";
 export default defineConfig({
   test: {
     environment: "node",
-    include: ["src/**/*.test.ts", "src/**/*.test.tsx"],
+    include: [
+      "src/**/*.test.ts",
+      "src/**/*.test.tsx",
+      "scripts/**/*.test.ts",
+    ],
     coverage: {
       provider: "v8",
       reporter: ["text", "json", "html"],
@@ -18,11 +22,10 @@ export default defineConfig({
       },
     },
   },
-  // The default esbuild config doesn't honor tsconfig.json's `jsx: "preserve"`,
-  // so test files that import .tsx sources (or use JSX themselves) fail to
-  // transform. Tell esbuild to treat .tsx as automatic-JSX.
-  esbuild: {
-    jsx: "automatic",
+  // The default transform honors tsconfig.json's `jsx: "preserve"`, so test
+  // files that import .tsx sources need an explicit automatic-JSX transform.
+  oxc: {
+    jsx: { runtime: "automatic" },
   },
   resolve: {
     alias: {

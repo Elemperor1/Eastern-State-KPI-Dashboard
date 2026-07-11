@@ -1,0 +1,100 @@
+import { beforeEach, describe, expect, it, vi } from "vitest";
+import { NextRequest } from "next/server";
+
+const ADMIN = {
+  id: 7,
+  email: "admin@easternstate.org",
+  name: "Admin",
+  role: "admin" as const,
+  must_change_password: false,
+};
+
+vi.mock("@/features/auth/session", () => ({
+  requireAdmin: vi.fn(async () => ADMIN),
+  authErrorResponse: () => new Response(null, { status: 401 }),
+}));
+
+const { deleteMock, upsertMock } = vi.hoisted(() => ({
+  deleteMock: vi.fn(),
+  upsertMock: vi.fn(),
+}));
+
+vi.mock("@/features/strategy/server", async () => {
+  const actual = await vi.importActual<typeof import("@/features/strategy/server")>(
+    "@/features/strategy/server",
+  );
+  return {
+    ...actual,
+    deleteStrategyObservation: deleteMock,
+    upsertStrategyObservation: upsertMock,
+  };
+});
+
+import {
+  StrategyValueEntryNotFoundError,
+  StrategyValueEntryValidationError,
+} from "@/features/strategy/server";
+import { DELETE, POST } from "./route";
+
+const TOKEN = "test-csrf-token-0123456789abcdef";
+
+function request(method: "POST" | "DELETE", body: unknown): NextRequest {
+  return new NextRequest(
+    new Request("http://localhost/api/strategy/observations", {
+      method,
+      headers: {
+        "content-type": "application/json",
+        origin: "http://localhost",
+        "x-csrf-token": TOKEN,
+        cookie: `eastern_state_kpi_csrf=${TOKEN}`,
+      },
+      body: JSON.stringify(body),
+    }),
+  );
+}
+
+beforeEach(() => {
+  vi.clearAllMocks();
+  upsertMock.mockReturnValue({ id: 11, kpi_id: 4, period_type: "annual" });
+});
+
+describe("/api/strategy/observations", () => {
+  it("upserts an observation as the authenticated admin", async () => {
+    const body = { kpi_id: 4, reporting_year: 2026, value: 12 };
+    const response = await POST(request("POST", body));
+
+    expect(response.status).toBe(201);
+    expect(upsertMock).toHaveBeenCalledWith(body, ADMIN.id);
+    await expect(response.json()).resolves.toEqual({
+      observation: { id: 11, kpi_id: 4, period_type: "annual" },
+    });
+  });
+
+  it("deletes by observation id", async () => {
+    const response = await DELETE(request("DELETE", { id: 11 }));
+    expect(response.status).toBe(200);
+    expect(deleteMock).toHaveBeenCalledWith(11, ADMIN.id);
+  });
+
+  it("returns structured 400 validation failures", async () => {
+    upsertMock.mockImplementationOnce(() => {
+      throw new StrategyValueEntryValidationError("Invalid reporting period.", [
+        { path: "reporting_month", message: "Choose a calendar month." },
+      ]);
+    });
+    const response = await POST(request("POST", { kpi_id: 4 }));
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toMatchObject({
+      error: "Invalid reporting period.",
+      issues: [{ path: "reporting_month" }],
+    });
+  });
+
+  it("returns 404 when a delete races with another writer", async () => {
+    deleteMock.mockImplementationOnce(() => {
+      throw new StrategyValueEntryNotFoundError("observation", 11);
+    });
+    const response = await DELETE(request("DELETE", { id: 11 }));
+    expect(response.status).toBe(404);
+  });
+});

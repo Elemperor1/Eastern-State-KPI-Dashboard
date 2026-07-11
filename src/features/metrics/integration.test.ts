@@ -369,7 +369,7 @@ describe("upsertEntry / upsertBreakdown audit integrity", () => {
     ]);
     expect(model.entries.map((item) => item.id)).toEqual([monthly.id]);
     expect(model.breakdowns.map((item) => item.id)).toEqual([breakdown.id]);
-    expect(model.years).toEqual([2024, 2025]);
+    expect(model.years).toEqual([2024, 2025, 2026, 2027, 2028, 2029]);
     expect(model.sampleData).toBe(true);
   });
 

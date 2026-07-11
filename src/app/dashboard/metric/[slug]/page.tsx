@@ -37,6 +37,7 @@ export default async function MetricDetailPage({
   const data = loadMetricDetailPageData(slug, {
     throughMonth: initialState.currentMonth,
     year: initialState.currentYear,
+    includeAudit: user.role === "admin",
   });
   if (!data) redirect("/dashboard/overview");
 

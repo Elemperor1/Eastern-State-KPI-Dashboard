@@ -5,6 +5,7 @@ import {
   isAnnualEntryMonth,
   isAnnualReportingFrequency,
   isMonthlyEntryMonth,
+  isMonthlyReportingFrequency,
 } from "./period-rules";
 import type {
   BreakdownEntryWithMeta,
@@ -240,11 +241,13 @@ export function isMonthlyBreakdownKpi(
 ): boolean {
   return Boolean(
     kpi?.unit_type === "breakdown" &&
-      breakdowns.some(
-        (breakdown) =>
-          breakdown.kpi_id === kpi.id &&
-          isMonthlyEntryMonth(breakdown.month),
-      ),
+      (isMonthlyReportingFrequency(kpi.reporting_frequency) ||
+        (kpi.reporting_frequency === "flexible" &&
+          breakdowns.some(
+            (breakdown) =>
+              breakdown.kpi_id === kpi.id &&
+              isMonthlyEntryMonth(breakdown.month),
+          ))),
   );
 }
 
@@ -313,7 +316,9 @@ export function buildBreakdownDrafts({
       if (breakdown.kpi_id !== kpi.id || breakdown.year !== year) {
         return false;
       }
-      return isMonthlyBreakdown ? breakdown.month === month : true;
+      return isMonthlyBreakdown
+        ? breakdown.month === month
+        : breakdown.month === ANNUAL_ENTRY_MONTH;
     })
     .map((breakdown) => ({
       id: breakdown.id,

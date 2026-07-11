@@ -1,7 +1,8 @@
 "use client";
 
-import { Search, Trash2 } from "lucide-react";
-import { Card, Chip, IconButton, Input, Table } from "@/components/ui";
+import Link from "next/link";
+import { RotateCcw, Search, Trash2 } from "lucide-react";
+import { Badge, Card, Chip, IconButton, Input, Table } from "@/components/ui";
 import type { CatalogCategorySummary } from "@/features/catalog/admin-catalog";
 import type { KPIWithCategory } from "@/lib/types";
 
@@ -15,6 +16,7 @@ interface AdminKpisTableProps {
   onQueryChange: (query: string) => void;
   onCategoryFilterChange: (categoryId: number | null) => void;
   onDelete: (id: number, name: string) => void;
+  onRestore: (id: number, name: string) => void;
 }
 
 export function AdminKpisTable({
@@ -27,6 +29,7 @@ export function AdminKpisTable({
   onQueryChange,
   onCategoryFilterChange,
   onDelete,
+  onRestore,
 }: AdminKpisTableProps) {
   return (
     <Card className="overflow-hidden">
@@ -97,7 +100,22 @@ export function AdminKpisTable({
           {kpis.map((kpi) => (
             <tr key={kpi.id} className="transition-colors hover:bg-ink-50/70">
               <td className="py-3 pr-4">
-                <span className="font-medium text-ink-900">{kpi.name}</span>
+                {kpi.archived_at || kpi.category_archived_at ? (
+                  <span className="inline-flex min-h-10 items-center gap-2 font-medium text-ink-600">
+                    {kpi.name}
+                    <Badge variant="warning">
+                      {kpi.archived_at ? "Archived" : "Priority archived"}
+                    </Badge>
+                  </span>
+                ) : (
+                  <Link
+                    href={`/admin/kpis/${kpi.id}`}
+                    className="inline-flex min-h-10 items-center rounded-lg font-medium text-brand-800 hover:underline"
+                    aria-label={`Edit strategic configuration for ${kpi.name}`}
+                  >
+                    {kpi.name}
+                  </Link>
+                )}
                 <span className="block text-xs text-ink-400">{kpi.slug} · {kpi.unit}</span>
               </td>
               <td className="text-ink-700">{kpi.category_name}</td>
@@ -105,13 +123,25 @@ export function AdminKpisTable({
               <td className="text-ink-700">{kpi.reporting_frequency}</td>
               <td className="text-ink-700">{kpi.direction}</td>
               <td className="text-right">
-                <IconButton
-                  icon={Trash2}
-                  label={`Delete KPI ${kpi.name}`}
-                  variant="danger"
-                  size="sm"
-                  onClick={() => onDelete(kpi.id, kpi.name)}
-                />
+                {kpi.archived_at ? (
+                  <IconButton
+                    icon={RotateCcw}
+                    label={`Restore KPI ${kpi.name}`}
+                    variant="secondary"
+                    size="sm"
+                    onClick={() => onRestore(kpi.id, kpi.name)}
+                  />
+                ) : kpi.category_archived_at ? (
+                  <span className="text-xs text-ink-500">Restore its priority first</span>
+                ) : (
+                  <IconButton
+                    icon={Trash2}
+                    label={`Archive or delete KPI ${kpi.name}`}
+                    variant="danger"
+                    size="sm"
+                    onClick={() => onDelete(kpi.id, kpi.name)}
+                  />
+                )}
               </td>
             </tr>
           ))}

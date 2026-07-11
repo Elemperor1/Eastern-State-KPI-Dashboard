@@ -76,6 +76,8 @@ import {
   createUser,
   findUserById,
   setUserDisabled,
+  updateUserPassword,
+  updateUserRole,
 } from "@/features/users/server";
 import { getDb, resetDb } from "@/lib/db";
 import { _resetForTests as resetThrottle } from "@/lib/login-throttle";
@@ -314,9 +316,6 @@ describe("req 10c — disablement invalidates prior sessions", () => {
 
     await loginAdmin();
     const ccBefore = findUserById(v.id)!.sessions_valid_after;
-    // See note in the re-enable test: ensure the disable watermark
-    // bump lands in a strictly later millisecond than ccBefore.
-    await new Promise((r) => setTimeout(r, 5));
     const res = await accountPatch(
       jsonReq("http://localhost/api/users/account", "PATCH", {
         id: v.id,
@@ -373,14 +372,6 @@ describe("req 10c — disablement invalidates prior sessions", () => {
     );
     const ccAtDisable = findUserById(v.id)!.sessions_valid_after;
 
-    // Ensure the re-enable watermark bump lands in a strictly later
-    // millisecond than the disable bump (sessions_valid_after uses
-    // Date.now()). Without this, a fast machine can perform both
-    // bumps within the same ms and the `> ccAtDisable` assertion
-    // becomes a flaky equality. This is a test-only timing concern;
-    // production revocation does not depend on inter-bump elapsed time.
-    await new Promise((r) => setTimeout(r, 5));
-
     // Re-enable.
     const res = await accountPatch(
       jsonReq("http://localhost/api/users/account", "PATCH", {
@@ -423,9 +414,6 @@ describe("req 10d — role downgrade invalidates prior sessions", () => {
     // The actor admin downgrades them.
     await loginAdmin();
     const ccBefore = findUserById(target.id)!.sessions_valid_after;
-    // See note in the re-enable test: ensure the role-change watermark
-    // bump lands in a strictly later millisecond than ccBefore.
-    await new Promise((r) => setTimeout(r, 5));
     const res = await accountPatch(
       jsonReq("http://localhost/api/users/account", "PATCH", {
         id: target.id,
@@ -445,6 +433,32 @@ describe("req 10d — role downgrade invalidates prior sessions", () => {
     // The admin-only API gate rejects the revoked session with 401.
     const protectedMutation = await usersPost(jsonReq("http://localhost/api/users", "POST", {}));
     expect(protectedMutation.status).toBe(401);
+  });
+});
+
+describe("strictly monotonic session watermark", () => {
+  it("advances for every security change even when Date.now does not", () => {
+    const target = createUser({
+      email: "same-ms@example.com",
+      name: "Same Millisecond",
+      password: "SameMsPass!2026",
+      role: "admin",
+    });
+    const initial = target.sessions_valid_after;
+    const now = vi.spyOn(Date, "now").mockReturnValue(initial);
+
+    try {
+      updateUserRole(target.id, "viewer");
+      expect(findUserById(target.id)!.sessions_valid_after).toBe(initial + 1);
+
+      updateUserPassword(target.id, "SameMsPass!2026-next", false);
+      expect(findUserById(target.id)!.sessions_valid_after).toBe(initial + 2);
+
+      setUserDisabled(target.id, true);
+      expect(findUserById(target.id)!.sessions_valid_after).toBe(initial + 3);
+    } finally {
+      now.mockRestore();
+    }
   });
 });
 

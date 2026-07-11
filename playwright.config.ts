@@ -24,7 +24,9 @@ export default defineConfig({
     trace: "retain-on-failure",
   },
   webServer: {
-    command: `AUTH_DISABLED=true PORT=${port} npm run dev`,
+    // Polling avoids macOS/sandbox watcher exhaustion (EMFILE) during the
+    // browser suite while retaining the loopback-only development bypass.
+    command: `AUTH_DISABLED=true WATCHPACK_POLLING=true WATCHPACK_POLLING_INTERVAL=1000 PORT=${port} npm run dev`,
     url: `${baseURL}/dashboard/overview`,
     reuseExistingServer: !process.env.CI,
     timeout: 120_000,

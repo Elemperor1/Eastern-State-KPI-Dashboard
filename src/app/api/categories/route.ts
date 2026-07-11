@@ -3,11 +3,14 @@ import { z } from "zod";
 import { authErrorResponse, requireAdmin } from "@/features/auth/session";
 import { assertMutationRequest } from "@/lib/request-guard";
 import {
+  archiveCategory,
+  CatalogEntityNotFoundError,
   createCategory,
-  deleteCategory,
   DependentEntriesError,
   listCategories,
   listKPIs,
+  restoreCategory,
+  retireOrDeleteCategory,
   updateCategory,
 } from "@/features/catalog/server";
 
@@ -20,8 +23,8 @@ const CreateSchema = z.object({
 
 function refreshedCatalogPayload() {
   return {
-    kpis: listKPIs(),
-    categories: listCategories(),
+    kpis: listKPIs({ includeInactive: true, includeArchived: true }),
+    categories: listCategories({ includeArchived: true }),
   };
 }
 
@@ -49,16 +52,27 @@ export async function POST(req: NextRequest) {
   }
 }
 
-const UpdateSchema = z.object({
-  id: z.number().int().positive(),
-  name: z.string().min(1).optional(),
-  description: z.string().nullable().optional(),
-  sort_order: z.number().int().optional(),
-});
+const UpdateSchema = z.union([
+  z
+    .object({
+      action: z.enum(["archive", "restore"]),
+      id: z.number().int().positive(),
+    })
+    .strict(),
+  z
+    .object({
+      id: z.number().int().positive(),
+      name: z.string().min(1).optional(),
+      description: z.string().nullable().optional(),
+      sort_order: z.number().int().optional(),
+    })
+    .strict(),
+]);
 
 export async function PATCH(req: NextRequest) {
+  let user;
   try {
-    await requireAdmin();
+    user = await requireAdmin();
   } catch (err) {
     return authErrorResponse(err);
   }
@@ -68,16 +82,39 @@ export async function PATCH(req: NextRequest) {
   if (!parsed.success) {
     return NextResponse.json({ error: "Invalid input" }, { status: 400 });
   }
-  const { id, ...patch } = parsed.data;
-  updateCategory(id, patch);
-  return NextResponse.json({ ok: true, ...refreshedCatalogPayload() });
+  try {
+    if ("action" in parsed.data) {
+      if (parsed.data.action === "archive") {
+        archiveCategory(parsed.data.id, user.id);
+      } else {
+        restoreCategory(parsed.data.id, user.id);
+      }
+      return NextResponse.json({
+        ok: true,
+        lifecycle: parsed.data.action === "archive" ? "archived" : "restored",
+        ...refreshedCatalogPayload(),
+      });
+    }
+    const { id, ...patch } = parsed.data;
+    updateCategory(id, patch);
+    return NextResponse.json({ ok: true, ...refreshedCatalogPayload() });
+  } catch (err) {
+    if (err instanceof CatalogEntityNotFoundError) {
+      return NextResponse.json(
+        { error: err.message, code: err.code },
+        { status: 404 },
+      );
+    }
+    throw err;
+  }
 }
 
 const DeleteSchema = z.object({ id: z.number().int().positive() });
 
 export async function DELETE(req: NextRequest) {
+  let user;
   try {
-    await requireAdmin();
+    user = await requireAdmin();
   } catch (err) {
     return authErrorResponse(err);
   }
@@ -88,11 +125,21 @@ export async function DELETE(req: NextRequest) {
     return NextResponse.json({ error: "Invalid input" }, { status: 400 });
   }
   try {
-    deleteCategory(parsed.data.id);
-    return NextResponse.json({ ok: true, ...refreshedCatalogPayload() });
+    const lifecycle = retireOrDeleteCategory(parsed.data.id, user.id);
+    return NextResponse.json({
+      ok: true,
+      lifecycle,
+      ...refreshedCatalogPayload(),
+    });
   } catch (err) {
     if (err instanceof DependentEntriesError) {
       return NextResponse.json({ error: err.message, code: err.code }, { status: 409 });
+    }
+    if (err instanceof CatalogEntityNotFoundError) {
+      return NextResponse.json(
+        { error: err.message, code: err.code },
+        { status: 404 },
+      );
     }
     throw err;
   }

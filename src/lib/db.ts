@@ -186,6 +186,15 @@ function migrateSchema(raw: DatabaseSync): void {
   ensureMetaTable(raw);
   const version = currentSchemaVersion(raw);
   if (version === SCHEMA_VERSION) {
+    ensureStrategicSchemaV10Columns(raw);
+    return;
+  }
+
+  // v9 → v10 is strictly additive. It preserves the legacy catalog, values,
+  // KPI targets, and entry audit trail while installing the normalized strategic
+  // planning sidecars used by the next dashboard model.
+  if (version === 9) {
+    migrateStrategicSchemaV10(raw);
     return;
   }
 
@@ -195,10 +204,13 @@ function migrateSchema(raw: DatabaseSync): void {
   // goals freeze the latest available actual year before their target.
   if (version === 8) {
     migrateGoalBaselineYear(raw);
-    initializeSchema(raw);
+    // Record the completed v8 → v9 step before running the independently
+    // transactional v9 → v10 migration. If v10 fails, the next startup safely
+    // retries from schema 9 without replaying the goal-table rebuild.
     raw.exec(
-      `INSERT OR REPLACE INTO meta (key, value) VALUES ('schema_version', ${SCHEMA_VERSION});`,
+      "INSERT OR REPLACE INTO meta (key, value) VALUES ('schema_version', '9');",
     );
+    migrateStrategicSchemaV10(raw);
     return;
   }
 
@@ -322,12 +334,555 @@ function migrateGoalBaselineYear(raw: DatabaseSync): void {
   }
 }
 
+function tableHasColumn(
+  raw: DatabaseSync,
+  table: "categories" | "kpis" | "distribution_bands",
+  column: string,
+): boolean {
+  const columns = raw.prepare(`PRAGMA table_info(${table})`).all() as
+    | { name: string }[]
+    | undefined;
+  return (columns ?? []).some((candidate) => candidate.name === column);
+}
+
+/**
+ * Shape repair for schema-10 development databases created before the
+ * distribution derived-group marker landed. New installs get the column from
+ * CREATE TABLE; existing schema-10 files receive the same additive column on
+ * reopen without changing or deleting a row.
+ */
+function ensureStrategicSchemaV10Columns(raw: DatabaseSync): void {
+  const table = raw
+    .prepare("SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'distribution_bands'")
+    .get() as { name?: string } | undefined;
+  if (
+    table?.name === "distribution_bands" &&
+    !tableHasColumn(raw, "distribution_bands", "derived_group")
+  ) {
+    raw.exec(
+      "ALTER TABLE distribution_bands ADD COLUMN derived_group TEXT CHECK (derived_group IS NULL OR derived_group IN ('white','non_white'))",
+    );
+  }
+}
+
+/**
+ * v9 → v10 additive strategic-model foundation.
+ *
+ * The legacy tables remain authoritative during the staged rollout. No legacy
+ * row is rewritten, re-keyed, or deleted here. Strategic foreign keys use
+ * RESTRICT (or snapshot-only scalar ids in the audit table), so deleting a
+ * priority, goal, KPI, component, target, or distribution definition can never
+ * cascade through the new model.
+ */
+function migrateStrategicSchemaV10(raw: DatabaseSync): void {
+  raw.exec("BEGIN IMMEDIATE;");
+  try {
+    if (!tableHasColumn(raw, "categories", "archived_at")) {
+      raw.exec("ALTER TABLE categories ADD COLUMN archived_at TEXT;");
+    }
+    if (!tableHasColumn(raw, "categories", "updated_at")) {
+      raw.exec("ALTER TABLE categories ADD COLUMN updated_at TEXT;");
+    }
+    if (!tableHasColumn(raw, "kpis", "archived_at")) {
+      raw.exec("ALTER TABLE kpis ADD COLUMN archived_at TEXT;");
+    }
+    if (!tableHasColumn(raw, "kpis", "updated_at")) {
+      raw.exec("ALTER TABLE kpis ADD COLUMN updated_at TEXT;");
+    }
+
+    // Backfill metadata timestamps without disturbing any existing values.
+    raw.exec("UPDATE categories SET updated_at = datetime('now') WHERE updated_at IS NULL;");
+    raw.exec(
+      "UPDATE kpis SET updated_at = COALESCE(created_at, datetime('now')) WHERE updated_at IS NULL;",
+    );
+
+    initializeStrategicSchema(raw);
+    raw.exec(
+      `INSERT OR REPLACE INTO meta (key, value) VALUES ('schema_version', ${SCHEMA_VERSION});`,
+    );
+    raw.exec("COMMIT;");
+  } catch (error) {
+    try {
+      raw.exec("ROLLBACK;");
+    } catch {
+      // Surface the migration error.
+    }
+    throw error;
+  }
+}
+
 function ensureMetaTable(raw: DatabaseSync): void {
   raw.exec(`
     CREATE TABLE IF NOT EXISTS meta (
       key TEXT PRIMARY KEY,
       value TEXT NOT NULL
     );
+  `);
+}
+
+function initializeStrategicSchema(raw: DatabaseSync): void {
+  raw.exec(`
+    CREATE INDEX IF NOT EXISTS idx_categories_archived_at ON categories(archived_at);
+    CREATE INDEX IF NOT EXISTS idx_kpis_archived_at ON kpis(archived_at);
+
+    CREATE TRIGGER IF NOT EXISTS categories_set_updated_at_after_insert
+    AFTER INSERT ON categories
+    FOR EACH ROW WHEN NEW.updated_at IS NULL
+    BEGIN
+      UPDATE categories SET updated_at = datetime('now') WHERE id = NEW.id;
+    END;
+
+    CREATE TRIGGER IF NOT EXISTS categories_set_updated_at_after_update
+    AFTER UPDATE OF slug, name, description, sort_order, archived_at ON categories
+    FOR EACH ROW WHEN NEW.updated_at IS OLD.updated_at
+    BEGIN
+      UPDATE categories SET updated_at = datetime('now') WHERE id = NEW.id;
+    END;
+
+    CREATE TRIGGER IF NOT EXISTS kpis_set_updated_at_after_insert
+    AFTER INSERT ON kpis
+    FOR EACH ROW WHEN NEW.updated_at IS NULL
+    BEGIN
+      UPDATE kpis SET updated_at = datetime('now') WHERE id = NEW.id;
+    END;
+
+    CREATE TRIGGER IF NOT EXISTS kpis_set_updated_at_after_update
+    AFTER UPDATE OF category_id, parent_id, slug, name, unit, unit_type,
+      reporting_frequency, direction, description, sort_order, is_active,
+      archived_at ON kpis
+    FOR EACH ROW WHEN NEW.updated_at IS OLD.updated_at
+    BEGIN
+      UPDATE kpis SET updated_at = datetime('now') WHERE id = NEW.id;
+    END;
+
+    CREATE TABLE IF NOT EXISTS strategic_goals (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      priority_id INTEGER NOT NULL REFERENCES categories(id) ON DELETE RESTRICT,
+      slug TEXT UNIQUE NOT NULL,
+      name TEXT NOT NULL,
+      description TEXT,
+      plan_start_year INTEGER NOT NULL DEFAULT 2025
+        CHECK (plan_start_year BETWEEN 1900 AND 2100),
+      plan_end_year INTEGER NOT NULL DEFAULT 2029
+        CHECK (plan_end_year BETWEEN plan_start_year AND 2100),
+      completion_rule TEXT NOT NULL DEFAULT 'all_required_kpis'
+        CHECK (completion_rule IN ('all_required_kpis','weighted_average','threshold_count','manual_status')),
+      threshold_count INTEGER CHECK (threshold_count IS NULL OR threshold_count > 0),
+      threshold_percentage REAL
+        CHECK (threshold_percentage IS NULL OR (threshold_percentage >= 0 AND threshold_percentage <= 100)),
+      manual_status TEXT CHECK (
+        manual_status IS NULL OR manual_status IN ('not_started','in_progress','complete')
+      ),
+      board_level_status TEXT NOT NULL DEFAULT 'not_reported' CHECK (
+        board_level_status IN (
+          'not_reported','not_started','on_track','at_risk','off_track',
+          'complete','exceeded','not_applicable'
+        )
+      ),
+      configuration_status TEXT NOT NULL DEFAULT 'draft'
+        CHECK (configuration_status IN ('draft','needs_definition','needs_target','ready','active','archived')),
+      unresolved_question TEXT,
+      owner TEXT,
+      due_date TEXT,
+      resolution_notes TEXT,
+      source_reference TEXT,
+      last_reviewed_date TEXT,
+      sort_order INTEGER NOT NULL DEFAULT 0,
+      archived_at TEXT,
+      created_by INTEGER REFERENCES users(id) ON DELETE SET NULL,
+      created_at TEXT NOT NULL DEFAULT (datetime('now')),
+      updated_by INTEGER REFERENCES users(id) ON DELETE SET NULL,
+      updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_strategic_goals_priority
+      ON strategic_goals(priority_id, sort_order);
+    CREATE INDEX IF NOT EXISTS idx_strategic_goals_configuration
+      ON strategic_goals(configuration_status, archived_at);
+
+    CREATE TABLE IF NOT EXISTS goal_kpis (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      goal_id INTEGER NOT NULL REFERENCES strategic_goals(id) ON DELETE RESTRICT,
+      kpi_id INTEGER NOT NULL REFERENCES kpis(id) ON DELETE RESTRICT,
+      is_required INTEGER NOT NULL DEFAULT 1 CHECK (is_required IN (0,1)),
+      weight REAL NOT NULL DEFAULT 1 CHECK (weight >= 0),
+      display_order INTEGER NOT NULL DEFAULT 0,
+      effective_from_year INTEGER NOT NULL DEFAULT 2025
+        CHECK (effective_from_year BETWEEN 1900 AND 2100),
+      effective_to_year INTEGER CHECK (
+        effective_to_year IS NULL OR
+        (effective_to_year BETWEEN effective_from_year AND 2100)
+      ),
+      archived_at TEXT,
+      created_by INTEGER REFERENCES users(id) ON DELETE SET NULL,
+      created_at TEXT NOT NULL DEFAULT (datetime('now')),
+      updated_by INTEGER REFERENCES users(id) ON DELETE SET NULL,
+      updated_at TEXT NOT NULL DEFAULT (datetime('now')),
+      UNIQUE (goal_id, kpi_id, effective_from_year)
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_goal_kpis_goal
+      ON goal_kpis(goal_id, display_order);
+    CREATE INDEX IF NOT EXISTS idx_goal_kpis_kpi ON goal_kpis(kpi_id);
+
+    CREATE TABLE IF NOT EXISTS kpi_measurement_configs (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      kpi_id INTEGER NOT NULL REFERENCES kpis(id) ON DELETE RESTRICT,
+      effective_from_year INTEGER NOT NULL CHECK (effective_from_year BETWEEN 1900 AND 2100),
+      effective_to_year INTEGER CHECK (
+        effective_to_year IS NULL OR
+        (effective_to_year BETWEEN 1900 AND 2100 AND effective_to_year >= effective_from_year)
+      ),
+      measurement_type TEXT CHECK (
+        measurement_type IS NULL OR measurement_type IN (
+          'binary','milestone','count','percentage','average','cumulative',
+          'year_over_year','distribution','currency','ratio','multi_component'
+        )
+      ),
+      unit TEXT,
+      numerator_label TEXT,
+      denominator_label TEXT,
+      fixed_denominator REAL CHECK (fixed_denominator IS NULL OR fixed_denominator > 0),
+      baseline_value REAL,
+      reporting_frequency TEXT CHECK (
+        reporting_frequency IS NULL OR reporting_frequency IN (
+          'monthly','quarterly','annual','cumulative','one_time','flexible'
+        )
+      ),
+      aggregation_method TEXT CHECK (
+        aggregation_method IS NULL OR aggregation_method IN (
+          'none','average','weighted_average','sum','all_complete'
+        )
+      ),
+      board_level_status TEXT,
+      calculation_precision INTEGER NOT NULL DEFAULT 1
+        CHECK (calculation_precision BETWEEN 0 AND 6),
+      configuration_status TEXT NOT NULL DEFAULT 'draft'
+        CHECK (configuration_status IN ('draft','needs_definition','needs_target','ready','active','archived')),
+      unresolved_question TEXT,
+      owner TEXT,
+      due_date TEXT,
+      resolution_notes TEXT,
+      source_reference TEXT,
+      last_reviewed_date TEXT,
+      allow_score_over_max INTEGER NOT NULL DEFAULT 0
+        CHECK (allow_score_over_max IN (0,1)),
+      archived_at TEXT,
+      created_by INTEGER REFERENCES users(id) ON DELETE SET NULL,
+      created_at TEXT NOT NULL DEFAULT (datetime('now')),
+      updated_by INTEGER REFERENCES users(id) ON DELETE SET NULL,
+      updated_at TEXT NOT NULL DEFAULT (datetime('now')),
+      UNIQUE (kpi_id, effective_from_year),
+      UNIQUE (id, kpi_id)
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_kpi_measurement_configs_effective
+      ON kpi_measurement_configs(kpi_id, effective_from_year, effective_to_year);
+    CREATE INDEX IF NOT EXISTS idx_kpi_measurement_configs_status
+      ON kpi_measurement_configs(configuration_status, archived_at);
+
+    CREATE TABLE IF NOT EXISTS kpi_observations (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      kpi_id INTEGER NOT NULL REFERENCES kpis(id) ON DELETE RESTRICT,
+      configuration_id INTEGER NOT NULL,
+      year INTEGER NOT NULL CHECK (year BETWEEN 1900 AND 2100),
+      period_type TEXT NOT NULL
+        CHECK (period_type IN ('monthly','quarterly','annual','cumulative','one_time')),
+      period_index INTEGER NOT NULL,
+      scalar_value REAL,
+      numerator REAL,
+      denominator REAL CHECK (denominator IS NULL OR denominator >= 0),
+      respondent_count INTEGER CHECK (respondent_count IS NULL OR respondent_count >= 0),
+      total_score REAL CHECK (total_score IS NULL OR total_score >= 0),
+      average_score REAL CHECK (average_score IS NULL OR average_score >= 0),
+      max_score_per_respondent REAL
+        CHECK (max_score_per_respondent IS NULL OR max_score_per_respondent > 0),
+      total_possible_score REAL
+        CHECK (total_possible_score IS NULL OR total_possible_score >= 0),
+      positive_response_count INTEGER
+        CHECK (positive_response_count IS NULL OR positive_response_count >= 0),
+      total_response_count INTEGER
+        CHECK (total_response_count IS NULL OR total_response_count >= 0),
+      boolean_value INTEGER CHECK (boolean_value IS NULL OR boolean_value IN (0,1)),
+      milestone_value REAL
+        CHECK (milestone_value IS NULL OR (milestone_value >= 0 AND milestone_value <= 100)),
+      notes TEXT,
+      source_reference TEXT,
+      updated_by INTEGER REFERENCES users(id) ON DELETE SET NULL,
+      created_at TEXT NOT NULL DEFAULT (datetime('now')),
+      updated_at TEXT NOT NULL DEFAULT (datetime('now')),
+      CHECK (
+        (period_type = 'monthly' AND period_index BETWEEN 1 AND 12) OR
+        (period_type = 'quarterly' AND period_index BETWEEN 1 AND 4) OR
+        (period_type IN ('annual','cumulative','one_time') AND period_index = 0)
+      ),
+      CHECK (
+        scalar_value IS NOT NULL OR numerator IS NOT NULL OR denominator IS NOT NULL OR
+        respondent_count IS NOT NULL OR total_score IS NOT NULL OR average_score IS NOT NULL OR
+        total_possible_score IS NOT NULL OR positive_response_count IS NOT NULL OR
+        total_response_count IS NOT NULL OR boolean_value IS NOT NULL OR
+        milestone_value IS NOT NULL
+      ),
+      UNIQUE (kpi_id, configuration_id, year, period_type, period_index),
+      FOREIGN KEY (configuration_id, kpi_id)
+        REFERENCES kpi_measurement_configs(id, kpi_id) ON DELETE RESTRICT
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_kpi_observations_period
+      ON kpi_observations(kpi_id, year, period_type, period_index);
+    CREATE INDEX IF NOT EXISTS idx_kpi_observations_configuration
+      ON kpi_observations(configuration_id);
+
+    CREATE TABLE IF NOT EXISTS kpi_components (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      kpi_id INTEGER NOT NULL REFERENCES kpis(id) ON DELETE RESTRICT,
+      configuration_id INTEGER NOT NULL,
+      slug TEXT NOT NULL,
+      label TEXT NOT NULL,
+      measurement_type TEXT CHECK (
+        measurement_type IS NULL OR measurement_type IN (
+          'binary','milestone','count','percentage','average','cumulative',
+          'year_over_year','distribution','currency','ratio','multi_component'
+        )
+      ),
+      unit TEXT,
+      numerator_label TEXT,
+      denominator_label TEXT,
+      fixed_denominator REAL CHECK (fixed_denominator IS NULL OR fixed_denominator > 0),
+      baseline_value REAL,
+      previous_period_value REAL,
+      weight REAL NOT NULL DEFAULT 1 CHECK (weight >= 0),
+      display_order INTEGER NOT NULL DEFAULT 0,
+      configuration_status TEXT NOT NULL DEFAULT 'draft'
+        CHECK (configuration_status IN ('draft','needs_definition','needs_target','ready','active','archived')),
+      unresolved_question TEXT,
+      archived_at TEXT,
+      created_by INTEGER REFERENCES users(id) ON DELETE SET NULL,
+      created_at TEXT NOT NULL DEFAULT (datetime('now')),
+      updated_by INTEGER REFERENCES users(id) ON DELETE SET NULL,
+      updated_at TEXT NOT NULL DEFAULT (datetime('now')),
+      UNIQUE (kpi_id, slug),
+      UNIQUE (id, kpi_id),
+      FOREIGN KEY (configuration_id, kpi_id)
+        REFERENCES kpi_measurement_configs(id, kpi_id) ON DELETE RESTRICT
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_kpi_components_parent
+      ON kpi_components(kpi_id, display_order);
+    CREATE INDEX IF NOT EXISTS idx_kpi_components_configuration
+      ON kpi_components(configuration_id);
+
+    CREATE TABLE IF NOT EXISTS kpi_component_entries (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      component_id INTEGER NOT NULL REFERENCES kpi_components(id) ON DELETE RESTRICT,
+      year INTEGER NOT NULL CHECK (year BETWEEN 1900 AND 2100),
+      period_type TEXT NOT NULL
+        CHECK (period_type IN ('monthly','quarterly','annual','cumulative','one_time')),
+      period_index INTEGER NOT NULL,
+      scalar_value REAL,
+      numerator REAL,
+      denominator REAL CHECK (denominator IS NULL OR denominator >= 0),
+      respondent_count INTEGER CHECK (respondent_count IS NULL OR respondent_count >= 0),
+      total_score REAL CHECK (total_score IS NULL OR total_score >= 0),
+      average_score REAL CHECK (average_score IS NULL OR average_score >= 0),
+      max_score_per_respondent REAL
+        CHECK (max_score_per_respondent IS NULL OR max_score_per_respondent > 0),
+      total_possible_score REAL
+        CHECK (total_possible_score IS NULL OR total_possible_score >= 0),
+      positive_response_count INTEGER
+        CHECK (positive_response_count IS NULL OR positive_response_count >= 0),
+      total_response_count INTEGER
+        CHECK (total_response_count IS NULL OR total_response_count >= 0),
+      boolean_value INTEGER CHECK (boolean_value IS NULL OR boolean_value IN (0,1)),
+      milestone_value REAL
+        CHECK (milestone_value IS NULL OR (milestone_value >= 0 AND milestone_value <= 100)),
+      notes TEXT,
+      source_reference TEXT,
+      updated_by INTEGER REFERENCES users(id) ON DELETE SET NULL,
+      created_at TEXT NOT NULL DEFAULT (datetime('now')),
+      updated_at TEXT NOT NULL DEFAULT (datetime('now')),
+      CHECK (
+        (period_type = 'monthly' AND period_index BETWEEN 1 AND 12) OR
+        (period_type = 'quarterly' AND period_index BETWEEN 1 AND 4) OR
+        (period_type IN ('annual','cumulative','one_time') AND period_index = 0)
+      ),
+      CHECK (
+        scalar_value IS NOT NULL OR numerator IS NOT NULL OR denominator IS NOT NULL OR
+        respondent_count IS NOT NULL OR total_score IS NOT NULL OR average_score IS NOT NULL OR
+        total_possible_score IS NOT NULL OR positive_response_count IS NOT NULL OR
+        total_response_count IS NOT NULL OR boolean_value IS NOT NULL OR
+        milestone_value IS NOT NULL
+      ),
+      UNIQUE (component_id, year, period_type, period_index)
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_kpi_component_entries_period
+      ON kpi_component_entries(component_id, year, period_type, period_index);
+
+    CREATE TABLE IF NOT EXISTS kpi_targets (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      kpi_id INTEGER REFERENCES kpis(id) ON DELETE RESTRICT,
+      component_id INTEGER REFERENCES kpi_components(id) ON DELETE RESTRICT,
+      target_scope TEXT NOT NULL CHECK (target_scope IN ('annual','full_plan')),
+      reporting_year INTEGER CHECK (reporting_year IS NULL OR reporting_year BETWEEN 1900 AND 2100),
+      target_year INTEGER NOT NULL CHECK (target_year BETWEEN 1900 AND 2100),
+      external_target_year INTEGER NOT NULL DEFAULT 0
+        CHECK (external_target_year IN (0,1)),
+      target_value REAL,
+      structured_target_json TEXT,
+      target_description TEXT,
+      baseline_year INTEGER CHECK (baseline_year IS NULL OR baseline_year BETWEEN 1900 AND 2100),
+      baseline_value REAL,
+      configuration_status TEXT NOT NULL DEFAULT 'draft'
+        CHECK (configuration_status IN ('draft','needs_definition','needs_target','ready','active','archived')),
+      source_reference TEXT,
+      last_reviewed_date TEXT,
+      archived_at TEXT,
+      created_by INTEGER REFERENCES users(id) ON DELETE SET NULL,
+      created_at TEXT NOT NULL DEFAULT (datetime('now')),
+      updated_by INTEGER REFERENCES users(id) ON DELETE SET NULL,
+      updated_at TEXT NOT NULL DEFAULT (datetime('now')),
+      CHECK (
+        (kpi_id IS NOT NULL AND component_id IS NULL) OR
+        (kpi_id IS NULL AND component_id IS NOT NULL)
+      ),
+      CHECK (
+        (target_scope = 'annual' AND reporting_year IS NOT NULL) OR
+        (target_scope = 'full_plan' AND reporting_year IS NULL)
+      ),
+      CHECK (external_target_year = 1 OR target_year BETWEEN 2025 AND 2029),
+      CHECK (baseline_year IS NULL OR baseline_year < target_year)
+    );
+
+    CREATE UNIQUE INDEX IF NOT EXISTS idx_kpi_targets_kpi_unique
+      ON kpi_targets(kpi_id, target_scope, COALESCE(reporting_year, -1), target_year)
+      WHERE kpi_id IS NOT NULL;
+    CREATE UNIQUE INDEX IF NOT EXISTS idx_kpi_targets_component_unique
+      ON kpi_targets(component_id, target_scope, COALESCE(reporting_year, -1), target_year)
+      WHERE component_id IS NOT NULL;
+    CREATE INDEX IF NOT EXISTS idx_kpi_targets_year
+      ON kpi_targets(target_year, reporting_year, configuration_status);
+
+    CREATE TABLE IF NOT EXISTS distribution_bands (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      kpi_id INTEGER NOT NULL REFERENCES kpis(id) ON DELETE RESTRICT,
+      component_id INTEGER,
+      slug TEXT NOT NULL,
+      label TEXT NOT NULL,
+      effective_from_year INTEGER NOT NULL CHECK (effective_from_year BETWEEN 1900 AND 2100),
+      effective_to_year INTEGER CHECK (
+        effective_to_year IS NULL OR
+        (effective_to_year BETWEEN 1900 AND 2100 AND effective_to_year >= effective_from_year)
+      ),
+      display_order INTEGER NOT NULL DEFAULT 0,
+      is_unknown INTEGER NOT NULL DEFAULT 0 CHECK (is_unknown IN (0,1)),
+      is_declined INTEGER NOT NULL DEFAULT 0 CHECK (is_declined IN (0,1)),
+      derived_group TEXT CHECK (
+        derived_group IS NULL OR derived_group IN ('white','non_white')
+      ),
+      archived_at TEXT,
+      created_by INTEGER REFERENCES users(id) ON DELETE SET NULL,
+      created_at TEXT NOT NULL DEFAULT (datetime('now')),
+      updated_by INTEGER REFERENCES users(id) ON DELETE SET NULL,
+      updated_at TEXT NOT NULL DEFAULT (datetime('now')),
+      FOREIGN KEY (component_id, kpi_id)
+        REFERENCES kpi_components(id, kpi_id) ON DELETE RESTRICT
+    );
+
+    CREATE UNIQUE INDEX IF NOT EXISTS idx_distribution_bands_kpi_unique
+      ON distribution_bands(kpi_id, slug, effective_from_year)
+      WHERE component_id IS NULL;
+    CREATE UNIQUE INDEX IF NOT EXISTS idx_distribution_bands_component_unique
+      ON distribution_bands(component_id, slug, effective_from_year)
+      WHERE component_id IS NOT NULL;
+    CREATE INDEX IF NOT EXISTS idx_distribution_bands_order
+      ON distribution_bands(kpi_id, component_id, display_order);
+
+    CREATE TABLE IF NOT EXISTS distribution_observations (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      kpi_id INTEGER NOT NULL REFERENCES kpis(id) ON DELETE RESTRICT,
+      component_id INTEGER,
+      configuration_id INTEGER NOT NULL,
+      year INTEGER NOT NULL CHECK (year BETWEEN 1900 AND 2100),
+      period_type TEXT NOT NULL
+        CHECK (period_type IN ('monthly','quarterly','annual','cumulative','one_time')),
+      period_index INTEGER NOT NULL,
+      respondent_count INTEGER NOT NULL CHECK (respondent_count >= 0),
+      categories_mutually_exclusive INTEGER NOT NULL DEFAULT 1
+        CHECK (categories_mutually_exclusive IN (0,1)),
+      notes TEXT,
+      source_reference TEXT,
+      updated_by INTEGER REFERENCES users(id) ON DELETE SET NULL,
+      created_at TEXT NOT NULL DEFAULT (datetime('now')),
+      updated_at TEXT NOT NULL DEFAULT (datetime('now')),
+      CHECK (
+        (period_type = 'monthly' AND period_index BETWEEN 1 AND 12) OR
+        (period_type = 'quarterly' AND period_index BETWEEN 1 AND 4) OR
+        (period_type IN ('annual','cumulative','one_time') AND period_index = 0)
+      ),
+      FOREIGN KEY (component_id, kpi_id)
+        REFERENCES kpi_components(id, kpi_id) ON DELETE RESTRICT,
+      FOREIGN KEY (configuration_id, kpi_id)
+        REFERENCES kpi_measurement_configs(id, kpi_id) ON DELETE RESTRICT
+    );
+
+    CREATE UNIQUE INDEX IF NOT EXISTS idx_distribution_observations_kpi_unique
+      ON distribution_observations(kpi_id, year, period_type, period_index)
+      WHERE component_id IS NULL;
+    CREATE UNIQUE INDEX IF NOT EXISTS idx_distribution_observations_component_unique
+      ON distribution_observations(component_id, year, period_type, period_index)
+      WHERE component_id IS NOT NULL;
+    CREATE INDEX IF NOT EXISTS idx_distribution_observations_configuration
+      ON distribution_observations(configuration_id);
+
+    CREATE TABLE IF NOT EXISTS distribution_values (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      observation_id INTEGER NOT NULL
+        REFERENCES distribution_observations(id) ON DELETE RESTRICT,
+      band_id INTEGER NOT NULL REFERENCES distribution_bands(id) ON DELETE RESTRICT,
+      band_label_snapshot TEXT NOT NULL,
+      category_count INTEGER NOT NULL CHECK (category_count >= 0),
+      created_by INTEGER REFERENCES users(id) ON DELETE SET NULL,
+      created_at TEXT NOT NULL DEFAULT (datetime('now')),
+      updated_by INTEGER REFERENCES users(id) ON DELETE SET NULL,
+      updated_at TEXT NOT NULL DEFAULT (datetime('now')),
+      UNIQUE (observation_id, band_id)
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_distribution_values_observation
+      ON distribution_values(observation_id);
+    CREATE INDEX IF NOT EXISTS idx_distribution_values_band
+      ON distribution_values(band_id);
+
+    CREATE TABLE IF NOT EXISTS strategic_audit_events (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      entity_type TEXT NOT NULL CHECK (entity_type IN (
+        'strategic_priority','strategic_goal','goal_membership','kpi',
+        'measurement_config','observation','target','component','distribution',
+        'distribution_category','distribution_value','priority','goal','goal_kpi',
+        'kpi_config','kpi_observation','kpi_component','kpi_component_entry',
+        'kpi_target','distribution_band','distribution_observation'
+      )),
+      entity_id INTEGER NOT NULL,
+      event_type TEXT NOT NULL
+        CHECK (event_type IN ('create','update','archive','restore','delete','status_change')),
+      entity_display_name TEXT NOT NULL,
+      parent_priority_name TEXT,
+      parent_goal_name TEXT,
+      previous_value_json TEXT,
+      new_value_json TEXT,
+      actor_id INTEGER REFERENCES users(id) ON DELETE SET NULL,
+      actor_email_snapshot TEXT,
+      source_reference TEXT,
+      occurred_at TEXT NOT NULL DEFAULT (datetime('now'))
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_strategic_audit_entity
+      ON strategic_audit_events(entity_type, entity_id, occurred_at);
+    CREATE INDEX IF NOT EXISTS idx_strategic_audit_occurred
+      ON strategic_audit_events(occurred_at, id);
+    CREATE INDEX IF NOT EXISTS idx_strategic_audit_actor
+      ON strategic_audit_events(actor_id, occurred_at);
   `);
 }
 
@@ -338,7 +893,9 @@ function initializeSchema(raw: DatabaseSync): void {
       slug TEXT UNIQUE NOT NULL,
       name TEXT NOT NULL,
       description TEXT,
-      sort_order INTEGER NOT NULL DEFAULT 0
+      sort_order INTEGER NOT NULL DEFAULT 0,
+      archived_at TEXT,
+      updated_at TEXT
     );
 
     CREATE TABLE IF NOT EXISTS kpis (
@@ -357,7 +914,9 @@ function initializeSchema(raw: DatabaseSync): void {
       description TEXT,
       sort_order INTEGER NOT NULL DEFAULT 0,
       is_active INTEGER NOT NULL DEFAULT 1,
-      created_at TEXT NOT NULL DEFAULT (datetime('now'))
+      created_at TEXT NOT NULL DEFAULT (datetime('now')),
+      archived_at TEXT,
+      updated_at TEXT
     );
 
     CREATE INDEX IF NOT EXISTS idx_kpis_category ON kpis(category_id);
@@ -462,6 +1021,7 @@ function initializeSchema(raw: DatabaseSync): void {
     CREATE INDEX IF NOT EXISTS idx_kpi_goals_kpi ON kpi_goals(kpi_id);
     CREATE INDEX IF NOT EXISTS idx_kpi_goals_year ON kpi_goals(target_year);
   `);
+  initializeStrategicSchema(raw);
 }
 
 /** Reset connection — useful when env changes during dev hot reload. */

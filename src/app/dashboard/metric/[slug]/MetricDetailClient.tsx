@@ -10,10 +10,13 @@ import { MetricGoalPanel, type GoalDisplayMode } from "@/components/MetricGoalPa
 import { MetricTrendCard } from "@/components/MetricTrendCard";
 import { MetricValuesTable } from "@/components/MetricValuesTable";
 import { MetricYtdBarCard } from "@/components/MetricYtdBarCard";
+import { StrategicKpiProgressPanel } from "@/components/StrategicKpiProgressPanel";
+import { StrategicAuditTable } from "@/components/StrategicAuditTable";
 import { Breadcrumb, ExportCSVButton, ExportPNGButton, PageHeader, PrintButton, PrintReportFooter, PrintReportHeader } from "@/components/ui";
 import { SampleDataBadge } from "@/components/SampleDataBadge";
 import { buildMetricDetailModel } from "@/features/reporting/metric-detail";
 import { buildMetricCsvExport } from "@/features/reporting/csv";
+import { buildStrategicBoardCsvExport } from "@/features/reporting/strategic-board-report";
 import { MONTH_FULL } from "@/features/metrics";
 import type { DashboardData } from "@/features/reporting/types";
 
@@ -104,6 +107,14 @@ export function MetricDetailClient({
   const printId = `metric-${kpiSlug}-print`;
 
   const csvExport = buildMetricCsvExport({ kpi, rows: tableRows, period: state });
+  const strategicKpi = data.strategicBoardReport.priorities
+    .flatMap((priority) => priority.goals)
+    .flatMap((strategicGoal) => strategicGoal.kpis)
+    .find((candidate) => candidate.id === String(kpi.id));
+  const boardCsv = buildStrategicBoardCsvExport(data.strategicBoardReport);
+  const boardCsvRows = strategicKpi
+    ? boardCsv.rows.filter((row) => row.KPI === strategicKpi.name)
+    : [];
 
   return (
     <div className="page-content page-enter">
@@ -134,7 +145,15 @@ export function MetricDetailClient({
           actions={
             <>
               <SampleDataBadge sample={data.sampleData} />
-              <ExportCSVButton rows={csvExport.rows} columns={csvExport.columns} filename={csvExport.filename} />
+              {strategicKpi ? (
+                <ExportCSVButton
+                  rows={boardCsvRows}
+                  columns={[...boardCsv.columns]}
+                  filename={`eastern-state-${kpiSlug}-board-${state.currentYear}.csv`}
+                  label="Export board CSV"
+                />
+              ) : null}
+              <ExportCSVButton rows={csvExport.rows} columns={csvExport.columns} filename={csvExport.filename} label="Export history CSV" />
               <PrintButton />
               <ExportPNGButton
                 targetId={printId}
@@ -156,11 +175,21 @@ export function MetricDetailClient({
           allowMonth={!isAnnual}
         />
 
+        {strategicKpi ? (
+          <StrategicKpiProgressPanel
+            kpi={strategicKpi}
+            history={(data.strategicActuals ?? []).filter(
+              (actual) => actual.kpiId === kpi.id,
+            )}
+          />
+        ) : null}
+
         {!isBreakdown && showCompare ? (
           <MetricComparisonStats
             analytics={analytics}
             favorableMonthly={favorableMonthly}
             favorableYtd={favorableYtd}
+            yearOverYearMeasurement={strategicKpi?.measurementType === "year_over_year"}
           />
         ) : null}
 
@@ -184,8 +213,8 @@ export function MetricDetailClient({
           />
         ) : isAnnual ? (
           <MetricYtdBarCard
-            eyebrow="Annual"
-            title="Year-over-year"
+            eyebrow={strategicKpi?.measurementType === "year_over_year" ? "Year-over-year measurement" : "Annual history"}
+            title={strategicKpi?.measurementType === "year_over_year" ? "Year-over-year result" : "Annual results by reporting year"}
             data={ytdBar}
             currentYear={ytd.currentYear}
             compareYear={ytd.compareYear}
@@ -221,6 +250,11 @@ export function MetricDetailClient({
             compareYear={state.compareYear}
             isAnnual={isAnnual}
           />
+        ) : null}
+        {data.strategicAuditEvents && data.strategicAuditEvents.length > 0 ? (
+          <div className="mb-10">
+            <StrategicAuditTable events={data.strategicAuditEvents} />
+          </div>
         ) : null}
         <PrintReportFooter />
       </div>

@@ -7,6 +7,10 @@ import type {
   KpiGoalWithMeta,
   MonthlyEntryWithMeta,
 } from "@/lib/types";
+import type { StrategicDashboardSummary } from "./strategy-summary";
+import type { StrategicBoardReportViewModel } from "./strategic-board-report";
+import type { StrategicAuditEvent } from "@/features/strategy";
+import type { StrategicCalculatedActual } from "./strategy-actuals";
 
 export interface ReportingData {
   categories: Category[];
@@ -27,6 +31,10 @@ export interface DashboardData extends ReportingData {
   goals: KpiGoalWithMeta[];
   years: number[];
   sampleData: boolean;
+  strategicSummary: StrategicDashboardSummary;
+  strategicBoardReport: StrategicBoardReportViewModel;
+  strategicActuals?: StrategicCalculatedActual[];
+  strategicAuditEvents?: StrategicAuditEvent[];
 }
 
 export interface CategoryMetricMovement {
@@ -47,12 +55,18 @@ export interface CategoryOverviewSummary {
   topMover: CategoryMetricMovement | null;
   goalCount: number;
   averageGoalProgress: number | null;
+  completedStrategicGoals: number;
+  eligibleStrategicGoals: number;
+  strategicGoalCompletionPercentage: number | null;
+  excludedStrategicGoals: number;
 }
 
 export interface CategoryMetricCardModel {
   kpi: KPIWithCategory;
   analytics: KPIAnalytics;
   goal: KpiGoalWithMeta | null;
+  strategic: StrategicBoardReportViewModel["priorities"][number]["goals"][number]["kpis"][number] | null;
+  strategicGoalName?: string | null;
 }
 
 export interface CategoryMetricGroupModel {

@@ -14,7 +14,10 @@ export default async function KPIManagerPage() {
 
   return (
     <AppShell user={user}>
-      <KPIManagerClient kpis={listKPIs()} categories={listCategories()} />
+      <KPIManagerClient
+        kpis={listKPIs({ includeInactive: true, includeArchived: true })}
+        categories={listCategories({ includeArchived: true })}
+      />
     </AppShell>
   );
 }

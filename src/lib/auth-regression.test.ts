@@ -486,7 +486,17 @@ describe("route table coverage", () => {
     // management) is represented. "writes" is covered by the presence
     // of mutation methods (POST/PATCH/DELETE) across the groups.
     const groups = new Set(PROTECTED_API_ROUTES.map((r) => r.group));
-    for (const g of ["kpis", "categories", "entries", "breakdowns", "goals", "users"]) {
+    for (const g of [
+      "kpis",
+      "categories",
+      "entries",
+      "breakdowns",
+      "goals",
+      "users",
+      "exports",
+      "strategy_values",
+      "strategy_configuration",
+    ]) {
       expect(groups.has(g as (typeof PROTECTED_API_ROUTES)[number]["group"])).toBe(true);
     }
     const methods = new Set(PROTECTED_API_ROUTES.map((r) => r.method));

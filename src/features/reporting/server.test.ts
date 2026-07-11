@@ -240,7 +240,7 @@ describe("reporting server page data", () => {
       entries,
       breakdowns: [breakdown],
       goals: [goal],
-      years: [2024, 2025, 2026],
+      years: [2024, 2025, 2026, 2027, 2028, 2029],
       sampleData: true,
     });
     expect(listEntriesMock).toHaveBeenCalledWith();

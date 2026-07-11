@@ -201,6 +201,9 @@ describe("reporting category summaries", () => {
     expect(summary.topMover?.kpi.slug).toBe("visitors");
     expect(summary.goalCount).toBe(2);
     expect(summary.averageGoalProgress).toBe(80);
+    expect(summary.completedStrategicGoals).toBe(0);
+    expect(summary.eligibleStrategicGoals).toBe(0);
+    expect(summary.strategicGoalCompletionPercentage).toBeNull();
     expect(summary.metrics.map((metric) => [metric.kpi.slug, metric.delta])).toEqual([
       ["visitors", 100],
       ["triage", 10],
@@ -208,6 +211,39 @@ describe("reporting category summaries", () => {
       ["funders-by-breakdown", 20],
       ["percent-cultivated-donors", 25],
     ]);
+  });
+
+  it("uses strategic goal completion, not KPI movement, for the priority rollup", () => {
+    const summary = buildCategoryOverviewSummary({
+      ...reportingData,
+      category,
+      period,
+      strategicSummary: {
+        selectedYear: 2026,
+        organization: {
+          completedGoalsCount: 2,
+          totalEligibleGoalsCount: 4,
+          completionPercentage: 50,
+          excludedGoalsCount: 1,
+          excludedGoalReasons: [],
+        },
+        priorities: [{
+          priorityId: String(category.id),
+          priorityName: category.name,
+          completedGoalsCount: 2,
+          totalEligibleGoalsCount: 4,
+          completionPercentage: 50,
+          excludedGoalsCount: 1,
+          excludedGoalReasons: [],
+        }],
+        goals: [],
+      },
+    });
+
+    expect(summary.completedStrategicGoals).toBe(2);
+    expect(summary.eligibleStrategicGoals).toBe(4);
+    expect(summary.strategicGoalCompletionPercentage).toBe(50);
+    expect(summary.excludedStrategicGoals).toBe(1);
   });
 
   it("compares monthly donor conversion as donor rate point change through the selected month", () => {

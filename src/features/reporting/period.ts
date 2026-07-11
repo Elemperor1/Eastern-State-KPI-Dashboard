@@ -31,8 +31,14 @@ export function resolveDashboardCompareState(
 ): DashboardCompareState {
   const currentYearParam = parsePositiveYear(searchParams.currentYear);
   const fallbackPair = defaultComparisonPair(availableYears);
-  const currentYear = currentYearParam ?? fallbackPair.currentYear;
-  const compareYear = parsePositiveYear(searchParams.compareYear) ?? fallbackPair.compareYear;
+  const currentYear = currentYearParam ?? (
+    availableYears.includes(now.getFullYear())
+      ? now.getFullYear()
+      : fallbackPair.currentYear
+  );
+  const priorYears = availableYears.filter((year) => year < currentYear);
+  const nearestPriorYear = priorYears.at(-1) ?? fallbackPair.compareYear;
+  const compareYear = parsePositiveYear(searchParams.compareYear) ?? nearestPriorYear;
   return {
     currentYear,
     compareYear,

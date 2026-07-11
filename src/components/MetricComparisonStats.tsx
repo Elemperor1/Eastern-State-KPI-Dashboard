@@ -9,12 +9,14 @@ interface MetricComparisonStatsProps {
   analytics: KPIAnalytics;
   favorableMonthly: boolean;
   favorableYtd: boolean;
+  yearOverYearMeasurement?: boolean;
 }
 
 export function MetricComparisonStats({
   analytics,
   favorableMonthly,
   favorableYtd,
+  yearOverYearMeasurement = false,
 }: MetricComparisonStatsProps) {
   const { kpi, monthlyComparison: comp, ytdComparison: ytd } = analytics;
   const isAnnual = comp.isAnnual;
@@ -31,7 +33,7 @@ export function MetricComparisonStats({
             tone={favorableMonthly ? "good" : comp.delta < 0 ? "bad" : "neutral"}
           />
           <StatItem
-            label={`YoY change vs ${comp.compareYear}`}
+            label={`${yearOverYearMeasurement ? "Year-over-year change" : "Comparison change"} vs ${comp.compareYear}`}
             value={kpi.unit_type === "percent" && comp.ptsChange !== null
               ? `${comp.ptsChange > 0 ? "+" : ""}${comp.ptsChange.toFixed(1)} pts`
               : comp.pctChange !== null

@@ -22,16 +22,20 @@ vi.mock("@/features/auth/session", () => ({
 }));
 
 const {
+  archiveKPIMock,
   createKPIMock,
-  deleteKPIMock,
   listCategoriesMock,
   listKPIsMock,
+  restoreKPIMock,
+  retireOrDeleteKPIMock,
   updateKPIMock,
 } = vi.hoisted(() => ({
+  archiveKPIMock: vi.fn(),
   createKPIMock: vi.fn(),
-  deleteKPIMock: vi.fn(),
   listCategoriesMock: vi.fn(),
   listKPIsMock: vi.fn(),
+  restoreKPIMock: vi.fn(),
+  retireOrDeleteKPIMock: vi.fn(),
   updateKPIMock: vi.fn(),
 }));
 
@@ -41,10 +45,12 @@ vi.mock("@/features/catalog/server", async () => {
   );
   return {
     ...actual,
+    archiveKPI: archiveKPIMock,
     createKPI: createKPIMock,
-    deleteKPI: deleteKPIMock,
     listCategories: listCategoriesMock,
     listKPIs: listKPIsMock,
+    restoreKPI: restoreKPIMock,
+    retireOrDeleteKPI: retireOrDeleteKPIMock,
     updateKPI: updateKPIMock,
   };
 });
@@ -88,10 +94,12 @@ function mutationReq(method: "POST" | "PATCH" | "DELETE", body: object): NextReq
 }
 
 beforeEach(() => {
+  archiveKPIMock.mockReset();
   createKPIMock.mockReset();
-  deleteKPIMock.mockReset();
   listCategoriesMock.mockReset();
   listKPIsMock.mockReset();
+  restoreKPIMock.mockReset();
+  retireOrDeleteKPIMock.mockReset();
   updateKPIMock.mockReset();
 
   createKPIMock.mockReturnValue({
@@ -102,6 +110,7 @@ beforeEach(() => {
   });
   listCategoriesMock.mockReturnValue(REFRESHED_CATEGORIES);
   listKPIsMock.mockReturnValue(REFRESHED_KPIS);
+  retireOrDeleteKPIMock.mockReturnValue("deleted");
 });
 
 describe("/api/kpis refreshed mutation payloads", () => {
@@ -158,13 +167,28 @@ describe("/api/kpis refreshed mutation payloads", () => {
     });
   });
 
+  it("PATCH restores an archived strategic KPI with the authenticated actor", async () => {
+    const res = await PATCH(
+      mutationReq("PATCH", { action: "restore", id: 22 }),
+    );
+
+    expect(res.status).toBe(200);
+    expect(restoreKPIMock).toHaveBeenCalledWith(22, ADMIN.id);
+    expect(updateKPIMock).not.toHaveBeenCalled();
+    await expect(res.json()).resolves.toMatchObject({
+      ok: true,
+      lifecycle: "restored",
+    });
+  });
+
   it("DELETE returns refreshed catalog data after removing a KPI", async () => {
     const res = await DELETE(mutationReq("DELETE", { id: 22 }));
 
     expect(res.status).toBe(200);
-    expect(deleteKPIMock).toHaveBeenCalledWith(22);
+    expect(retireOrDeleteKPIMock).toHaveBeenCalledWith(22, ADMIN.id);
     await expect(res.json()).resolves.toMatchObject({
       ok: true,
+      lifecycle: "deleted",
       kpis: REFRESHED_KPIS,
       categories: REFRESHED_CATEGORIES,
     });

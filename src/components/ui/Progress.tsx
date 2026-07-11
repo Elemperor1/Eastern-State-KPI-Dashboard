@@ -1,6 +1,7 @@
 "use client";
 
 import { cn } from "@/lib/utils";
+import { normalizeProgressValue } from "./progress-values";
 
 export interface ProgressProps extends React.HTMLAttributes<HTMLDivElement> {
   value: number;
@@ -9,19 +10,19 @@ export interface ProgressProps extends React.HTMLAttributes<HTMLDivElement> {
 }
 
 export function Progress({ value, max = 100, color, className, ...props }: ProgressProps) {
-  const pct = Math.max(0, Math.min(100, (value / max) * 100));
+  const normalized = normalizeProgressValue(value, max);
   return (
     <div
       className={cn("h-1.5 overflow-hidden rounded-full bg-ink-100", className)}
       role="progressbar"
       aria-valuemin={0}
-      aria-valuemax={max}
-      aria-valuenow={Math.round(value)}
+      aria-valuemax={normalized.max}
+      aria-valuenow={Math.round(normalized.value)}
       {...props}
     >
       <div
         className="h-full rounded-full bg-brand-500 transition-[width] duration-500"
-        style={{ width: `${pct}%`, backgroundColor: color }}
+        style={{ width: `${normalized.percentage}%`, backgroundColor: color }}
       />
     </div>
   );

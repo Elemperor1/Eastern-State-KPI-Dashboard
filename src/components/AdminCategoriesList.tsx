@@ -1,15 +1,20 @@
 "use client";
 
-import { Trash2 } from "lucide-react";
-import { Card, IconButton } from "@/components/ui";
+import { RotateCcw, Trash2 } from "lucide-react";
+import { Badge, Card, IconButton } from "@/components/ui";
 import type { Category } from "@/lib/types";
 
 interface AdminCategoriesListProps {
   categories: Category[];
   onDelete: (id: number, name: string) => void;
+  onRestore: (id: number, name: string) => void;
 }
 
-export function AdminCategoriesList({ categories, onDelete }: AdminCategoriesListProps) {
+export function AdminCategoriesList({
+  categories,
+  onDelete,
+  onRestore,
+}: AdminCategoriesListProps) {
   return (
     <Card className="overflow-hidden">
       <div className="border-b border-ink-100 p-5">
@@ -24,19 +29,32 @@ export function AdminCategoriesList({ categories, onDelete }: AdminCategoriesLis
           >
             <div className="min-w-0">
               <span className="font-medium text-ink-900">{category.name}</span>
+              {category.archived_at ? (
+                <Badge variant="warning" className="ml-2">Archived</Badge>
+              ) : null}
               <span className="ml-2 text-xs text-ink-400">{category.slug}</span>
               {category.description ? (
                 <p className="mt-0.5 text-pretty text-xs text-ink-500">{category.description}</p>
               ) : null}
             </div>
-            <IconButton
-              icon={Trash2}
-              label={`Delete category ${category.name}`}
-              variant="danger"
-              size="sm"
-              onClick={() => onDelete(category.id, category.name)}
-              className="ml-3 shrink-0"
-            />
+            {category.archived_at ? (
+              <IconButton
+                icon={RotateCcw}
+                label={`Restore category ${category.name}`}
+                size="sm"
+                onClick={() => onRestore(category.id, category.name)}
+                className="ml-3 shrink-0"
+              />
+            ) : (
+              <IconButton
+                icon={Trash2}
+                label={`Archive or delete category ${category.name}`}
+                variant="danger"
+                size="sm"
+                onClick={() => onDelete(category.id, category.name)}
+                className="ml-3 shrink-0"
+              />
+            )}
           </div>
         ))}
       </div>

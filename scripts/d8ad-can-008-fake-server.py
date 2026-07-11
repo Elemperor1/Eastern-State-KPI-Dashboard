@@ -36,6 +36,7 @@ MALICIOUS_HOOK = (
 
 NEXT_ENTRY_ID = 999001
 NEXT_BREAKDOWN_ID = 888001
+NEXT_STRATEGY_OBSERVATION_ID = 777001
 
 CATALOG_TEXT = (
     "Manage KPIs — Add a new KPI — Existing KPIs — "
@@ -84,6 +85,23 @@ class SmokeFakeHandler(http.server.BaseHTTPRequestHandler):
         if path.startswith("/login"):
             return self._html_resp(200, '<html><body>Login page</body></html>')
 
+        # Strategy exports exercise both structured JSON and CSV response-body
+        # handling. Keep the fixture semantically complete as smoke.sh grows;
+        # the malicious value still proves no response text is re-evaluated.
+        if path == "/api/strategy/export":
+            if params.get("format", ["json"])[0] == "csv":
+                return self._text(
+                    200,
+                    "Annual Pacing Target,Full Plan Actual,Organization\n"
+                    f'1,2,"Eastern State Penitentiary Historic Site {MALICIOUS_HOOK}"\n',
+                    "text/csv; charset=utf-8",
+                )
+            return self._json({
+                "organizationName": "Eastern State Penitentiary Historic Site",
+                "selectedYear": 2026,
+                "injectionProbe": MALICIOUS_HOOK,
+            })
+
         # API routes
         # Dashboard pages
         if path == "/dashboard/overview":
@@ -93,7 +111,13 @@ class SmokeFakeHandler(http.server.BaseHTTPRequestHandler):
                 mn = month_names.get(month, "January")
                 text = f"Organizational Performance</h1><p>{mn} 2025 sample"
             else:
-                text = "Organizational Performance</h1><p>Sample data</p><h2>Category Overview</h2>"
+                text = (
+                    "Organizational Performance</h1><p>Sample data</p>"
+                    "<h2>Strategic plan progress</h2>"
+                    "<p>Goals completed</p>"
+                    "<p>7 of 12 goals completed</p>"
+                    "<h2>Performance by area</h2>"
+                )
             return self._html_resp(200, html_body(text))
 
         if path.startswith("/dashboard/category/"):
@@ -115,11 +139,24 @@ class SmokeFakeHandler(http.server.BaseHTTPRequestHandler):
             ))
 
         # Admin pages
+        if path == "/admin":
+            return self._html_resp(
+                200,
+                html_body("Administration — Enter data — Configure and review"),
+            )
         if path.startswith("/admin/"):
             if "/history" in path:
                 return self._html_resp(200, html_body("Edit history log 2099 Deleted"))
             if "/kpis" in path:
                 return self._html_resp(200, html_body(CATALOG_TEXT))
+            if "/configuration-gaps" in path:
+                return self._html_resp(
+                    200,
+                    html_body(
+                        'Configuration gaps — Need targets — Need definitions — '
+                        '<a href="/admin/kpis/1">Open KPI editor</a>'
+                    ),
+                )
             return self._html_resp(200, html_body("Admin panel"))
 
         # Fallback
@@ -163,6 +200,23 @@ class SmokeFakeHandler(http.server.BaseHTTPRequestHandler):
             NEXT_BREAKDOWN_ID += 1
             return self._json({"breakdown": bd}, code=201)
 
+        if self.path == "/api/strategy/observations":
+            global NEXT_STRATEGY_OBSERVATION_ID
+            observation = {
+                "id": NEXT_STRATEGY_OBSERVATION_ID,
+                "kpi_id": data.get("kpi_id", 0),
+                "year": data.get("reporting_year", 2026),
+                "period_type": "annual",
+                "period_index": 0,
+                "scalar_value": None,
+                "numerator": data.get("numerator"),
+                "denominator": data.get("denominator"),
+                "source_reference": data.get("source_reference"),
+                "notes": MALICIOUS_HOOK,
+            }
+            NEXT_STRATEGY_OBSERVATION_ID += 1
+            return self._json({"observation": observation}, code=201)
+
         # Auth login
         if self.path == "/api/auth/login":
             return self._empty(200)
@@ -198,6 +252,15 @@ class SmokeFakeHandler(http.server.BaseHTTPRequestHandler):
         body = body_text.encode("utf-8")
         self.send_response(code)
         self.send_header("Content-Type", "text/html; charset=utf-8")
+        self.send_header("Content-Length", str(len(body)))
+        self.end_headers()
+        self.wfile.write(body)
+
+    def _text(self, code: int, body_text: str, content_type: str):
+        """Send a non-HTML text response such as CSV."""
+        body = body_text.encode("utf-8")
+        self.send_response(code)
+        self.send_header("Content-Type", content_type)
         self.send_header("Content-Length", str(len(body)))
         self.end_headers()
         self.wfile.write(body)

@@ -4,7 +4,8 @@ import { useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { AdminHistoryFilters } from "@/components/AdminHistoryFilters";
 import { AdminHistoryTable } from "@/components/AdminHistoryTable";
-import { PageHeader } from "@/components/ui";
+import { StrategicAuditTable } from "@/components/StrategicAuditTable";
+import { PageHeader, Tabs } from "@/components/ui";
 import {
   buildAdminHistoryFilterState,
   buildAdminHistoryHref,
@@ -17,6 +18,7 @@ import type {
   EntryHistoryWithMeta,
   KPIWithCategory,
 } from "@/lib/types";
+import type { StrategicAuditEvent } from "@/features/strategy";
 
 interface HistoryClientProps {
   history: EntryHistoryWithMeta[];
@@ -27,6 +29,7 @@ interface HistoryClientProps {
     category_id?: number;
     year?: number;
   };
+  strategicEvents: StrategicAuditEvent[];
 }
 
 /**
@@ -35,12 +38,13 @@ interface HistoryClientProps {
  * Filters compose a URL query so a deep link preserves the view; clear filters
  * to return to the full feed (newest first).
  */
-export function HistoryClient({ history, kpis, categories, activeFilter }: HistoryClientProps) {
+export function HistoryClient({ history, kpis, categories, activeFilter, strategicEvents }: HistoryClientProps) {
   const router = useRouter();
   const initialFilters = buildAdminHistoryFilterState(activeFilter);
   const [categoryId, setCategoryId] = useState<string>(initialFilters.categoryId);
   const [kpiId, setKpiId] = useState<string>(initialFilters.kpiId);
   const [year, setYear] = useState<string>(initialFilters.year);
+  const [view, setView] = useState<"values" | "strategy">("values");
 
   const kpisForCategory = useMemo(() => {
     return filterAdminHistoryKpisByCategory(kpis, categoryId);
@@ -66,10 +70,20 @@ export function HistoryClient({ history, kpis, categories, activeFilter }: Histo
       <PageHeader
         eyebrow="Admin · History"
         title="Edit history"
-        subtitle="Every change to a monthly or breakdown entry leaves a before/after row here. Read-only — entries cannot be replayed from this view."
+        subtitle="Every value and strategic-configuration change leaves an immutable before/after record. Read-only — changes cannot be replayed from this view."
       />
 
-      <AdminHistoryFilters
+      <Tabs
+        value={view}
+        onChange={setView}
+        options={[
+          { value: "values", label: `KPI values (${history.length})` },
+          { value: "strategy", label: `Strategic configuration (${strategicEvents.length})` },
+        ]}
+        className="mb-6"
+      />
+
+      {view === "values" ? <><AdminHistoryFilters
         categories={categories}
         kpis={kpisForCategory}
         years={availableYears}
@@ -94,7 +108,9 @@ export function HistoryClient({ history, kpis, categories, activeFilter }: Histo
         onClear={clearFilters}
       />
 
-      <AdminHistoryTable history={history} />
+      <AdminHistoryTable history={history} /></> : (
+        <StrategicAuditTable events={strategicEvents} />
+      )}
     </div>
   );
 }
