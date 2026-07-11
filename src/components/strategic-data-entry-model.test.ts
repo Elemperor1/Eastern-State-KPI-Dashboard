@@ -362,6 +362,71 @@ describe("strategic data-entry model", () => {
     }
   });
 
+  it("includes the parent KPI and component owner for component distributions", () => {
+    const kpi = selected("multi_component", {
+      components: [
+        {
+          id: 31,
+          label: "Audience mix",
+          measurementType: "distribution",
+          unit: "respondents",
+          fixedDenominator: null,
+        },
+      ],
+      bands: [
+        {
+          id: 101,
+          componentId: 31,
+          slug: "known",
+          label: "Known",
+          displayOrder: 0,
+          isUnknown: false,
+          isDeclined: false,
+          derivedGroup: null,
+        },
+      ],
+    });
+
+    const result = buildStrategicDataEntryMutation(
+      kpi,
+      2026,
+      draftFor(kpi, {
+        componentId: "31",
+        respondentCount: "10",
+        bandCounts: { "101": "10" },
+      }),
+    );
+
+    expect(result).toEqual({
+      ok: true,
+      errors: {},
+      mutation: {
+        endpoint: "/api/strategy/distributions",
+        body: {
+          kpi_id: 12,
+          component_id: 31,
+          reporting_year: 2026,
+          notes: null,
+          source_reference: null,
+          respondent_count: 10,
+          mutually_exclusive: true,
+          bands: [
+            {
+              band_id: 101,
+              slug: "known",
+              label: "Known",
+              count: 10,
+              display_order: 0,
+              is_unknown: false,
+              is_declined: false,
+              derived_group: null,
+            },
+          ],
+        },
+      },
+    });
+  });
+
   it("rejects distribution totals that do not match exclusive bands", () => {
     const kpi = selected("distribution", {
       bands: [

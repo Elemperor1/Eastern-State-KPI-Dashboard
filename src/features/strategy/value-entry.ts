@@ -1421,6 +1421,16 @@ function findBand(
         [{ path: "bands.band_id", message: "Choose an active band for this KPI or component." }],
       );
     }
+    const effectiveToYear = numberOrNull(row.effective_to_year);
+    if (
+      Number(row.effective_from_year) > year ||
+      (effectiveToYear !== null && effectiveToYear < year)
+    ) {
+      throw new StrategyValueEntryValidationError(
+        "The distribution band is not effective for this reporting year.",
+        [{ path: "bands.band_id", message: "Choose a band effective for this reporting year." }],
+      );
+    }
     return row;
   }
   return (
@@ -1450,6 +1460,21 @@ function syncDistributionBand(
   // definitions are authoritative and may only change through the explicit
   // create/update/reorder/archive/restore operations below.
   if (before) return before;
+  const implicitBand: DistributionBandDefinitionWrite = {
+    kpi_id: kpiId,
+    component_id: componentId,
+    slug: input.slug,
+    label: input.label,
+    effective_from_year: year,
+    effective_to_year: null,
+    display_order: input.display_order,
+    is_unknown: input.is_unknown,
+    is_declined: input.is_declined,
+    derived_group: input.derived_group,
+  };
+  if (findOverlappingActiveDistributionBand(implicitBand)) {
+    throw overlappingDistributionBandError();
+  }
   const id = Number(
     db.prepare(
       `INSERT INTO distribution_bands (
@@ -1839,6 +1864,40 @@ function getDistributionBandDefinition(
   return asDistributionBandDefinition(row);
 }
 
+function findOverlappingActiveDistributionBand(
+  input: DistributionBandDefinitionWrite,
+  excludeId?: number,
+): Record<string, unknown> | undefined {
+  const excludePredicate = excludeId === undefined ? "" : "AND id <> ?";
+  const parameters: (number | string | null)[] = [
+    input.kpi_id,
+    input.component_id,
+    input.slug,
+    input.effective_from_year,
+    input.effective_to_year,
+    input.effective_to_year,
+  ];
+  if (excludeId !== undefined) parameters.push(excludeId);
+  return getDb()
+    .prepare(
+      `SELECT id FROM distribution_bands
+       WHERE kpi_id = ? AND component_id IS ? AND slug = ?
+         AND archived_at IS NULL
+         AND (effective_to_year IS NULL OR effective_to_year >= ?)
+         AND (? IS NULL OR effective_from_year <= ?)
+         ${excludePredicate}
+       LIMIT 1`,
+    )
+    .get(...parameters);
+}
+
+function overlappingDistributionBandError(): StrategyValueEntryValidationError {
+  return new StrategyValueEntryValidationError(
+    "A distribution band with this slug already overlaps this effective period.",
+    [{ path: "slug", message: "Choose a non-overlapping effective period for this band slug." }],
+  );
+}
+
 function assertDistributionBandOwner(
   kpiId: number,
   componentId: number | null,
@@ -1919,23 +1978,8 @@ export function createStrategyDistributionBand(
       input.component_id,
       input.effective_from_year,
     );
-    const duplicate = getDb()
-      .prepare(
-        `SELECT id FROM distribution_bands
-         WHERE kpi_id = ? AND component_id IS ? AND slug = ?
-           AND effective_from_year = ?`,
-      )
-      .get(
-        input.kpi_id,
-        input.component_id,
-        input.slug,
-        input.effective_from_year,
-      );
-    if (duplicate) {
-      throw new StrategyValueEntryValidationError(
-        "A distribution band with this slug already exists for the effective year.",
-        [{ path: "slug", message: "Choose a unique band slug for this effective year." }],
-      );
+    if (findOverlappingActiveDistributionBand(input)) {
+      throw overlappingDistributionBandError();
     }
     const id = Number(
       getDb()
@@ -2007,24 +2051,8 @@ export function updateStrategyDistributionBand(
       input.component_id,
       input.effective_from_year,
     );
-    const duplicate = getDb()
-      .prepare(
-        `SELECT id FROM distribution_bands
-         WHERE kpi_id = ? AND component_id IS ? AND slug = ?
-           AND effective_from_year = ? AND id <> ?`,
-      )
-      .get(
-        input.kpi_id,
-        input.component_id,
-        input.slug,
-        input.effective_from_year,
-        input.id,
-      );
-    if (duplicate) {
-      throw new StrategyValueEntryValidationError(
-        "A distribution band with this slug already exists for the effective year.",
-        [{ path: "slug", message: "Choose a unique band slug for this effective year." }],
-      );
+    if (findOverlappingActiveDistributionBand(input, input.id)) {
+      throw overlappingDistributionBandError();
     }
     const proposed = {
       ...before,
@@ -2154,6 +2182,9 @@ function setDistributionBandArchived(
       ? before.archived_at !== null
       : before.archived_at === null;
     if (alreadyDesired) return before;
+    if (!archived && findOverlappingActiveDistributionBand(before, before.id)) {
+      throw overlappingDistributionBandError();
+    }
     const context = loadAuditContext(before.kpi_id, before.effective_from_year);
     getDb()
       .prepare(

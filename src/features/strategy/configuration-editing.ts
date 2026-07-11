@@ -247,15 +247,32 @@ function ensureConfigurationHistoryFits(
   const row = getDb()
     .prepare(
       `SELECT MIN(year) AS min_year, MAX(year) AS max_year
-       FROM kpi_observations WHERE configuration_id = ?`,
+       FROM (
+         SELECT year
+         FROM kpi_observations
+         WHERE configuration_id = ?
+
+         UNION ALL
+
+         SELECT entry.year
+         FROM kpi_component_entries entry
+         JOIN kpi_components component ON component.id = entry.component_id
+         WHERE component.configuration_id = ?
+
+         UNION ALL
+
+         SELECT year
+         FROM distribution_observations
+         WHERE configuration_id = ?
+       ) historical_values`,
     )
-    .get(id) as { min_year: number | null; max_year: number | null };
+    .get(id, id, id) as { min_year: number | null; max_year: number | null };
   if (
     row.min_year !== null &&
     (row.min_year < startYear || (endYear !== null && row.max_year! > endYear))
   ) {
     throw new StrategyEditConflictError(
-      "The effective-year change would orphan historical observations.",
+      "The effective-year change would orphan historical values.",
       "observation_year_conflict",
     );
   }
@@ -711,22 +728,32 @@ export function updateStrategicGoalMembership(
 }
 
 function targetSubject(
-  kpiId: number | null | undefined,
-  componentId: number | null | undefined,
+  target: Pick<
+    ValidatedStrategicTargetCreate,
+    "kpi_id" | "component_id" | "target_scope" | "reporting_year" | "target_year"
+  >,
 ): TargetSubject {
+  const { kpi_id: kpiId, component_id: componentId } = target;
   if (kpiId != null) {
     const kpi = getDb()
       .prepare("SELECT id, archived_at FROM kpis WHERE id = ?")
       .get(kpiId) as { id: number; archived_at: string | null } | undefined;
     if (!kpi) throw new StrategyEditNotFoundError("kpi", kpiId);
+    const configurationYear =
+      target.target_scope === "annual"
+        ? target.reporting_year ?? target.target_year
+        : target.target_year;
     const config = getDb()
       .prepare(
         `SELECT measurement_type, archived_at
          FROM kpi_measurement_configs
-         WHERE kpi_id = ? AND archived_at IS NULL
+         WHERE kpi_id = ?
+           AND effective_from_year <= ?
+           AND (effective_to_year IS NULL OR effective_to_year >= ?)
+           AND archived_at IS NULL
          ORDER BY effective_from_year DESC, id DESC LIMIT 1`,
       )
-      .get(kpiId) as
+      .get(kpiId, configurationYear, configurationYear) as
       | { measurement_type: MeasurementType | null; archived_at: string | null }
       | undefined;
     if (!config?.measurement_type) {
@@ -868,7 +895,7 @@ export function createStrategicTarget(
     "Invalid strategic target.",
   );
   return transaction(() => {
-    const subject = targetSubject(parsed.kpi_id, parsed.component_id);
+    const subject = targetSubject(parsed);
     validateTargetMeasurement(parsed, subject);
     ensureNoTargetConflict(parsed, null);
     const values = targetValues(parsed);
@@ -985,7 +1012,7 @@ export function updateStrategicTarget(
     const before = rawTarget(patch.id);
     requireEditable(before, "target");
     const merged = mergedTarget(before, patch);
-    const subject = targetSubject(merged.kpi_id, merged.component_id);
+    const subject = targetSubject(merged);
     validateTargetMeasurement(merged, subject);
     ensureNoTargetConflict(merged, patch.id);
     const values = targetValues(merged);

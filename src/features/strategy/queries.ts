@@ -130,7 +130,7 @@ export function listEffectiveMeasurementConfigs(
 function effectiveTargetClause(): string {
   return `(
     (target_scope = 'annual' AND reporting_year = ?) OR
-    (target_scope = 'full_plan' AND target_year >= ?)
+    target_scope = 'full_plan'
   )`;
 }
 
@@ -151,7 +151,7 @@ export function listEffectiveTargetsForKpi(
        ORDER BY CASE target_scope WHEN 'annual' THEN 0 ELSE 1 END,
                 reporting_year, target_year, id`,
     )
-    .all(kpiId, year, year) as Record<string, unknown>[];
+    .all(kpiId, year) as Record<string, unknown>[];
   return rows.map(asTarget);
 }
 
@@ -172,7 +172,7 @@ export function listEffectiveTargetsForComponent(
        ORDER BY CASE target_scope WHEN 'annual' THEN 0 ELSE 1 END,
                 reporting_year, target_year, id`,
     )
-    .all(componentId, year, year) as Record<string, unknown>[];
+    .all(componentId, year) as Record<string, unknown>[];
   return rows.map(asTarget);
 }
 

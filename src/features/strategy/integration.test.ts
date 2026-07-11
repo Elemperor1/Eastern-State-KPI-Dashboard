@@ -216,6 +216,32 @@ describe("strategy persistence integration", () => {
     expect(listEffectiveTargetsForKpi(kpiRow.id, 2030)).toEqual([]);
   });
 
+  it("keeps full-plan targets available after their target year", () => {
+    const kpiId = Number(
+      (
+        getDb()
+          .prepare("SELECT id FROM kpis ORDER BY id LIMIT 1")
+          .get() as { id: number }
+      ).id,
+    );
+    const targetId = Number(
+      getDb()
+        .prepare(
+          `INSERT INTO kpi_targets (
+             kpi_id, target_scope, target_year, target_value,
+             target_description, configuration_status
+           ) VALUES (?, 'full_plan', 2026, 10, 'Complete ten items.', 'active')`,
+        )
+        .run(kpiId).lastInsertRowid,
+    );
+
+    expect(listEffectiveTargetsForKpi(kpiId, 2027)).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ id: targetId, target_scope: "full_plan", target_year: 2026 }),
+      ]),
+    );
+  });
+
   it("reports explicit definition, formula, component, and target gaps", () => {
     ensureStrategicPlanConfiguration();
     const activeConfig = getDb()

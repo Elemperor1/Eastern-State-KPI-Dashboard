@@ -371,6 +371,151 @@ describe("strategic configuration editing repository", () => {
     expect(qualitative.configuration_status).toBe("needs_target");
   });
 
+  it("validates KPI targets against the configuration effective for their year", () => {
+    createMeasurementConfiguration(
+      configuration(countKpiId, {
+        measurement_type: "percentage",
+        numerator_label: "Completed items",
+        denominator_label: "Eligible items",
+        effective_start_year: 2025,
+        effective_end_year: 2026,
+      }),
+      actorId,
+    );
+    createMeasurementConfiguration(
+      configuration(countKpiId, {
+        effective_start_year: 2027,
+        effective_end_year: 2029,
+      }),
+      actorId,
+    );
+
+    const targetFor2026 = {
+      kpi_id: countKpiId,
+      target_scope: "annual" as const,
+      reporting_year: 2026,
+      target_year: 2026,
+      target_value: 75,
+      target_description: "Reach 75 percent.",
+      configuration_status: "active" as const,
+    };
+
+    expect(() =>
+      createStrategicTarget(
+        { ...targetFor2026, target_value: 101 },
+        actorId,
+      ),
+    ).toThrow(StrategyEditValidationError);
+    expect(() =>
+      createStrategicTarget(
+        {
+          kpi_id: countKpiId,
+          target_scope: "full_plan",
+          target_year: 2026,
+          target_value: 101,
+          target_description: "Reach 101 percent.",
+          configuration_status: "active",
+        },
+        actorId,
+      ),
+    ).toThrow(StrategyEditValidationError);
+
+    const valid2026Target = createStrategicTarget(targetFor2026, actorId);
+    expect(() =>
+      updateStrategicTarget(
+        { id: valid2026Target.id, target_value: 101 },
+        actorId,
+      ),
+    ).toThrow(StrategyEditValidationError);
+
+    expect(
+      createStrategicTarget(
+        {
+          ...targetFor2026,
+          reporting_year: 2027,
+          target_year: 2027,
+          target_value: 101,
+          target_description: "Reach 101 items.",
+        },
+        actorId,
+      ).target_value,
+    ).toBe(101);
+  });
+
+  it("blocks configuration date changes that orphan component or distribution values", () => {
+    const componentConfiguration = createMeasurementConfiguration(
+      configuration(multiKpiId, {
+        measurement_type: "multi_component",
+        aggregation_method: "sum",
+        configuration_status: "draft",
+      }),
+      actorId,
+    );
+    const component = createStrategyComponent(
+      {
+        configuration_id: componentConfiguration.id,
+        slug: "counted-items",
+        label: "Counted items",
+        measurement_type: "count",
+        unit: "items",
+        display_order: 0,
+        configuration_status: "draft",
+      },
+      actorId,
+    );
+    getDb()
+      .prepare(
+        `INSERT INTO kpi_component_entries (
+           component_id, year, period_type, period_index, scalar_value
+         ) VALUES (?, 2025, 'annual', 0, 1)`,
+      )
+      .run(component.id);
+
+    expect(() =>
+      updateMeasurementConfiguration(
+        { id: componentConfiguration.id, effective_start_year: 2026 },
+        actorId,
+      ),
+    ).toThrow(StrategyEditConflictError);
+
+    const distributionConfiguration = createMeasurementConfiguration(
+      configuration(countKpiId, { measurement_type: "distribution" }),
+      actorId,
+    );
+    getDb()
+      .prepare(
+        `INSERT INTO distribution_observations (
+           kpi_id, configuration_id, year, period_type, period_index,
+           respondent_count
+         ) VALUES (?, ?, 2029, 'annual', 0, 1)`,
+      )
+      .run(countKpiId, distributionConfiguration.id);
+
+    expect(() =>
+      updateMeasurementConfiguration(
+        { id: distributionConfiguration.id, effective_end_year: 2028 },
+        actorId,
+      ),
+    ).toThrow(StrategyEditConflictError);
+
+    expect(
+      getDb()
+        .prepare(
+          `SELECT effective_from_year, effective_to_year
+           FROM kpi_measurement_configs WHERE id = ?`,
+        )
+        .get(componentConfiguration.id),
+    ).toEqual({ effective_from_year: 2025, effective_to_year: 2029 });
+    expect(
+      getDb()
+        .prepare(
+          `SELECT effective_from_year, effective_to_year
+           FROM kpi_measurement_configs WHERE id = ?`,
+        )
+        .get(distributionConfiguration.id),
+    ).toEqual({ effective_from_year: 2025, effective_to_year: 2029 });
+  });
+
   it("creates, activates, edits, and reorders components with audit history", () => {
     const config = createMeasurementConfiguration(
       configuration(multiKpiId, {

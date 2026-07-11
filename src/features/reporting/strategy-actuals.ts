@@ -76,7 +76,10 @@ export function calculateStrategyMultiComponent({
       distribution,
       previousPeriodValue,
     }) => {
-      const target = selectComponentTarget(definition, record?.year ?? null);
+      const target = selectComponentTarget(
+        definition,
+        distribution?.year ?? record?.year ?? null,
+      );
       const resolvedTarget = target
         ? resolveConfiguredTargetValue({
             measurementType: definition.measurement_type,

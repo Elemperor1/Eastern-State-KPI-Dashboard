@@ -104,6 +104,36 @@ describe("first-class strategic actual calculations", () => {
     expect(result.components?.map((item) => item.result.value)).toEqual([2, 3]);
   });
 
+  it("selects the annual component target from a distribution record year", () => {
+    const result = calculateStrategyMultiComponent({
+      configuration: configuration({ aggregation_method: "none" }),
+      components: [
+        {
+          definition: component(1, "Audience mix", {
+            measurement_type: "distribution",
+            targets: [
+              target({
+                id: 2,
+                target_scope: "full_plan",
+                reporting_year: null,
+                target_year: 2029,
+                target_value: 90,
+              }),
+              target({ target_value: 50 }),
+            ],
+          }),
+          record: null,
+          distribution: distribution({ component_id: 1, year: 2026 }),
+        },
+      ],
+    });
+
+    expect(result.components?.[0]?.progress).toMatchObject({
+      status: "not_started",
+      targetValue: 50,
+    });
+  });
+
   it("keeps draft component targets out of progress and resolves active structured targets", () => {
     const draft = calculateStrategyMultiComponent({
       configuration: configuration(),
@@ -189,7 +219,9 @@ function componentEntry(
   };
 }
 
-function configuration(): PersistedMeasurementConfig {
+function configuration(
+  overrides: Partial<PersistedMeasurementConfig> = {},
+): PersistedMeasurementConfig {
   return {
     id: 1,
     kpi_id: 1,
@@ -218,6 +250,7 @@ function configuration(): PersistedMeasurementConfig {
     created_at: "2026-01-01T00:00:00.000Z",
     updated_by: null,
     updated_at: "2026-01-01T00:00:00.000Z",
+    ...overrides,
   };
 }
 
@@ -279,7 +312,9 @@ function target(overrides: Partial<PersistedTarget> = {}): PersistedTarget {
   };
 }
 
-function distribution(): StrategyDistributionRecord {
+function distribution(
+  overrides: Partial<StrategyDistributionRecord> = {},
+): StrategyDistributionRecord {
   return {
     id: 1,
     kpi_id: 1,
@@ -321,5 +356,6 @@ function distribution(): StrategyDistributionRecord {
         derived_group: "non_white",
       },
     ],
+    ...overrides,
   };
 }

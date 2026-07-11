@@ -376,6 +376,194 @@ describe("strategy value-entry persistence", () => {
     ).toThrow(StrategyValueEntryValidationError);
   });
 
+  it("rejects overlapping band versions and band IDs outside the observation year", () => {
+    const { kpiId } = seedKpi("audience-band-integrity", "distribution", "annual");
+    const original = createStrategyDistributionBand(
+      {
+        kpi_id: kpiId,
+        effective_from_year: 2025,
+        effective_to_year: 2026,
+        slug: "white",
+        label: "White",
+        display_order: 0,
+      },
+      null,
+    );
+    const later = createStrategyDistributionBand(
+      {
+        kpi_id: kpiId,
+        effective_from_year: 2027,
+        effective_to_year: 2029,
+        slug: "white",
+        label: "White",
+        display_order: 0,
+      },
+      null,
+    );
+
+    expect(() =>
+      createStrategyDistributionBand(
+        {
+          kpi_id: kpiId,
+          effective_from_year: 2026,
+          effective_to_year: 2028,
+          slug: "white",
+          label: "White",
+          display_order: 0,
+        },
+        null,
+      ),
+    ).toThrowError(/overlaps this effective period/i);
+    expect(() =>
+      updateStrategyDistributionBand(
+        {
+          id: later.id,
+          kpi_id: later.kpi_id,
+          component_id: later.component_id,
+          slug: later.slug,
+          label: later.label,
+          effective_from_year: 2026,
+          effective_to_year: later.effective_to_year,
+          display_order: later.display_order,
+          is_unknown: later.is_unknown,
+          is_declined: later.is_declined,
+          derived_group: later.derived_group,
+        },
+        null,
+      ),
+    ).toThrowError(/overlaps this effective period/i);
+
+    const future = createStrategyDistributionBand(
+      {
+        kpi_id: kpiId,
+        effective_from_year: 2028,
+        effective_to_year: 2029,
+        slug: "future-band",
+        label: "Future band",
+        display_order: 1,
+      },
+      null,
+    );
+    const expired = createStrategyDistributionBand(
+      {
+        kpi_id: kpiId,
+        effective_from_year: 2025,
+        effective_to_year: 2025,
+        slug: "expired-band",
+        label: "Expired band",
+        display_order: 2,
+      },
+      null,
+    );
+
+    for (const band of [future, expired]) {
+      expect(() =>
+        upsertStrategyDistribution(
+          {
+            kpi_id: kpiId,
+            reporting_year: 2026,
+            respondent_count: 10,
+            bands: [
+              {
+                band_id: band.id,
+                slug: band.slug,
+                label: band.label,
+                count: 10,
+                display_order: band.display_order,
+              },
+            ],
+          },
+          null,
+        ),
+      ).toThrowError(/not effective for this reporting year/i);
+    }
+
+    const boundaryYear = upsertStrategyDistribution(
+      {
+        kpi_id: kpiId,
+        reporting_year: 2026,
+        respondent_count: 10,
+        bands: [
+          {
+            band_id: original.id,
+            slug: original.slug,
+            label: original.label,
+            count: 10,
+            display_order: original.display_order,
+          },
+        ],
+      },
+      null,
+    );
+    expect(boundaryYear.bands).toEqual([
+      expect.objectContaining({ band_id: original.id }),
+    ]);
+
+    const { kpiId: implicitBandKpiId } = seedKpi(
+      "audience-implicit-band-integrity",
+      "distribution",
+      "annual",
+    );
+    createStrategyDistributionBand(
+      {
+        kpi_id: implicitBandKpiId,
+        effective_from_year: 2028,
+        effective_to_year: 2029,
+        slug: "white",
+        label: "White",
+        display_order: 0,
+      },
+      null,
+    );
+    expect(() =>
+      upsertStrategyDistribution(
+        {
+          kpi_id: implicitBandKpiId,
+          reporting_year: 2026,
+          respondent_count: 10,
+          bands: [{ slug: "white", label: "White", count: 10, display_order: 0 }],
+        },
+        null,
+      ),
+    ).toThrowError(/overlaps this effective period/i);
+
+    const { kpiId: restoreKpiId } = seedKpi(
+      "audience-restored-band-integrity",
+      "distribution",
+      "annual",
+    );
+    const archived = createStrategyDistributionBand(
+      {
+        kpi_id: restoreKpiId,
+        effective_from_year: 2025,
+        effective_to_year: 2029,
+        slug: "white",
+        label: "White",
+        display_order: 0,
+      },
+      null,
+    );
+    archiveStrategyDistributionBand(archived.id, null);
+    createStrategyDistributionBand(
+      {
+        kpi_id: restoreKpiId,
+        effective_from_year: 2026,
+        effective_to_year: 2028,
+        slug: "white",
+        label: "White",
+        display_order: 0,
+      },
+      null,
+    );
+    expect(() => restoreStrategyDistributionBand(archived.id, null)).toThrowError(
+      /overlaps this effective period/i,
+    );
+
+    expect(listEffectiveDistributionBands({ kpi_id: kpiId, reporting_year: 2026 })).toEqual([
+      expect.objectContaining({ id: original.id }),
+    ]);
+  });
+
   it("exposes effective bands and supports audited create, update, reorder, archive, and restore", () => {
     const { kpiId } = seedKpi("audience-income-bands", "distribution", "annual");
     const low = createStrategyDistributionBand(

@@ -356,6 +356,9 @@ export function buildStrategicDataEntryMutation(
   const owner = component
     ? { component_id: component.id }
     : { kpi_id: selectedKpi.id };
+  const distributionOwner = component
+    ? { kpi_id: selectedKpi.id, component_id: component.id }
+    : { kpi_id: selectedKpi.id };
 
   if (measurementType === "distribution") {
     const respondentCount = readNumber(
@@ -410,7 +413,7 @@ export function buildStrategicDataEntryMutation(
       mutation: {
         endpoint: "/api/strategy/distributions",
         body: {
-          ...owner,
+          ...distributionOwner,
           ...base,
           respondent_count: respondentCount,
           mutually_exclusive: draft.mutuallyExclusive,
