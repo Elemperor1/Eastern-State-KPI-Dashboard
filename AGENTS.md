@@ -178,3 +178,17 @@ Current admin surfaces are `/admin` (the consolidated navigation hub),
 - The current strategic-plan sample set is annual-only for 2024–2026; all seeded entries use `month = 0`.
 - `iron-session` requires `cookies()` to be awaited — all `getSession()` calls are `async`.
 - Tailwind theme tokens (`ink`, `brand`, `accent`) live in `tailwind.config.ts`; do not hardcode hex values in components.
+
+## Agent skills
+
+### Issue tracker
+
+Work is tracked in GitHub Issues for `Elemperor1/Eastern-State-KPI-Dashboard`. See `docs/agents/issue-tracker.md`.
+
+### Triage labels
+
+Use the default five-role triage vocabulary. See `docs/agents/triage-labels.md`.
+
+### Domain docs
+
+This is a single-context repository using root `CONTEXT.md` and `docs/adr/`. See `docs/agents/domain.md`.
