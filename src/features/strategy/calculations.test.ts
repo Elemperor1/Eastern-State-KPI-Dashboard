@@ -209,6 +209,7 @@ describe("strategy calculation kernel", () => {
         maxScorePerRespondent: 5,
       })).toMatchObject({
         state: "ok",
+        averageMethod: "total_score",
         value: 80,
         respondentCount: 10,
         numerator: 40,
@@ -222,13 +223,22 @@ describe("strategy calculation kernel", () => {
         method: "average_score",
         averageScore: 4.2,
         maxScaleValue: 5,
-      })).toMatchObject({ state: "ok", value: 84 });
+      })).toMatchObject({
+        state: "ok",
+        averageMethod: "average_score",
+        value: 84,
+      });
       expect(calculateMeasurement({
         measurementType: "average",
         method: "percent_positive",
         positiveResponseCount: 34,
         totalResponseCount: 40,
-      })).toMatchObject({ state: "ok", value: 85, respondentCount: 40 });
+      })).toMatchObject({
+        state: "ok",
+        averageMethod: "percent_positive",
+        value: 85,
+        respondentCount: 40,
+      });
       expect(calculateMeasurement({
         measurementType: "average",
         method: "total_score",
@@ -469,6 +479,44 @@ describe("strategy calculation kernel", () => {
         aggregationMethod: "sum",
         components: [countComponent("a", 10), countComponent("b", 20)],
       })).toMatchObject({ state: "ok", value: 30 });
+    });
+
+    it("calculates a shared-denominator ratio from explicit numerator and denominator components", () => {
+      expect(calculateMeasurement({
+        measurementType: "multi_component",
+        aggregationMethod: "ratio",
+        precision: 1,
+        components: [
+          {
+            id: "city-support",
+            label: "City government support",
+            unit: "USD",
+            aggregationRole: "numerator",
+            input: { measurementType: "currency", value: 200 },
+          },
+          {
+            id: "state-support",
+            label: "State government support",
+            unit: "USD",
+            aggregationRole: "numerator",
+            input: { measurementType: "currency", value: 100 },
+          },
+          {
+            id: "contributed-revenue",
+            label: "Contributed revenue",
+            unit: "USD",
+            aggregationRole: "denominator",
+            input: { measurementType: "currency", value: 1_200 },
+          },
+        ],
+      })).toMatchObject({
+        state: "ok",
+        value: 25,
+        normalizedPercentage: 25,
+        numerator: 300,
+        denominator: 1_200,
+        aggregationMethod: "ratio",
+      });
     });
 
     it("rejects misleading aggregation across incompatible units", () => {

@@ -10,6 +10,63 @@
 export const EXPORT_ONLY_SELECTOR = ".export-only";
 export const EXPORT_ACTIONS_SELECTOR = "[data-page-header-actions], .no-print";
 export const EXPORT_TEXT_SELECTOR = "[data-raster-export-text]";
+export const EXPORT_MIN_WIDTH_ATTRIBUTE = "data-raster-export-min-width";
+
+/** Conservative canvas limits with headroom below Chromium's 32,767px edge. */
+export const MAX_RASTER_DIMENSION = 30_000;
+export const MAX_RASTER_PIXELS = 24_000_000;
+export const MIN_RASTER_OUTPUT_WIDTH = 512;
+export const MIN_RASTER_SCALE = 0.25;
+
+export function resolveRasterCaptureScale({
+  width,
+  height,
+  preferredScale,
+  minimumOutputWidth = MIN_RASTER_OUTPUT_WIDTH,
+  minimumScale = MIN_RASTER_SCALE,
+}: {
+  width: number;
+  height: number;
+  preferredScale: number;
+  minimumOutputWidth?: number;
+  minimumScale?: number;
+}): number {
+  if (
+    !Number.isFinite(width) ||
+    !Number.isFinite(height) ||
+    !Number.isFinite(preferredScale) ||
+    !Number.isFinite(minimumOutputWidth) ||
+    !Number.isFinite(minimumScale) ||
+    width <= 0 ||
+    height <= 0 ||
+    preferredScale <= 0 ||
+    minimumOutputWidth <= 0 ||
+    minimumScale <= 0
+  ) {
+    throw new Error("Raster export dimensions and scales must be positive.");
+  }
+
+  const dimensionScale = Math.min(
+    MAX_RASTER_DIMENSION / width,
+    MAX_RASTER_DIMENSION / height,
+  );
+  const pixelScale = Math.sqrt(MAX_RASTER_PIXELS / (width * height));
+  // Round down so floating-point drift can never put the allocated canvas one
+  // pixel over a browser limit.
+  const scale = Math.floor(
+    Math.min(preferredScale, dimensionScale, pixelScale) * 1_000,
+  ) / 1_000;
+
+  if (
+    scale < minimumScale ||
+    Math.floor(width * scale) < minimumOutputWidth
+  ) {
+    throw new Error(
+      "This report is too large for a readable raster export. Use Print / PDF instead.",
+    );
+  }
+  return scale;
+}
 
 interface StyleSnapshot {
   element: HTMLElement;
@@ -63,6 +120,21 @@ function setTemporaryDisplay(
   return setTemporaryStyles(elements, { display });
 }
 
+function widenConfiguredRasterTarget(target: HTMLElement): () => void {
+  const configuredWidth = Number.parseInt(
+    target.getAttribute(EXPORT_MIN_WIDTH_ATTRIBUTE) ?? "",
+    10,
+  );
+  if (!Number.isFinite(configuredWidth) || configuredWidth <= target.scrollWidth) {
+    return () => {};
+  }
+
+  return setTemporaryStyles([target], {
+    width: `${configuredWidth}px`,
+    "max-width": "none",
+  });
+}
+
 export function showExportOnly(target: HTMLElement): () => void {
   return setTemporaryDisplay(
     target.querySelectorAll<HTMLElement>(EXPORT_ONLY_SELECTOR),
@@ -94,8 +166,10 @@ export function prepareRasterExportTarget(target: HTMLElement): () => void {
   const restoreExportOnly = showExportOnly(target);
   const restoreActions = hideActionsForExport(target);
   const restoreText = relaxTextForExport(target);
+  const restoreWidth = widenConfiguredRasterTarget(target);
 
   return () => {
+    restoreWidth();
     restoreText();
     restoreActions();
     restoreExportOnly();

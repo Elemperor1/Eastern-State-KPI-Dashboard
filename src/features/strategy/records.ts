@@ -1,6 +1,7 @@
 import type {
   AggregationMethod,
   BoardStatus,
+  ComponentAggregationRole,
   ConfigurationStatus,
   GoalCompletionRule,
   GoalManualStatus,
@@ -102,6 +103,7 @@ export interface PersistedComponent {
   fixed_denominator: number | null;
   baseline_value: number | null;
   previous_period_value: number | null;
+  aggregation_role: ComponentAggregationRole;
   weight: number;
   display_order: number;
   configuration_status: ConfigurationStatus;
@@ -169,6 +171,7 @@ export interface ConfigurationGapRow {
   priority_id: number;
   priority_slug: string;
   priority_name: string;
+  membership_role: PersistedGoalMembership["role"];
   configuration: PersistedMeasurementConfig;
   target_years: number[];
   missing_measurement_type: boolean;
@@ -336,6 +339,9 @@ export function asComponent(row: Record<string, unknown>): PersistedComponent {
     fixed_denominator: numberOrNull(row.fixed_denominator),
     baseline_value: numberOrNull(row.baseline_value),
     previous_period_value: numberOrNull(row.previous_period_value),
+    aggregation_role: String(
+      row.aggregation_role ?? "value",
+    ) as ComponentAggregationRole,
     weight: Number(row.weight),
     display_order: Number(row.display_order),
     configuration_status: String(row.configuration_status) as ConfigurationStatus,

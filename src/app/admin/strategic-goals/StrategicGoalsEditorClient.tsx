@@ -10,6 +10,7 @@ import {
   GOAL_COMPLETION_RULES,
   GOAL_MANUAL_STATUSES,
   GOAL_MEMBERSHIP_ROLES,
+  STRATEGIC_PLAN_REPORTING_YEARS,
   type BoardStatus,
   type ConfigurationStatus,
   type GoalCompletionRuleName,
@@ -19,10 +20,16 @@ import { apiFetch } from "@/lib/api-client";
 import {
   buildStrategicGoalLifecycleMutation,
   buildStrategicGoalMembershipMutation,
+  buildStrategicGoalMembershipSuccessorMutation,
   buildStrategicGoalSettingsPayload,
   buildStrategicGoalUpdateMutation,
+  buildStrategicGoalSuccessorMutation,
+  canCreateGoalMembershipSuccessor,
+  canCreateStrategicGoalSuccessor,
   filterStrategicGoals,
   formatStrategicGoalLabel,
+  resolveStrategicGoalSelection,
+  strategicGoalSuccessorPath,
   strategicGoalDraftFromData,
   strategicGoalMembershipDraftFromData,
   strategicGoalPriorityOptions,
@@ -94,24 +101,30 @@ function FieldHint({ error, fallback }: { error?: string; fallback?: string }) {
 
 export function StrategicGoalsEditorClient({
   initialGoals,
+  initialSelectedGoalId,
   reportingYear,
 }: {
   initialGoals: StrategicGoalEditorRecord[];
+  initialSelectedGoalId: number | null;
   reportingYear: number;
 }) {
   const [goals, setGoals] = useState(initialGoals);
   const [priorityId, setPriorityId] = useState<number | null>(null);
   const [includeArchived, setIncludeArchived] = useState(false);
   const [selectedGoalId, setSelectedGoalId] = useState<number | null>(
-    initialGoals.find((goal) => goal.archived_at === null)?.id ??
-      initialGoals[0]?.id ??
-      null,
+    resolveStrategicGoalSelection(initialGoals, initialSelectedGoalId),
   );
   const router = useRouter();
 
   useEffect(() => {
     setGoals(initialGoals);
-  }, [initialGoals]);
+    setSelectedGoalId((current) =>
+      resolveStrategicGoalSelection(
+        initialGoals,
+        initialSelectedGoalId ?? current,
+      ),
+    );
+  }, [initialGoals, initialSelectedGoalId]);
 
   const priorityOptions = useMemo(
     () => strategicGoalPriorityOptions(goals),
@@ -136,6 +149,10 @@ export function StrategicGoalsEditorClient({
         error?: string;
         issues?: unknown;
         goal?: Partial<StrategicGoalEditorRecord>;
+        successor?: Partial<StrategicGoalEditorRecord> & {
+          id: number;
+          plan_start_year: number;
+        };
       };
       if (!response.ok) {
         const detail = issueMessage(body.issues);
@@ -165,6 +182,10 @@ export function StrategicGoalsEditorClient({
           );
           setSelectedGoalId(nextGoal?.id ?? null);
         }
+      }
+      if (body.successor) {
+        router.push(strategicGoalSuccessorPath(body.successor));
+        return { ok: true, error: null, goal: body.successor };
       }
       router.refresh();
       return { ok: true, error: null, goal: body.goal };
@@ -286,7 +307,7 @@ export function StrategicGoalsEditorClient({
             {visibleGoals.length} visible
           </p>
         </div>
-        <div className="grid grid-cols-1 items-end gap-4 md:grid-cols-[minmax(0,0.8fr)_minmax(0,1.6fr)_minmax(13rem,0.7fr)]">
+        <div className="grid grid-cols-1 items-end gap-4 md:grid-cols-2 xl:grid-cols-[minmax(0,0.7fr)_minmax(0,1.4fr)_minmax(0,0.6fr)_minmax(13rem,0.7fr)]">
           <FormField label="Strategic priority" htmlFor="strategic-goal-priority">
             <Select
               id="strategic-goal-priority"
@@ -321,6 +342,23 @@ export function StrategicGoalsEditorClient({
               ))}
             </Select>
           </FormField>
+          <FormField label="Reporting year" htmlFor="strategic-goal-reporting-year">
+            <Select
+              id="strategic-goal-reporting-year"
+              value={reportingYear}
+              onChange={(event) =>
+                router.push(
+                  `/admin/strategic-goals?year=${Number(event.target.value)}`,
+                )
+              }
+            >
+              {STRATEGIC_PLAN_REPORTING_YEARS.map((year) => (
+                <option key={year} value={year}>
+                  {year}
+                </option>
+              ))}
+            </Select>
+          </FormField>
           <Checkbox
             id="include-archived-strategic-goals"
             checked={includeArchived}
@@ -335,6 +373,7 @@ export function StrategicGoalsEditorClient({
         <StrategicGoalSettingsForm
           key={selectedGoal.id}
           goal={selectedGoal}
+          reportingYear={reportingYear}
           runMutation={runMutation}
           runMembershipMutation={runMembershipMutation}
         />
@@ -350,10 +389,12 @@ export function StrategicGoalsEditorClient({
 
 export function StrategicGoalSettingsForm({
   goal,
+  reportingYear,
   runMutation,
   runMembershipMutation,
 }: {
   goal: StrategicGoalEditorRecord;
+  reportingYear: number;
   runMutation: StrategicGoalMutationRunner;
   runMembershipMutation: StrategicGoalMembershipMutationRunner;
 }) {
@@ -362,13 +403,25 @@ export function StrategicGoalSettingsForm({
   const [feedback, setFeedback] = useState<Feedback>(null);
   const [busy, setBusy] = useState(false);
   const [confirmArchive, setConfirmArchive] = useState(false);
+  const [successorMode, setSuccessorMode] = useState(false);
+  const [successorStartYear, setSuccessorStartYear] = useState(
+    String(Math.max(goal.plan_start_year + 1, reportingYear + 1)),
+  );
   const archived = goal.archived_at !== null;
+  const successorAvailable = canCreateStrategicGoalSuccessor(
+    goal,
+    reportingYear,
+  );
 
   useEffect(() => {
     setDraft(strategicGoalDraftFromData(goal));
     setErrors({});
     setFeedback(null);
-  }, [goal]);
+    setSuccessorMode(false);
+    setSuccessorStartYear(
+      String(Math.max(goal.plan_start_year + 1, reportingYear + 1)),
+    );
+  }, [goal, reportingYear]);
 
   function update<K extends keyof StrategicGoalSettingsDraft>(
     key: K,
@@ -397,14 +450,41 @@ export function StrategicGoalSettingsForm({
       return;
     }
     setErrors({});
+    const effectiveStartYear = Number(successorStartYear);
+    if (
+      successorMode &&
+      (!Number.isInteger(effectiveStartYear) ||
+        effectiveStartYear <= goal.plan_start_year ||
+        effectiveStartYear > goal.plan_end_year)
+    ) {
+      setErrors({
+        effective_start_year: `Choose a whole year after ${goal.plan_start_year} and no later than ${goal.plan_end_year}.`,
+      });
+      setFeedback({
+        variant: "error",
+        message: "Choose a valid successor start year.",
+      });
+      return;
+    }
     setBusy(true);
     const result = await runMutation(
-      buildStrategicGoalUpdateMutation(built.payload),
+      successorMode
+        ? buildStrategicGoalSuccessorMutation(
+            goal.id,
+            effectiveStartYear,
+            built.payload,
+          )
+        : buildStrategicGoalUpdateMutation(built.payload),
     );
     setBusy(false);
     setFeedback(
       result.ok
-        ? { variant: "success", message: "Strategic goal settings saved." }
+        ? {
+            variant: "success",
+            message: successorMode
+              ? "Successor goal version saved. Select its first reporting year to review it."
+              : "Strategic goal settings saved.",
+          }
         : {
             variant: "error",
             message: result.error ?? "The strategic goal could not be saved.",
@@ -466,9 +546,39 @@ export function StrategicGoalSettingsForm({
         {feedback ? (
           <StatusBanner variant={feedback.variant}>{feedback.message}</StatusBanner>
         ) : null}
+        {successorMode ? (
+          <StatusBanner variant="neutral">
+            The current goal and its memberships will end one year before the successor starts. Historical rule results remain attached to this version.
+          </StatusBanner>
+        ) : null}
 
         <form onSubmit={submit} noValidate>
           <fieldset disabled={busy || archived} className="space-y-8">
+            {successorMode ? (
+              <FormField
+                label="Successor start year"
+                htmlFor="strategic-goal-successor-start"
+                hint={<FieldHint error={errors.effective_start_year} />}
+                className="max-w-xs"
+              >
+                <Input
+                  id="strategic-goal-successor-start"
+                  type="number"
+                  min={goal.plan_start_year + 1}
+                  max={goal.plan_end_year}
+                  value={successorStartYear}
+                  aria-invalid={Boolean(errors.effective_start_year)}
+                  onChange={(event) => {
+                    setSuccessorStartYear(event.target.value);
+                    setErrors((current) => {
+                      const next = { ...current };
+                      delete next.effective_start_year;
+                      return next;
+                    });
+                  }}
+                />
+              </FormField>
+            ) : null}
             <section aria-labelledby="goal-completion-fields-title">
               <h3 id="goal-completion-fields-title" className="mb-4 text-base font-semibold text-ink-900">
                 Completion logic
@@ -739,15 +849,31 @@ export function StrategicGoalSettingsForm({
             >
               {archived ? "Restore goal" : "Archive goal"}
             </Button>
-            <Button
-              type="submit"
-              variant="primary"
-              icon={Save}
-              isLoading={busy}
-              disabled={archived}
-            >
-              Save goal settings
-            </Button>
+            <div className="flex flex-wrap gap-3">
+              {!archived && successorAvailable ? (
+                <Button
+                  type="button"
+                  variant="secondary"
+                  disabled={busy}
+                  onClick={() => {
+                    setSuccessorMode((current) => !current);
+                    setFeedback(null);
+                    setErrors({});
+                  }}
+                >
+                  {successorMode ? "Cancel successor" : "Create successor version"}
+                </Button>
+              ) : null}
+              <Button
+                type="submit"
+                variant="primary"
+                icon={Save}
+                isLoading={busy}
+                disabled={archived}
+              >
+                {successorMode ? "Save successor version" : "Save goal settings"}
+              </Button>
+            </div>
           </div>
         </form>
 
@@ -776,6 +902,7 @@ export function StrategicGoalSettingsForm({
             >
               <StrategicGoalMembershipForm
                 member={member}
+                reportingYear={reportingYear}
                 disabled={archived}
                 runMutation={runMembershipMutation}
               />
@@ -789,10 +916,12 @@ export function StrategicGoalSettingsForm({
 
 function StrategicGoalMembershipForm({
   member,
+  reportingYear,
   disabled,
   runMutation,
 }: {
   member: StrategicGoalEditorRecord["members"][number];
+  reportingYear: number;
   disabled: boolean;
   runMutation: StrategicGoalMembershipMutationRunner;
 }) {
@@ -802,11 +931,23 @@ function StrategicGoalMembershipForm({
   const [errors, setErrors] = useState<StrategicGoalFormErrors>({});
   const [feedback, setFeedback] = useState<Feedback>(null);
   const [busy, setBusy] = useState(false);
+  const [successorMode, setSuccessorMode] = useState(false);
+  const [successorStartYear, setSuccessorStartYear] = useState(
+    String(Math.max(member.effectiveFromYear + 1, reportingYear + 1)),
+  );
+  const successorAvailable = canCreateGoalMembershipSuccessor(
+    member,
+    reportingYear,
+  );
 
   useEffect(() => {
     setDraft(strategicGoalMembershipDraftFromData(member));
     setErrors({});
-  }, [member]);
+    setSuccessorMode(false);
+    setSuccessorStartYear(
+      String(Math.max(member.effectiveFromYear + 1, reportingYear + 1)),
+    );
+  }, [member, reportingYear]);
 
   function update<K extends keyof StrategicGoalMembershipDraft>(
     key: K,
@@ -823,7 +964,13 @@ function StrategicGoalMembershipForm({
   async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     setFeedback(null);
-    const built = buildStrategicGoalMembershipMutation(member.id, draft);
+    const built = successorMode
+      ? buildStrategicGoalMembershipSuccessorMutation(
+          member.id,
+          Number(successorStartYear),
+          draft,
+        )
+      : buildStrategicGoalMembershipMutation(member.id, draft);
     if (!built.ok) {
       setErrors(built.errors);
       setFeedback({
@@ -839,7 +986,12 @@ function StrategicGoalMembershipForm({
     setBusy(false);
     setFeedback(
       result.ok
-        ? { variant: "success", message: "KPI membership saved." }
+        ? {
+            variant: "success",
+            message: successorMode
+              ? "Successor membership saved."
+              : "KPI membership saved.",
+          }
         : {
             variant: "error",
             message: result.error ?? "The KPI membership could not be saved.",
@@ -875,6 +1027,23 @@ function StrategicGoalMembershipForm({
         </StatusBanner>
       ) : null}
       <fieldset disabled={disabled || busy} className="space-y-3">
+        {successorMode ? (
+          <FormField
+            label="Successor start year"
+            htmlFor={`goal-membership-successor-${member.id}`}
+            hint={<FieldHint error={errors.effective_start_year} />}
+          >
+            <Input
+              id={`goal-membership-successor-${member.id}`}
+              type="number"
+              min={member.effectiveFromYear + 1}
+              max={Math.min(member.effectiveToYear ?? 2029, 2029)}
+              value={successorStartYear}
+              aria-invalid={Boolean(errors.effective_start_year)}
+              onChange={(event) => setSuccessorStartYear(event.target.value)}
+            />
+          </FormField>
+        ) : null}
         <FormField
           label="Completion role"
           htmlFor={`goal-membership-role-${member.id}`}
@@ -931,17 +1100,35 @@ function StrategicGoalMembershipForm({
           </FormField>
         </div>
       </fieldset>
-      <Button
-        type="submit"
-        variant="secondary"
-        size="sm"
-        icon={Save}
-        isLoading={busy}
-        disabled={disabled}
-        className="w-full"
-      >
-        Save membership
-      </Button>
+      <div className="grid grid-cols-1 gap-2">
+        {successorAvailable ? (
+          <Button
+            type="button"
+            variant="secondary"
+            size="sm"
+            disabled={disabled || busy}
+            onClick={() => {
+              setSuccessorMode((current) => !current);
+              setFeedback(null);
+              setErrors({});
+            }}
+            className="w-full"
+          >
+            {successorMode ? "Cancel successor" : "Create successor membership"}
+          </Button>
+        ) : null}
+        <Button
+          type="submit"
+          variant="secondary"
+          size="sm"
+          icon={Save}
+          isLoading={busy}
+          disabled={disabled}
+          className="w-full"
+        >
+          {successorMode ? "Save successor membership" : "Save membership"}
+        </Button>
+      </div>
     </form>
   );
 }

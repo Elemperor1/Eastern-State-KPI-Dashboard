@@ -6,6 +6,7 @@ const {
   drawImageMock,
   html2canvasMock,
   prepareRasterExportTargetMock,
+  resolveRasterCaptureScaleMock,
   restoreTargetMock,
   saveMock,
 } = vi.hoisted(() => ({
@@ -14,6 +15,7 @@ const {
   drawImageMock: vi.fn(),
   html2canvasMock: vi.fn(),
   prepareRasterExportTargetMock: vi.fn(),
+  resolveRasterCaptureScaleMock: vi.fn(),
   restoreTargetMock: vi.fn(),
   saveMock: vi.fn(),
 }));
@@ -36,6 +38,7 @@ vi.mock("jspdf", () => ({
 vi.mock("./dom-capture", () => ({
   getPageBackground: () => "white",
   prepareRasterExportTarget: prepareRasterExportTargetMock,
+  resolveRasterCaptureScale: resolveRasterCaptureScaleMock,
 }));
 
 import { exportElementToPdf } from "./legacy-pdf-export";
@@ -62,9 +65,11 @@ beforeEach(() => {
   drawImageMock.mockReset();
   html2canvasMock.mockReset();
   prepareRasterExportTargetMock.mockReset();
+  resolveRasterCaptureScaleMock.mockReset();
   restoreTargetMock.mockReset();
   saveMock.mockReset();
   prepareRasterExportTargetMock.mockReturnValue(restoreTargetMock);
+  resolveRasterCaptureScaleMock.mockReturnValue(1.5);
 });
 
 afterEach(() => {
@@ -123,8 +128,9 @@ describe("legacy raster PDF adapter", () => {
       backgroundColor: "white",
       logging: false,
       useCORS: true,
+      width: 1000,
+      height: 2000,
       windowWidth: 1000,
-      windowHeight: 2000,
       onclone: expect.any(Function),
     });
     expect(addPageMock).toHaveBeenCalledTimes(2);
@@ -160,13 +166,16 @@ describe("legacy raster PDF adapter", () => {
     const target = {
       querySelectorAll: () => [],
       scrollWidth: 1440,
-      scrollHeight: 30_000,
+      scrollHeight: 50_000,
     } as unknown as HTMLElement;
     installDocument({ target });
+    resolveRasterCaptureScaleMock.mockImplementationOnce(() => {
+      throw new Error("This report is too large for a readable raster export.");
+    });
 
     await expect(
       exportElementToPdf({ targetId: "strategic-board-export-root" }),
-    ).rejects.toThrow("too large for a raster PDF");
+    ).rejects.toThrow("too large for a readable raster export");
 
     expect(html2canvasMock).not.toHaveBeenCalled();
     expect(saveMock).not.toHaveBeenCalled();

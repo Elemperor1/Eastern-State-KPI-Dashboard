@@ -4,9 +4,11 @@ import type { FormEvent } from "react";
 import { useEffect, useMemo, useState } from "react";
 import { Archive, ArrowDown, ArrowUp, Plus, RotateCcw, Save } from "lucide-react";
 import {
+  COMPONENT_AGGREGATION_ROLES,
   CONFIGURATION_STATUSES,
   MEASUREMENT_TYPES,
   type ConfigurationStatus,
+  type ComponentAggregationRole,
   type MeasurementType,
   type PersistedMeasurementConfig,
   type StrategyComponentWithTargets,
@@ -381,6 +383,18 @@ function ComponentFormCard({
               onChange={(event) => update("unit", event.target.value)}
             />
           </FormField>
+          <FormField label="Aggregation role" htmlFor={`${prefix}-aggregation-role`} hint={<ErrorHint error={errors.aggregation_role} fallback="For Ratio aggregation, assign each raw input to the numerator or denominator." />}>
+            <Select
+              id={`${prefix}-aggregation-role`}
+              value={draft.aggregationRole}
+              aria-invalid={Boolean(errors.aggregation_role)}
+              onChange={(event) => update("aggregationRole", event.target.value as ComponentAggregationRole)}
+            >
+              {COMPONENT_AGGREGATION_ROLES.map((role) => (
+                <option key={role} value={role}>{displayLabel(role)}</option>
+              ))}
+            </Select>
+          </FormField>
           <FormField label="Numerator label" htmlFor={`${prefix}-numerator`} hint={<ErrorHint error={errors.numerator_label} />}>
             <Input
               id={`${prefix}-numerator`}
@@ -489,6 +503,7 @@ function ComponentFormCard({
           </div>
           <div className="grid grid-cols-1 gap-4 xl:grid-cols-2">
             <StrategicTargetEditorCard
+              key={`component-${component.id}-annual-${reportingYear}`}
               title={`${component.label} annual target`}
               description="Selected-year pacing target for this component."
               initialDraft={targetDraftForScope(
@@ -501,6 +516,7 @@ function ComponentFormCard({
               measurementType={component.measurement_type ?? "count"}
               runMutation={runMutation}
               idPrefix={`component-${component.id}`}
+              lockedTargetYear={reportingYear}
             />
             <StrategicTargetEditorCard
               title={`${component.label} full-plan target`}

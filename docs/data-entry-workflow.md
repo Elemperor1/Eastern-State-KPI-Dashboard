@@ -1,224 +1,288 @@
-# Monthly KPI Data-Entry Workflow
+# KPI Data-Entry Workflow
 
 > Internal documentation for the Eastern State Penitentiary KPI dashboard.
-> Describes who enters data, where it is entered, editing/correction behavior,
-> audit logging, annual summary generation, and future automation plans.
+> This guide covers both supported manual-entry paths, their storage and audit
+> contracts, cadence rules, correction behavior, and migration safety.
 
----
+## 1. Access and responsibility
 
-## 1. Who enters data
+Only **admin** users can create, change, or delete KPI values. Viewers can read
+the dashboard but cannot open an admin data-entry workflow.
 
-Only **admin** users can enter or modify KPI data. The system has two roles:
+| Role | View dashboard | Enter or correct values | Manage definitions and users |
+| --- | --- | --- | --- |
+| `admin` | Yes | Yes | Yes |
+| `viewer` | Yes | No | No |
 
-| Role | Can view dashboard | Can enter/edit data | Can manage KPIs, goals, users |
-|------|-------------------|---------------------|-------------------------------|
-| **admin** | Yes | Yes | Yes |
-| **viewer** | Yes | No | No |
+The role is managed at `/admin/users`. In local development,
+`AUTH_DISABLED=true` supplies the real `auth-disabled@local` admin row; its
+writes use the same validation, storage, actor identity, and audit paths as an
+authenticated admin.
 
-The role is set per user at `/admin/users` (admin-only). The bypass user (`auth-disabled@local`, active when `AUTH_DISABLED=true` in dev) is also an admin and writes through the same paths.
+Every write route requires `requireAdmin()`. Mutations also pass
+`assertMutationRequest`, which enforces same-origin `Origin`/`Referer`, exact
+`application/json`, and the double-submit `X-CSRF-Token` cookie/header pair.
 
-Seeded admin account: `kerry@easternstate.org`. Seeded viewer: `zach@easternstate.org`. In dev with `AUTH_DISABLED=true`, no login is needed.
+## 2. Choose the owning entry surface
 
----
+The application has two intentional data-entry paths. They are not aliases.
 
-## 2. Where data is entered
+| Surface | Use it for | Storage | Mutation routes | Audit table |
+| --- | --- | --- | --- | --- |
+| `/admin/data` — **Standard data entry** | Legacy-compatible scalar values and labeled breakdown rows | `monthly_entries`, `breakdown_entries` | `POST`/`DELETE /api/entries`, `POST`/`DELETE /api/breakdowns` | `entry_history` |
+| `/admin/strategy-data` — **Strategic data entry** | First-class strategic observations, component results, raw ratios/averages, and distributions | `kpi_observations`, `kpi_component_entries`, `distribution_observations`, `distribution_values` | `POST`/`DELETE /api/strategy/observations`, `/api/strategy/component-entries`, `/api/strategy/distributions` | `strategic_audit_events` |
 
-All data entry happens on the **Data Entry** page at `/admin/data` (admin-only, sidebar → Manage → Data entry).
+Use `/admin/data` when maintaining the compatibility value attached directly
+to a legacy KPI. Use `/admin/strategy-data` when the effective strategic
+measurement configuration defines the raw inputs or components needed to
+calculate the result. Do not tunnel first-class strategic writes through the
+legacy entry routes.
 
-The page presents three filter controls:
+Legacy scalar rows remain a reporting fallback. When a first-class strategic
+actual exists for the same KPI/reporting context, the strategic reporting
+layer prefers that actual over the compatibility row. Avoid entering the same
+source result in both places unless the duplication is an intentional,
+documented compatibility requirement.
 
-1. **Category** — filter the metric list by category, or "All categories"
-2. **Metric** — select the KPI to edit
-3. **Year** — select the reporting year
+## 3. Standard data entry (`/admin/data`)
 
-The UI then adapts based on the KPI's `unit_type` and `reporting_frequency`:
+The page filters by category, KPI, and year, then renders the editor required
+by the KPI's legacy `unit_type` and `reporting_frequency`.
 
-Architecture note: the `/admin/data` server page performs authentication/role redirects and renders the feature-built result from `loadAdminDataPageData()`. `AdminDataClient` owns browser state, confirmations, and guarded mutation calls. Deterministic KPI selection, period labels, draft setup, saved-row identity, and breakdown month-selection rules live in `src/features/metrics/admin-data-entry.ts`, while `src/components/AdminDataFilters.tsx`, `src/components/AdminAnnualEntryEditor.tsx`, `src/components/AdminMonthlyEntryEditor.tsx`, and `src/components/AdminBreakdownEntryEditor.tsx` own the filter and editor rendering. The metrics feature is responsible for annual `month = 0` drafts, monthly `1–12` drafts, zero-valued saved entries, and keeping monthly breakdown editing away from the annual slot.
+### Scalar KPIs
 
-### Monthly KPIs (`reporting_frequency = "monthly"`)
+- A monthly KPI shows January through December. Each saved row is keyed by
+  `(kpi_id, year, month)` with `month` from 1 through 12.
+- An annual or flexible KPI shows one full-year row. It is stored with the
+  internal annual sentinel `month = 0`.
+- Each row accepts a finite numeric value and optional notes. Zero is a valid,
+  saved value and is not treated as blank.
+- Save uses `POST /api/entries`; Clear confirms the action and uses
+  `DELETE /api/entries` with the durable `monthly_entries.id`.
 
-Shows 12 rows (Jan–Dec). Each row has:
-- **Value** input — numeric, accepts decimals
-- **Notes** input — free text, optional
-- **Save** button — saves that month's value (per-field, not bulk save)
-- **Clear** button (trash icon) — deletes the saved value with a confirmation dialog
+### Breakdown KPIs
 
-A dirty indicator (left border highlight + bold Save button) appears when the on-screen value differs from the saved value.
+A breakdown KPI stores a variable set of labeled rows, such as funding
+sources. Each row includes label, value, optional notes, and sort order.
 
-### Annual KPIs (`reporting_frequency = "annual"` or `"flexible"`)
+- New rows are naturally keyed by `(kpi_id, year, month, label)`.
+- A saved row keeps its durable `breakdown_entries.id`, so renaming the label
+  updates that row instead of creating a second history lineage.
+- Duplicate labels in one KPI period return HTTP 409; a stale row id returns
+  HTTP 404.
+- Save and delete use `POST` and `DELETE /api/breakdowns`.
+- Monthly breakdown KPIs use months 1–12. Annual/flexible breakdown writes use
+  `month = 0`. The editor can still surface historical monthly rows from an
+  older flexible definition without making flexible a new monthly contract.
 
-Shows a single row for the full-year value (`month = 0` in the database). Same value/notes/save/clear pattern as monthly.
+### Standard correction contract
 
-### Breakdown KPIs (`unit_type = "breakdown"`)
+A save is an upsert, not a separate correction mode. The metrics feature
+validates the KPI type and period, reads the previous row, writes the value,
+reads it back by its stable key or id, and appends history in one SQLite
+transaction. A failed read-back or audit insert rolls back the value change.
 
-Shows a variable-row table where each row is a labeled component (e.g. "Foundation funders", "Government grants"). Some breakdown KPIs are monthly (month selector appears); others are annual. Each row has:
-- **Label** input — the breakdown component name
-- **Value** input — numeric
-- **Notes** input — optional
-- **Save** / **Delete** per row
-- **Add row** button to create a new breakdown component
+The API rejects scalar writes to breakdown KPIs, breakdown writes to scalar
+KPIs, month-0 writes to monthly KPIs, month 1–12 writes to annual/flexible
+KPIs, blank breakdown labels, non-finite values, and unknown KPIs.
 
----
+## 4. Strategic data entry (`/admin/strategy-data`)
 
-## 3. Editing and correction behavior
+The strategic entry page covers the 2025–2029 plan years. It selects a
+strategic KPI and reporting year, loads the effective measurement
+configuration, and shows the raw fields required by that definition. A KPI
+must have an effective measurement type and reporting frequency before this
+page can accept a value.
 
-### Saving a value
+The form always supports optional notes and a source reference. Saved values
+appear beside the form with their period, component owner, raw inputs, notes,
+and source. Edit reloads the exact record into the form; save upserts the same
+KPI/component period. Delete confirms and sends the durable record id.
 
-Clicking **Save** on any field sends a `POST /api/entries` (or `POST /api/breakdowns`) request. Monthly/annual entries use an **upsert** keyed on `(kpi_id, year, month)`. New breakdown rows use `(kpi_id, year, month, label)`; once saved, the browser also sends the durable breakdown row `id` so changing its label updates that same row instead of creating a duplicate. This means:
+### Measurement-specific inputs
 
-- **First save** creates the entry.
-- **Subsequent saves** overwrite the existing value and notes in place. There is no separate "edit" or "correction" mode — the user just types the new value and clicks Save again.
-- **Breakdown label edits** preserve the original row id, sort order, and audit lineage. A stale id returns 404; a label that would duplicate another row in the same KPI period returns 409 without changing either row.
-- The `updated_by` and `updated_at` columns on `monthly_entries` / `breakdown_entries` are refreshed on every save.
-- Successful entry writes return `{ entry }`; successful breakdown writes return `{ breakdown }`. The browser validates the matching response shape through the metrics feature before replacing its local draft, so malformed success payloads produce an error banner rather than a partial or crashed editor state.
+| Measurement type | What the admin enters |
+| --- | --- |
+| `count`, `currency`, `cumulative`, `year_over_year` | One finite scalar value |
+| `binary` | Explicit **Complete** or **Not complete** (`1` or `0`) |
+| `milestone` | Progress from 0 through 100 |
+| `percentage`, `ratio` | Raw numerator and denominator; when the definition has a fixed denominator, the configured value is shown and reused |
+| `average` | One supported raw method: total score plus possible score, average score plus scale maximum and respondent count, or positive responses plus total responses |
+| `multi_component` | A configured component first, then that component's atomic measurement fields |
+| `distribution` | Respondent total, effective band counts, and whether categories are mutually exclusive |
 
-### Clearing a value
+Calculated percentages and averages are never accepted as replacement scalar
+values. The calculation layer derives them from the stored raw inputs. A
+percentage/ratio observation therefore retains its numerator and either its
+per-record denominator or the effective configuration's fixed denominator;
+average observations retain respondent/score/response inputs.
 
-Clicking the trash icon opens a confirmation dialog ("Clear [Month] [Year]?"). Each saved draft retains its `monthly_entries.id`; confirming sends `DELETE /api/entries` with `{ id }`. The row is removed from the database entirely. A cleared month shows an empty input on the data-entry page and renders as "—" on the dashboard. This identity-based contract also preserves clearing a legitimate zero-valued month.
+For a mutually exclusive distribution, all band counts—including unknown and
+declined bands—must sum exactly to the respondent total. For a non-exclusive
+distribution, each band count may not exceed the respondent total. Band
+definitions must already be effective for the selected year. Admins manage
+those definitions in the KPI strategic editor at `/admin/kpis/[id]`; its
+configuration route supports `GET`, `POST`, and `PATCH` at
+`/api/strategy/distribution-bands`. A saved distribution freezes each band's
+label in `distribution_values.band_label_snapshot`, so later label edits do
+not rewrite the recorded survey result.
 
-### Validation
+### Strategic cadence
 
-- Empty or non-numeric values are rejected client-side (Save button is disabled).
-- The API validates with Zod: `value` must be a finite number, `year` in 1900–2100, `month` in 0–12.
-- The metrics feature verifies the referenced KPI before writing. Scalar entries cannot target a breakdown KPI, breakdown rows cannot target a scalar KPI, annual KPIs accept only month `0`, monthly KPIs accept only months `1–12`, and breakdown labels cannot be blank.
-- CSRF guard (`assertMutationRequest`) enforces same-origin, `application/json` content-type, and a double-submit `X-CSRF-Token` header on all POST/DELETE.
+Cadence comes from the effective strategic measurement configuration, not
+from the legacy KPI's annual flag or from the measurement type.
 
-### No bulk import
+| Strategic frequency | Entry periods |
+| --- | --- |
+| `monthly` | January through December, stored as indexes 1–12 |
+| `quarterly` | Q1 through Q4, stored as indexes 1–4 |
+| `annual` | One **Full year** period, internal index 0 |
+| `cumulative` | One **Cumulative through YEAR** period, internal index 0 |
+| `one_time` | One **One-time result (YEAR)** period, internal index 0 |
+| `flexible` | Compatibility mode; the admin explicitly chooses monthly or annual for that write |
 
-There is currently no bulk CSV upload or paste-grid. Every value is entered one field at a time. (See §7 — future automation.)
+Components inherit the parent configuration's cadence. The server rejects
+mixed month/quarter inputs, missing periods, out-of-range periods, and a
+flexible write without an explicit mode.
 
----
+### Strategic route and storage contract
 
-## 4. Audit logging
+- Atomic KPI observations use `POST /api/strategy/observations` and are keyed
+  by KPI, effective configuration, year, and period.
+- Atomic component observations use
+  `POST /api/strategy/component-entries` and are keyed by component, year, and
+  period.
+- KPI- or component-owned distributions use
+  `POST /api/strategy/distributions`; band counts are stored in normalized
+  `distribution_values` rows.
+- Each route's `DELETE` accepts `{ id }`. Deletes remove the current result but
+  retain an immutable audit tombstone.
+- Route validation returns HTTP 400 with field issues, unknown records return
+  HTTP 404, and authentication/authorization use the shared 401/403 contract.
 
-Every save, clear, and delete operation writes a row to the `entry_history` table. This is the audit trail.
+All strategic upsert/delete work and its audit event share one transaction.
+A materially unchanged upsert does not add a duplicate before/after event.
 
-### What is logged
+## 5. Audit and correction history
 
-Each audit row captures:
+The read-only browser is `/admin/history`. It has separate tabs because the
+two write models preserve different snapshots.
 
-| Field | Content |
-|-------|---------|
-| `entry_type` | `"monthly"` or `"breakdown"` |
-| `entry_id` | The `monthly_entries.id` or `breakdown_entries.id` (may reference a deleted row) |
-| `kpi_id` | The KPI the change affected |
-| `year` | Reporting year |
-| `month_or_label` | Month number (1–12, or 0 for annual) or label for breakdowns |
-| `prev_value` | The value before the change (`null` if this was a create) |
-| `new_value` | The value after the change (`null` if this was a delete) |
-| `prev_notes` | Notes before the change |
-| `new_notes` | Notes after the change |
-| `changed_by` | The `users.id` of the actor |
-| `changed_at` | Timestamp (UTC) |
-| `kpi_name`, `kpi_slug`, `kpi_unit` | Immutable snapshot of KPI metadata at change time |
-| `category_id`, `category_name`, `category_slug` | Immutable snapshot of category metadata |
-| `changed_by_email` | Immutable snapshot of the actor's email |
+### KPI values tab (`entry_history`)
 
-### Immutability
+Standard scalar/breakdown saves and deletes append:
 
-The audit trail is **append-only**. No API endpoint exposes an UPDATE or DELETE on `entry_history`. The only state-changing endpoints that touch `entry_history` do so by INSERT via the metrics feature (`upsertEntry`, `deleteEntry`, `upsertBreakdown`, `deleteBreakdown`).
+- entry type/id, KPI id, year, and month or breakdown label;
+- previous/new value and notes;
+- actor id, actor-email snapshot, and UTC timestamp; and
+- immutable KPI and category name/slug/unit snapshots.
 
-The KPI/category/user name columns are **immutable snapshots** frozen at the moment of the edit. If a KPI is later renamed, the audit row still shows the name it had when the edit was made. If the KPI or category is deleted, the audit row survives with its snapshot intact and a "Metadata deleted" badge in the UI.
+The tab can be filtered by category, KPI, and year. Deleted metadata remains
+reachable through tombstone filter options, and renamed/deleted badges compare
+the snapshot with current catalog metadata. The default query is newest-first
+and capped at 200 rows (server maximum 1,000).
 
-### Transactional integrity
+### Strategic configuration tab (`strategic_audit_events`)
 
-The write + read-back + history insert runs inside a single SQLite transaction. If any step fails, the entire operation rolls back — no torn audit rows. Monthly/annual entries and new breakdown rows read back by natural key rather than `lastInsertRowid`, avoiding a known SQLite stale-row pitfall. Saved breakdown edits read back by their durable row id after verifying the row still belongs to the requested KPI/year/month.
+First-class observation, component-entry, distribution, and distribution-band
+mutations append entity type/id, event type, immutable display/priority/goal
+context, complete previous/new JSON snapshots, actor/email snapshot, source
+reference, and timestamp. The same table also contains strategic definition,
+target, goal, membership, and catalog lifecycle events.
 
-### Browsing the audit trail
+The history page currently loads the newest 500 strategic events. It is
+read-only; no route can replay, update, or delete an audit event. Delete events
+retain the full previous snapshot even after the current observation row is
+gone.
 
-The `/admin/history` page (admin-only, sidebar → Manage → History) renders the audit trail in a filterable, read-only table:
-- Filter by category, KPI, or year (URL-synced, deep-linkable)
-- Columns: When, KPI (with category chip + renamed/deleted badges), Period, Change (prev → new with Created/Updated/Deleted badge), By (actor email)
-- Sorted newest-first, capped at 200 rows (max 1000)
-- The page reads audit rows directly through `src/features/audit/server.ts`; no audit-history read API is exposed.
+## 6. Reporting behavior
 
-### Deletion guards
+Standard and strategic storage have deliberately different calculation
+contracts:
 
-KPIs and categories **cannot be deleted** while live `monthly_entries` or `breakdown_entries` still reference them. The catalog feature's `deleteKPI` / `deleteCategory` operations throw `DependentEntriesError` (HTTP 409) when dependents exist. The admin must delete the dependent entries first — each entry deletion records its own audit row — so no metadata deletion can hide a previously recorded change.
+- An annual legacy KPI reads its `month = 0` row directly.
+- A monthly legacy KPI computes YTD from months 1 through the selected through
+  month; additive full-year views sum all 12 monthly rows.
+- First-class strategic results are calculated from the effective definition:
+  raw ratios, averages, component aggregation roles, distributions, binary or
+  milestone values, and the configured cadence remain distinct.
+- First-class observations win over legacy scalar fallback rows when present.
+- Legacy percentage, average, and denominator-free ratio fallback rows retain
+  their exact stored value and disclose that the raw calculation basis is not
+  available. A fixed-denominator ratio may safely use the legacy scalar as its
+  numerator (for example, 30 states out of 50 becomes 60%).
+- A legacy non-percent year-over-year series calculates from the same period in
+  the prior year. An already-derived `%` series remains direct and is never
+  reused as a raw baseline; the first first-class raw-count observation may use
+  a matching prior-year legacy raw count.
+- Metric detail history follows the effective measurement and cadence: it
+  shows calculated raw-count YoY, retained direct-percent provenance, annual
+  cumulative snapshots, and one-time binary rows. Once first-class history
+  exists, compatibility rows are not mixed into that series.
+- Annual targets and full-plan targets remain separate; missing one is not
+  filled from the other.
 
----
+The dashboard, board report, and exports consume the shared reporting and
+calculation layers rather than recalculating entry semantics in React.
 
-## 5. Annual summary generation
+## 7. Data-flow summary
 
-The dashboard does **not** generate annual summaries by rolling up monthly values into a separate annual record. Instead, annual and monthly data live in the same `monthly_entries` table, distinguished by the `month` column:
+```text
+Standard data entry
+/admin/data
+  -> POST/DELETE /api/entries or /api/breakdowns
+  -> metrics validation + atomic value write + entry_history snapshot
+  -> compatibility reporting rows
 
-| `month` value | Meaning |
-|----------------|---------|
-| 0 | Annual full-year value (single entry per KPI per year) |
-| 1–12 | Monthly value for that month |
+Strategic data entry
+/admin/strategy-data
+  -> POST/DELETE /api/strategy/{observations,component-entries,distributions}
+  -> effective-config/cadence/raw-input validation
+  -> atomic normalized value write + strategic_audit_events snapshot
+  -> strategic calculation -> dashboard/board/export models
 
-### How annual values are displayed
-
-- **Annual KPIs** (`reporting_frequency = "annual"` or `"flexible"`): the data-entry page shows a single row for `month = 0`. The dashboard reads that row directly as the full-year value.
-- **Monthly KPIs**: the dashboard computes YTD (year-to-date) by summing months 1 through the selected "through month" (default = current calendar month). The full-year value is the sum of all 12 months. There is no separate annual roll-up row written to the database.
-
-### Goal-based annual targets
-
-Goals (managed at `/admin/goals`) define a target year and a fixed baseline
-year. The baseline does not move when later actuals are entered:
-
-- **Percentage goals** (`goal_type = "pct"`): `target = baseline × (1 + target_value / 100)`
-- **Absolute goals** (`goal_type = "number"`): `target = baseline + target_value`
-
-If no data exists for the selected baseline year, the target cannot be
-computed. The goal shows "—" and identifies the missing baseline year.
-Dashboard progress uses the selected reporting year; admin progress uses the
-current year.
-
-### YTD pacing
-
-For monthly KPIs, the YTD target is prorated: `ytd_target = full_year_target × (throughMonth / 12)`. The YTD baseline is prorated the same way so "lower is better" progress compares apples-to-apples. For annual KPIs, YTD equals full-year (no proration).
-
----
-
-## 6. Data flow summary
-
+Both feeds
+  -> /admin/history (read-only, separate tabs)
 ```
-Admin user
-    │
-    ▼
-/admin/data  (UI: per-month value + notes inputs)
-    │
-    ▼  POST /api/entries  (or /api/breakdowns)
-    │
-    ▼  Zod validation + CSRF guard + requireAdmin()
-    │
-    ▼  metrics.upsertEntry()  — single transaction:
-    │      1. Read prior value
-    │      2. UPSERT monthly_entries
-    │      3. Read back by natural key (not lastInsertRowid)
-    │      4. INSERT into entry_history (prev → new, snapshot labels)
-    │
-    ▼
-Dashboard pages read monthly_entries + breakdown_entries through the metrics feature
-    │
-    ▼  analytics.ts computes YoY %, YTD, deltas, isEmpty
-    │
-    ▼  MetricCard, TrendChart, BreakdownChart render
+
+## 8. Migration and automation status
+
+Schema migration testing **is implemented**. The current schema-10/11 suite
+includes:
+
+- `src/lib/schema-migration.test.ts`: clean schema-11 initialization,
+  schema-9 legacy row/id/history preservation, schema-8 goal-baseline ordering,
+  schema-10 component-identity rebuilding with child entry/target preservation,
+  foreign-key checks, reopen/idempotence, and legacy reset boundaries;
+- `scripts/migrate.test.ts`: the public production entrypoint, canonical
+  initialization only when strategic sidecars are empty, exact-signature
+  government-ratio repair, operator-owned customization preservation,
+  historical-data skip guards, repeated-run idempotence, and foreign-key
+  integrity; and
+- `scripts/ensure-seeded.test.ts`: fail-closed protection against destructive
+  reseeding of populated or unprovable databases.
+
+The recorded July 13, 2026 canonical seeded-copy rehearsal preserved 3 users,
+5 categories, 59 KPIs, 174 monthly entries, 24 breakdown entries, 198 legacy
+history events, 25 legacy KPI goals, 22 strategic goals, 59 memberships, 59
+measurement configurations, 46 components, 21 strategic targets, and 296
+strategic audit events. Two public migration runs were no-ops; the logical dump
+SHA-256 stayed
+`8bb9beeb7e59ac1e3b913ae616dc34e755d516b705667fe50e761f95fb6191b2`, and
+`PRAGMA foreign_key_check` remained empty. See `docs/migration-notes.md` for the
+operator procedure and rollback contract.
+
+For an existing schema-9 or schema-10 database, back up SQLite and run:
+
+```bash
+DATABASE_PATH=/absolute/path/to/kpi.db npm run db:migrate
 ```
 
----
+`npm run db:seed` is a destructive reset for disposable sample data, not a
+production migration.
 
-## 7. Future automation
-
-The following are documented in `docs/roadmap.md` §5 (backlog) but are **not yet implemented**:
-
-### CSV/Excel upload
-The roadmap explicitly calls out: *"Mirror the export with an import path on `/admin/data` so Kerry/Zach can paste a quarterly grid without typing into the per-month rows."* This would let admins paste or upload a spreadsheet of monthly values instead of entering them one field at a time. No work has been done on this yet.
-
-### Other backlog items (not data-entry-specific)
-- Annualization toggle (show `monthly × 12` run-rate on metric detail page)
-- Per-user favorite KPIs
-- Role-based viewing refinements
-- Schema migration testing
-
-### What is already automated
-- **Schema seeding**: `npm run db:seed` populates 59 annual KPIs across 5 strategic priorities with 2024–2026 sample data and 25 target-bearing goals. The canonical definition lives in `src/features/catalog/strategic-plan.ts`.
-- **Period integrity**: annual/flexible KPIs accept only `month = 0`; monthly KPIs accept only `1–12`. The metrics feature enforces this on every entry upsert and the API returns 400 for mismatches.
-- **Schema 8 migration**: intentionally replaced the previous sample catalog, resetting KPI values and `entry_history` while preserving users. Back up production before crossing this boundary.
-- **Schema 9 migration**: additive. Preserves strategic data and freezes each existing goal to the latest available actual year before its target. New strategic goals explicitly use 2026.
-- **Bootstrap admin**: `ensureSeedAdmin()` runs at module load on every server start and creates the seed admin/viewer accounts on first DB access.
-- **Production startup**: `scripts/ensure-seeded.mjs` compares the mounted DB's schema version against `src/lib/schema-version.json` and auto-seeds if needed.
-- **Goal computation**: YTD pacing, full-year progress, and prorated targets are all computed server-side per request — no manual calculation needed.
-
-There is **no scheduled data collection** (no cron, no external API polling, no automated data import from third-party systems). All KPI values are entered by hand.
+There is still no CSV/Excel upload or paste-grid entry path, scheduled data
+collection, cron polling, or third-party data import. Values are entered one
+record at a time. CSV/PNG/PDF **report exports** exist, but export support does
+not imply import support. The CSV/Excel entry backlog remains documented in
+`docs/roadmap.md`.

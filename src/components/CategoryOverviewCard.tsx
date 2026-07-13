@@ -19,6 +19,7 @@ export function CategoryOverviewCard({
     declining,
     flat,
     total,
+    comparisonMetricCount,
     completedStrategicGoals,
     eligibleStrategicGoals,
     strategicGoalCompletionPercentage,
@@ -91,17 +92,26 @@ export function CategoryOverviewCard({
         <p className="mb-2 text-[10px] font-semibold uppercase tracking-[0.08em] text-ink-500">
           Selected-year comparison
         </p>
-        <div className="flex items-center gap-4 text-sm">
-        <span className="inline-flex items-center gap-1.5 font-medium text-[var(--color-success-text)]" aria-label={`${improving} improving`}>
-          <TrendingUp className="w-3.5 h-3.5" aria-hidden /> {improving}
-        </span>
-        <span className="inline-flex items-center gap-1.5 font-medium text-[var(--color-danger-text)]" aria-label={`${declining} declining`}>
-          <TrendingDown className="w-3.5 h-3.5" aria-hidden /> {declining}
-        </span>
-        <span className="inline-flex items-center gap-1.5 font-medium text-ink-500" aria-label={`${flat} unchanged`}>
-          <Minus className="w-3.5 h-3.5" aria-hidden /> {flat}
-        </span>
-        </div>
+        {comparisonMetricCount > 0 ? (
+          <div className="flex flex-wrap items-center gap-x-4 gap-y-2 text-sm">
+            <span className="inline-flex items-center gap-1.5 font-medium text-[var(--color-success-text)]" aria-label={`${improving} improving`}>
+              <TrendingUp className="w-3.5 h-3.5" aria-hidden /> {improving}
+            </span>
+            <span className="inline-flex items-center gap-1.5 font-medium text-[var(--color-danger-text)]" aria-label={`${declining} declining`}>
+              <TrendingDown className="w-3.5 h-3.5" aria-hidden /> {declining}
+            </span>
+            <span className="inline-flex items-center gap-1.5 font-medium text-ink-500" aria-label={`${flat} unchanged`}>
+              <Minus className="w-3.5 h-3.5" aria-hidden /> {flat}
+            </span>
+            <span className="text-xs font-medium text-ink-500">
+              {comparisonMetricCount} KPI {comparisonMetricCount === 1 ? "comparison" : "comparisons"}
+            </span>
+          </div>
+        ) : (
+          <p className="text-sm leading-5 text-ink-500" role="status">
+            No selected-year KPI comparison is available.
+          </p>
+        )}
       </div>
 
     </CardAction>

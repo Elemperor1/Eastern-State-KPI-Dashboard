@@ -1,6 +1,9 @@
 /** Apply the application's idempotent SQLite migration without seeding data. */
 import { getDb, resetDb, SCHEMA_VERSION } from "../src/lib/db";
-import { ensureStrategicPlanConfiguration } from "../src/features/strategy/server";
+import {
+  ensureStrategicPlanConfiguration,
+  reconcileStrategicMigrationData,
+} from "../src/features/strategy/server";
 
 function main(): void {
   const db = getDb();
@@ -17,18 +20,28 @@ function main(): void {
     (db.prepare("SELECT COUNT(*) AS count FROM kpis").get() as { count: number })
       .count,
   );
-  const strategicConfigCount = Number(
-    (
-      db
-        .prepare("SELECT COUNT(*) AS count FROM kpi_measurement_configs")
-        .get() as { count: number }
-    ).count,
-  );
-  if (kpiCount > 0 && strategicConfigCount === 0) {
-    const configured = ensureStrategicPlanConfiguration();
-    console.log(
-      `[migrate] strategic configuration ready (${configured.goals.created + configured.goals.updated + configured.goals.unchanged} goals, ${configured.measurement_configs.created + configured.measurement_configs.updated + configured.measurement_configs.unchanged} KPI configs).`,
+  if (kpiCount > 0) {
+    const strategicEntityCount = Number(
+      (db.prepare(
+        `SELECT
+           (SELECT COUNT(*) FROM strategic_goals) +
+           (SELECT COUNT(*) FROM kpi_measurement_configs) +
+           (SELECT COUNT(*) FROM goal_kpis) +
+           (SELECT COUNT(*) FROM kpi_components) +
+           (SELECT COUNT(*) FROM kpi_targets) AS count`,
+      ).get() as { count: number }).count,
     );
+    if (strategicEntityCount === 0) {
+      const configured = ensureStrategicPlanConfiguration();
+      console.log(
+        `[migrate] initialized strategic configuration (${configured.goals.created} goals, ${configured.measurement_configs.created} KPI configs).`,
+      );
+    } else {
+      const reconciled = reconcileStrategicMigrationData();
+      console.log(
+        `[migrate] preservation-safe strategic reconciliation (${reconciled.governmentSupportRatio} government-support ratio; ${reconciled.canonicalGoalMetadata} goal metadata, ${reconciled.canonicalMemberships} memberships, ${reconciled.canonicalMeasurementMetadata} measurement metadata, ${reconciled.canonicalTargets} target contracts repaired).`,
+      );
+    }
   }
   console.log(`[migrate] schema ${actual} ready; existing data left intact.`);
   resetDb();

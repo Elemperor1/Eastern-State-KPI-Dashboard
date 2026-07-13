@@ -1,13 +1,20 @@
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
+import { renderToStaticMarkup } from "react-dom/server";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
+import { StrategicAuditTable } from "@/components/StrategicAuditTable";
 import { listStrategicAuditEvents, listStrategicGoals } from "@/features/strategy/server";
 import { getDb, resetDb } from "@/lib/db";
 import {
   archiveKPI,
+  countCategoryDependents,
   createCategory,
   createKPI,
+  DependentEntriesError,
+  getCategory,
+  getCategoryBySlug,
+  getKPI,
   isStrategicCategory,
   isStrategicKPI,
   listCategories,
@@ -16,30 +23,42 @@ import {
   restoreKPI,
   retireOrDeleteCategory,
   retireOrDeleteKPI,
+  updateCategory,
+  updateKPI,
 } from "./server";
 
-function seedStrategicCatalog() {
-  const db = getDb();
-  const actorId = Number(
-    db
+function createCatalogActor(): number {
+  return Number(
+    getDb()
       .prepare(
         `INSERT INTO users (email, name, password_hash, role)
          VALUES ('catalog-admin@example.org', 'Catalog Admin', 'hash', 'admin')`,
       )
       .run().lastInsertRowid,
   );
-  const category = createCategory({
-    slug: "visitor-experience",
-    name: "Visitor Experience",
-    sort_order: 1,
-  });
-  const kpi = createKPI({
-    category_id: category.id,
-    slug: "visitor-upgrades",
-    name: "Visitor upgrades",
-    unit: "projects",
-    reporting_frequency: "annual",
-  });
+}
+
+function seedStrategicCatalog() {
+  const db = getDb();
+  const actorId = createCatalogActor();
+  const category = createCategory(
+    {
+      slug: "visitor-experience",
+      name: "Visitor Experience",
+      sort_order: 1,
+    },
+    actorId,
+  );
+  const kpi = createKPI(
+    {
+      category_id: category.id,
+      slug: "visitor-upgrades",
+      name: "Visitor upgrades",
+      unit: "projects",
+      reporting_frequency: "annual",
+    },
+    actorId,
+  );
   const goalId = Number(
     db
       .prepare(
@@ -147,7 +166,10 @@ describe("schema-10 strategic catalog lifecycle", () => {
         .map((event) => event.event_type),
     ).toEqual(expect.arrayContaining(["archive", "restore"]));
     for (const event of events.filter(
-      (item) => item.entity_type === "kpi" || item.entity_type === "strategic_priority",
+      (item) =>
+        (item.entity_type === "kpi" ||
+          item.entity_type === "strategic_priority") &&
+        (item.event_type === "archive" || item.event_type === "restore"),
     )) {
       expect(event.entity_display_name).toEqual(expect.any(String));
       expect(event.parent_priority_name).toBe("Visitor Experience");
@@ -157,8 +179,247 @@ describe("schema-10 strategic catalog lifecycle", () => {
     }
   });
 
-  it("preserves hard deletion for unconfigured legacy catalog rows", () => {
-    const category = createCategory({ slug: "legacy", name: "Legacy" });
+  it("records and renders immutable category and KPI create/update snapshots", () => {
+    const actorId = createCatalogActor();
+    const category = createCategory(
+      {
+        slug: "catalog-audit-priority",
+        name: "Original catalog priority",
+        description: "Original priority description",
+        sort_order: 4,
+      },
+      actorId,
+    );
+    const kpi = createKPI(
+      {
+        category_id: category.id,
+        slug: "catalog-audit-kpi",
+        name: "Original catalog KPI",
+        unit: "visitors",
+        unit_type: "attendance",
+        reporting_frequency: "annual",
+        direction: "higher",
+      },
+      actorId,
+    );
+
+    updateCategory(
+      category.id,
+      {
+        name: "Renamed catalog priority",
+        description: "Updated priority description",
+      },
+      actorId,
+    );
+    updateKPI(
+      kpi.id,
+      {
+        name: "Renamed catalog KPI",
+        direction: "neutral",
+      },
+      actorId,
+    );
+
+    const categoryEvents = listStrategicAuditEvents({
+      entity_type: "strategic_priority",
+      entity_id: category.id,
+    });
+    expect(categoryEvents.map((event) => event.event_type)).toEqual([
+      "update",
+      "create",
+    ]);
+    expect(categoryEvents[0]).toMatchObject({
+      entity_display_name: "Renamed catalog priority",
+      parent_priority_name: "Renamed catalog priority",
+      previous_value: {
+        id: category.id,
+        slug: "catalog-audit-priority",
+        name: "Original catalog priority",
+        description: "Original priority description",
+      },
+      new_value: {
+        id: category.id,
+        slug: "catalog-audit-priority",
+        name: "Renamed catalog priority",
+        description: "Updated priority description",
+      },
+      actor_email_snapshot: "catalog-admin@example.org",
+    });
+    expect(categoryEvents[1]).toMatchObject({
+      entity_display_name: "Original catalog priority",
+      previous_value: null,
+      new_value: {
+        id: category.id,
+        name: "Original catalog priority",
+      },
+      actor_email_snapshot: "catalog-admin@example.org",
+    });
+
+    const kpiEvents = listStrategicAuditEvents({
+      entity_type: "kpi",
+      entity_id: kpi.id,
+    });
+    expect(kpiEvents.map((event) => event.event_type)).toEqual([
+      "update",
+      "create",
+    ]);
+    expect(kpiEvents[0]).toMatchObject({
+      entity_display_name: "Renamed catalog KPI",
+      parent_priority_name: "Renamed catalog priority",
+      previous_value: {
+        id: kpi.id,
+        slug: "catalog-audit-kpi",
+        name: "Original catalog KPI",
+        direction: "higher",
+      },
+      new_value: {
+        id: kpi.id,
+        slug: "catalog-audit-kpi",
+        name: "Renamed catalog KPI",
+        direction: "neutral",
+      },
+      actor_email_snapshot: "catalog-admin@example.org",
+    });
+    expect(kpiEvents[1]).toMatchObject({
+      entity_display_name: "Original catalog KPI",
+      parent_priority_name: "Original catalog priority",
+      previous_value: null,
+      new_value: {
+        id: kpi.id,
+        name: "Original catalog KPI",
+      },
+      actor_email_snapshot: "catalog-admin@example.org",
+    });
+
+    const html = renderToStaticMarkup(
+      StrategicAuditTable({ events: [...categoryEvents, ...kpiEvents] }),
+    );
+    expect(html).toContain("Original catalog priority");
+    expect(html).toContain("Renamed catalog priority");
+    expect(html).toContain("Original catalog KPI");
+    expect(html).toContain("Renamed catalog KPI");
+    expect(html).toContain("catalog-admin@example.org");
+  });
+
+  it("rolls back a category create when its audit insert fails", () => {
+    const actorId = createCatalogActor();
+    getDb().exec(
+      `CREATE TRIGGER reject_category_create_audit
+       BEFORE INSERT ON strategic_audit_events
+       WHEN NEW.entity_type = 'strategic_priority' AND NEW.event_type = 'create'
+       BEGIN
+         SELECT RAISE(ABORT, 'forced category create audit failure');
+       END`,
+    );
+
+    expect(() =>
+      createCategory(
+        { slug: "rejected-category-create", name: "Rejected category create" },
+        actorId,
+      ),
+    ).toThrow(/forced category create audit failure/);
+    expect(
+      getCategoryBySlug("rejected-category-create", { includeArchived: true }),
+    ).toBeNull();
+    expect(listStrategicAuditEvents()).toEqual([]);
+  });
+
+  it("rolls back a category update when its audit insert fails", () => {
+    const actorId = createCatalogActor();
+    const category = createCategory(
+      { slug: "rejected-category-update", name: "Original category name" },
+      actorId,
+    );
+    getDb().exec(
+      `CREATE TRIGGER reject_category_update_audit
+       BEFORE INSERT ON strategic_audit_events
+       WHEN NEW.entity_type = 'strategic_priority' AND NEW.event_type = 'update'
+       BEGIN
+         SELECT RAISE(ABORT, 'forced category update audit failure');
+       END`,
+    );
+
+    expect(() =>
+      updateCategory(category.id, { name: "Rejected category name" }, actorId),
+    ).toThrow(/forced category update audit failure/);
+    expect(getCategory(category.id, { includeArchived: true })).toMatchObject({
+      name: "Original category name",
+    });
+    expect(
+      listStrategicAuditEvents({
+        entity_type: "strategic_priority",
+        entity_id: category.id,
+      }).map((event) => event.event_type),
+    ).toEqual(["create"]);
+  });
+
+  it("rolls back KPI create and update writes when their audit inserts fail", () => {
+    const actorId = createCatalogActor();
+    const category = createCategory(
+      { slug: "kpi-rollback-priority", name: "KPI rollback priority" },
+      actorId,
+    );
+    getDb().exec(
+      `CREATE TRIGGER reject_kpi_create_audit
+       BEFORE INSERT ON strategic_audit_events
+       WHEN NEW.entity_type = 'kpi' AND NEW.event_type = 'create'
+       BEGIN
+         SELECT RAISE(ABORT, 'forced KPI create audit failure');
+       END`,
+    );
+    expect(() =>
+      createKPI(
+        {
+          category_id: category.id,
+          slug: "rejected-kpi-create",
+          name: "Rejected KPI create",
+        },
+        actorId,
+      ),
+    ).toThrow(/forced KPI create audit failure/);
+    expect(
+      getDb()
+        .prepare("SELECT id FROM kpis WHERE slug = ?")
+        .get("rejected-kpi-create"),
+    ).toBeUndefined();
+    getDb().exec("DROP TRIGGER reject_kpi_create_audit");
+
+    const kpi = createKPI(
+      {
+        category_id: category.id,
+        slug: "rejected-kpi-update",
+        name: "Original KPI name",
+      },
+      actorId,
+    );
+    getDb().exec(
+      `CREATE TRIGGER reject_kpi_update_audit
+       BEFORE INSERT ON strategic_audit_events
+       WHEN NEW.entity_type = 'kpi' AND NEW.event_type = 'update'
+       BEGIN
+         SELECT RAISE(ABORT, 'forced KPI update audit failure');
+       END`,
+    );
+    expect(() =>
+      updateKPI(kpi.id, { name: "Rejected KPI name" }, actorId),
+    ).toThrow(/forced KPI update audit failure/);
+    expect(getKPI(kpi.id, { includeArchived: true })).toMatchObject({
+      name: "Original KPI name",
+    });
+    expect(
+      listStrategicAuditEvents({
+        entity_type: "kpi",
+        entity_id: kpi.id,
+      }).map((event) => event.event_type),
+    ).toEqual(["create"]);
+  });
+
+  it("preserves and renders an immutable KPI delete snapshot after hard deletion", () => {
+    const actorId = createCatalogActor();
+    const category = createCategory({
+      slug: "legacy",
+      name: "Legacy Priority",
+    });
     const kpi = createKPI({
       category_id: category.id,
       slug: "legacy-count",
@@ -166,14 +427,452 @@ describe("schema-10 strategic catalog lifecycle", () => {
     });
 
     expect(isStrategicKPI(kpi.id)).toBe(false);
-    expect(retireOrDeleteKPI(kpi.id)).toBe("deleted");
-    expect(getDb().prepare("SELECT id FROM kpis WHERE id = ?").get(kpi.id)).toBeUndefined();
+    expect(retireOrDeleteKPI(kpi.id, actorId)).toBe("deleted");
+    expect(getKPI(kpi.id, { includeArchived: true })).toBeNull();
+
+    updateCategory(category.id, { name: "Renamed live priority" });
+    const events = listStrategicAuditEvents({
+      entity_type: "kpi",
+      entity_id: kpi.id,
+    });
+    const deleteEvent = events.find((event) => event.event_type === "delete");
+    expect(deleteEvent).toMatchObject({
+      entity_type: "kpi",
+      entity_id: kpi.id,
+      event_type: "delete",
+      entity_display_name: "Legacy count",
+      parent_priority_name: "Legacy Priority",
+      parent_goal_name: null,
+      previous_value: {
+        id: kpi.id,
+        category_id: category.id,
+        slug: "legacy-count",
+        name: "Legacy count",
+      },
+      new_value: null,
+      actor_email_snapshot: "catalog-admin@example.org",
+    });
+
+    const html = renderToStaticMarkup(StrategicAuditTable({ events }));
+    expect(html).toContain("Legacy count");
+    expect(html).toContain("Legacy Priority");
+    expect(html).toContain("Delete");
+    expect(html).toContain("catalog-admin@example.org");
+    expect(html).not.toContain("Renamed live priority");
+  });
+
+  it("snapshots every descendant when a parent KPI hard delete cascades", () => {
+    const actorId = createCatalogActor();
+    const parentCategory = createCategory({
+      slug: "direct-parent-category",
+      name: "Direct Parent Category",
+    });
+    const childCategory = createCategory({
+      slug: "direct-child-category",
+      name: "Direct Child Category",
+    });
+    const parent = createKPI({
+      category_id: parentCategory.id,
+      slug: "direct-parent-kpi",
+      name: "Direct parent KPI",
+    });
+    const child = createKPI({
+      category_id: childCategory.id,
+      parent_id: parent.id,
+      slug: "direct-child-kpi",
+      name: "Direct child KPI",
+    });
+
+    expect(retireOrDeleteKPI(parent.id, actorId)).toBe("deleted");
+    expect(getKPI(parent.id, { includeArchived: true })).toBeNull();
+    expect(getKPI(child.id, { includeArchived: true })).toBeNull();
+    const deleteEvents = listStrategicAuditEvents({ limit: 30 }).filter(
+      (event) =>
+        event.entity_type === "kpi" &&
+        event.event_type === "delete" &&
+        (event.entity_id === parent.id || event.entity_id === child.id),
+    );
+    expect(deleteEvents).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          entity_id: parent.id,
+          entity_display_name: "Direct parent KPI",
+          parent_priority_name: "Direct Parent Category",
+        }),
+        expect.objectContaining({
+          entity_id: child.id,
+          entity_display_name: "Direct child KPI",
+          parent_priority_name: "Direct Child Category",
+        }),
+      ]),
+    );
+    expect(deleteEvents).toHaveLength(2);
+  });
+
+  it("does not hard-delete a parent KPI with a strategic descendant", () => {
+    const actorId = createCatalogActor();
+    const category = createCategory({
+      slug: "strategic-direct-tree",
+      name: "Strategic Direct Tree",
+    });
+    const parent = createKPI({
+      category_id: category.id,
+      slug: "strategic-direct-parent",
+      name: "Strategic direct parent",
+    });
+    const child = createKPI({
+      category_id: category.id,
+      parent_id: parent.id,
+      slug: "strategic-direct-child",
+      name: "Strategic direct child",
+    });
+    getDb()
+      .prepare(
+        `INSERT INTO kpi_measurement_configs (
+           kpi_id, effective_from_year, effective_to_year, measurement_type,
+           unit, reporting_frequency, aggregation_method, board_level_status,
+           configuration_status, created_by, updated_by
+         ) VALUES (?, 2025, 2029, 'count', 'items', 'annual', 'none',
+                   'not_reported', 'active', ?, ?)`,
+      )
+      .run(child.id, actorId, actorId);
+
+    expect(isStrategicKPI(parent.id)).toBe(true);
+    expect(retireOrDeleteKPI(parent.id, actorId)).toBe("archived");
+    expect(getKPI(parent.id, { includeArchived: true })?.archived_at).not.toBeNull();
+    expect(getKPI(child.id, { includeArchived: true })).not.toBeNull();
+  });
+
+  it("preserves and renders an immutable priority snapshot after category hard deletion", () => {
+    const actorId = createCatalogActor();
+    const category = createCategory({
+      slug: "legacy-priority",
+      name: "Legacy Operations",
+      description: "Historical operational reporting",
+      sort_order: 7,
+    });
+
     expect(isStrategicCategory(category.id)).toBe(false);
-    expect(retireOrDeleteCategory(category.id)).toBe("deleted");
+    expect(retireOrDeleteCategory(category.id, actorId)).toBe("deleted");
+    expect(getCategory(category.id, { includeArchived: true })).toBeNull();
+
+    const events = listStrategicAuditEvents({
+      entity_type: "strategic_priority",
+      entity_id: category.id,
+    });
+    const deleteEvent = events.find((event) => event.event_type === "delete");
+    expect(deleteEvent).toMatchObject({
+      entity_type: "strategic_priority",
+      entity_id: category.id,
+      event_type: "delete",
+      entity_display_name: "Legacy Operations",
+      parent_priority_name: "Legacy Operations",
+      parent_goal_name: null,
+      previous_value: {
+        id: category.id,
+        slug: "legacy-priority",
+        name: "Legacy Operations",
+        description: "Historical operational reporting",
+        sort_order: 7,
+      },
+      new_value: null,
+      actor_email_snapshot: "catalog-admin@example.org",
+    });
+
+    const html = renderToStaticMarkup(StrategicAuditTable({ events }));
+    expect(html).toContain("Legacy Operations");
+    expect(html).toContain("Strategic priority");
+    expect(html).toContain("Delete");
+    expect(html).toContain("catalog-admin@example.org");
+  });
+
+  it("preserves and renders every KPI snapshot when a category hard delete cascades", () => {
+    const actorId = createCatalogActor();
+    const category = createCategory({
+      slug: "legacy-programs",
+      name: "Legacy Programs",
+    });
+    const parent = createKPI({
+      category_id: category.id,
+      slug: "legacy-attendance",
+      name: "Legacy attendance",
+      unit: "visitors",
+      unit_type: "attendance",
+      reporting_frequency: "annual",
+    });
+    const childCategory = createCategory({
+      slug: "legacy-child-programs",
+      name: "Legacy Child Programs",
+    });
+    const child = createKPI({
+      category_id: childCategory.id,
+      parent_id: parent.id,
+      slug: "legacy-youth-attendance",
+      name: "Legacy youth attendance",
+      unit: "visitors",
+      unit_type: "attendance",
+      reporting_frequency: "annual",
+    });
+
+    expect(retireOrDeleteCategory(category.id, actorId)).toBe("deleted");
+    expect(getCategory(category.id, { includeArchived: true })).toBeNull();
+    expect(getCategory(childCategory.id, { includeArchived: true })).toMatchObject({
+      id: childCategory.id,
+      name: "Legacy Child Programs",
+    });
+    expect(getKPI(parent.id, { includeArchived: true })).toBeNull();
+    expect(getKPI(child.id, { includeArchived: true })).toBeNull();
+
+    const events = listStrategicAuditEvents({ limit: 20 });
+    const kpiEvents = events.filter(
+      (event) =>
+        event.entity_type === "kpi" &&
+        event.event_type === "delete" &&
+        (event.entity_id === parent.id || event.entity_id === child.id),
+    );
+    expect(kpiEvents).toHaveLength(2);
+    expect(kpiEvents).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          entity_id: parent.id,
+          event_type: "delete",
+          entity_display_name: "Legacy attendance",
+          parent_priority_name: "Legacy Programs",
+          previous_value: expect.objectContaining({
+            id: parent.id,
+            slug: "legacy-attendance",
+            name: "Legacy attendance",
+          }),
+          new_value: null,
+          actor_email_snapshot: "catalog-admin@example.org",
+        }),
+        expect.objectContaining({
+          entity_id: child.id,
+          event_type: "delete",
+          entity_display_name: "Legacy youth attendance",
+          parent_priority_name: "Legacy Child Programs",
+          previous_value: expect.objectContaining({
+            id: child.id,
+            parent_id: parent.id,
+            slug: "legacy-youth-attendance",
+            name: "Legacy youth attendance",
+          }),
+          new_value: null,
+          actor_email_snapshot: "catalog-admin@example.org",
+        }),
+      ]),
+    );
     expect(
-      getDb().prepare("SELECT id FROM categories WHERE id = ?").get(category.id),
-    ).toBeUndefined();
-    expect(listStrategicAuditEvents()).toEqual([]);
+      events.filter(
+        (event) =>
+          event.entity_type === "strategic_priority" &&
+          event.entity_id === category.id &&
+          event.event_type === "delete",
+      ),
+    ).toHaveLength(1);
+
+    const html = renderToStaticMarkup(StrategicAuditTable({ events }));
+    expect(html).toContain("Legacy attendance");
+    expect(html).toContain("Legacy youth attendance");
+    expect(html).toContain("Legacy Programs");
+    expect(html).toContain("Legacy Child Programs");
+    expect(html).toContain("catalog-admin@example.org");
+  });
+
+  it("blocks a category cascade when a cross-category descendant has live entries", () => {
+    const actorId = createCatalogActor();
+    const parentCategory = createCategory({
+      slug: "entry-parent-category",
+      name: "Entry Parent Category",
+    });
+    const childCategory = createCategory({
+      slug: "entry-child-category",
+      name: "Entry Child Category",
+    });
+    const parent = createKPI({
+      category_id: parentCategory.id,
+      slug: "entry-parent-kpi",
+      name: "Entry parent KPI",
+      reporting_frequency: "annual",
+    });
+    const child = createKPI({
+      category_id: childCategory.id,
+      parent_id: parent.id,
+      slug: "entry-child-kpi",
+      name: "Entry child KPI",
+      reporting_frequency: "annual",
+    });
+    getDb()
+      .prepare(
+        `INSERT INTO monthly_entries (kpi_id, year, month, value)
+         VALUES (?, 2026, 0, 17)`,
+      )
+      .run(child.id);
+
+    expect(countCategoryDependents(parentCategory.id)).toBe(1);
+    expect(() => retireOrDeleteCategory(parentCategory.id, actorId)).toThrow(
+      DependentEntriesError,
+    );
+    expect(getCategory(parentCategory.id, { includeArchived: true })).not.toBeNull();
+    expect(getKPI(parent.id, { includeArchived: true })).not.toBeNull();
+    expect(getKPI(child.id, { includeArchived: true })).not.toBeNull();
+    expect(
+      listStrategicAuditEvents({ limit: 50 }).filter(
+        (event) =>
+          event.event_type === "delete" &&
+          (event.entity_id === parent.id || event.entity_id === child.id),
+      ),
+    ).toEqual([]);
+  });
+
+  it("does not hard-delete a category with a strategic cross-category descendant", () => {
+    const actorId = createCatalogActor();
+    const parentCategory = createCategory({
+      slug: "strategic-parent-category",
+      name: "Strategic Parent Category",
+    });
+    const childCategory = createCategory({
+      slug: "strategic-child-category",
+      name: "Strategic Child Category",
+    });
+    const parent = createKPI({
+      category_id: parentCategory.id,
+      slug: "strategic-parent-kpi",
+      name: "Strategic parent KPI",
+    });
+    const child = createKPI({
+      category_id: childCategory.id,
+      parent_id: parent.id,
+      slug: "strategic-child-kpi",
+      name: "Strategic child KPI",
+    });
+    getDb()
+      .prepare(
+        `INSERT INTO kpi_measurement_configs (
+           kpi_id, effective_from_year, effective_to_year, measurement_type,
+           unit, reporting_frequency, aggregation_method, board_level_status,
+           configuration_status, created_by, updated_by
+         ) VALUES (?, 2025, 2029, 'count', 'items', 'annual', 'none',
+                   'not_reported', 'active', ?, ?)`,
+      )
+      .run(child.id, actorId, actorId);
+
+    expect(isStrategicCategory(parentCategory.id)).toBe(true);
+    expect(retireOrDeleteCategory(parentCategory.id, actorId)).toBe("archived");
+    expect(getCategory(parentCategory.id, { includeArchived: true })?.archived_at).not.toBeNull();
+    expect(getKPI(parent.id, { includeArchived: true })).not.toBeNull();
+    expect(getKPI(child.id, { includeArchived: true })).not.toBeNull();
+  });
+
+  it("rolls back the category and every child snapshot when one KPI audit insert fails", () => {
+    const actorId = createCatalogActor();
+    const category = createCategory({
+      slug: "rollback-programs",
+      name: "Rollback Programs",
+    });
+    const firstKpi = createKPI({
+      category_id: category.id,
+      slug: "rollback-first-kpi",
+      name: "Rollback first KPI",
+    });
+    const rejectedKpi = createKPI({
+      category_id: category.id,
+      slug: "rollback-rejected-kpi",
+      name: "Rollback rejected KPI",
+    });
+    const eventsBeforeDelete = listStrategicAuditEvents();
+    getDb().exec(
+      `CREATE TRIGGER reject_cascade_kpi_audit
+       BEFORE INSERT ON strategic_audit_events
+       WHEN NEW.entity_type = 'kpi' AND NEW.entity_id = ${rejectedKpi.id}
+       BEGIN
+         SELECT RAISE(ABORT, 'forced cascade KPI audit failure');
+       END`,
+    );
+
+    expect(() => retireOrDeleteCategory(category.id, actorId)).toThrow(
+      /forced cascade KPI audit failure/,
+    );
+    expect(getCategory(category.id, { includeArchived: true })).toMatchObject({
+      id: category.id,
+      name: "Rollback Programs",
+    });
+    expect(getKPI(firstKpi.id, { includeArchived: true })).toMatchObject({
+      id: firstKpi.id,
+      name: "Rollback first KPI",
+    });
+    expect(getKPI(rejectedKpi.id, { includeArchived: true })).toMatchObject({
+      id: rejectedKpi.id,
+      name: "Rollback rejected KPI",
+    });
+    expect(listStrategicAuditEvents()).toEqual(eventsBeforeDelete);
+  });
+
+  it("rolls back the KPI audit snapshot when the hard delete fails", () => {
+    const actorId = createCatalogActor();
+    const category = createCategory({
+      slug: "protected-kpi-priority",
+      name: "Protected KPI Priority",
+    });
+    const kpi = createKPI({
+      category_id: category.id,
+      slug: "protected-legacy-kpi",
+      name: "Protected legacy KPI",
+    });
+    getDb().exec(
+      `CREATE TRIGGER reject_legacy_kpi_delete
+       BEFORE DELETE ON kpis
+       WHEN OLD.id = ${kpi.id}
+       BEGIN
+         SELECT RAISE(ABORT, 'forced KPI delete failure');
+       END`,
+    );
+
+    expect(() => retireOrDeleteKPI(kpi.id, actorId)).toThrow(
+      /forced KPI delete failure/,
+    );
+    expect(getKPI(kpi.id, { includeArchived: true })).toMatchObject({
+      id: kpi.id,
+      name: "Protected legacy KPI",
+    });
+    expect(
+      listStrategicAuditEvents({
+        entity_type: "kpi",
+        entity_id: kpi.id,
+        event_type: "delete",
+      }),
+    ).toEqual([]);
+  });
+
+  it("rolls back the priority audit snapshot when the category hard delete fails", () => {
+    const actorId = createCatalogActor();
+    const category = createCategory({
+      slug: "protected-priority",
+      name: "Protected Priority",
+    });
+    getDb().exec(
+      `CREATE TRIGGER reject_legacy_category_delete
+       BEFORE DELETE ON categories
+       WHEN OLD.id = ${category.id}
+       BEGIN
+         SELECT RAISE(ABORT, 'forced category delete failure');
+       END`,
+    );
+
+    expect(() => retireOrDeleteCategory(category.id, actorId)).toThrow(
+      /forced category delete failure/,
+    );
+    expect(getCategory(category.id, { includeArchived: true })).toMatchObject({
+      id: category.id,
+      name: "Protected Priority",
+    });
+    expect(
+      listStrategicAuditEvents({
+        entity_type: "strategic_priority",
+        entity_id: category.id,
+        event_type: "delete",
+      }),
+    ).toEqual([]);
   });
 
   it("restores the KPI active flag captured before archival", () => {

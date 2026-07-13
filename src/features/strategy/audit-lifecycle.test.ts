@@ -140,6 +140,47 @@ describe("strategic audit deletion lifecycle", () => {
     });
   });
 
+  it("filters related entities and display names before applying the result limit", () => {
+    const identityMatch = recordStrategicAuditEvent({
+      entity_type: "target",
+      entity_id: 41,
+      event_type: "update",
+      entity_display_name: "Annual target",
+      previous_value: { target_value: 4 },
+      new_value: { target_value: 5 },
+    });
+    const nameMatch = recordStrategicAuditEvent({
+      entity_type: "distribution_observation",
+      entity_id: 42,
+      event_type: "update",
+      entity_display_name: "Visitor upgrades distribution",
+      previous_value: { respondent_total: 10 },
+      new_value: { respondent_total: 12 },
+    });
+
+    for (let index = 0; index < 501; index += 1) {
+      recordStrategicAuditEvent({
+        entity_type: "kpi",
+        entity_id: 1_000 + index,
+        event_type: "update",
+        entity_display_name: `Unrelated KPI ${index}`,
+        previous_value: { value: index },
+        new_value: { value: index + 1 },
+      });
+    }
+
+    const events = listStrategicAuditEvents({
+      identities: [{ entity_type: "target", entity_id: 41 }],
+      entity_display_name_contains: "Visitor upgrades",
+      limit: 500,
+    });
+
+    expect(events.map((event) => event.id)).toEqual([
+      nameMatch.id,
+      identityMatch.id,
+    ]);
+  });
+
   it("rejects incomplete audit snapshots before writing a row", () => {
     expect(() =>
       recordStrategicAuditEvent({

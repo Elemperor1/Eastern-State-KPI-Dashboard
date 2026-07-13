@@ -2,8 +2,10 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
+import { listCalculatedStrategyActuals } from "@/features/reporting/strategy-actuals-server";
 import { getDb, resetDb } from "@/lib/db";
 import { listStrategicAuditEvents } from "./audit";
+import { archiveComponent } from "./mutations";
 import {
   archiveStrategyDistributionBand,
   createStrategyDistributionBand,
@@ -256,6 +258,69 @@ describe("strategy value-entry persistence", () => {
     expect(listStrategicAuditEvents({ entity_type: "kpi_component_entry" })).toHaveLength(2);
   });
 
+  it("keeps archived component entries and their labels readable without active-report leakage", () => {
+    const config = seedKpi(
+      "archived-component-history",
+      "multi_component",
+      "annual",
+    );
+    const componentId = seedComponent(
+      config,
+      "count",
+      "Historically named participants",
+    );
+    const saved = upsertStrategyComponentEntry(
+      { component_id: componentId, reporting_year: 2026, value: 27 },
+      null,
+    );
+    expect(
+      listCalculatedStrategyActuals({
+        kpiIds: [config.kpiId],
+        throughYear: 2026,
+      }),
+    ).toHaveLength(1);
+
+    archiveComponent(componentId);
+
+    expect(
+      listCalculatedStrategyActuals({
+        kpiIds: [config.kpiId],
+        throughYear: 2026,
+      }),
+    ).toEqual([]);
+    expect(
+      listStrategyComponentEntries({
+        component_id: componentId,
+        reporting_year: 2026,
+      }),
+    ).toEqual([
+      expect.objectContaining({
+        id: saved.id,
+        component_id: componentId,
+        component_label: "Historically named participants",
+        scalar_value: 27,
+      }),
+    ]);
+    expect(getStrategyComponentEntry(saved.id)).toMatchObject({
+      component_id: componentId,
+      component_label: "Historically named participants",
+      scalar_value: 27,
+    });
+
+    const createEvent = listStrategicAuditEvents({
+      entity_type: "kpi_component_entry",
+      entity_id: saved.id,
+      event_type: "create",
+    })[0];
+    expect(createEvent).toMatchObject({
+      entity_display_name: "Historically named participants",
+      new_value: {
+        component_id: componentId,
+        component_label: "Historically named participants",
+      },
+    });
+  });
+
   it("validates distributions, creates reusable bands, and keeps first-write label snapshots immutable", () => {
     const { kpiId } = seedKpi("audience-race", "distribution", "annual");
     const first = upsertStrategyDistribution(
@@ -345,6 +410,106 @@ describe("strategy value-entry persistence", () => {
     ).toEqual([updated]);
     expect(listStrategicAuditEvents({ entity_type: "distribution_band" })).toHaveLength(4);
     expect(listStrategicAuditEvents({ entity_type: "distribution_observation" })).toHaveLength(1);
+  });
+
+  it("keeps historical demographic calculations stable across effective-dated band successors", () => {
+    const { kpiId } = seedKpi("audience-race-history", "distribution", "annual");
+    upsertStrategyDistribution(
+      {
+        kpi_id: kpiId,
+        reporting_year: 2026,
+        respondent_count: 10,
+        mutually_exclusive: true,
+        bands: [
+          {
+            slug: "white",
+            label: "White",
+            count: 6,
+            display_order: 0,
+            derived_group: "white",
+          },
+          {
+            slug: "people-of-color",
+            label: "People of color",
+            count: 4,
+            display_order: 1,
+            derived_group: "non_white",
+          },
+        ],
+      },
+      null,
+    );
+    const original = listEffectiveDistributionBands({
+      kpi_id: kpiId,
+      reporting_year: 2026,
+    }).find((band) => band.slug === "people-of-color")!;
+    const before = listCalculatedStrategyActuals({
+      kpiIds: [kpiId],
+      throughYear: 2026,
+    })[0]!;
+    expect(before.calculation.distribution?.derivedNonWhitePercentage).toBe(40);
+
+    expect(() =>
+      updateStrategyDistributionBand(
+        {
+          id: original.id,
+          kpi_id: original.kpi_id,
+          component_id: original.component_id,
+          slug: original.slug,
+          label: original.label,
+          effective_from_year: original.effective_from_year,
+          effective_to_year: original.effective_to_year,
+          display_order: original.display_order,
+          is_unknown: original.is_unknown,
+          is_declined: original.is_declined,
+          derived_group: "white",
+        },
+        null,
+      ),
+    ).toThrowError(/cannot change its calculation semantics/i);
+
+    const ended = updateStrategyDistributionBand(
+      {
+        id: original.id,
+        kpi_id: original.kpi_id,
+        component_id: original.component_id,
+        slug: original.slug,
+        label: original.label,
+        effective_from_year: original.effective_from_year,
+        effective_to_year: 2026,
+        display_order: original.display_order,
+        is_unknown: original.is_unknown,
+        is_declined: original.is_declined,
+        derived_group: original.derived_group,
+      },
+      null,
+    );
+    createStrategyDistributionBand(
+      {
+        kpi_id: kpiId,
+        component_id: null,
+        slug: ended.slug,
+        label: "Reclassified audience band",
+        effective_from_year: 2027,
+        effective_to_year: 2029,
+        display_order: ended.display_order,
+        is_unknown: false,
+        is_declined: false,
+        derived_group: "white",
+      },
+      null,
+    );
+
+    const after = listCalculatedStrategyActuals({
+      kpiIds: [kpiId],
+      throughYear: 2026,
+    })[0]!;
+    expect(after.calculation.distribution?.derivedNonWhitePercentage).toBe(40);
+    expect(getStrategyDistribution(
+      listStrategyDistributions({ kpi_id: kpiId, reporting_year: 2026 })[0]!.id,
+    ).bands.find((band) => band.slug === "people-of-color")?.derived_group).toBe(
+      "non_white",
+    );
   });
 
   it("rejects invalid demographic totals and user-facing annual month zero", () => {

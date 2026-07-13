@@ -3,6 +3,7 @@ import {
   buildCategoryMetricMovement,
   buildCategoryOverviewSummary,
 } from "./category-summary";
+import { buildStrategicBoardReport } from "./strategic-board-report";
 import type { ComparePeriod, ReportingData } from "./types";
 import type {
   BreakdownEntryWithMeta,
@@ -194,6 +195,7 @@ describe("reporting category summaries", () => {
     });
 
     expect(summary.total).toBe(5);
+    expect(summary.comparisonMetricCount).toBe(5);
     expect(summary.improving).toBe(3);
     expect(summary.declining).toBe(1);
     expect(summary.flat).toBe(1);
@@ -211,6 +213,210 @@ describe("reporting category summaries", () => {
       ["funders-by-breakdown", 20],
       ["percent-cultivated-donors", 25],
     ]);
+  });
+
+  it("limits a strategic priority movement summary to calculated year-over-year KPIs", () => {
+    const summary = buildCategoryOverviewSummary({
+      ...reportingData,
+      category,
+      period,
+      strategicBoardReport: buildStrategicBoardReport({
+        selectedYear: period.currentYear,
+        priorities: [
+          {
+            id: String(category.id),
+            name: category.name,
+            goals: [
+              {
+                id: "goal-1",
+                name: "Fundraising goal",
+                kpis: [
+                  {
+                    id: String(visitorsKpi.id),
+                    name: visitorsKpi.name,
+                    measurementType: "cumulative",
+                    reportingFrequency: "annual",
+                    result: { state: "ok", value: 200, displayValue: "200 visitors" },
+                  },
+                  {
+                    id: String(lowerIsBetterKpi.id),
+                    name: lowerIsBetterKpi.name,
+                    measurementType: "year_over_year",
+                    reportingFrequency: "annual",
+                    result: { state: "ok", value: -15, displayValue: "-15%" },
+                  },
+                  {
+                    id: String(flatKpi.id),
+                    name: flatKpi.name,
+                    measurementType: "distribution",
+                    reportingFrequency: "annual",
+                    result: { state: "ok", value: 10, displayValue: "10" },
+                  },
+                  {
+                    id: String(annualBreakdownKpi.id),
+                    name: annualBreakdownKpi.name,
+                    measurementType: "multi_component",
+                    reportingFrequency: "annual",
+                    result: { state: "missing", value: null, displayValue: "Not reported" },
+                  },
+                  {
+                    id: String(donorConversionKpi.id),
+                    name: donorConversionKpi.name,
+                    measurementType: "percentage",
+                    reportingFrequency: "monthly",
+                    result: { state: "ok", value: 50, displayValue: "50%" },
+                  },
+                ],
+              },
+            ],
+          },
+        ],
+      }),
+    });
+
+    expect(summary.total).toBe(5);
+    expect(summary.comparisonMetricCount).toBe(1);
+    expect(summary.metrics).toEqual([
+      expect.objectContaining({
+        kpi: expect.objectContaining({ slug: "triage" }),
+        pct: -15,
+        delta: -15,
+        favorable: true,
+      }),
+    ]);
+    expect(summary.improving).toBe(1);
+    expect(summary.declining).toBe(0);
+    expect(summary.flat).toBe(0);
+    expect(summary.pctImproving).toBe(100);
+    expect(summary.topMover?.kpi.slug).toBe("triage");
+  });
+
+  it("does not classify a missing strategic year-over-year result as unchanged", () => {
+    const summary = buildCategoryOverviewSummary({
+      categories: [category],
+      category,
+      kpis: [visitorsKpi],
+      entries: reportingData.entries,
+      breakdowns: [],
+      period,
+      strategicBoardReport: buildStrategicBoardReport({
+        selectedYear: period.currentYear,
+        priorities: [
+          {
+            id: String(category.id),
+            name: category.name,
+            goals: [
+              {
+                id: "goal-1",
+                name: "Fundraising goal",
+                kpis: [
+                  {
+                    id: String(visitorsKpi.id),
+                    name: visitorsKpi.name,
+                    measurementType: "year_over_year",
+                    reportingFrequency: "annual",
+                    result: {
+                      state: "missing",
+                      value: null,
+                      displayValue: "Not reported",
+                    },
+                  },
+                ],
+              },
+            ],
+          },
+        ],
+      }),
+    });
+
+    expect(summary.total).toBe(1);
+    expect(summary.comparisonMetricCount).toBe(0);
+    expect(summary.metrics).toEqual([]);
+    expect(summary.flat).toBe(0);
+    expect(summary.topMover).toBeNull();
+  });
+
+  it("retains Dashboard Comparison movement for a KPI with no strategic view model", () => {
+    const summary = buildCategoryOverviewSummary({
+      categories: [category],
+      category,
+      kpis: [visitorsKpi, lowerIsBetterKpi],
+      entries: reportingData.entries,
+      breakdowns: [],
+      period,
+      strategicBoardReport: buildStrategicBoardReport({
+        selectedYear: period.currentYear,
+        priorities: [
+          {
+            id: String(category.id),
+            name: category.name,
+            goals: [
+              {
+                id: "goal-1",
+                name: "Fundraising goal",
+                kpis: [
+                  {
+                    id: String(lowerIsBetterKpi.id),
+                    name: lowerIsBetterKpi.name,
+                    measurementType: "cumulative",
+                    reportingFrequency: "annual",
+                    result: { state: "ok", value: 30, displayValue: "30%" },
+                  },
+                ],
+              },
+            ],
+          },
+        ],
+      }),
+    });
+
+    expect(summary.total).toBe(2);
+    expect(summary.comparisonMetricCount).toBe(1);
+    expect(summary.metrics).toEqual([
+      expect.objectContaining({
+        kpi: expect.objectContaining({ slug: "visitors" }),
+        pct: 100,
+        delta: 100,
+      }),
+    ]);
+  });
+
+  it("does not label a strategic prior-year result as an arbitrary selected-year comparison", () => {
+    const summary = buildCategoryOverviewSummary({
+      categories: [category],
+      category,
+      kpis: [visitorsKpi],
+      entries: reportingData.entries,
+      breakdowns: [],
+      period: { ...period, compareYear: 2024 },
+      strategicBoardReport: buildStrategicBoardReport({
+        selectedYear: period.currentYear,
+        priorities: [
+          {
+            id: String(category.id),
+            name: category.name,
+            goals: [
+              {
+                id: "goal-1",
+                name: "Fundraising goal",
+                kpis: [
+                  {
+                    id: String(visitorsKpi.id),
+                    name: visitorsKpi.name,
+                    measurementType: "year_over_year",
+                    reportingFrequency: "annual",
+                    result: { state: "ok", value: 20, displayValue: "+20%" },
+                  },
+                ],
+              },
+            ],
+          },
+        ],
+      }),
+    });
+
+    expect(summary.comparisonMetricCount).toBe(0);
+    expect(summary.metrics).toEqual([]);
   });
 
   it("uses strategic goal completion, not KPI movement, for the priority rollup", () => {

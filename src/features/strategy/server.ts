@@ -16,6 +16,12 @@ export {
 } from "./audit";
 
 export {
+  reconcileStrategicMigrationData,
+  type GovernmentSupportRatioRepair,
+  type StrategicMigrationReconciliationResult,
+} from "./migration-reconciliation";
+
+export {
   archiveComponent,
   archiveMeasurementConfig,
   archiveStrategicGoal,
@@ -45,6 +51,7 @@ export {
   getStrategicGoalRecord,
   getStrategicGoalRecordBySlug,
   getTargetRecord,
+  listStrategicAuditIdentitiesForKpi,
   listComponentsForConfiguration,
   listConfigurationGaps,
   listEffectiveMeasurementConfigs,
@@ -52,6 +59,7 @@ export {
   listEffectiveTargetsForKpi,
   listStrategicGoals,
   type ConfigurationGapFilter,
+  type StrategicAuditIdentity,
   type StrategicGoalListFilter,
   type StrategyReadOptions,
 } from "./queries";
@@ -97,6 +105,9 @@ export {
 
 export {
   createMeasurementConfiguration,
+  createSuccessorMeasurementConfiguration,
+  createSuccessorStrategicGoal,
+  createSuccessorStrategicGoalMembership,
   createStrategicTarget,
   createStrategyComponent,
   reorderStrategyComponents,
@@ -109,4 +120,7 @@ export {
   updateStrategicTarget,
   updateStrategyComponent,
   type StrategyEditIssue,
+  type SuccessorMeasurementConfigurationResult,
+  type SuccessorStrategicGoalMembershipResult,
+  type SuccessorStrategicGoalResult,
 } from "./configuration-editing";

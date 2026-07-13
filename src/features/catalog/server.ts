@@ -124,33 +124,36 @@ export function getCategoryBySlug(
   return row ? asCategory(row) : null;
 }
 
-export function createCategory(input: {
-  slug: string;
-  name: string;
-  description?: string | null;
-  sort_order?: number;
-}): Category {
-  const db = getDb();
-  const slug = input.slug.trim();
-  const name = input.name.trim();
-  db.prepare(
-    `INSERT INTO categories (slug, name, description, sort_order)
-     VALUES (?, ?, ?, ?)`,
-  ).run(slug, name, input.description ?? null, input.sort_order ?? 0);
-  const row = db
-    .prepare("SELECT * FROM categories WHERE slug = ?")
-    .get(slug) as Record<string, unknown> | undefined;
-  if (!row) {
-    throw new Error(`createCategory: row not found after insert for slug=${slug}`);
-  }
-  return asCategory(row);
+export function createCategory(
+  input: {
+    slug: string;
+    name: string;
+    description?: string | null;
+    sort_order?: number;
+  },
+  actorId: number | null = null,
+): Category {
+  return transaction(() => {
+    const db = getDb();
+    const slug = input.slug.trim();
+    const name = input.name.trim();
+    const result = db
+      .prepare(
+        `INSERT INTO categories (slug, name, description, sort_order)
+         VALUES (?, ?, ?, ?)`,
+      )
+      .run(slug, name, input.description ?? null, input.sort_order ?? 0);
+    const row = rawCategory(Number(result.lastInsertRowid));
+    recordLegacyCategoryEvent(null, row, "create", actorId);
+    return asCategory(row);
+  });
 }
 
 export function updateCategory(
   id: number,
   patch: Partial<Pick<Category, "name" | "description" | "sort_order">>,
+  actorId: number | null = null,
 ): void {
-  const db = getDb();
   const fields: string[] = [];
   const values: (string | number | null)[] = [];
   if (patch.name !== undefined) {
@@ -166,8 +169,21 @@ export function updateCategory(
     values.push(patch.sort_order);
   }
   if (!fields.length) return;
-  values.push(id);
-  db.prepare(`UPDATE categories SET ${fields.join(", ")} WHERE id = ?`).run(...values);
+  transaction(() => {
+    const before = rawCategory(id);
+    getDb()
+      .prepare(`UPDATE categories SET ${fields.join(", ")} WHERE id = ?`)
+      .run(...values, id);
+    const after = rawCategory(id);
+    if (
+      !sameSnapshot(
+        legacyCategorySnapshot(before),
+        legacyCategorySnapshot(after),
+      )
+    ) {
+      recordLegacyCategoryEvent(before, after, "update", actorId);
+    }
+  });
 }
 
 /**
@@ -199,7 +215,7 @@ export function countKPIDependents(id: number): number {
     .prepare(
       `WITH RECURSIVE descendants(id) AS (
          SELECT id FROM kpis WHERE id = ?
-         UNION ALL
+         UNION
          SELECT k.id
          FROM kpis k
          JOIN descendants d ON k.parent_id = d.id
@@ -212,22 +228,30 @@ export function countKPIDependents(id: number): number {
   return Number(row.n);
 }
 
-/** Total live entries across every KPI in a category. */
+/**
+ * Total live entries across every KPI owned by a category, including every
+ * descendant that SQLite would cascade-delete through `kpis.parent_id` even
+ * when that descendant is assigned to a different category.
+ */
 export function countCategoryDependents(id: number): number {
   const db = getDb();
-  const monthly = db
+  const row = db
     .prepare(
-      `SELECT COUNT(*) AS n FROM monthly_entries
-       WHERE kpi_id IN (SELECT id FROM kpis WHERE category_id = ?)`,
+      `WITH RECURSIVE descendants(id) AS (
+         SELECT id FROM kpis WHERE category_id = ?
+         UNION
+         SELECT child.id
+         FROM kpis child
+         JOIN descendants parent ON child.parent_id = parent.id
+       )
+       SELECT
+         (SELECT COUNT(*) FROM monthly_entries
+          WHERE kpi_id IN (SELECT id FROM descendants)) +
+         (SELECT COUNT(*) FROM breakdown_entries
+          WHERE kpi_id IN (SELECT id FROM descendants)) AS n`,
     )
     .get(id) as { n: number };
-  const breakdown = db
-    .prepare(
-      `SELECT COUNT(*) AS n FROM breakdown_entries
-       WHERE kpi_id IN (SELECT id FROM kpis WHERE category_id = ?)`,
-    )
-    .get(id) as { n: number };
-  return Number(monthly.n) + Number(breakdown.n);
+  return Number(row.n);
 }
 
 export function deleteCategory(id: number): void {
@@ -321,43 +345,46 @@ export function listChildKPIs(
   return rows.map(asKpiWithCategory);
 }
 
-export function createKPI(input: {
-  category_id: number;
-  parent_id?: number | null;
-  slug: string;
-  name: string;
-  unit?: string;
-  unit_type?: UnitType;
-  reporting_frequency?: ReportingFrequency;
-  direction?: Direction;
-  description?: string | null;
-  sort_order?: number;
-}): KPI {
-  const db = getDb();
-  const slug = input.slug.trim();
-  const name = input.name.trim();
-  db.prepare(
-    `INSERT INTO kpis (category_id, parent_id, slug, name, unit, unit_type, reporting_frequency, direction, description, sort_order)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-  ).run(
-    input.category_id,
-    input.parent_id ?? null,
-    slug,
-    name,
-    input.unit ?? "",
-    input.unit_type ?? "count",
-    input.reporting_frequency ?? "monthly",
-    input.direction ?? "higher",
-    input.description ?? null,
-    input.sort_order ?? 0,
-  );
-  const row = db
-    .prepare("SELECT * FROM kpis WHERE slug = ?")
-    .get(slug) as Record<string, unknown> | undefined;
-  if (!row) {
-    throw new Error(`createKPI: row not found after insert for slug=${slug}`);
-  }
-  return asKpi(row);
+export function createKPI(
+  input: {
+    category_id: number;
+    parent_id?: number | null;
+    slug: string;
+    name: string;
+    unit?: string;
+    unit_type?: UnitType;
+    reporting_frequency?: ReportingFrequency;
+    direction?: Direction;
+    description?: string | null;
+    sort_order?: number;
+  },
+  actorId: number | null = null,
+): KPI {
+  return transaction(() => {
+    const db = getDb();
+    const slug = input.slug.trim();
+    const name = input.name.trim();
+    const result = db
+      .prepare(
+        `INSERT INTO kpis (category_id, parent_id, slug, name, unit, unit_type, reporting_frequency, direction, description, sort_order)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      )
+      .run(
+        input.category_id,
+        input.parent_id ?? null,
+        slug,
+        name,
+        input.unit ?? "",
+        input.unit_type ?? "count",
+        input.reporting_frequency ?? "monthly",
+        input.direction ?? "higher",
+        input.description ?? null,
+        input.sort_order ?? 0,
+      );
+    const row = rawKpiWithContext(Number(result.lastInsertRowid));
+    recordLegacyKpiEvent(null, row, "create", actorId);
+    return asKpi(row);
+  });
 }
 
 export function updateKPI(
@@ -374,8 +401,8 @@ export function updateKPI(
     sort_order: number;
     is_active: number;
   }>,
+  actorId: number | null = null,
 ): void {
-  const db = getDb();
   const fields: string[] = [];
   const values: (string | number | null)[] = [];
   (Object.entries(patch) as [string, string | number | null | undefined][]).forEach(
@@ -386,8 +413,16 @@ export function updateKPI(
     },
   );
   if (!fields.length) return;
-  values.push(id);
-  db.prepare(`UPDATE kpis SET ${fields.join(", ")} WHERE id = ?`).run(...values);
+  transaction(() => {
+    const before = rawKpiWithContext(id);
+    getDb()
+      .prepare(`UPDATE kpis SET ${fields.join(", ")} WHERE id = ?`)
+      .run(...values, id);
+    const after = rawKpiWithContext(id);
+    if (!sameSnapshot(legacyKpiSnapshot(before), legacyKpiSnapshot(after))) {
+      recordLegacyKpiEvent(before, after, "update", actorId);
+    }
+  });
 }
 
 export function deleteKPI(id: number): void {
@@ -418,6 +453,45 @@ function rawCategory(id: number): Record<string, unknown> {
   return row;
 }
 
+function legacyCategorySnapshot(row: Record<string, unknown>) {
+  return {
+    id: Number(row.id),
+    slug: String(row.slug),
+    name: String(row.name),
+    description: row.description == null ? null : String(row.description),
+    sort_order: Number(row.sort_order ?? 0),
+    archived_at: row.archived_at == null ? null : String(row.archived_at),
+  };
+}
+
+function sameSnapshot(
+  before: Record<string, unknown>,
+  after: Record<string, unknown>,
+): boolean {
+  return JSON.stringify(before) === JSON.stringify(after);
+}
+
+function recordLegacyCategoryEvent(
+  before: Record<string, unknown> | null,
+  after: Record<string, unknown> | null,
+  eventType: "create" | "update" | "delete",
+  actorId: number | null,
+): void {
+  const subject = after ?? before;
+  if (!subject) throw new Error("Category audit events require a snapshot.");
+  recordStrategicAuditEvent({
+    entity_type: "strategic_priority",
+    entity_id: Number(subject.id),
+    event_type: eventType,
+    entity_display_name: String(subject.name),
+    parent_priority_name: String(subject.name),
+    previous_value: before == null ? null : legacyCategorySnapshot(before),
+    new_value: after == null ? null : legacyCategorySnapshot(after),
+    actor_id: actorId,
+    source_reference: "Admin catalog configuration",
+  });
+}
+
 function rawKpiWithContext(id: number): Record<string, unknown> {
   const row = getDb()
     .prepare(
@@ -441,31 +515,123 @@ function rawKpiWithContext(id: number): Record<string, unknown> {
   return row;
 }
 
+function legacyKpiSnapshot(row: Record<string, unknown>) {
+  return {
+    id: Number(row.id),
+    category_id: Number(row.category_id),
+    category_name: String(row.category_name),
+    parent_id: row.parent_id == null ? null : Number(row.parent_id),
+    slug: String(row.slug),
+    name: String(row.name),
+    unit: String(row.unit ?? ""),
+    unit_type: String(row.unit_type),
+    reporting_frequency: String(row.reporting_frequency),
+    direction: String(row.direction),
+    description: row.description == null ? null : String(row.description),
+    sort_order: Number(row.sort_order ?? 0),
+    is_active: Number(row.is_active ?? 1),
+    created_at: String(row.created_at),
+    archived_at: row.archived_at == null ? null : String(row.archived_at),
+  };
+}
+
+function recordLegacyKpiEvent(
+  before: Record<string, unknown> | null,
+  after: Record<string, unknown> | null,
+  eventType: "create" | "update" | "delete",
+  actorId: number | null,
+): void {
+  const subject = after ?? before;
+  if (!subject) throw new Error("KPI audit events require a snapshot.");
+  recordStrategicAuditEvent({
+    entity_type: "kpi",
+    entity_id: Number(subject.id),
+    event_type: eventType,
+    entity_display_name: String(subject.name),
+    parent_priority_name: String(subject.category_name),
+    parent_goal_name:
+      subject.goal_name == null ? null : String(subject.goal_name),
+    previous_value: before == null ? null : legacyKpiSnapshot(before),
+    new_value: after == null ? null : legacyKpiSnapshot(after),
+    actor_id: actorId,
+    source_reference: "Admin catalog configuration",
+  });
+}
+
+function rawKpisInCategoryWithContext(
+  categoryId: number,
+): Record<string, unknown>[] {
+  const ids = getDb()
+    .prepare(
+      `WITH RECURSIVE descendants(id) AS (
+         SELECT id FROM kpis WHERE category_id = ?
+         UNION
+         SELECT child.id
+         FROM kpis child
+         JOIN descendants parent ON child.parent_id = parent.id
+       )
+       SELECT id FROM descendants ORDER BY id`,
+    )
+    .all(categoryId) as Array<{ id: number }>;
+  return ids.map(({ id }) => rawKpiWithContext(Number(id)));
+}
+
+function rawKpiTreeWithContext(kpiId: number): Record<string, unknown>[] {
+  const ids = getDb()
+    .prepare(
+      `WITH RECURSIVE descendants(id) AS (
+         SELECT id FROM kpis WHERE id = ?
+         UNION
+         SELECT child.id
+         FROM kpis child
+         JOIN descendants parent ON child.parent_id = parent.id
+       )
+       SELECT id FROM descendants ORDER BY id`,
+    )
+    .all(kpiId) as Array<{ id: number }>;
+  if (ids.length === 0) throw new CatalogEntityNotFoundError("KPI", kpiId);
+  return ids.map(({ id }) => rawKpiWithContext(Number(id)));
+}
+
 export function isStrategicKPI(id: number): boolean {
   const row = getDb()
     .prepare(
-      `SELECT CASE WHEN
-         EXISTS (SELECT 1 FROM goal_kpis WHERE kpi_id = ?) OR
-         EXISTS (SELECT 1 FROM kpi_measurement_configs WHERE kpi_id = ?)
+      `WITH RECURSIVE descendants(id) AS (
+         SELECT id FROM kpis WHERE id = ?
+         UNION
+         SELECT child.id
+         FROM kpis child
+         JOIN descendants parent ON child.parent_id = parent.id
+       )
+       SELECT CASE WHEN
+         EXISTS (
+           SELECT 1 FROM descendants k
+           WHERE EXISTS (SELECT 1 FROM goal_kpis WHERE kpi_id = k.id) OR
+                 EXISTS (SELECT 1 FROM kpi_measurement_configs WHERE kpi_id = k.id)
+         )
        THEN 1 ELSE 0 END AS strategic`,
     )
-    .get(id, id) as { strategic: number };
+    .get(id) as { strategic: number };
   return Number(row.strategic) === 1;
 }
 
 export function isStrategicCategory(id: number): boolean {
   const row = getDb()
     .prepare(
-      `SELECT CASE WHEN
+      `WITH RECURSIVE descendants(id) AS (
+         SELECT id FROM kpis WHERE category_id = ?
+         UNION
+         SELECT child.id
+         FROM kpis child
+         JOIN descendants parent ON child.parent_id = parent.id
+       )
+       SELECT CASE WHEN
          EXISTS (SELECT 1 FROM strategic_goals WHERE priority_id = ?) OR
          EXISTS (
-           SELECT 1
-           FROM kpis k
-           WHERE k.category_id = ?
-             AND (
-               EXISTS (SELECT 1 FROM goal_kpis membership WHERE membership.kpi_id = k.id) OR
-               EXISTS (SELECT 1 FROM kpi_measurement_configs config WHERE config.kpi_id = k.id)
-             )
+           SELECT 1 FROM descendants k
+           WHERE
+             EXISTS (SELECT 1 FROM goal_kpis membership WHERE membership.kpi_id = k.id) OR
+             EXISTS (SELECT 1 FROM kpi_measurement_configs config WHERE config.kpi_id = k.id)
          )
        THEN 1 ELSE 0 END AS strategic`,
     )
@@ -629,12 +795,17 @@ export function retireOrDeleteKPI(
   id: number,
   actorId: number | null = null,
 ): CatalogLifecycleResult {
-  rawKpiWithContext(id);
   if (isStrategicKPI(id)) {
     archiveKPI(id, actorId);
     return "archived";
   }
-  deleteKPI(id);
+  transaction(() => {
+    const tree = rawKpiTreeWithContext(id);
+    for (const before of tree) {
+      recordLegacyKpiEvent(before, null, "delete", actorId);
+    }
+    deleteKPI(id);
+  });
   return "deleted";
 }
 
@@ -643,11 +814,18 @@ export function retireOrDeleteCategory(
   id: number,
   actorId: number | null = null,
 ): CatalogLifecycleResult {
-  rawCategory(id);
   if (isStrategicCategory(id)) {
     archiveCategory(id, actorId);
     return "archived";
   }
-  deleteCategory(id);
+  transaction(() => {
+    const before = rawCategory(id);
+    const categoryKpis = rawKpisInCategoryWithContext(id);
+    for (const kpi of categoryKpis) {
+      recordLegacyKpiEvent(kpi, null, "delete", actorId);
+    }
+    recordLegacyCategoryEvent(before, null, "delete", actorId);
+    deleteCategory(id);
+  });
   return "deleted";
 }

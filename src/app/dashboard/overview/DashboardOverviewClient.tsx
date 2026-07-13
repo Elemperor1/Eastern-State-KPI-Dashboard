@@ -80,11 +80,11 @@ export function DashboardOverviewClient({
               <ExportCSVButton rows={csvExport.rows} columns={[...csvExport.columns]} filename={csvExport.filename} />
               <PrintButton />
               <ExportPNGButton
-                targetId="dashboard-print-root"
+                targetId="strategic-board-export-root"
                 fileName={`eastern-state-overview-${state.currentYear}.png`}
               />
               <ExportPDFButton
-                targetId="dashboard-print-root"
+                targetId="strategic-board-export-root"
                 fileName={`eastern-state-overview-${state.currentYear}.pdf`}
               />
             </>
@@ -125,7 +125,10 @@ export function DashboardOverviewClient({
         </section>
         <PrintReportFooter />
       </div>
-      <div id="strategic-board-export-root">
+      <div
+        id="strategic-board-export-root"
+        data-raster-export-min-width="1600"
+      >
         <StrategicBoardReport report={data.strategicBoardReport} />
       </div>
     </div>

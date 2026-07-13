@@ -15,8 +15,13 @@ import { StrategicAuditTable } from "@/components/StrategicAuditTable";
 import { Breadcrumb, ExportCSVButton, ExportPNGButton, PageHeader, PrintButton, PrintReportFooter, PrintReportHeader } from "@/components/ui";
 import { SampleDataBadge } from "@/components/SampleDataBadge";
 import { buildMetricDetailModel } from "@/features/reporting/metric-detail";
+import { resolveMetricDetailCadence } from "@/features/reporting/metric-detail-cadence";
+import { buildMetricDetailStrategicHistory } from "@/features/reporting/metric-detail-history";
 import { buildMetricCsvExport } from "@/features/reporting/csv";
-import { buildStrategicBoardCsvExport } from "@/features/reporting/strategic-board-report";
+import {
+  buildStrategicBoardCsvExport,
+  type StrategicBoardCsvRow,
+} from "@/features/reporting/strategic-board-report";
 import { MONTH_FULL } from "@/features/metrics";
 import type { DashboardData } from "@/features/reporting/types";
 
@@ -111,10 +116,26 @@ export function MetricDetailClient({
     .flatMap((priority) => priority.goals)
     .flatMap((strategicGoal) => strategicGoal.kpis)
     .find((candidate) => candidate.id === String(kpi.id));
+  const strategicHistory = buildMetricDetailStrategicHistory({
+    kpiId: kpi.id,
+    throughYear: state.currentYear,
+    firstClassHistory: data.strategicActuals ?? [],
+    legacyEntries: data.entries,
+    measurementType: strategicKpi?.measurementType ?? null,
+    reportingFrequency: strategicKpi?.reportingFrequency ?? null,
+    legacyUnit: kpi.unit,
+  });
   const boardCsv = buildStrategicBoardCsvExport(data.strategicBoardReport);
   const boardCsvRows = strategicKpi
-    ? boardCsv.rows.filter((row) => row.KPI === strategicKpi.name)
+    ? strategicBoardRowsForKpi(boardCsv.rows, strategicKpi.id)
     : [];
+  const cadence = resolveMetricDetailCadence({
+    legacyIsAnnual: isAnnual,
+    strategicMeasurementType: strategicKpi?.measurementType ?? null,
+    strategicReportingFrequency: strategicKpi?.reportingFrequency ?? null,
+    hasStrategicHistory: strategicHistory.length > 0,
+  });
+  const showLegacyHistory = cadence.legacyHistoryKind !== null;
 
   return (
     <div className="page-content page-enter">
@@ -126,7 +147,7 @@ export function MetricDetailClient({
           filters={[
             { label: "Current Year", value: String(state.currentYear) },
             { label: "Compare Year", value: String(state.compareYear) },
-            ...(isAnnual ? [] : [{ label: "Through Month", value: MONTH_FULL[state.currentMonth - 1] }]),
+            ...(cadence.allowMonth ? [{ label: "Through Month", value: MONTH_FULL[state.currentMonth - 1] }] : []),
             ...(goal ? [{ label: "Goal", value: `${goal.target_value > 0 ? "+" : ""}${goal.target_value}${goal.goal_type === "pct" ? "%" : ""}` }] : []),
           ]}
         />
@@ -139,7 +160,7 @@ export function MetricDetailClient({
           subtitle={
             <>
               {kpi.description}{" "}
-              <span className="text-ink-500">· {kpi.reporting_frequency} · {kpi.unit_type} · {directionLabel}</span>
+              <span className="text-ink-500">· {cadence.label} · {kpi.unit_type} · {directionLabel}</span>
             </>
           }
           actions={
@@ -153,7 +174,9 @@ export function MetricDetailClient({
                   label="Export board CSV"
                 />
               ) : null}
-              <ExportCSVButton rows={csvExport.rows} columns={csvExport.columns} filename={csvExport.filename} label="Export history CSV" />
+              {showLegacyHistory ? (
+                <ExportCSVButton rows={csvExport.rows} columns={csvExport.columns} filename={csvExport.filename} label="Export history CSV" />
+              ) : null}
               <PrintButton />
               <ExportPNGButton
                 targetId={printId}
@@ -172,19 +195,17 @@ export function MetricDetailClient({
           state={state}
           availableYears={data.years}
           onChange={updateState}
-          allowMonth={!isAnnual}
+          allowMonth={cadence.allowMonth}
         />
 
         {strategicKpi ? (
           <StrategicKpiProgressPanel
             kpi={strategicKpi}
-            history={(data.strategicActuals ?? []).filter(
-              (actual) => actual.kpiId === kpi.id,
-            )}
+            history={strategicHistory}
           />
         ) : null}
 
-        {!isBreakdown && showCompare ? (
+        {!isBreakdown && showCompare && showLegacyHistory ? (
           <MetricComparisonStats
             analytics={analytics}
             favorableMonthly={favorableMonthly}
@@ -203,7 +224,7 @@ export function MetricDetailClient({
           />
         ) : null}
 
-        {isBreakdown ? (
+        {showLegacyHistory ? isBreakdown ? (
           <MetricBreakdownPanel
             kpi={kpi}
             breakdown={breakdown}
@@ -211,7 +232,7 @@ export function MetricDetailClient({
             compareYear={state.compareYear}
             currentMonth={state.currentMonth}
           />
-        ) : isAnnual ? (
+        ) : cadence.legacyHistoryKind === "annual" ? (
           <MetricYtdBarCard
             eyebrow={strategicKpi?.measurementType === "year_over_year" ? "Year-over-year measurement" : "Annual history"}
             title={strategicKpi?.measurementType === "year_over_year" ? "Year-over-year result" : "Annual results by reporting year"}
@@ -240,15 +261,15 @@ export function MetricDetailClient({
               maxBarSize={120}
             />
           </>
-        )}
+        ) : null}
 
-        {!isBreakdown ? (
+        {!isBreakdown && showLegacyHistory ? (
           <MetricValuesTable
             rows={tableRows}
             unitType={kpi.unit_type}
             currentYear={state.currentYear}
             compareYear={state.compareYear}
-            isAnnual={isAnnual}
+            isAnnual={cadence.legacyHistoryKind === "annual"}
           />
         ) : null}
         {data.strategicAuditEvents && data.strategicAuditEvents.length > 0 ? (
@@ -260,4 +281,11 @@ export function MetricDetailClient({
       </div>
     </div>
   );
+}
+
+export function strategicBoardRowsForKpi(
+  rows: StrategicBoardCsvRow[],
+  kpiId: string,
+): StrategicBoardCsvRow[] {
+  return rows.filter((row) => String(row["KPI ID"]) === kpiId);
 }

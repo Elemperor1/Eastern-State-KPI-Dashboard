@@ -3,6 +3,7 @@ import { AppShell } from "@/components/AppShell";
 import type { StrategicKpiEditorData } from "@/components/strategic-kpi-editor-model";
 import { getCurrentUserReadOnly } from "@/features/auth/session";
 import { getKPI } from "@/features/catalog/server";
+import { STRATEGIC_PLAN_REPORTING_YEARS } from "@/features/strategy";
 import {
   listComponentsForConfiguration,
   listEffectiveDistributionBands,
@@ -16,8 +17,10 @@ export const dynamic = "force-dynamic";
 
 export default async function StrategicKpiEditorPage({
   params,
+  searchParams,
 }: {
   params: Promise<{ id: string }>;
+  searchParams: Promise<{ year?: string }>;
 }) {
   const user = await getCurrentUserReadOnly();
   if (!user) redirect("/login");
@@ -30,7 +33,14 @@ export default async function StrategicKpiEditorPage({
   const catalogKpi = getKPI(kpiId);
   if (!catalogKpi) redirect("/admin/kpis");
 
-  const reportingYear = Math.max(2025, Math.min(new Date().getFullYear(), 2029));
+  const requestedYear = Number((await searchParams).year);
+  const defaultYear = Math.max(
+    2025,
+    Math.min(new Date().getFullYear(), 2029),
+  );
+  const reportingYear =
+    STRATEGIC_PLAN_REPORTING_YEARS.find((year) => year === requestedYear) ??
+    defaultYear;
   const goals = listStrategicGoals({
     year: reportingYear,
     includeArchived: true,

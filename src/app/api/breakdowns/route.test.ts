@@ -198,7 +198,29 @@ describe("/api/breakdowns mutation contract", () => {
     expect(res.status).toBe(400);
     await expect(res.json()).resolves.toEqual({
       error:
-        "Breakdown month 1 is invalid for an annual KPI; expected month 0.",
+        "The selected breakdown reporting period is invalid for an annual KPI; select the annual reporting period.",
+    });
+  });
+
+  it("never exposes the internal annual sentinel in a monthly-period error", async () => {
+    upsertBreakdownMock.mockImplementationOnce(() => {
+      throw new BreakdownPeriodMismatchError("monthly", 0);
+    });
+
+    const res = await POST(
+      postRequest({
+        kpi_id: 12,
+        year: 2026,
+        month: 0,
+        label: "Funders",
+        value: 17,
+      }),
+    );
+
+    expect(res.status).toBe(400);
+    await expect(res.json()).resolves.toEqual({
+      error:
+        "The selected breakdown reporting period is invalid for a monthly KPI; select a calendar month from January through December.",
     });
   });
 

@@ -1,8 +1,10 @@
+import Link from "next/link";
 import { Badge, Card, Progress } from "@/components/ui";
 import {
   normalizeGoalCompletionViewModel,
   type GoalCompletionViewModel,
 } from "./goal-completion-model";
+import { GoalExclusionDetails } from "./PriorityGoalCompletionCard";
 
 export interface GoalCompletionSummaryProps {
   organization: GoalCompletionViewModel;
@@ -83,6 +85,26 @@ export function GoalCompletionSummary({
             </div>
           )}
         </div>
+
+        <p className="mt-4 text-sm leading-6 text-ink-600">
+          {normalized.excludedNote}
+        </p>
+
+        <GoalExclusionDetails
+          reasons={normalized.excludedGoalReasons}
+          excludedGoalsCount={normalized.excludedGoalsCount}
+          label="Organization-wide excluded goal details"
+          className="mt-3"
+        />
+
+        {normalized.excludedGoalsCount > 0 ? (
+          <Link
+            href="/admin/configuration-gaps"
+            className="mt-4 inline-flex min-h-11 items-center text-sm font-semibold text-brand-700 underline-offset-4 hover:underline focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--color-focus)]"
+          >
+            Review configuration gaps
+          </Link>
+        ) : null}
 
       </Card>
     </section>

@@ -17,6 +17,7 @@ import {
   STRATEGIC_PLAN_REPORTING_YEARS,
 } from "@/features/strategy";
 import {
+  listStrategicAuditIdentitiesForKpi,
   listStrategicGoals,
   listStrategicAuditEvents,
 } from "@/features/strategy/server";
@@ -67,6 +68,7 @@ function strategyReporting({
       new Set(goals.flatMap((goal) => goal.members.map((member) => member.kpi_id))),
     ),
     throughYear: year,
+    legacyEntries: entries,
   });
   const summary = buildStrategicDashboardSummary({
     goals,
@@ -78,7 +80,7 @@ function strategyReporting({
   });
   const strategicAuditEvents = auditKpiId === undefined
     ? []
-    : auditEventsForKpi(goals, auditKpiId);
+    : auditEventsForKpi(auditKpiId);
   return {
     strategicSummary: summary,
     strategicBoardReport: buildStrategicBoardReportFromSummary({
@@ -90,32 +92,11 @@ function strategyReporting({
   };
 }
 
-function auditEventsForKpi(
-  goals: ReturnType<typeof listStrategicGoals>,
-  kpiId: number,
-) {
-  const identities = new Set<string>();
-  let kpiName = "";
-  for (const goal of goals) {
-    const member = goal.members.find((candidate) => candidate.kpi_id === kpiId);
-    if (!member) continue;
-    kpiName = member.kpi.name;
-    identities.add(`strategic_goal:${goal.id}`);
-    identities.add(`goal_membership:${member.id}`);
-    if (member.configuration) {
-      identities.add(`measurement_config:${member.configuration.id}`);
-    }
-    for (const target of member.targets) identities.add(`target:${target.id}`);
-    for (const component of member.components) {
-      identities.add(`component:${component.id}`);
-      for (const target of component.targets) identities.add(`target:${target.id}`);
-    }
-  }
-  return listStrategicAuditEvents({ limit: 500 }).filter(
-    (event) =>
-      identities.has(`${event.entity_type}:${event.entity_id}`) ||
-      (kpiName !== "" && event.entity_display_name.includes(kpiName)),
-  );
+function auditEventsForKpi(kpiId: number) {
+  return listStrategicAuditEvents({
+    identities: listStrategicAuditIdentitiesForKpi(kpiId),
+    limit: 500,
+  });
 }
 
 export function loadOverviewPageData(

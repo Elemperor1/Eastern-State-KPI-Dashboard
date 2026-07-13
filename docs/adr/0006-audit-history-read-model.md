@@ -2,6 +2,7 @@
 
 Status: accepted
 Date: 2026-07-07
+Amended: 2026-07-13
 
 ## Context
 
@@ -36,5 +37,10 @@ The admin history page is the user-facing adapter. It preserves the admin-only a
 
 - Durable audit-history display rules are now located in the audit feature.
 - The feature still reads live catalog metadata through SQL joins, but only as optional context; snapshot fields remain authoritative.
-- Metric mutations continue to own audit writes inside their transactions.
+- Metric mutations continue to own audit writes inside their transactions. This includes Legacy Entry and Legacy Breakdown Entry deletion: a Tombstone failure rolls back the source-row removal.
+- A non-strategic KPI or category hard delete writes an immutable lifecycle
+  snapshot to `strategic_audit_events` in the same transaction as the catalog
+  deletion. The snapshot keeps the deleted name, priority context, prior
+  catalog values, and actor identity visible on `/admin/history`; if either
+  write fails, both roll back.
 - The old universal repository abstraction is gone, reducing one major source of cross-feature ambiguity.

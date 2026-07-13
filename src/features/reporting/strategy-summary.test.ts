@@ -4,6 +4,7 @@ import type {
   StrategicGoalReadModel,
 } from "@/features/strategy";
 import type { KPIWithCategory, MonthlyEntryWithMeta } from "@/lib/types";
+import { buildStrategicBoardReportFromSummary } from "./strategic-board-adapter";
 import { buildStrategicDashboardSummary } from "./strategy-summary";
 
 const kpis: KPIWithCategory[] = [
@@ -124,6 +125,191 @@ describe("strategic dashboard summary", () => {
     expect(summary.goals[0]?.kpis[0]?.fullPlanProgress.actualProgressPercentage).toBe(80);
   });
 
+  it("adapts an explicit fixed-denominator legacy ratio before board reporting", () => {
+    const ratioMember = member(1, target(100, 2029));
+    ratioMember.configuration!.measurement_type = "ratio";
+    ratioMember.configuration!.unit = "%";
+    ratioMember.configuration!.fixed_denominator = 50;
+    const goals = [goal({ members: [ratioMember] })];
+    const summary = buildStrategicDashboardSummary({
+      goals,
+      kpis,
+      entries: [legacyEntry(1, 2026, 0, 30)],
+      selectedYear: 2026,
+    });
+    const report = buildStrategicBoardReportFromSummary({ summary, goals });
+
+    expect(summary.goals[0]?.kpis[0]).toMatchObject({
+      currentValue: 60,
+      annualActual: 60,
+      cumulativeActual: 60,
+      currentCalculation: {
+        state: "ok",
+        measurementType: "ratio",
+        value: 60,
+        normalizedPercentage: 60,
+        numerator: 30,
+        denominator: 50,
+      },
+    });
+    expect(report.priorities[0]?.goals[0]?.kpis[0]?.result).toMatchObject({
+      value: 60,
+      displayValue: "60%",
+      numerator: 30,
+      denominator: 50,
+    });
+  });
+
+  it("does not guess a denominator for a generic legacy ratio", () => {
+    const ratioMember = member(1, target(100, 2029));
+    ratioMember.configuration!.measurement_type = "ratio";
+    ratioMember.configuration!.unit = "%";
+    ratioMember.configuration!.fixed_denominator = null;
+    const goals = [goal({ members: [ratioMember] })];
+    const summary = buildStrategicDashboardSummary({
+      goals,
+      kpis,
+      entries: [legacyEntry(1, 2026, 0, 30)],
+      selectedYear: 2026,
+    });
+    const report = buildStrategicBoardReportFromSummary({ summary, goals });
+
+    expect(summary.goals[0]?.kpis[0]).toMatchObject({
+      currentValue: 30,
+      currentCalculation: {
+        state: "ok",
+        value: 30,
+        numerator: null,
+        denominator: null,
+        calculationProvenance: "legacy_direct_value",
+      },
+    });
+    expect(report.priorities[0]?.goals[0]?.kpis[0]?.result).toMatchObject({
+      value: 30,
+      displayValue: "30%",
+      formulaExplanation:
+        "Retained direct legacy ratio; raw numerator and denominator are unavailable, so this result was not recalculated.",
+    });
+  });
+
+  it("labels retained legacy percentage and average values without inventing raw inputs", () => {
+    const cases = [
+      {
+        measurementType: "percentage" as const,
+        unit: "%",
+        formula:
+          "Retained direct legacy percentage; raw numerator and denominator are unavailable, so this result was not recalculated.",
+      },
+      {
+        measurementType: "average" as const,
+        unit: "% normalized",
+        formula:
+          "Retained direct legacy normalized value; raw score inputs and formula method are unavailable, so this result was not recalculated.",
+      },
+    ];
+
+    for (const { measurementType, unit, formula } of cases) {
+      const retainedMember = member(1, target(80, 2029));
+      retainedMember.configuration!.measurement_type = measurementType;
+      retainedMember.configuration!.unit = unit;
+      const goals = [goal({ members: [retainedMember] })];
+      const summary = buildStrategicDashboardSummary({
+        goals,
+        kpis,
+        entries: [legacyEntry(1, 2026, 0, 62.55)],
+        selectedYear: 2026,
+      });
+      const report = buildStrategicBoardReportFromSummary({ summary, goals });
+
+      expect(summary.goals[0]?.kpis[0]).toMatchObject({
+        currentValue: 62.55,
+        currentCalculation: {
+          state: "ok",
+          measurementType,
+          value: 62.55,
+          numerator: null,
+          denominator: null,
+          calculationProvenance: "legacy_direct_value",
+        },
+      });
+      expect(
+        report.priorities[0]?.goals[0]?.kpis[0]?.result.formulaExplanation,
+      ).toBe(formula);
+    }
+  });
+
+  it("calculates legacy raw-count YOY while preserving derived percentage rows", () => {
+    const rawCountMember = member(1, target(25, 2029));
+    rawCountMember.configuration!.measurement_type = "year_over_year";
+    rawCountMember.configuration!.unit = null;
+    rawCountMember.kpi.unit = "partnerships";
+    const rawGoals = [goal({ members: [rawCountMember] })];
+    const rawSummary = buildStrategicDashboardSummary({
+      goals: rawGoals,
+      kpis,
+      entries: [
+        legacyEntry(1, 2025, 0, 14),
+        legacyEntry(1, 2026, 0, 17),
+      ],
+      selectedYear: 2026,
+    });
+    const rawReport = buildStrategicBoardReportFromSummary({
+      summary: rawSummary,
+      goals: rawGoals,
+    });
+
+    expect(rawSummary.goals[0]?.kpis[0]).toMatchObject({
+      currentValue: 21.4,
+      currentCalculation: {
+        state: "ok",
+        measurementType: "year_over_year",
+        value: 21.4,
+        numerator: 3,
+        denominator: 14,
+      },
+    });
+    expect(rawReport.priorities[0]?.goals[0]?.kpis[0]?.result.displayValue).toBe(
+      "+21.4%",
+    );
+
+    const derivedMember = member(1, target(10, 2029));
+    derivedMember.configuration!.measurement_type = "year_over_year";
+    derivedMember.configuration!.unit = "%";
+    const derivedGoals = [goal({ members: [derivedMember] })];
+    const derivedSummary = buildStrategicDashboardSummary({
+      goals: derivedGoals,
+      kpis,
+      entries: [
+        legacyEntry(1, 2025, 0, 3),
+        legacyEntry(1, 2026, 0, 4),
+      ],
+      selectedYear: 2026,
+    });
+    const derivedReport = buildStrategicBoardReportFromSummary({
+      summary: derivedSummary,
+      goals: derivedGoals,
+    });
+
+    expect(derivedSummary.goals[0]?.kpis[0]).toMatchObject({
+      currentValue: 4,
+      currentCalculation: {
+        state: "ok",
+        measurementType: "year_over_year",
+        value: 4,
+        normalizedPercentage: 4,
+        numerator: null,
+        denominator: null,
+        calculationProvenance: "legacy_direct_percentage",
+      },
+    });
+    expect(derivedReport.priorities[0]?.goals[0]?.kpis[0]?.result).toMatchObject({
+      value: 4,
+      displayValue: "+4%",
+      formulaExplanation:
+        "Retained direct legacy percentage; underlying current and prior raw values are unavailable, so this result was not recalculated.",
+    });
+  });
+
   it("keeps selected-year actual separate from cumulative full-plan actual", () => {
     const cumulativeMember = member(1, target(5, 2029));
     cumulativeMember.configuration!.measurement_type = "cumulative";
@@ -181,6 +367,10 @@ describe("strategic dashboard summary", () => {
       fullPlanProgress: {
         actualProgressPercentage: 20,
       },
+      completionProgress: {
+        targetValue: 12,
+        actualProgressPercentage: 50,
+      },
     });
   });
 
@@ -234,6 +424,265 @@ describe("strategic dashboard summary", () => {
       fullPlanTarget: null,
       fullPlanProgress: { status: "target_not_finalized" },
     });
+  });
+
+  it("uses explicit all-complete KPI Component progress when the parent has no Target", () => {
+    const configuredMember = member(1, null);
+    configuredMember.configuration!.measurement_type = "multi_component";
+    configuredMember.configuration!.aggregation_method = "all_complete";
+    configuredMember.components = [1, 2].map((id) => ({
+      id: 40 + id,
+      kpi_id: 1,
+      configuration_id: configuredMember.configuration!.id,
+      slug: `component-${id}`,
+      label: `Component ${id}`,
+      measurement_type: "count" as const,
+      unit: "items",
+      numerator_label: null,
+      denominator_label: null,
+      fixed_denominator: null,
+      aggregation_role: "value" as const,
+      baseline_value: null,
+      previous_period_value: null,
+      weight: 1,
+      display_order: id,
+      configuration_status: "active" as const,
+      unresolved_question: null,
+      archived_at: null,
+      created_by: null,
+      created_at: "2026-01-01",
+      updated_by: null,
+      updated_at: "2026-01-01",
+      targets: [{
+        ...target(5, 2029),
+        id: 50 + id,
+        kpi_id: null,
+        component_id: 40 + id,
+      }],
+    }));
+    const completeProgress = {
+      state: "ok" as const,
+      status: "complete" as const,
+      currentValue: 5,
+      targetValue: 5,
+      baselineValue: null,
+      actualProgressPercentage: 100,
+      displayProgressPercentage: 100,
+      isComplete: true,
+      isExceeded: false,
+      issues: [],
+    };
+    const summary = buildStrategicDashboardSummary({
+      goals: [goal({ members: [configuredMember] })],
+      kpis,
+      entries: [],
+      selectedYear: 2026,
+      actuals: [{
+        kpiId: 1,
+        year: 2026,
+        periodType: "annual",
+        periodIndex: 0,
+        value: 1,
+        calculation: {
+          state: "ok",
+          measurementType: "multi_component",
+          value: 1,
+          normalizedPercentage: 100,
+          numerator: null,
+          denominator: null,
+          respondentCount: null,
+          precision: 1,
+          issues: [],
+          aggregationMethod: "all_complete",
+          components: configuredMember.components.map((component) => ({
+            id: String(component.id),
+            label: component.label,
+            unit: component.unit ?? "items",
+            weight: component.weight,
+            aggregationRole: "value" as const,
+            required: true,
+            result: scalarCalculation(5),
+            progress: completeProgress,
+          })),
+        },
+      }],
+    });
+
+    expect(summary.organization).toMatchObject({
+      completedGoalsCount: 1,
+      totalEligibleGoalsCount: 1,
+    });
+    expect(summary.goals[0]?.kpis[0]?.completionProgress).toMatchObject({
+      status: "complete",
+      actualProgressPercentage: 100,
+    });
+  });
+
+  it("sums compatible KPI Component actuals and Targets for parentless completion", () => {
+    const configuredMember = parentlessComponentMember({
+      aggregationMethod: "sum",
+      targetValues: [5, 15],
+    });
+    const summary = buildStrategicDashboardSummary({
+      goals: [goal({ members: [configuredMember] })],
+      kpis,
+      entries: [],
+      selectedYear: 2026,
+      actuals: [multiComponentActual({
+        member: configuredMember,
+        aggregationMethod: "sum",
+        parentValue: 10,
+        componentValues: [4, 6],
+        componentProgressPercentages: [80, 40],
+      })],
+    });
+
+    expect(summary.organization.totalEligibleGoalsCount).toBe(1);
+    expect(summary.goals[0]?.kpis[0]?.completionProgress).toMatchObject({
+      currentValue: 10,
+      targetValue: 20,
+      status: "in_progress",
+      actualProgressPercentage: 50,
+    });
+  });
+
+  it("weights KPI Component progress percentages for parentless completion", () => {
+    const configuredMember = parentlessComponentMember({
+      aggregationMethod: "weighted_average",
+      targetValues: [10, 10],
+      weights: [1, 3],
+    });
+    const summary = buildStrategicDashboardSummary({
+      goals: [goal({ members: [configuredMember] })],
+      kpis,
+      entries: [],
+      selectedYear: 2026,
+      actuals: [multiComponentActual({
+        member: configuredMember,
+        aggregationMethod: "weighted_average",
+        parentValue: 17.5,
+        componentValues: [5, 10],
+        componentProgressPercentages: [50, 100],
+      })],
+    });
+
+    expect(summary.organization.totalEligibleGoalsCount).toBe(1);
+    expect(summary.goals[0]?.kpis[0]?.completionProgress).toMatchObject({
+      currentValue: 87.5,
+      targetValue: 100,
+      status: "in_progress",
+      actualProgressPercentage: 87.5,
+    });
+  });
+
+  it("keeps parentless weighted completion unresolved for non-positive weights", () => {
+    const configuredMember = parentlessComponentMember({
+      aggregationMethod: "weighted_average",
+      targetValues: [10, 10],
+      weights: [1, 0],
+    });
+    const summary = buildStrategicDashboardSummary({
+      goals: [goal({ members: [configuredMember] })],
+      kpis,
+      entries: [],
+      selectedYear: 2026,
+      actuals: [multiComponentActual({
+        member: configuredMember,
+        aggregationMethod: "weighted_average",
+        parentValue: 5,
+        componentValues: [5, 10],
+        componentProgressPercentages: [50, 100],
+      })],
+    });
+
+    expect(summary.organization.totalEligibleGoalsCount).toBe(0);
+    expect(summary.goals[0]?.kpis[0]?.completionProgress).toMatchObject({
+      state: "missing",
+      status: "needs_definition",
+      actualProgressPercentage: null,
+    });
+  });
+
+  it("averages KPI Component progress percentages without applying component weights", () => {
+    const configuredMember = parentlessComponentMember({
+      aggregationMethod: "average",
+      targetValues: [10, 10],
+      weights: [1, 3],
+    });
+    const summary = buildStrategicDashboardSummary({
+      goals: [goal({ members: [configuredMember] })],
+      kpis,
+      entries: [],
+      selectedYear: 2026,
+      actuals: [multiComponentActual({
+        member: configuredMember,
+        aggregationMethod: "average",
+        parentValue: 7.5,
+        componentValues: [5, 10],
+        componentProgressPercentages: [50, 100],
+      })],
+    });
+
+    expect(summary.goals[0]?.kpis[0]?.completionProgress).toMatchObject({
+      currentValue: 75,
+      targetValue: 100,
+      actualProgressPercentage: 75,
+    });
+  });
+
+  it("keeps incompatible KPI Component units unresolved", () => {
+    const configuredMember = parentlessComponentMember({
+      aggregationMethod: "sum",
+      targetValues: [5, 15],
+      units: ["items", "USD"],
+    });
+    const summary = buildStrategicDashboardSummary({
+      goals: [goal({ members: [configuredMember] })],
+      kpis,
+      entries: [],
+      selectedYear: 2026,
+      actuals: [multiComponentActual({
+        member: configuredMember,
+        aggregationMethod: "sum",
+        parentValue: 10,
+        componentValues: [4, 6],
+        componentProgressPercentages: [80, 40],
+      })],
+    });
+
+    expect(summary.organization.totalEligibleGoalsCount).toBe(0);
+    expect(summary.goals[0]?.kpis[0]?.completionProgress).toMatchObject({
+      state: "missing",
+      status: "needs_definition",
+      actualProgressPercentage: null,
+    });
+  });
+
+  it("does not derive parent completion for no aggregation or a missing KPI Component Target", () => {
+    const noAggregation = parentlessComponentMember({
+      aggregationMethod: "sum",
+      targetValues: [5, 15],
+    });
+    noAggregation.configuration!.aggregation_method = "none";
+    const missingTarget = parentlessComponentMember({
+      aggregationMethod: "sum",
+      targetValues: [5, 15],
+    });
+    missingTarget.components[1]!.targets = [];
+
+    for (const configuredMember of [noAggregation, missingTarget]) {
+      const summary = buildStrategicDashboardSummary({
+        goals: [goal({ members: [configuredMember] })],
+        kpis,
+        entries: [],
+        selectedYear: 2026,
+      });
+
+      expect(summary.organization.totalEligibleGoalsCount).toBe(0);
+      expect(summary.goals[0]?.kpis[0]?.completionProgress.status).toBe(
+        "target_not_finalized",
+      );
+    }
   });
 });
 
@@ -429,5 +878,114 @@ function scalarCalculation(value: number): MeasurementResult {
     respondentCount: null,
     precision: 1,
     issues: [],
+  };
+}
+
+function parentlessComponentMember({
+  aggregationMethod,
+  targetValues,
+  units = ["items", "items"],
+  weights = [1, 1],
+}: {
+  aggregationMethod: "sum" | "average" | "weighted_average" | "all_complete";
+  targetValues: [number, number];
+  units?: [string, string];
+  weights?: [number, number];
+}): StrategicGoalReadModel["members"][number] {
+  const configuredMember = member(1, null);
+  configuredMember.configuration!.measurement_type = "multi_component";
+  configuredMember.configuration!.aggregation_method = aggregationMethod;
+  configuredMember.components = targetValues.map((targetValue, index) => {
+    const id = 41 + index;
+    return {
+      id,
+      kpi_id: 1,
+      configuration_id: configuredMember.configuration!.id,
+      slug: `component-${index + 1}`,
+      label: `Component ${index + 1}`,
+      measurement_type: "count" as const,
+      unit: units[index],
+      numerator_label: null,
+      denominator_label: null,
+      fixed_denominator: null,
+      aggregation_role: "value" as const,
+      baseline_value: null,
+      previous_period_value: null,
+      weight: weights[index],
+      display_order: index + 1,
+      configuration_status: "active" as const,
+      unresolved_question: null,
+      archived_at: null,
+      created_by: null,
+      created_at: "2026-01-01",
+      updated_by: null,
+      updated_at: "2026-01-01",
+      targets: [{
+        ...target(targetValue, 2029),
+        id: 51 + index,
+        kpi_id: null,
+        component_id: id,
+      }],
+    };
+  });
+  return configuredMember;
+}
+
+function multiComponentActual({
+  member: configuredMember,
+  aggregationMethod,
+  parentValue,
+  componentValues,
+  componentProgressPercentages,
+}: {
+  member: StrategicGoalReadModel["members"][number];
+  aggregationMethod: "sum" | "average" | "weighted_average" | "all_complete";
+  parentValue: number;
+  componentValues: [number, number];
+  componentProgressPercentages: [number, number];
+}) {
+  return {
+    kpiId: configuredMember.kpi_id,
+    year: 2026,
+    periodType: "annual" as const,
+    periodIndex: 0,
+    value: parentValue,
+    calculation: {
+      state: "ok" as const,
+      measurementType: "multi_component" as const,
+      value: parentValue,
+      normalizedPercentage: null,
+      numerator: null,
+      denominator: null,
+      respondentCount: null,
+      precision: 1,
+      issues: [],
+      aggregationMethod,
+      components: configuredMember.components.map((component, index) => {
+        const percentage = componentProgressPercentages[index];
+        const currentValue = componentValues[index];
+        return {
+          id: String(component.id),
+          label: component.label,
+          unit: component.unit ?? "items",
+          weight: component.weight,
+          aggregationRole: "value" as const,
+          required: true,
+          result: scalarCalculation(currentValue),
+          progress: {
+            state: "ok" as const,
+            status: percentage >= 100 ? "complete" as const : "in_progress" as const,
+            currentValue,
+            targetValue: component.targets[0]?.target_value ?? null,
+            baselineValue: null,
+            actualProgressPercentage: percentage,
+            displayProgressPercentage: Math.min(100, percentage),
+            isComplete: percentage >= 100,
+            isExceeded: percentage > 100,
+            issues: [],
+          },
+        };
+      }),
+    },
   };
 }

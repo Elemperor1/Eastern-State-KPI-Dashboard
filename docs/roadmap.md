@@ -33,7 +33,7 @@ The seven `/goal` prompts at the bottom of this file each fix a coherent, verifi
 
 **Current shape:** `ensureSeedAdmin()` always upserts `auth-disabled@local` with stable id `-1`; `verifyCredentials()` rejects that reserved email; `getSession()` / `requireAdmin()` return the real row when `AUTH_DISABLED=true`; AppShell hides the account block by email, not a synthetic id.
 
-**Verification:** `npm run build` green; `AUTH_DISABLED=true node_modules/.bin/next dev -p 3290` + `scripts/smoke.sh` reports the current bypass pass count (`48 passed, 0 failed` as of the strategic-plan integration) end-to-end with `AUTH_DISABLED=true` exported; the smoke harness verifies `POST /api/entries` returns a created row body, then `DELETE /api/entries` returns 200 with no FK error in server logs. Bypass verification must use `next dev`; `next start` runs in production mode and cannot serve app routes with `AUTH_DISABLED=true`.
+**Verification:** `AUTH_DISABLED= npm run build` green; `AUTH_DISABLED=true PORT=3290 npm run dev` + `scripts/smoke.sh` reports the recorded bypass pass count (`48 passed, 0 failed` as of the strategic-plan integration) end-to-end with `AUTH_DISABLED=true` exported; the smoke harness verifies `POST /api/entries` returns a created row body, then `DELETE /api/entries` returns 200 with no FK error in server logs. Bypass verification must use the loopback-binding `scripts/dev.sh` wrapper; `next start` runs in production mode and cannot serve app routes with `AUTH_DISABLED=true`.
 
 ### 1.2 `scripts/smoke.sh` doesn't propagate `AUTH_DISABLED` into `npm run smoke`
 
@@ -233,7 +233,7 @@ Every `/goal` prompt below should treat the following as its completion gate, on
 
 1. `npm run design-system:guard` passes.
 2. `npm run design-system:test` passes (guard + `tsc --noEmit` + `next build`).
-3. With a dev server started by `AUTH_DISABLED=true node_modules/.bin/next dev -p 3290`, `AUTH_DISABLED=true PORT=3290 BASE=http://127.0.0.1:3290 bash ./scripts/smoke.sh` reports `48 passed, 0 failed` or the new higher number if smoke coverage is added.
+3. With a dev server started by `AUTH_DISABLED=true PORT=3290 npm run dev`, `AUTH_DISABLED=true PORT=3290 BASE=http://127.0.0.1:3290 bash ./scripts/smoke.sh` reports `48 passed, 0 failed` or the new higher number if smoke coverage is added.
 4. The visual changes are screenshotted at desktop (1440px) and mobile (390px) into `output/playwright/` and reviewed against `DESIGN.md`.
 5. The relevant section(s) of `docs/design-audit.md` are updated or replaced.
 6. Any new env vars or config keys are added to `AGENTS.md` under "Setup" and "Gotchas."

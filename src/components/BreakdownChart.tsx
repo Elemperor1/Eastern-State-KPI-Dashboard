@@ -120,7 +120,6 @@ export function BreakdownChart({ kpi, data: breakdowns, currentYear, compareYear
                             : "text-ink-500"
                       }`}
                     >
-                      {row.delta > 0 ? "+" : ""}
                       {formatValue(row.delta, fmt, { signed: true })}
                     </td>
                   ) : null}

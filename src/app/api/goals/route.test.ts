@@ -171,11 +171,28 @@ describe("/api/goals refreshed mutation payloads", () => {
     });
   });
 
+  it("PATCH attributes an enabled-only toggle to the authenticated admin", async () => {
+    const res = await PATCH(
+      mutationReq("PATCH", {
+        id: 1,
+        enabled: false,
+      }),
+    );
+
+    expect(res.status).toBe(200);
+    expect(toggleGoalMock).toHaveBeenCalledWith(1, false, ADMIN.id);
+    expect(updateGoalMock).not.toHaveBeenCalled();
+    await expect(res.json()).resolves.toMatchObject({
+      ok: true,
+      goals: REFRESHED_GOALS,
+    });
+  });
+
   it("DELETE returns refreshed goals after removal", async () => {
     const res = await DELETE(mutationReq("DELETE", { id: 1 }));
 
     expect(res.status).toBe(200);
-    expect(deleteGoalMock).toHaveBeenCalledWith(1);
+    expect(deleteGoalMock).toHaveBeenCalledWith(1, ADMIN.id);
     expect(listGoalsMock).toHaveBeenCalledWith({
       throughMonth: 3,
       year: 2025,

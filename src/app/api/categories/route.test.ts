@@ -123,11 +123,14 @@ describe("/api/categories refreshed mutation payloads", () => {
     );
 
     expect(res.status).toBe(201);
-    expect(createCategoryMock).toHaveBeenCalledWith({
-      slug: "visitor-services",
-      name: "Visitor Services",
-      description: "Visitor service KPIs",
-    });
+    expect(createCategoryMock).toHaveBeenCalledWith(
+      {
+        slug: "visitor-services",
+        name: "Visitor Services",
+        description: "Visitor service KPIs",
+      },
+      ADMIN.id,
+    );
     expect(listCategoriesMock).toHaveBeenCalledTimes(1);
     expect(listKPIsMock).toHaveBeenCalledTimes(1);
     await expect(res.json()).resolves.toMatchObject({
@@ -147,10 +150,14 @@ describe("/api/categories refreshed mutation payloads", () => {
     );
 
     expect(res.status).toBe(200);
-    expect(updateCategoryMock).toHaveBeenCalledWith(8, {
-      name: "Visitor Experience",
-      description: null,
-    });
+    expect(updateCategoryMock).toHaveBeenCalledWith(
+      8,
+      {
+        name: "Visitor Experience",
+        description: null,
+      },
+      ADMIN.id,
+    );
     await expect(res.json()).resolves.toMatchObject({
       ok: true,
       categories: REFRESHED_CATEGORIES,

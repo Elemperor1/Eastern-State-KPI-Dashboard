@@ -10,9 +10,25 @@ together:
 3. `reporting_frequency` - when observations are recorded.
 
 Schema 10 keeps every legacy KPI and value row, then adds effective-dated
-configuration in `kpi_measurement_configs`. The selected reporting year chooses
-the configuration whose start/end range contains that year. A later edit never
-silently changes an earlier report.
+configuration in `kpi_measurement_configs`. Schema 11 scopes component slug
+identity to each effective configuration and records explicit ratio aggregation
+roles. The selected reporting year chooses the configuration whose start/end
+range contains that year. Once first-class or legacy scalar/breakdown values
+exist inside a definition's effective range, calculation-affecting fields are
+immutable in place. The KPI editor creates an atomic future-dated successor:
+it truncates the predecessor at the prior year, inserts the new definition,
+and records both audit events in one transaction. This workflow is bounded to
+the 2025–2029 plan, rejects overlap, gaps, historical-range adoption, orphaned
+values, and targets incompatible with the new measurement type. For a
+compatible multi-component successor it clones active component definitions,
+applicable future component targets, and effective distribution bands; it
+never copies observations or component entries. A clone failure rolls the
+predecessor range, successor, cloned rows, and audit events back together.
+Goal successors use a collision-safe derived slug and split/clone their
+effective memberships; goal-rule and membership role/weight edits follow the
+same historical boundary. A populated manual goal status is a durable result.
+Workflow metadata such as owner, due date, resolution notes, and review date
+stays editable without changing historical meaning.
 
 ## Hierarchy
 
@@ -68,6 +84,28 @@ for ready/active configurations.
 not mutable KPI metadata. Raw observations remain queryable so results can be
 recalculated when a definition is corrected.
 
+## Legacy compatibility and provenance
+
+First-class strategic observations are authoritative whenever they exist for a
+KPI/reporting series. The compatibility bridge never invents missing raw
+inputs:
+
+- legacy percentage, average, and denominator-free ratio rows retain their
+  exact stored value with `legacy_direct_value` provenance;
+- a fixed-denominator ratio may treat a compatible legacy scalar as the
+  numerator, so 30 represented states with a configured denominator of 50
+  calculates to 60%;
+- a legacy year-over-year definition with a non-percent unit calculates from
+  the same period in the prior reporting year;
+- a legacy year-over-year row whose resolved unit is `%` is already derived,
+  remains unchanged, and carries `legacy_direct_percentage` provenance; and
+- the first first-class raw-count year-over-year observation may use the
+  matching prior-year legacy raw count, but an already-derived legacy
+  percentage is never reused as a raw baseline.
+
+Formula and history copy identifies retained compatibility values when their
+numerator, denominator, score inputs, or prior raw base are unavailable.
+
 ## Reporting frequencies and internal periods
 
 | Frequency | Stored period | User-facing label |
@@ -103,6 +141,12 @@ recognizes `{ "value": number }` and binary `{ "completed": boolean }` forms.
 Other object shapes remain preserved but are reported as `needs_definition`
 until a calculation contract is approved.
 
+Targets also protect the definition that gives them meaning. A numeric or
+supported structured target cannot cross an incompatible effective
+configuration boundary. Archive affected targets before removing a component
+or target-protected definition. Restore the configuration, then its components,
+then the targets; restore validation rechecks the current measurement contract.
+
 ## Components
 
 Components have their own measurement type, unit, raw inputs, target, status,
@@ -114,10 +158,16 @@ calculate independently. Parent aggregation is one of:
 - `average` - only compatible normalized units;
 - `weighted_average` - only compatible normalized units with positive weights;
 - `sum` - only compatible additive units;
+- `ratio` - sum `numerator` components, divide by the `denominator` component,
+  and scale to the configured display unit; and
 - `all_complete` - every required component must meet its own target.
 
 Unrelated units are never averaged or summed. For example, participant counts,
 workshop counts, and video views display together but have no aggregate total.
+Once observations or a parent/component target use a component set, semantic
+changes and new components require an effective-dated successor. Labels and
+workflow status may still advance through the staged draft -> target -> active
+workflow without changing the calculation definition.
 
 ## Demographic distributions
 
@@ -132,6 +182,12 @@ non-white respondent percentage without discarding the full category
 distribution. The derived percentage is emitted only for mutually exclusive
 bands; overlapping responses cannot be summed into a defensible person-level
 share.
+
+After a distribution value references a band, its `derived_group`, unknown,
+and declined classification cannot be edited in place. End the predecessor
+band's effective range and create a successor band for the later year. Labels
+remain editable because every recorded value retains its immutable label
+snapshot; the classification guard keeps historical derived percentages stable.
 
 The UI must show the respondent denominator and must not imply a sample
 represents all visitors unless the source methodology supports that claim.

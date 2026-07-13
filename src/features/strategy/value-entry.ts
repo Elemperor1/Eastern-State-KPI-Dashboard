@@ -82,6 +82,7 @@ export interface StrategyComponentEntryRecord
   extends Omit<StrategyObservationRecord, "id" | "configuration_id"> {
   id: number;
   component_id: number;
+  component_label: string;
   configuration_id: number;
 }
 
@@ -540,6 +541,82 @@ function loadComponent(
   };
 }
 
+/**
+ * Resolve the exact component/configuration metadata that owns historical
+ * entries. Unlike the write-path loader, this intentionally includes archived
+ * definitions and does not substitute the configuration effective today.
+ */
+function loadComponentForHistory(
+  componentId: number,
+  year: number,
+): { component: ComponentContext; configuration: EffectiveConfiguration } {
+  const row = getDb()
+    .prepare(
+      `SELECT component.*,
+              config.measurement_type AS parent_measurement_type,
+              config.reporting_frequency AS parent_reporting_frequency,
+              config.fixed_denominator AS parent_fixed_denominator,
+              config.baseline_value AS parent_baseline_value,
+              config.allow_score_over_max AS parent_allow_score_over_max
+       FROM kpi_components component
+       JOIN kpi_measurement_configs config
+         ON config.id = component.configuration_id
+       WHERE component.id = ?`,
+    )
+    .get(componentId);
+  if (!row) throw new StrategyValueEntryNotFoundError("component", componentId);
+
+  const componentMeasurementType = stringOrNull(
+    row.measurement_type,
+  ) as MeasurementType | null;
+  const parentMeasurementType = stringOrNull(
+    row.parent_measurement_type,
+  ) as MeasurementType | null;
+  const reportingFrequency = stringOrNull(
+    row.parent_reporting_frequency,
+  ) as StrategyReportingFrequency | null;
+  if (
+    componentMeasurementType === null ||
+    parentMeasurementType === null ||
+    reportingFrequency === null
+  ) {
+    throw new StrategyValueEntryValidationError(
+      "The historical component definition is incomplete.",
+      [{
+        path: "component_id",
+        message: "Historical component entries require their recorded measurement metadata.",
+      }],
+    );
+  }
+
+  const kpiId = Number(row.kpi_id);
+  const context = loadAuditContext(kpiId, year);
+  return {
+    component: {
+      id: componentId,
+      kpi_id: kpiId,
+      configuration_id: Number(row.configuration_id),
+      label: String(row.label),
+      measurement_type: componentMeasurementType,
+      fixed_denominator: numberOrNull(row.fixed_denominator),
+      baseline_value: numberOrNull(row.baseline_value),
+      previous_period_value: numberOrNull(row.previous_period_value),
+    },
+    configuration: {
+      id: Number(row.configuration_id),
+      kpi_id: kpiId,
+      kpi_name: context.kpi_name,
+      priority_name: context.priority_name,
+      goal_name: context.goal_name,
+      measurement_type: parentMeasurementType,
+      reporting_frequency: reportingFrequency,
+      fixed_denominator: numberOrNull(row.parent_fixed_denominator),
+      baseline_value: numberOrNull(row.parent_baseline_value),
+      allow_score_over_max: Number(row.parent_allow_score_over_max) === 1,
+    },
+  };
+}
+
 function resolvePeriod(
   reportingFrequency: StrategyReportingFrequency,
   value: {
@@ -765,7 +842,12 @@ function observationSnapshot(
   return {
     kpi_id: value.kpi_id,
     configuration_id: value.configuration_id,
-    ...( "component_id" in value ? { component_id: value.component_id } : {}),
+    ...("component_id" in value
+      ? {
+          component_id: value.component_id,
+          component_label: value.component_label,
+        }
+      : {}),
     measurement_type: value.measurement_type,
     reporting_frequency: value.reporting_frequency,
     year: value.year,
@@ -1064,6 +1146,7 @@ function asComponentEntry(
   return {
     ...common,
     component_id: component.id,
+    component_label: component.label,
     configuration_id: component.configuration_id,
   };
 }
@@ -1083,11 +1166,11 @@ export interface StrategyComponentEntryListOptions {
   reporting_year: number;
 }
 
-/** Raw component entries for the selected effective configuration and year. */
+/** Raw component-entry history, including archived owner metadata. */
 export function listStrategyComponentEntries(
   options: StrategyComponentEntryListOptions,
 ): StrategyComponentEntryRecord[] {
-  const { component, configuration } = loadComponent(
+  const { component, configuration } = loadComponentForHistory(
     options.component_id,
     options.reporting_year,
   );
@@ -1106,41 +1189,13 @@ export function getStrategyComponentEntry(
   id: number,
 ): StrategyComponentEntryRecord {
   const row = getDb()
-    .prepare(
-      `SELECT e.*, c.kpi_id, c.configuration_id, c.label,
-              c.measurement_type, c.fixed_denominator, c.baseline_value,
-              c.previous_period_value, mc.reporting_frequency,
-              mc.measurement_type AS parent_measurement_type
-       FROM kpi_component_entries e
-       JOIN kpi_components c ON c.id = e.component_id
-       JOIN kpi_measurement_configs mc ON mc.id = c.configuration_id
-       WHERE e.id = ?`,
-    )
+    .prepare("SELECT * FROM kpi_component_entries WHERE id = ?")
     .get(id);
   if (!row) throw new StrategyValueEntryNotFoundError("component_entry", id);
-  const context = loadAuditContext(Number(row.kpi_id), Number(row.year));
-  const component: ComponentContext = {
-    id: Number(row.component_id),
-    kpi_id: Number(row.kpi_id),
-    configuration_id: Number(row.configuration_id),
-    label: String(row.label),
-    measurement_type: String(row.measurement_type) as MeasurementType,
-    fixed_denominator: numberOrNull(row.fixed_denominator),
-    baseline_value: numberOrNull(row.baseline_value),
-    previous_period_value: numberOrNull(row.previous_period_value),
-  };
-  const configuration: EffectiveConfiguration = {
-    id: component.configuration_id,
-    kpi_id: component.kpi_id,
-    kpi_name: context.kpi_name,
-    priority_name: context.priority_name,
-    goal_name: context.goal_name,
-    measurement_type: String(row.parent_measurement_type) as MeasurementType,
-    reporting_frequency: String(row.reporting_frequency) as StrategyReportingFrequency,
-    fixed_denominator: null,
-    baseline_value: null,
-    allow_score_over_max: false,
-  };
+  const { component, configuration } = loadComponentForHistory(
+    Number(row.component_id),
+    Number(row.year),
+  );
   return asComponentEntry(row, component, configuration);
 }
 
@@ -2044,6 +2099,27 @@ export function updateStrategyDistributionBand(
       throw new StrategyValueEntryValidationError(
         "Restore the distribution band before editing it.",
         [{ path: "id", message: "Archived bands are immutable until restored." }],
+      );
+    }
+    const changesCalculationSemantics =
+      before.is_unknown !== input.is_unknown ||
+      before.is_declined !== input.is_declined ||
+      before.derived_group !== input.derived_group;
+    if (
+      changesCalculationSemantics &&
+      getDb()
+        .prepare("SELECT 1 FROM distribution_values WHERE band_id = ? LIMIT 1")
+        .get(input.id)
+    ) {
+      throw new StrategyValueEntryValidationError(
+        "A reported distribution band cannot change its calculation semantics.",
+        [
+          {
+            path: "derived_group",
+            message:
+              "End this band's effective period and create a successor band for the new classification.",
+          },
+        ],
       );
     }
     const context = assertDistributionBandOwner(

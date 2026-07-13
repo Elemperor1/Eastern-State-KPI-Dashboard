@@ -10,6 +10,7 @@ import {
   type AggregationMethod,
   type AverageInputMethod,
   type ConfigurationStatus as DomainConfigurationStatus,
+  type ComponentAggregationRole,
   type DistributionDerivedGroup,
   type GoalCompletionRule as DomainGoalCompletionRule,
   type MeasurementType,
@@ -120,6 +121,7 @@ export interface MultiComponentInput {
   label: string;
   input: AtomicMeasurementInput;
   unit?: string;
+  aggregationRole?: ComponentAggregationRole;
   weight?: number;
   required?: boolean;
   targetValue?: number | null;
@@ -157,6 +159,7 @@ export interface MultiComponentResult {
   id: string;
   label: string;
   unit: string;
+  aggregationRole: ComponentAggregationRole;
   weight: number;
   required: boolean;
   result: MeasurementResult;
@@ -166,6 +169,12 @@ export interface MultiComponentResult {
 export interface MeasurementResult {
   state: CalculationState;
   measurementType: MeasurementType | null;
+  /** Raw-input formula used for normalized average measurements. */
+  averageMethod?: AverageMethod;
+  /** Explicit compatibility provenance when a value was retained, not recalculated. */
+  calculationProvenance?:
+    | "legacy_direct_percentage"
+    | "legacy_direct_value";
   value: number | null;
   normalizedPercentage: number | null;
   numerator: number | null;
@@ -1065,9 +1074,13 @@ function calculateRatio(input: RatioMeasurementInput, precision: number): Measur
 }
 
 function calculateAverage(input: AverageMeasurementInput, precision: number): MeasurementResult {
+  const averageResult = (overrides: Partial<MeasurementResult>) => result({
+    ...overrides,
+    averageMethod: input.method,
+  });
   const respondentCheck = readOptionalFinite(input.respondentCount, "respondentCount");
   if (respondentCheck.issue?.kind === "invalid" || (respondentCheck.value !== null && respondentCheck.value < 0)) {
-    return result({
+    return averageResult({
       state: "invalid",
       measurementType: input.measurementType,
       precision,
@@ -1082,7 +1095,7 @@ function calculateAverage(input: AverageMeasurementInput, precision: number): Me
     const explicitPossible = readOptionalFinite(input.totalPossibleScore, "totalPossibleScore");
     const maxPerRespondent = readOptionalFinite(input.maxScorePerRespondent, "maxScorePerRespondent");
     if (explicitPossible.issue?.kind === "invalid" || maxPerRespondent.issue?.kind === "invalid") {
-      return result({
+      return averageResult({
         state: "invalid",
         measurementType: input.measurementType,
         precision,
@@ -1110,7 +1123,7 @@ function calculateAverage(input: AverageMeasurementInput, precision: number): Me
     numerator = readFinite(input.positiveResponseCount, "positiveResponseCount");
     denominator = readFinite(input.totalResponseCount, "totalResponseCount");
   } else {
-    return result({
+    return averageResult({
       state: "invalid",
       measurementType: input.measurementType,
       precision,
@@ -1120,7 +1133,7 @@ function calculateAverage(input: AverageMeasurementInput, precision: number): Me
 
   const issueState = stateFromChecks([numerator, denominator]);
   if (issueState !== "ok") {
-    return result({
+    return averageResult({
       state: issueState,
       measurementType: input.measurementType,
       precision,
@@ -1131,7 +1144,7 @@ function calculateAverage(input: AverageMeasurementInput, precision: number): Me
   const numeratorValue = numerator.value as number;
   const denominatorValue = denominator.value as number;
   if (denominatorValue <= 0) {
-    return result({
+    return averageResult({
       state: "invalid",
       measurementType: input.measurementType,
       precision,
@@ -1140,7 +1153,7 @@ function calculateAverage(input: AverageMeasurementInput, precision: number): Me
     });
   }
   if (numeratorValue < 0) {
-    return result({
+    return averageResult({
       state: "invalid",
       measurementType: input.measurementType,
       precision,
@@ -1149,7 +1162,7 @@ function calculateAverage(input: AverageMeasurementInput, precision: number): Me
     });
   }
   if (!input.allowOverMaximum && numeratorValue > denominatorValue) {
-    return result({
+    return averageResult({
       state: "invalid",
       measurementType: input.measurementType,
       precision,
@@ -1160,7 +1173,7 @@ function calculateAverage(input: AverageMeasurementInput, precision: number): Me
     });
   }
   const value = safePercentage(numeratorValue, denominatorValue, precision);
-  return result({
+  return averageResult({
     state: "ok",
     measurementType: input.measurementType,
     precision,
@@ -1347,7 +1360,7 @@ function calculateMultiComponent(
       issues: [missing("MISSING_COMPONENTS", "At least one component is required.", "components")],
     });
   }
-  if (!["none", "average", "weighted_average", "sum", "all_complete"].includes(input.aggregationMethod)) {
+  if (!["none", "average", "weighted_average", "sum", "ratio", "all_complete"].includes(input.aggregationMethod)) {
     return result({
       state: "invalid",
       measurementType: input.measurementType,
@@ -1378,6 +1391,7 @@ function calculateMultiComponent(
       id: component.id,
       label: component.label,
       unit: component.unit?.trim() || defaultUnitKey(component.input.measurementType),
+      aggregationRole: component.aggregationRole ?? "value",
       weight: component.weight ?? 1,
       required: component.required ?? true,
       result: componentResult,
@@ -1497,6 +1511,80 @@ function calculateMultiComponent(
     });
   }
 
+  if (input.aggregationMethod === "ratio") {
+    const numeratorComponents = included.filter(
+      (component) => component.aggregationRole === "numerator",
+    );
+    const denominatorComponents = included.filter(
+      (component) => component.aggregationRole === "denominator",
+    );
+    const unassignedComponents = included.filter(
+      (component) => component.aggregationRole === "value",
+    );
+    if (
+      numeratorComponents.length === 0 ||
+      denominatorComponents.length === 0 ||
+      unassignedComponents.length > 0
+    ) {
+      return result({
+        state: "invalid",
+        measurementType: input.measurementType,
+        precision,
+        aggregationMethod: input.aggregationMethod,
+        components,
+        issues: [
+          invalid(
+            "INVALID_RATIO_COMPONENT_ROLES",
+            "Ratio aggregation requires explicit numerator and denominator roles for every component.",
+            "components",
+          ),
+        ],
+      });
+    }
+    const numerator = numeratorComponents.reduce(
+      (sum, component) => sum + (component.result.value as number),
+      0,
+    );
+    const denominator = denominatorComponents.reduce(
+      (sum, component) => sum + (component.result.value as number),
+      0,
+    );
+    if (denominator <= 0) {
+      return result({
+        state: "invalid",
+        measurementType: input.measurementType,
+        precision,
+        aggregationMethod: input.aggregationMethod,
+        components,
+        numerator,
+        denominator,
+        issues: [
+          invalid(
+            "INVALID_RATIO_DENOMINATOR",
+            "Ratio aggregation requires a positive denominator total.",
+            "components",
+          ),
+        ],
+      });
+    }
+    const value = safePercentage(numerator, denominator, precision);
+    return result({
+      state: value === null ? "invalid" : "ok",
+      measurementType: input.measurementType,
+      precision,
+      aggregationMethod: input.aggregationMethod,
+      components,
+      value,
+      normalizedPercentage: value,
+      numerator,
+      denominator,
+      issues:
+        value === null
+          ? [invalid("NON_FINITE_RESULT", "Ratio aggregation produced a non-finite result.")]
+          : [],
+    });
+  }
+
   let value: number | null;
   if (input.aggregationMethod === "sum") {
     value = roundFinite(values.reduce((sum, item) => sum + item, 0), precision);
@@ -1609,6 +1697,12 @@ function result(overrides: Partial<MeasurementResult>): MeasurementResult {
     respondentCount: overrides.respondentCount ?? null,
     precision: overrides.precision ?? DEFAULT_PRECISION,
     issues: overrides.issues ?? [],
+    ...(overrides.averageMethod
+      ? { averageMethod: overrides.averageMethod }
+      : {}),
+    ...(overrides.calculationProvenance
+      ? { calculationProvenance: overrides.calculationProvenance }
+      : {}),
     ...(overrides.distribution ? { distribution: overrides.distribution } : {}),
     ...(overrides.components ? { components: overrides.components } : {}),
     ...(overrides.aggregationMethod ? { aggregationMethod: overrides.aggregationMethod } : {}),

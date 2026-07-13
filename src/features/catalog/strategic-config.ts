@@ -1,5 +1,6 @@
 import type {
   AggregationMethod,
+  ComponentAggregationRole,
   ConfigurationStatus,
   MeasurementType,
   StrategyReportingFrequency,
@@ -37,6 +38,7 @@ export interface StrategicComponentDefinition {
   numerator_label?: string;
   denominator_label?: string;
   fixed_denominator?: number;
+  aggregation_role?: ComponentAggregationRole;
   weight?: number;
   configuration_status?: ConfigurationStatus;
   unresolved_question?: string;
@@ -47,6 +49,8 @@ export interface StrategicKpiDefinition {
   kpi_slug: string;
   goal_slug: string;
   measurement_type: MeasurementType;
+  /** First-class reporting unit when it intentionally differs from the legacy KPI catalog. */
+  unit?: string;
   reporting_frequency: StrategyReportingFrequency;
   aggregation_method: AggregationMethod;
   configuration_status: ConfigurationStatus;
@@ -178,16 +182,14 @@ export const STRATEGIC_GOAL_DEFINITIONS: StrategicGoalDefinition[] = [
     priority_slug: "workforce-development",
     slug: "career-pipelines-employment",
     name: "Continue to Grow Career Pipelines and Employment Opportunities",
-    description: "Measure employment and career advancement after program completion.",
+    description: "Measure employment and career advancement after program completion and connect participants through public events and job fairs.",
     sort_order: 30,
-    configuration_status: "needs_definition",
-    unresolved_question: "The source assigns only one KPI to this goal; confirm a second KPI or approve the exception to the 2-5 KPI rule.",
   },
   {
     priority_slug: "workforce-development",
     slug: "workforce-awareness-recognition",
     name: "Expand Public Awareness and Recognition",
-    description: "Track public events, external recognition, and awareness among people not currently engaged.",
+    description: "Track external recognition and awareness among people not currently engaged.",
     sort_order: 40,
   },
   {
@@ -201,26 +203,24 @@ export const STRATEGIC_GOAL_DEFINITIONS: StrategicGoalDefinition[] = [
     priority_slug: "justice-education",
     slug: "justice-education-partnerships-recognition",
     name: "Build Partnerships and Recognition",
-    description: "Develop active school partnerships for justice education.",
+    description: "Develop active school partnerships and sustain repeat school and educator engagement in justice education.",
     sort_order: 20,
-    configuration_status: "needs_definition",
-    unresolved_question: "The source assigns only one KPI to this goal; confirm a second KPI or approve the exception to the 2-5 KPI rule.",
   },
   {
     priority_slug: "justice-education",
     slug: "criminal-justice-dialogue",
     name: "Expand and Promote Dialogue around Criminal Justice",
-    description: "Measure educator confidence, repeat engagement, and audience representation.",
+    description: "Measure educator confidence and audience representation in criminal-justice dialogue.",
     sort_order: 30,
   },
   {
     priority_slug: "justice-education",
     slug: "architecture-contemporary-education",
     name: "Leverage Historic Architecture for Contemporary Education",
-    description: "Develop architecture-focused interpretation and programs.",
+    description: "Develop architecture-focused interpretation and extend contemporary justice education through digital programs and resources.",
     sort_order: 40,
     configuration_status: "needs_definition",
-    unresolved_question: "The source assigns only one KPI to this goal; confirm a second KPI or approve the exception to the 2-5 KPI rule.",
+    unresolved_question: "Confirm how digital justice-education reach should be attributed between architecture interpretation and the broader schools-and-educators program.",
   },
   {
     priority_slug: "organizational-capacity",
@@ -233,10 +233,8 @@ export const STRATEGIC_GOAL_DEFINITIONS: StrategicGoalDefinition[] = [
     priority_slug: "organizational-capacity",
     slug: "optimize-facilities",
     name: "Optimize ESPHS Facilities",
-    description: "Measure site-space use for revenue and mission programs.",
+    description: "Measure site-space use for revenue, mission programs, and accessible reduced-price, free, or pay-what-you-wish events.",
     sort_order: 20,
-    configuration_status: "needs_definition",
-    unresolved_question: "The source assigns only one KPI to this goal; confirm a second KPI or approve the exception to the 2-5 KPI rule.",
   },
   {
     priority_slug: "organizational-capacity",
@@ -249,7 +247,7 @@ export const STRATEGIC_GOAL_DEFINITIONS: StrategicGoalDefinition[] = [
     priority_slug: "organizational-capacity",
     slug: "community-civic-hub",
     name: "Strengthen Our Role as a Community and Civic Hub",
-    description: "Grow sponsorship, grants, accessible events, public support, and new donors.",
+    description: "Grow sponsorship, grants, public support, and new donors.",
     sort_order: 40,
   },
 ];
@@ -484,8 +482,9 @@ export const STRATEGIC_KPI_DEFINITIONS: StrategicKpiDefinition[] = [
     measurement_type: "milestone",
     reporting_frequency: "cumulative",
     aggregation_method: "none",
-    configuration_status: "ready",
-    targets: [fullPlan(2029, null, "Receive preservation recognition by 2029.", "ready")],
+    configuration_status: "needs_target",
+    unresolved_question: "Finalize a calculable recognition target while retaining the 2029 intent.",
+    targets: [fullPlan(2029, null, "Receive preservation recognition by 2029.", "needs_target")],
   },
   {
     kpi_slug: "preservation-speaking-engagements",
@@ -621,7 +620,7 @@ export const STRATEGIC_KPI_DEFINITIONS: StrategicKpiDefinition[] = [
   },
   {
     kpi_slug: "workforce-public-events-job-fairs",
-    goal_slug: "workforce-awareness-recognition",
+    goal_slug: "career-pipelines-employment",
     measurement_type: "count",
     reporting_frequency: "annual",
     aggregation_method: "none",
@@ -680,7 +679,7 @@ export const STRATEGIC_KPI_DEFINITIONS: StrategicKpiDefinition[] = [
   },
   {
     kpi_slug: "justice-ed-online-digital-attendance",
-    goal_slug: "schools-educators-justice-education",
+    goal_slug: "architecture-contemporary-education",
     measurement_type: "multi_component",
     reporting_frequency: "annual",
     aggregation_method: "none",
@@ -695,13 +694,14 @@ export const STRATEGIC_KPI_DEFINITIONS: StrategicKpiDefinition[] = [
     kpi_slug: "justice-ed-states-represented",
     goal_slug: "schools-educators-justice-education",
     measurement_type: "ratio",
+    unit: "%",
     reporting_frequency: "annual",
     aggregation_method: "none",
     configuration_status: "needs_target",
     numerator_label: "States represented",
     denominator_label: "U.S. states",
     fixed_denominator: 50,
-    unresolved_question: "Finalize the target number or percentage of states represented.",
+    unresolved_question: "Finalize the target percentage of states represented.",
   },
   {
     kpi_slug: "justice-ed-school-partnerships",
@@ -726,7 +726,7 @@ export const STRATEGIC_KPI_DEFINITIONS: StrategicKpiDefinition[] = [
   },
   {
     kpi_slug: "justice-ed-returning-schools-educators",
-    goal_slug: "criminal-justice-dialogue",
+    goal_slug: "justice-education-partnerships-recognition",
     measurement_type: "multi_component",
     reporting_frequency: "annual",
     aggregation_method: "none",
@@ -773,8 +773,10 @@ export const STRATEGIC_KPI_DEFINITIONS: StrategicKpiDefinition[] = [
     kpi_slug: "multi-year-grants-pledges-value",
     goal_slug: "diversify-revenue-streams",
     measurement_type: "currency",
+    unit: "USD",
     reporting_frequency: "annual",
     aggregation_method: "none",
+    calculation_precision: 2,
     configuration_status: "needs_target",
     unresolved_question: "Finalize the multiyear grant and pledge target.",
   },
@@ -807,8 +809,10 @@ export const STRATEGIC_KPI_DEFINITIONS: StrategicKpiDefinition[] = [
     kpi_slug: "revenue-by-stream",
     goal_slug: "diversify-revenue-streams",
     measurement_type: "multi_component",
+    unit: "USD",
     reporting_frequency: "annual",
     aggregation_method: "sum",
+    calculation_precision: 2,
     configuration_status: "needs_target",
     unresolved_question: "Finalize targets for the revenue-stream composition while preserving each raw currency amount and total revenue denominator.",
     components: [
@@ -881,7 +885,7 @@ export const STRATEGIC_KPI_DEFINITIONS: StrategicKpiDefinition[] = [
   },
   {
     kpi_slug: "reduced-price-free-pwyw-events",
-    goal_slug: "community-civic-hub",
+    goal_slug: "optimize-facilities",
     measurement_type: "count",
     reporting_frequency: "annual",
     aggregation_method: "none",
@@ -893,12 +897,34 @@ export const STRATEGIC_KPI_DEFINITIONS: StrategicKpiDefinition[] = [
     goal_slug: "community-civic-hub",
     measurement_type: "multi_component",
     reporting_frequency: "annual",
-    aggregation_method: "sum",
+    aggregation_method: "ratio",
     configuration_status: "needs_target",
-    unresolved_question: "Finalize city and state support targets as portions of contributed revenue.",
+    unresolved_question: "Finalize the government-support target as a portion of contributed revenue.",
     components: [
-      { slug: "city-support", label: "City government support", measurement_type: "currency", unit: "USD", configuration_status: "needs_target" },
-      { slug: "state-support", label: "State government support", measurement_type: "currency", unit: "USD", configuration_status: "needs_target" },
+      {
+        slug: "city-support",
+        label: "City government support",
+        measurement_type: "currency",
+        unit: "USD",
+        aggregation_role: "numerator",
+        configuration_status: "needs_target",
+      },
+      {
+        slug: "state-support",
+        label: "State government support",
+        measurement_type: "currency",
+        unit: "USD",
+        aggregation_role: "numerator",
+        configuration_status: "needs_target",
+      },
+      {
+        slug: "contributed-revenue",
+        label: "Contributed revenue",
+        measurement_type: "currency",
+        unit: "USD",
+        aggregation_role: "denominator",
+        configuration_status: "needs_target",
+      },
     ],
   },
   {

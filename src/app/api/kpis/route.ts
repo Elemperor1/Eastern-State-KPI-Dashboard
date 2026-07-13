@@ -39,8 +39,9 @@ const CreateSchema = z.object({
 });
 
 export async function POST(req: NextRequest) {
+  let user;
   try {
-    await requireAdmin();
+    user = await requireAdmin();
   } catch (err) {
     return authErrorResponse(err);
   }
@@ -51,7 +52,7 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "Invalid input", issues: parsed.error.flatten() }, { status: 400 });
   }
   try {
-    const kpi = createKPI(parsed.data);
+    const kpi = createKPI(parsed.data, user.id);
     return NextResponse.json({ kpi, ...refreshedCatalogPayload() }, { status: 201 });
   } catch (err) {
     const message = err instanceof Error ? err.message : "Could not create KPI";
@@ -110,7 +111,7 @@ export async function PATCH(req: NextRequest) {
       });
     }
     const { id, ...patch } = parsed.data;
-    updateKPI(id, patch);
+    updateKPI(id, patch, user.id);
     return NextResponse.json({ ok: true, ...refreshedCatalogPayload() });
   } catch (err) {
     if (err instanceof CatalogEntityNotFoundError) {

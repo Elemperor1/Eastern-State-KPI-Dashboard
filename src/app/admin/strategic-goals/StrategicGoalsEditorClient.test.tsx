@@ -1,8 +1,15 @@
 import { renderToStaticMarkup } from "react-dom/server";
 import { createElement } from "react";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import type { StrategicGoalEditorRecord } from "@/components/strategic-goal-editor-model";
-import { StrategicGoalSettingsForm } from "./StrategicGoalsEditorClient";
+
+const router = vi.hoisted(() => ({ push: vi.fn(), refresh: vi.fn() }));
+vi.mock("next/navigation", () => ({ useRouter: () => router }));
+
+import {
+  StrategicGoalsEditorClient,
+  StrategicGoalSettingsForm,
+} from "./StrategicGoalsEditorClient";
 
 function goal(
   overrides: Partial<StrategicGoalEditorRecord> = {},
@@ -72,6 +79,7 @@ describe("StrategicGoalSettingsForm", () => {
           completion_rule: "threshold_count",
           threshold_count: 2,
         }),
+        reportingYear: 2026,
         runMutation,
         runMembershipMutation,
       }),
@@ -84,6 +92,8 @@ describe("StrategicGoalSettingsForm", () => {
     expect(html).toContain("Display order");
     expect(html).toContain("Save membership");
     expect(html).toContain("Save goal settings");
+    expect(html).toContain("Create successor version");
+    expect(html).toContain("Create successor membership");
   });
 
   it("shows manual completion status only for manual rules", () => {
@@ -93,6 +103,7 @@ describe("StrategicGoalSettingsForm", () => {
           completion_rule: "manual_status",
           manual_status: "in_progress",
         }),
+        reportingYear: 2026,
         runMutation,
         runMembershipMutation,
       }),
@@ -109,6 +120,7 @@ describe("StrategicGoalSettingsForm", () => {
           configuration_status: "archived",
           archived_at: "2026-07-09 12:00:00",
         }),
+        reportingYear: 2026,
         runMutation,
         runMembershipMutation,
       }),
@@ -117,5 +129,38 @@ describe("StrategicGoalSettingsForm", () => {
     expect(html).toContain("Restore goal");
     expect(html).toContain("fieldset disabled");
     expect(html).toContain("Save goal settings");
+  });
+
+  it("hides successor actions in the final selectable plan year", () => {
+    const html = renderToStaticMarkup(
+      createElement(StrategicGoalSettingsForm, {
+        goal: goal(),
+        reportingYear: 2029,
+        runMutation,
+        runMembershipMutation,
+      }),
+    );
+    expect(html).not.toContain("Create successor version");
+    expect(html).not.toContain("Create successor membership");
+  });
+
+  it("renders a carried successor selection instead of falling back to the first goal", () => {
+    const successor = goal({
+      id: 52,
+      name: "Interpretive plan successor",
+      slug: "interpretive-plan-from-2027",
+      plan_start_year: 2027,
+    });
+    const html = renderToStaticMarkup(
+      createElement(StrategicGoalsEditorClient, {
+        initialGoals: [goal({ id: 99, name: "First visible goal" }), successor],
+        initialSelectedGoalId: successor.id,
+        reportingYear: 2027,
+      }),
+    );
+    expect(html).toContain('value="52" selected=""');
+    expect(html).toContain(
+      '<h2 id="strategic-goal-settings-title" class="mt-1 text-xl font-semibold text-ink-900">Interpretive plan successor</h2>',
+    );
   });
 });

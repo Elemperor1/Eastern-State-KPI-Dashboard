@@ -1,5 +1,9 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type {
+  StrategicAuditEvent,
+  StrategicGoalReadModel,
+} from "@/features/strategy";
+import type {
   BreakdownEntryWithMeta,
   Category,
   KPIWithCategory,
@@ -18,6 +22,10 @@ const {
   listEntriesMock,
   listGoalsMock,
   listKPIsMock,
+  listCalculatedStrategyActualsMock,
+  listStrategicAuditIdentitiesForKpiMock,
+  listStrategicAuditEventsMock,
+  listStrategicGoalsMock,
 } = vi.hoisted(() => ({
   getCategoryBySlugMock: vi.fn(),
   getCategoryMock: vi.fn(),
@@ -29,6 +37,10 @@ const {
   listEntriesMock: vi.fn(),
   listGoalsMock: vi.fn(),
   listKPIsMock: vi.fn(),
+  listCalculatedStrategyActualsMock: vi.fn(),
+  listStrategicAuditIdentitiesForKpiMock: vi.fn(),
+  listStrategicAuditEventsMock: vi.fn(),
+  listStrategicGoalsMock: vi.fn(),
 }));
 
 vi.mock("@/features/catalog/server", () => ({
@@ -41,6 +53,16 @@ vi.mock("@/features/catalog/server", () => ({
 
 vi.mock("@/features/goals", () => ({
   listGoals: listGoalsMock,
+}));
+
+vi.mock("@/features/strategy/server", () => ({
+  listStrategicAuditIdentitiesForKpi: listStrategicAuditIdentitiesForKpiMock,
+  listStrategicAuditEvents: listStrategicAuditEventsMock,
+  listStrategicGoals: listStrategicGoalsMock,
+}));
+
+vi.mock("./strategy-actuals-server", () => ({
+  listCalculatedStrategyActuals: listCalculatedStrategyActualsMock,
 }));
 
 vi.mock("@/features/metrics/server", () => ({
@@ -186,6 +208,12 @@ beforeEach(() => {
   listCategoriesMock.mockReturnValue([education, museum]);
   listKPIsMock.mockReturnValue(kpis);
   listAvailableYearsMock.mockReturnValue([2024, 2025, 2026]);
+  listCalculatedStrategyActualsMock.mockReturnValue([]);
+  listStrategicAuditIdentitiesForKpiMock.mockImplementation((kpiId: number) => [
+    { entity_type: "kpi", entity_id: kpiId },
+  ]);
+  listStrategicAuditEventsMock.mockReturnValue([]);
+  listStrategicGoalsMock.mockReturnValue([]);
   isSampleDataEnabledMock.mockReturnValue(true);
   getCategoryBySlugMock.mockImplementation(
     (slug: string) => [education, museum].find((category) => category.slug === slug) ?? null,
@@ -279,6 +307,7 @@ describe("reporting server page data", () => {
     const data = loadMetricDetailPageData("video-views", {
       year: 2026,
       throughMonth: 6,
+      includeAudit: true,
     });
 
     expect(data).toMatchObject({
@@ -298,6 +327,59 @@ describe("reporting server page data", () => {
     });
   });
 
+  it("queries KPI audit history by related identities before limiting results", () => {
+    const strategicGoal = strategicGoalForAudit();
+    const auditEvent: StrategicAuditEvent = {
+      id: 900,
+      entity_type: "target",
+      entity_id: 703,
+      event_type: "update",
+      entity_display_name: "Video views full-plan target",
+      parent_priority_name: education.name,
+      parent_goal_name: strategicGoal.name,
+      previous_value: { target_value: 10 },
+      new_value: { target_value: 12 },
+      actor_id: null,
+      actor_email_snapshot: null,
+      source_reference: null,
+      occurred_at: "2026-07-13 12:00:00",
+    };
+    listStrategicGoalsMock.mockReturnValue([strategicGoal]);
+    listStrategicAuditIdentitiesForKpiMock.mockReturnValue([
+      { entity_type: "kpi", entity_id: videoViews.id },
+      { entity_type: "strategic_goal", entity_id: 700 },
+      { entity_type: "goal_membership", entity_id: 701 },
+      { entity_type: "measurement_config", entity_id: 702 },
+      { entity_type: "target", entity_id: 703 },
+      { entity_type: "component", entity_id: 704 },
+      { entity_type: "target", entity_id: 705 },
+    ]);
+    listStrategicAuditEventsMock.mockReturnValue([auditEvent]);
+
+    const data = loadMetricDetailPageData("video-views", {
+      year: 2026,
+      throughMonth: 6,
+      includeAudit: true,
+    });
+
+    expect(listStrategicAuditEventsMock).toHaveBeenCalledWith({
+      identities: expect.arrayContaining([
+        { entity_type: "kpi", entity_id: videoViews.id },
+        { entity_type: "strategic_goal", entity_id: 700 },
+        { entity_type: "goal_membership", entity_id: 701 },
+        { entity_type: "measurement_config", entity_id: 702 },
+        { entity_type: "target", entity_id: 703 },
+        { entity_type: "component", entity_id: 704 },
+        { entity_type: "target", entity_id: 705 },
+      ]),
+      limit: 500,
+    });
+    expect(listStrategicAuditIdentitiesForKpiMock).toHaveBeenCalledWith(
+      videoViews.id,
+    );
+    expect(data?.strategicAuditEvents).toEqual([auditEvent]);
+  });
+
   it("loads only trend-eligible monthly non-breakdown KPI entries", () => {
     const data = loadTrendExplorerPageData();
 
@@ -315,3 +397,156 @@ describe("reporting server page data", () => {
     expect(listBreakdownsMock).not.toHaveBeenCalled();
   });
 });
+
+function strategicGoalForAudit(): StrategicGoalReadModel {
+  return {
+    id: 700,
+    priority_id: education.id,
+    priority_slug: education.slug,
+    priority_name: education.name,
+    slug: "digital-learning",
+    name: "Expand digital learning",
+    description: null,
+    plan_start_year: 2025,
+    plan_end_year: 2029,
+    completion_rule: "all_required_kpis",
+    threshold_count: null,
+    threshold_percentage: null,
+    manual_status: null,
+    board_level_status: "on_track",
+    configuration_status: "active",
+    unresolved_question: null,
+    owner: null,
+    due_date: null,
+    resolution_notes: null,
+    source_reference: null,
+    last_reviewed_date: null,
+    sort_order: 1,
+    archived_at: null,
+    created_by: null,
+    created_at: "2026-01-01",
+    updated_by: null,
+    updated_at: "2026-01-01",
+    members: [{
+      id: 701,
+      goal_id: 700,
+      kpi_id: videoViews.id,
+      role: "required",
+      weight: 1,
+      display_order: 1,
+      effective_from_year: 2025,
+      effective_to_year: null,
+      archived_at: null,
+      created_by: null,
+      created_at: "2026-01-01",
+      updated_by: null,
+      updated_at: "2026-01-01",
+      kpi: {
+        id: videoViews.id,
+        slug: videoViews.slug,
+        name: videoViews.name,
+        unit: videoViews.unit,
+        category_id: education.id,
+        category_slug: education.slug,
+        category_name: education.name,
+      },
+      configuration: {
+        id: 702,
+        kpi_id: videoViews.id,
+        effective_from_year: 2025,
+        effective_to_year: null,
+        measurement_type: "multi_component",
+        unit: "views",
+        numerator_label: null,
+        denominator_label: null,
+        fixed_denominator: null,
+        baseline_value: null,
+        reporting_frequency: "monthly",
+        aggregation_method: "sum",
+        board_level_status: "on_track",
+        calculation_precision: 0,
+        configuration_status: "active",
+        unresolved_question: null,
+        owner: null,
+        due_date: null,
+        resolution_notes: null,
+        source_reference: null,
+        last_reviewed_date: null,
+        allow_score_over_max: false,
+        archived_at: null,
+        created_by: null,
+        created_at: "2026-01-01",
+        updated_by: null,
+        updated_at: "2026-01-01",
+      },
+      targets: [{
+        id: 703,
+        kpi_id: videoViews.id,
+        component_id: null,
+        target_scope: "full_plan",
+        reporting_year: null,
+        target_year: 2029,
+        external_target_year: false,
+        target_value: 12,
+        structured_target: null,
+        target_description: "Reach 12 views by 2029.",
+        baseline_year: null,
+        baseline_value: null,
+        configuration_status: "active",
+        source_reference: null,
+        last_reviewed_date: null,
+        archived_at: null,
+        created_by: null,
+        created_at: "2026-01-01",
+        updated_by: null,
+        updated_at: "2026-01-01",
+      }],
+      components: [{
+        id: 704,
+        kpi_id: videoViews.id,
+        configuration_id: 702,
+        slug: "education-video-views",
+        label: "Education video views",
+        measurement_type: "count",
+        unit: "views",
+        numerator_label: null,
+        denominator_label: null,
+        fixed_denominator: null,
+        baseline_value: null,
+        previous_period_value: null,
+        aggregation_role: "value",
+        weight: 1,
+        display_order: 1,
+        configuration_status: "active",
+        unresolved_question: null,
+        archived_at: null,
+        created_by: null,
+        created_at: "2026-01-01",
+        updated_by: null,
+        updated_at: "2026-01-01",
+        targets: [{
+          id: 705,
+          kpi_id: videoViews.id,
+          component_id: 704,
+          target_scope: "annual",
+          reporting_year: 2026,
+          target_year: 2026,
+          external_target_year: false,
+          target_value: 5,
+          structured_target: null,
+          target_description: "Reach 5 views in 2026.",
+          baseline_year: null,
+          baseline_value: null,
+          configuration_status: "active",
+          source_reference: null,
+          last_reviewed_date: null,
+          archived_at: null,
+          created_by: null,
+          created_at: "2026-01-01",
+          updated_by: null,
+          updated_at: "2026-01-01",
+        }],
+      }],
+    }],
+  };
+}

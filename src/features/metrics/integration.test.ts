@@ -9,10 +9,10 @@ import {
   BreakdownKpiNotFoundError,
   BreakdownKpiTypeError,
   BreakdownLabelError,
-  BreakdownPeriodMismatchError,
   EntryKpiTypeError,
   deleteBreakdown,
   deleteEntry,
+  listBreakdowns,
   listEntries,
   loadAdminDataPageData,
   upsertBreakdown,
@@ -204,6 +204,9 @@ describe("upsertEntry / upsertBreakdown audit integrity", () => {
           prev_notes: string | null;
           new_notes: string | null;
           changed_by: number | null;
+          kpi_name: string | null;
+          category_name: string | null;
+          changed_by_email: string | null;
         }
       | undefined;
   }
@@ -230,7 +233,7 @@ describe("upsertEntry / upsertBreakdown audit integrity", () => {
     expect(listEntries({ kpi_ids: [] })).toEqual([]);
   });
 
-  it("enforces month 0 for annual KPIs and calendar months for monthly KPIs", () => {
+  it("enforces annual and calendar-month storage periods with user-facing errors", () => {
     expect(() =>
       upsertEntry({
         kpi_id: annualKpi,
@@ -239,7 +242,9 @@ describe("upsertEntry / upsertBreakdown audit integrity", () => {
         value: 10,
         updated_by: 1,
       }),
-    ).toThrow("expected month 0");
+    ).toThrow(
+      "The selected reporting period is invalid for an annual KPI; select the annual reporting period.",
+    );
     expect(() =>
       upsertEntry({
         kpi_id: kpiA,
@@ -248,7 +253,9 @@ describe("upsertEntry / upsertBreakdown audit integrity", () => {
         value: 10,
         updated_by: 1,
       }),
-    ).toThrow("expected a month from 1 through 12");
+    ).toThrow(
+      "The selected reporting period is invalid for a monthly KPI; select a calendar month from January through December.",
+    );
 
     expect(
       upsertEntry({
@@ -323,7 +330,9 @@ describe("upsertEntry / upsertBreakdown audit integrity", () => {
         value: 10,
         updated_by: 1,
       }),
-    ).toThrow(BreakdownPeriodMismatchError);
+    ).toThrow(
+      "The selected breakdown reporting period is invalid for an annual KPI; select the annual reporting period.",
+    );
     expect(() =>
       upsertBreakdown({
         kpi_id: breakdownA,
@@ -735,12 +744,76 @@ describe("upsertEntry / upsertBreakdown audit integrity", () => {
       updated_by: 1,
     });
     deleteEntry(e.id, 1);
+    expect(listEntries({ kpi_id: kpiA, year: 2025 })).toEqual([]);
     const h = lastHistory("monthly");
-    expect(h).toBeDefined();
-    expect(h!.entry_id).toBe(e.id);
-    expect(h!.kpi_id).toBe(kpiA);
-    expect(h!.new_value).toBeNull();
-    expect(h!.prev_value).toBe(50);
+    expect(h).toMatchObject({
+      entry_id: e.id,
+      kpi_id: kpiA,
+      new_value: null,
+      prev_value: 50,
+      changed_by: 1,
+      kpi_name: "KPI A",
+      category_name: "Test Category",
+      changed_by_email: expect.any(String),
+    });
+    expect(
+      (
+        getDb()
+          .prepare(
+            `SELECT COUNT(*) AS count
+             FROM entry_history
+             WHERE entry_type = 'monthly' AND entry_id = ? AND new_value IS NULL`,
+          )
+          .get(e.id) as { count: number }
+      ).count,
+    ).toBe(1);
+  });
+
+  it("rolls back Legacy Entry deletion when its Entry History Tombstone cannot commit", () => {
+    const entry = upsertEntry({
+      kpi_id: kpiA,
+      year: 2025,
+      month: 6,
+      value: 60,
+      notes: "retain on audit failure",
+      updated_by: 1,
+    });
+    const db = getDb();
+    const historyCountBefore = (
+      db.prepare("SELECT COUNT(*) AS count FROM entry_history").get() as {
+        count: number;
+      }
+    ).count;
+    db.exec(`
+      CREATE TRIGGER fail_entry_history_insert
+      BEFORE INSERT ON entry_history
+      BEGIN
+        SELECT RAISE(ABORT, 'forced Entry History failure');
+      END;
+    `);
+
+    try {
+      expect(() => deleteEntry(entry.id, 1)).toThrow(
+        "forced Entry History failure",
+      );
+    } finally {
+      db.exec("DROP TRIGGER fail_entry_history_insert;");
+    }
+
+    expect(listEntries({ kpi_id: kpiA, year: 2025 })).toEqual([
+      expect.objectContaining({
+        id: entry.id,
+        value: 60,
+        notes: "retain on audit failure",
+      }),
+    ]);
+    expect(
+      (
+        db.prepare("SELECT COUNT(*) AS count FROM entry_history").get() as {
+          count: number;
+        }
+      ).count,
+    ).toBe(historyCountBefore);
   });
 
   it("deleteBreakdown still records a correct history row", () => {
@@ -752,12 +825,77 @@ describe("upsertEntry / upsertBreakdown audit integrity", () => {
       updated_by: 1,
     });
     deleteBreakdown(e.id, 1);
+    expect(listBreakdowns({ kpi_id: breakdownA, year: 2025 })).toEqual([]);
     const h = lastHistory("breakdown");
-    expect(h).toBeDefined();
-    expect(h!.entry_id).toBe(e.id);
-    expect(h!.kpi_id).toBe(breakdownA);
-    expect(h!.new_value).toBeNull();
-    expect(h!.prev_value).toBe(25);
+    expect(h).toMatchObject({
+      entry_id: e.id,
+      kpi_id: breakdownA,
+      new_value: null,
+      prev_value: 25,
+      changed_by: 1,
+      kpi_name: "Breakdown A",
+      category_name: "Test Category",
+      changed_by_email: expect.any(String),
+    });
+    expect(
+      (
+        getDb()
+          .prepare(
+            `SELECT COUNT(*) AS count
+             FROM entry_history
+             WHERE entry_type = 'breakdown' AND entry_id = ? AND new_value IS NULL`,
+          )
+          .get(e.id) as { count: number }
+      ).count,
+    ).toBe(1);
+  });
+
+  it("rolls back Legacy Breakdown Entry deletion when its Entry History Tombstone cannot commit", () => {
+    const entry = upsertBreakdown({
+      kpi_id: breakdownA,
+      year: 2025,
+      label: "Retained group",
+      value: 35,
+      notes: "retain on audit failure",
+      updated_by: 1,
+    });
+    const db = getDb();
+    const historyCountBefore = (
+      db.prepare("SELECT COUNT(*) AS count FROM entry_history").get() as {
+        count: number;
+      }
+    ).count;
+    db.exec(`
+      CREATE TRIGGER fail_entry_history_insert
+      BEFORE INSERT ON entry_history
+      BEGIN
+        SELECT RAISE(ABORT, 'forced Entry History failure');
+      END;
+    `);
+
+    try {
+      expect(() => deleteBreakdown(entry.id, 1)).toThrow(
+        "forced Entry History failure",
+      );
+    } finally {
+      db.exec("DROP TRIGGER fail_entry_history_insert;");
+    }
+
+    expect(listBreakdowns({ kpi_id: breakdownA, year: 2025 })).toEqual([
+      expect.objectContaining({
+        id: entry.id,
+        label: "Retained group",
+        value: 35,
+        notes: "retain on audit failure",
+      }),
+    ]);
+    expect(
+      (
+        db.prepare("SELECT COUNT(*) AS count FROM entry_history").get() as {
+          count: number;
+        }
+      ).count,
+    ).toBe(historyCountBefore);
   });
 
   it("counts entries on recursive KPI descendants before parent deletion", () => {

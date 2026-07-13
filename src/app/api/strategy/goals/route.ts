@@ -2,11 +2,13 @@ import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 import { authErrorResponse, requireAdmin } from "@/features/auth/session";
 import {
+  STRATEGIC_PLAN_END_YEAR,
   StrategicGoalSettingsUpdateSchema,
   StrategyEntityLifecycleSchema,
 } from "@/features/strategy";
 import {
   archiveStrategicGoal,
+  createSuccessorStrategicGoal,
   getStrategicGoalRecord,
   restoreStrategicGoal,
   updateStrategicGoalSettings,
@@ -20,6 +22,14 @@ import {
 const PatchSchema = z.discriminatedUnion("action", [
   z
     .object({ action: z.literal("update"), update: StrategicGoalSettingsUpdateSchema })
+    .strict(),
+  z
+    .object({
+      action: z.literal("create_successor"),
+      predecessor_id: z.number().int().positive(),
+      effective_start_year: z.number().int().min(2025).max(STRATEGIC_PLAN_END_YEAR),
+      update: StrategicGoalSettingsUpdateSchema,
+    })
     .strict(),
   z
     .object({ action: z.literal("archive"), ...StrategyEntityLifecycleSchema.shape })
@@ -45,6 +55,19 @@ export async function PATCH(req: NextRequest) {
       return NextResponse.json({
         goal: updateStrategicGoalSettings(parsed.data.update, user.id),
       });
+    }
+    if (parsed.data.action === "create_successor") {
+      return NextResponse.json(
+        createSuccessorStrategicGoal(
+          {
+            predecessor_id: parsed.data.predecessor_id,
+            effective_start_year: parsed.data.effective_start_year,
+            update: parsed.data.update,
+          },
+          user.id,
+        ),
+        { status: 201 },
+      );
     }
     if (parsed.data.action === "archive") {
       archiveStrategicGoal(parsed.data.id, user.id);

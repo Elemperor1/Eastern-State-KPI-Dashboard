@@ -115,7 +115,8 @@ function normalizeExclusionReasons(
       ? unique(
           item.reasons
             .map((reason) => safeText(reason))
-            .filter((reason): reason is string => reason !== null),
+            .filter((reason): reason is string => reason !== null)
+            .map(humanizeExclusionReason),
         )
       : [];
     if (normalizedReasons.length === 0) return [];
@@ -126,6 +127,34 @@ function normalizeExclusionReasons(
       reasons: normalizedReasons,
     }];
   });
+}
+
+const EXCLUSION_REASON_LABELS: Record<string, string> = {
+  NO_ELIGIBLE_KPIS: "No required, fully configured KPIs are eligible",
+  GOAL_NEEDS_DEFINITION: "Goal definition is not finalized",
+  GOAL_NEEDS_TARGET: "Goal target is not finalized",
+  GOAL_DRAFT: "Goal configuration is still a draft",
+  GOAL_ARCHIVED: "Goal is archived",
+  MANUAL_STATUS_REQUIRED: "Manual completion status has not been set",
+  ZERO_WEIGHT_TOTAL: "KPI weights need a positive total",
+  INVALID_COMPLETION_THRESHOLD: "The completion threshold needs correction",
+  INVALID_THRESHOLD_COUNT: "The required KPI count needs correction",
+  needs_definition: "One or more KPI definitions are not finalized",
+  needs_target: "One or more KPI targets are not finalized",
+  missing_progress: "Current KPI progress is not available",
+  invalid_progress: "Current KPI progress needs correction",
+  draft: "One or more KPI configurations are still drafts",
+  archived: "One or more KPIs are archived",
+  informational: "The KPI is informational and does not count toward completion",
+};
+
+function humanizeExclusionReason(reason: string): string {
+  const known = EXCLUSION_REASON_LABELS[reason];
+  if (known) return known;
+  if (!/^[A-Za-z0-9_]+$/.test(reason) || !reason.includes("_")) return reason;
+
+  const words = reason.toLowerCase().replaceAll("_", " ");
+  return `${words.charAt(0).toUpperCase()}${words.slice(1)}`;
 }
 
 function nonNegativeInteger(value: number): number {

@@ -4,10 +4,16 @@ import {
   STRATEGIC_GOALS_ENDPOINT,
   STRATEGIC_GOAL_MEMBERSHIPS_ENDPOINT,
   buildStrategicGoalMembershipMutation,
+  buildStrategicGoalMembershipSuccessorMutation,
   buildStrategicGoalLifecycleMutation,
   buildStrategicGoalSettingsPayload,
   buildStrategicGoalUpdateMutation,
+  buildStrategicGoalSuccessorMutation,
+  canCreateGoalMembershipSuccessor,
+  canCreateStrategicGoalSuccessor,
   filterStrategicGoals,
+  resolveStrategicGoalSelection,
+  strategicGoalSuccessorPath,
   strategicGoalDraftFromData,
   strategicGoalMembershipDraftFromData,
   strategicGoalPriorityOptions,
@@ -92,6 +98,32 @@ describe("strategic goal editor model", () => {
         method: "PATCH",
         body: {
           id: member.id,
+          role: "informational",
+          weight: 2.5,
+          display_order: 4,
+        },
+      },
+    });
+  });
+
+  it("builds an effective-dated successor membership envelope", () => {
+    const member = goal().members[0]!;
+    expect(
+      buildStrategicGoalMembershipSuccessorMutation(member.id, 2027, {
+        role: "informational",
+        weight: "2.5",
+        displayOrder: "4",
+      }),
+    ).toEqual({
+      ok: true,
+      errors: {},
+      mutation: {
+        endpoint: STRATEGIC_GOAL_MEMBERSHIPS_ENDPOINT,
+        method: "PATCH",
+        body: {
+          action: "create_successor",
+          predecessor_id: member.id,
+          effective_start_year: 2027,
           role: "informational",
           weight: 2.5,
           display_order: 4,
@@ -192,6 +224,39 @@ describe("strategic goal editor model", () => {
       method: "PATCH",
       body: { action: "archive", id: 1 },
     });
+    expect(
+      buildStrategicGoalSuccessorMutation(1, 2027, {
+        id: 1,
+        completion_rule: "weighted_average",
+      }),
+    ).toEqual({
+      endpoint: STRATEGIC_GOALS_ENDPOINT,
+      method: "PATCH",
+      body: {
+        action: "create_successor",
+        predecessor_id: 1,
+        effective_start_year: 2027,
+        update: { id: 1, completion_rule: "weighted_average" },
+      },
+    });
+  });
+
+  it("keeps a created successor selected and hides final-year successors", () => {
+    const successor = goal({
+      id: 52,
+      plan_start_year: 2027,
+      slug: "interpretive-plan-from-2027",
+    });
+    const firstVisible = goal({ id: 99, name: "Another goal" });
+    expect(resolveStrategicGoalSelection([firstVisible, successor], 52)).toBe(52);
+    expect(strategicGoalSuccessorPath(successor)).toBe(
+      "/admin/strategic-goals?year=2027&goal=52",
+    );
+    expect(canCreateStrategicGoalSuccessor(goal(), 2028)).toBe(true);
+    expect(canCreateStrategicGoalSuccessor(goal(), 2029)).toBe(false);
+    expect(canCreateGoalMembershipSuccessor(goal().members[0]!, 2029)).toBe(
+      false,
+    );
   });
 
   it("filters archived goals and returns unique priority options", () => {

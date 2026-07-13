@@ -1,6 +1,13 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import type { PersistedMeasurementConfig } from "@/features/strategy";
-import type { StrategyObservationRecord } from "@/features/strategy/server";
+import type {
+  PersistedMeasurementConfig,
+  StrategyComponentWithTargets,
+} from "@/features/strategy";
+import type {
+  StrategyComponentEntryRecord,
+  StrategyObservationRecord,
+} from "@/features/strategy/server";
+import type { MonthlyEntryWithMeta } from "@/lib/types";
 
 const {
   listComponentsForConfigurationMock,
@@ -64,6 +71,65 @@ describe("strategy actual server adapter", () => {
     });
   });
 
+  it("carries the configured percent unit into direct ratio calculation", () => {
+    listEffectiveMeasurementConfigsMock.mockImplementation((year: number) =>
+      year === 2026
+        ? [configuration({
+            measurement_type: "ratio",
+            unit: "%",
+            fixed_denominator: 50,
+          })]
+        : [],
+    );
+    listStrategyObservationsMock.mockReturnValue([
+      observation({
+        measurement_type: "ratio",
+        numerator: 30,
+        denominator: null,
+      }),
+    ]);
+
+    const actuals = listCalculatedStrategyActuals({
+      kpiIds: [1],
+      throughYear: 2026,
+    });
+
+    expect(actuals[0]).toMatchObject({
+      value: 60,
+      calculation: {
+        value: 60,
+        normalizedPercentage: 60,
+        numerator: 30,
+        denominator: 50,
+      },
+    });
+  });
+
+  it("preserves cents when loading direct currency actuals", () => {
+    listEffectiveMeasurementConfigsMock.mockImplementation((year: number) =>
+      year === 2026
+        ? [configuration({
+            measurement_type: "currency",
+            unit: "USD",
+            calculation_precision: 1,
+          })]
+        : [],
+    );
+    listStrategyObservationsMock.mockReturnValue([
+      observation({ measurement_type: "currency", scalar_value: 1.23 }),
+    ]);
+
+    const actuals = listCalculatedStrategyActuals({
+      kpiIds: [1],
+      throughYear: 2026,
+    });
+
+    expect(actuals[0]).toMatchObject({
+      value: 1.23,
+      calculation: { precision: 2, value: 1.23 },
+    });
+  });
+
   it("keeps successive first-class years available for cumulative plan progress", () => {
     listEffectiveMeasurementConfigsMock.mockImplementation((year: number) =>
       year === 2025 || year === 2026
@@ -88,6 +154,169 @@ describe("strategy actual server adapter", () => {
     expect(actuals.map((actual) => [actual.year, actual.value])).toEqual([
       [2025, 2],
       [2026, 3],
+    ]);
+  });
+
+  it("compares monthly year-over-year Observations with the same prior-year month", () => {
+    listEffectiveMeasurementConfigsMock.mockImplementation((year: number) =>
+      year === 2025 || year === 2026
+        ? [configuration({
+            measurement_type: "year_over_year",
+            reporting_frequency: "monthly",
+          })]
+        : [],
+    );
+    listStrategyObservationsMock.mockImplementation(
+      ({ reporting_year }: { reporting_year: number }) => [
+        observation({
+          id: reporting_year * 10 + 1,
+          year: reporting_year,
+          measurement_type: "year_over_year",
+          reporting_frequency: "monthly",
+          period_type: "monthly",
+          period_index: 1,
+          scalar_value: reporting_year === 2025 ? 100 : 110,
+        }),
+        observation({
+          id: reporting_year * 10 + 2,
+          year: reporting_year,
+          measurement_type: "year_over_year",
+          reporting_frequency: "monthly",
+          period_type: "monthly",
+          period_index: 2,
+          scalar_value: reporting_year === 2025 ? 200 : 300,
+        }),
+      ],
+    );
+
+    const actuals = listCalculatedStrategyActuals({
+      kpiIds: [1],
+      throughYear: 2026,
+    }).filter((actual) => actual.year === 2026);
+
+    expect(actuals.map((actual) => [actual.periodIndex, actual.value])).toEqual([
+      [1, 10],
+      [2, 50],
+    ]);
+  });
+
+  it("seeds the first raw-count YOY observation from the same prior legacy period", () => {
+    listEffectiveMeasurementConfigsMock.mockImplementation((year: number) =>
+      year === 2027
+        ? [configuration({
+            measurement_type: "year_over_year",
+            unit: null,
+            reporting_frequency: "annual",
+          })]
+        : [],
+    );
+    listStrategyObservationsMock.mockReturnValue([
+      observation({
+        year: 2027,
+        measurement_type: "year_over_year",
+        scalar_value: 20,
+      }),
+    ]);
+
+    const actuals = listCalculatedStrategyActuals({
+      kpiIds: [1],
+      throughYear: 2027,
+      legacyEntries: [legacyEntry({ year: 2026, value: 17 })],
+    });
+
+    expect(actuals).toHaveLength(1);
+    expect(actuals[0]).toMatchObject({
+      year: 2027,
+      value: 17.6,
+      calculation: {
+        state: "ok",
+        measurementType: "year_over_year",
+        value: 17.6,
+        numerator: 3,
+        denominator: 17,
+      },
+    });
+  });
+
+  it("does not use derived percentage legacy rows as raw YOY bases", () => {
+    listEffectiveMeasurementConfigsMock.mockImplementation((year: number) =>
+      year === 2027
+        ? [configuration({
+            measurement_type: "year_over_year",
+            unit: "%",
+            reporting_frequency: "annual",
+          })]
+        : [],
+    );
+    listStrategyObservationsMock.mockReturnValue([
+      observation({
+        year: 2027,
+        measurement_type: "year_over_year",
+        scalar_value: 5,
+      }),
+    ]);
+
+    const actuals = listCalculatedStrategyActuals({
+      kpiIds: [1],
+      throughYear: 2027,
+      legacyEntries: [legacyEntry({ year: 2026, value: 4, kpi_unit: "%" })],
+    });
+
+    expect(actuals[0]).toMatchObject({
+      value: null,
+      calculation: {
+        state: "missing",
+        issues: [expect.objectContaining({
+          code: "MISSING_VALUE",
+          field: "previousPeriodValue",
+        })],
+      },
+    });
+  });
+
+  it("compares quarterly year-over-year Component Entries with the same prior-year quarter", () => {
+    listEffectiveMeasurementConfigsMock.mockImplementation((year: number) =>
+      year === 2025 || year === 2026
+        ? [configuration({
+            measurement_type: "multi_component",
+            reporting_frequency: "quarterly",
+            aggregation_method: "none",
+          })]
+        : [],
+    );
+    listComponentsForConfigurationMock.mockReturnValue([
+      component({ measurement_type: "year_over_year" }),
+    ]);
+    listStrategyComponentEntriesMock.mockImplementation(
+      ({ reporting_year }: { reporting_year: number }) => [
+        componentEntry({
+          id: reporting_year * 10 + 1,
+          year: reporting_year,
+          period_index: 1,
+          scalar_value: reporting_year === 2025 ? 100 : 120,
+        }),
+        componentEntry({
+          id: reporting_year * 10 + 2,
+          year: reporting_year,
+          period_index: 2,
+          scalar_value: reporting_year === 2025 ? 200 : 300,
+        }),
+      ],
+    );
+
+    const actuals = listCalculatedStrategyActuals({
+      kpiIds: [1],
+      throughYear: 2026,
+    }).filter((actual) => actual.year === 2026);
+
+    expect(
+      actuals.map((actual) => [
+        actual.periodIndex,
+        actual.calculation.components?.[0]?.result.value,
+      ]),
+    ).toEqual([
+      [1, 20],
+      [2, 50],
     ]);
   });
 
@@ -164,6 +393,75 @@ function observation(
     updated_by: null,
     created_at: "2026-01-01T00:00:00.000Z",
     updated_at: "2026-01-01T00:00:00.000Z",
+    ...overrides,
+  };
+}
+
+function component(
+  overrides: Partial<StrategyComponentWithTargets> = {},
+): StrategyComponentWithTargets {
+  return {
+    id: 11,
+    kpi_id: 1,
+    configuration_id: 1,
+    slug: "placement-growth",
+    label: "Placement growth",
+    measurement_type: "year_over_year",
+    unit: "%",
+    numerator_label: null,
+    denominator_label: null,
+    fixed_denominator: null,
+    baseline_value: null,
+    previous_period_value: null,
+    aggregation_role: "value",
+    weight: 1,
+    display_order: 1,
+    configuration_status: "active",
+    unresolved_question: null,
+    archived_at: null,
+    created_by: null,
+    created_at: "2025-01-01T00:00:00.000Z",
+    updated_by: null,
+    updated_at: "2025-01-01T00:00:00.000Z",
+    targets: [],
+    ...overrides,
+  };
+}
+
+function componentEntry(
+  overrides: Partial<StrategyComponentEntryRecord> = {},
+): StrategyComponentEntryRecord {
+  return {
+    ...observation({
+      measurement_type: "year_over_year",
+      reporting_frequency: "quarterly",
+      period_type: "quarterly",
+      period_index: 1,
+    }),
+    component_id: 11,
+    component_label: "Component 11",
+    ...overrides,
+  };
+}
+
+function legacyEntry(
+  overrides: Partial<MonthlyEntryWithMeta> = {},
+): MonthlyEntryWithMeta {
+  return {
+    id: 1,
+    kpi_id: 1,
+    year: 2026,
+    month: 0,
+    value: 17,
+    notes: null,
+    updated_by: null,
+    updated_at: "2026-01-01T00:00:00.000Z",
+    kpi_name: "Employer partnerships",
+    kpi_unit: "partnerships",
+    kpi_unit_type: "count",
+    category_id: 1,
+    category_name: "Workforce Development",
+    category_slug: "workforce-development",
     ...overrides,
   };
 }

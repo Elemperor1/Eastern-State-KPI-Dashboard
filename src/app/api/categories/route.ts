@@ -29,8 +29,9 @@ function refreshedCatalogPayload() {
 }
 
 export async function POST(req: NextRequest) {
+  let user;
   try {
-    await requireAdmin();
+    user = await requireAdmin();
   } catch (err) {
     return authErrorResponse(err);
   }
@@ -44,7 +45,7 @@ export async function POST(req: NextRequest) {
     );
   }
   try {
-    const category = createCategory(parsed.data);
+    const category = createCategory(parsed.data, user.id);
     return NextResponse.json({ category, ...refreshedCatalogPayload() }, { status: 201 });
   } catch (err) {
     const message = err instanceof Error ? err.message : "Could not create category";
@@ -96,7 +97,7 @@ export async function PATCH(req: NextRequest) {
       });
     }
     const { id, ...patch } = parsed.data;
-    updateCategory(id, patch);
+    updateCategory(id, patch, user.id);
     return NextResponse.json({ ok: true, ...refreshedCatalogPayload() });
   } catch (err) {
     if (err instanceof CatalogEntityNotFoundError) {

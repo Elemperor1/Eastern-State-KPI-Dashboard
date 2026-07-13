@@ -3,6 +3,7 @@ import {
   AGGREGATION_METHODS,
   AVERAGE_INPUT_METHODS,
   BOARD_STATUSES,
+  COMPONENT_AGGREGATION_ROLES,
   CONFIGURATION_STATUSES,
   DISTRIBUTION_DERIVED_GROUPS,
   GOAL_COMPLETION_RULES,
@@ -33,6 +34,9 @@ export const EditableConfigurationStatusSchema = z.enum([
 ]);
 export const BoardStatusSchema = z.enum(BOARD_STATUSES);
 export const AggregationMethodSchema = z.enum(AGGREGATION_METHODS);
+export const ComponentAggregationRoleSchema = z.enum(
+  COMPONENT_AGGREGATION_ROLES,
+);
 export const GoalCompletionRuleSchema = z.enum(GOAL_COMPLETION_RULES);
 export const GoalManualStatusSchema = z.enum(GOAL_MANUAL_STATUSES);
 export const GoalMembershipRoleSchema = z.enum(GOAL_MEMBERSHIP_ROLES);
@@ -639,6 +643,7 @@ export const ComponentInputSchema = z
     value: NullableFiniteNumberSchema,
     baseline_value: NullableFiniteNumberSchema,
     previous_period_value: NullableFiniteNumberSchema,
+    aggregation_role: ComponentAggregationRoleSchema.default("value"),
     target_value: NullableFiniteNumberSchema,
     annual_target_value: NullableFiniteNumberSchema,
     target_year: PlanTargetYearSchema.nullable().optional().default(null),
@@ -739,10 +744,32 @@ export const ComponentSetInputSchema = z
       }
     }
 
+    if (set.aggregation_method === "ratio") {
+      const numeratorCount = set.components.filter(
+        (component) => component.aggregation_role === "numerator",
+      ).length;
+      const denominatorCount = set.components.filter(
+        (component) => component.aggregation_role === "denominator",
+      ).length;
+      if (
+        numeratorCount === 0 ||
+        denominatorCount === 0 ||
+        numeratorCount + denominatorCount !== set.components.length
+      ) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ["components"],
+          message:
+            "Ratio aggregation requires every component to be assigned as a numerator or denominator.",
+        });
+      }
+    }
+
     if (
       set.aggregation_method === "average" ||
       set.aggregation_method === "weighted_average" ||
-      set.aggregation_method === "sum"
+      set.aggregation_method === "sum" ||
+      set.aggregation_method === "ratio"
     ) {
       const units = new Set(set.components.map((component) => component.unit));
       if (units.size !== 1 || units.has(null)) {
@@ -989,6 +1016,13 @@ export const StrategicTargetCreateSchema = z
           path: ["target_year"],
           message: "Annual target and reporting years must match.",
         });
+      } else if (!PlanTargetYearSchema.safeParse(target.reporting_year).success) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ["reporting_year"],
+          message:
+            "Annual target reporting years must stay within the 2025–2029 strategic plan.",
+        });
       }
     } else if (target.reporting_year !== null) {
       ctx.addIssue({
@@ -1058,6 +1092,7 @@ export const StrategyComponentCreateSchema = z
     fixed_denominator: z.number().finite().positive().nullable().optional().default(null),
     baseline_value: FiniteNumberSchema.nullable().optional().default(null),
     previous_period_value: FiniteNumberSchema.nullable().optional().default(null),
+    aggregation_role: ComponentAggregationRoleSchema.default("value"),
     weight: z.number().finite().positive().default(1),
     display_order: z.number().int().nonnegative(),
     configuration_status: EditableConfigurationStatusSchema.default("draft"),
@@ -1089,6 +1124,7 @@ export const StrategyComponentUpdateSchema = z
     fixed_denominator: z.number().finite().positive().nullable().optional(),
     baseline_value: FiniteNumberSchema.nullable().optional(),
     previous_period_value: FiniteNumberSchema.nullable().optional(),
+    aggregation_role: ComponentAggregationRoleSchema.optional(),
     weight: z.number().finite().positive().optional(),
     display_order: z.number().int().nonnegative().optional(),
     configuration_status: EditableConfigurationStatusSchema.optional(),

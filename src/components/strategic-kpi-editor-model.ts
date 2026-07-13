@@ -1,12 +1,15 @@
 import {
   MeasurementConfigurationCreateSchema,
   MeasurementConfigurationUpdateSchema,
+  resolveEffectiveTargetPolicy,
+  STRATEGIC_PLAN_END_YEAR,
   StrategicTargetCreateSchema,
   StrategicTargetUpdateSchema,
   StrategyComponentCreateSchema,
   StrategyComponentUpdateSchema,
   type AggregationMethod,
   type BoardStatus,
+  type ComponentAggregationRole,
   type ConfigurationStatus,
   type DistributionDerivedGroup,
   type MeasurementType,
@@ -103,6 +106,7 @@ export interface ComponentFormDraft {
   fixedDenominator: string;
   baselineValue: string;
   previousPeriodValue: string;
+  aggregationRole: ComponentAggregationRole;
   weight: string;
   displayOrder: string;
   configurationStatus: ConfigurationStatus;
@@ -273,27 +277,70 @@ export function buildConfigurationMutation(
       };
 }
 
+export function successorConfigurationDraftFromData(
+  configuration: PersistedMeasurementConfig,
+  kpi: StrategyKpiIdentity,
+  reportingYear: number,
+): ConfigurationFormDraft {
+  const draft = configurationDraftFromData(configuration, kpi, reportingYear);
+  const suggestedStart = Math.max(
+    configuration.effective_from_year + 1,
+    reportingYear + 1,
+  );
+  return {
+    ...draft,
+    effectiveStartYear: String(suggestedStart),
+    effectiveEndYear:
+      configuration.effective_to_year === null
+        ? ""
+        : String(Math.max(configuration.effective_to_year, suggestedStart)),
+  };
+}
+
+export function canCreateMeasurementSuccessor(
+  configuration: PersistedMeasurementConfig,
+  reportingYear: number,
+): boolean {
+  const finalYear = Math.min(
+    configuration.effective_to_year ?? STRATEGIC_PLAN_END_YEAR,
+    STRATEGIC_PLAN_END_YEAR,
+  );
+  return (
+    reportingYear < STRATEGIC_PLAN_END_YEAR &&
+    Math.max(configuration.effective_from_year + 1, reportingYear + 1) <=
+      finalYear
+  );
+}
+
+export function buildSuccessorConfigurationMutation(
+  predecessorId: number,
+  payload: Record<string, unknown>,
+): StrategyEditorMutation {
+  return {
+    endpoint: STRATEGY_EDITOR_ENDPOINTS.configurations,
+    method: "PATCH",
+    body: {
+      action: "create_successor",
+      predecessor_id: predecessorId,
+      successor: payload,
+    },
+  };
+}
+
 export function targetDraftForScope(
   targets: PersistedTarget[],
   scope: TargetScope,
   reportingYear: number,
 ): TargetFormDraft {
-  const candidates = targets
-    .filter(
-      (target) =>
-        target.target_scope === scope &&
-        target.archived_at === null &&
-        (scope !== "annual" || target.reporting_year === reportingYear),
-    )
-    .sort((a, b) => {
-      if (scope === "annual") {
-        const aExact = a.reporting_year === reportingYear ? 0 : 1;
-        const bExact = b.reporting_year === reportingYear ? 0 : 1;
-        return aExact - bExact || b.target_year - a.target_year;
-      }
-      return b.target_year - a.target_year;
-    });
-  const target = candidates[0] ?? null;
+  const decision = resolveEffectiveTargetPolicy({
+    targets,
+    reportingYear,
+    measurementType: null,
+    parentConfigurationStatus: "active",
+  });
+  const target = scope === "annual"
+    ? decision.annual.target
+    : decision.fullPlan.target;
   return {
     id: target?.id ?? null,
     scope,
@@ -437,6 +484,7 @@ export function componentDraftFromData(
       component?.previous_period_value === undefined
         ? ""
         : String(component.previous_period_value),
+    aggregationRole: component?.aggregation_role ?? "value",
     weight: String(component?.weight ?? 1),
     displayOrder: String(component?.display_order ?? displayOrder),
     configurationStatus: component?.configuration_status ?? "draft",
@@ -487,6 +535,7 @@ export function buildComponentFormPayload(
       fixed_denominator: fixedDenominator,
       baseline_value: optionalNumber(draft.baselineValue),
       previous_period_value: optionalNumber(draft.previousPeriodValue),
+      aggregation_role: draft.aggregationRole,
       weight: requiredNumber(draft.weight),
       display_order: requiredNumber(draft.displayOrder),
       configuration_status: draft.configurationStatus,
@@ -503,6 +552,7 @@ export function buildComponentFormPayload(
     fixed_denominator: fixedDenominator,
     baseline_value: optionalNumber(draft.baselineValue),
     previous_period_value: optionalNumber(draft.previousPeriodValue),
+    aggregation_role: draft.aggregationRole,
     weight: requiredNumber(draft.weight),
     display_order: requiredNumber(draft.displayOrder),
     configuration_status: draft.configurationStatus,

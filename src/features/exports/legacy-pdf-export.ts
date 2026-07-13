@@ -18,13 +18,12 @@ import jsPDF from "jspdf";
 import {
   getPageBackground,
   prepareRasterExportTarget,
+  resolveRasterCaptureScale,
 } from "./dom-capture";
 import { planRasterPdfPages } from "./raster-layout";
 
-const RASTER_SCALE = 1.5;
+const PREFERRED_RASTER_SCALE = 1.5;
 const JPEG_QUALITY = 0.86;
-const MAX_RASTER_DIMENSION = 32_767;
-const MAX_RASTER_PIXELS = 80_000_000;
 
 export interface ExportPdfOptions {
   /** id of the element to rasterize. */
@@ -61,26 +60,24 @@ export async function exportElementToPdf({
     const pageBackground = getPageBackground();
     let targetHeight = target.scrollHeight;
     let keepTogetherRanges: Array<{ start: number; end: number }> = [];
-    const rasterWidth = target.scrollWidth * RASTER_SCALE;
-    const rasterHeight = target.scrollHeight * RASTER_SCALE;
-
-    if (
-      rasterWidth > MAX_RASTER_DIMENSION ||
-      rasterHeight > MAX_RASTER_DIMENSION ||
-      rasterWidth * rasterHeight > MAX_RASTER_PIXELS
-    ) {
-      throw new Error(
-        "This report is too large for a raster PDF. Use Print / PDF for the detailed report.",
-      );
-    }
+    const width = target.scrollWidth;
+    const height = target.scrollHeight;
+    const rasterScale = resolveRasterCaptureScale({
+      width,
+      height,
+      preferredScale: PREFERRED_RASTER_SCALE,
+    });
 
     const canvas = await html2canvas(target, {
-      scale: RASTER_SCALE,
+      scale: rasterScale,
       backgroundColor: pageBackground,
       logging: false,
       useCORS: true,
-      windowWidth: target.scrollWidth,
-      windowHeight: target.scrollHeight,
+      // Keep the complete report as the output crop without making the
+      // hidden html2canvas clone iframe tens of thousands of pixels tall.
+      width,
+      height,
+      windowWidth: width,
       onclone: (clonedDocument) => {
         const clonedTarget = clonedDocument.getElementById(targetId);
         if (!clonedTarget) return;

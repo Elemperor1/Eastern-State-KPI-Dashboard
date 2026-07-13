@@ -65,9 +65,18 @@ export const AGGREGATION_METHODS = [
   "average",
   "weighted_average",
   "sum",
+  "ratio",
   "all_complete",
 ] as const;
 export type AggregationMethod = (typeof AGGREGATION_METHODS)[number];
+
+export const COMPONENT_AGGREGATION_ROLES = [
+  "value",
+  "numerator",
+  "denominator",
+] as const;
+export type ComponentAggregationRole =
+  (typeof COMPONENT_AGGREGATION_ROLES)[number];
 
 export const GOAL_COMPLETION_RULES = [
   "all_required_kpis",
@@ -299,6 +308,7 @@ export interface ComponentInput extends EffectiveYearRange {
   value: number | null;
   baseline_value: number | null;
   previous_period_value: number | null;
+  aggregation_role: ComponentAggregationRole;
   target_value: number | null;
   annual_target_value: number | null;
   target_year: number | null;

@@ -17,8 +17,10 @@ snapshots to the strategic-plan measures.
 
 - `src/features/catalog/strategic-plan.ts` is the canonical seeded definition.
 - Every current strategic KPI is annual and stores its value at `month = 0`.
-- KPI names use `Strategic Goal — Measure`; reporting derives category-page
-  goal groups from that convention.
+- KPI names retain the source `Strategic Goal — Measure` form for display and
+  backward compatibility. Schema 10 supersedes name-prefix grouping with
+  explicit `strategic_goals` and effective-dated `goal_kpis`; reporting never
+  infers strategic ownership from punctuation in a KPI name.
 - Seeded goals retain their 2027/2029 target years. Overview summaries count
   active/upcoming goals and average only goals with computable progress.
   Category and metric views prefer an exact selected-year goal, then the
@@ -45,6 +47,9 @@ To roll back across the catalog replacement, stop the application, restore the
 pre-deployment database backup, and deploy the prior application version whose
 expected schema is 7. Schema 9 can be rolled back only by restoring a schema-8
 backup because SQLite cannot remove the additive baseline column in place.
+Follow-on schemas 10 and 11 are also additive; their rollout and rollback are
+owned by ADR 0021 and `docs/migration-notes.md` and require the matching
+pre-migration backup rather than an in-place downgrade.
 
 Production KPI values and audit history from schema 7 are not migrated. If they
 must remain available for reference, retain the backup as a read-only archive
@@ -56,3 +61,7 @@ The dashboard, category grouping, goals, smoke harness, and QA fixtures now
 describe one coherent strategic plan. Historical KPI data is not silently
 misattributed to new measures. The tradeoff is an explicit one-time data reset
 that requires an operator backup and coordinated rollback.
+
+The original 25 `kpi_goals` remain legacy per-KPI target rows. They are not the
+named-goal denominator; schema 10 maps the plan into 22 explicit named goals
+and 59 effective memberships.

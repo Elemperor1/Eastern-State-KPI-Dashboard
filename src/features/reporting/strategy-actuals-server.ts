@@ -1,4 +1,5 @@
 import { STRATEGIC_PLAN_START_YEAR } from "@/features/strategy";
+import type { MonthlyEntryWithMeta } from "@/lib/types";
 import {
   listComponentsForConfiguration,
   listEffectiveMeasurementConfigs,
@@ -20,15 +21,18 @@ import {
 export function listCalculatedStrategyActuals({
   kpiIds,
   throughYear,
+  legacyEntries = [],
 }: {
   kpiIds: number[];
   throughYear: number;
+  /** Legacy raw rows used only for an explicit first-class YOY transition. */
+  legacyEntries?: MonthlyEntryWithMeta[];
 }): StrategicCalculatedActual[] {
   if (kpiIds.length === 0 || throughYear < STRATEGIC_PLAN_START_YEAR) return [];
   const wanted = new Set(kpiIds);
   const actuals: StrategicCalculatedActual[] = [];
-  const previousKpiValues = new Map<number, number>();
-  const previousComponentValues = new Map<number, number>();
+  const kpiValuesByReportingPeriod = new Map<string, number>();
+  const componentValuesByReportingPeriod = new Map<string, number>();
 
   for (let year = STRATEGIC_PLAN_START_YEAR; year <= throughYear; year += 1) {
     const configurations = listEffectiveMeasurementConfigs(year).filter(
@@ -36,6 +40,12 @@ export function listCalculatedStrategyActuals({
     );
     for (const configuration of configurations) {
       if (configuration.measurement_type === null) continue;
+      seedLegacyYearOverYearPriorValues({
+        configuration,
+        reportingYear: year,
+        legacyEntries,
+        values: kpiValuesByReportingPeriod,
+      });
       if (configuration.measurement_type === "distribution") {
         for (const record of listStrategyDistributions({
           kpi_id: configuration.kpi_id,
@@ -55,7 +65,7 @@ export function listCalculatedStrategyActuals({
           ...calculateMultiComponentPeriods({
             configuration,
             year,
-            previousValues: previousComponentValues,
+            previousValues: componentValuesByReportingPeriod,
           }),
         );
         continue;
@@ -66,13 +76,15 @@ export function listCalculatedStrategyActuals({
         reporting_year: year,
       });
       for (const record of records) {
-        const previous = previousKpiValues.get(configuration.kpi_id) ??
-          configuration.baseline_value;
+        const previous = kpiValuesByReportingPeriod.get(
+          reportingPeriodValueKey(configuration.kpi_id, year - 1, record),
+        ) ?? configuration.baseline_value;
         const result = calculateStrategyObservation(
           record,
           {
             measurementType: configuration.measurement_type,
             precision: configuration.calculation_precision,
+            unit: configuration.unit,
             fixedDenominator: configuration.fixed_denominator,
             allowOverMaximum: configuration.allow_score_over_max,
           },
@@ -80,7 +92,10 @@ export function listCalculatedStrategyActuals({
         );
         actuals.push(toStrategicCalculatedActual(record, result));
         if (Number.isFinite(record.scalar_value)) {
-          previousKpiValues.set(configuration.kpi_id, record.scalar_value as number);
+          kpiValuesByReportingPeriod.set(
+            reportingPeriodValueKey(configuration.kpi_id, year, record),
+            record.scalar_value as number,
+          );
         }
       }
     }
@@ -95,6 +110,55 @@ export function listCalculatedStrategyActuals({
   );
 }
 
+function seedLegacyYearOverYearPriorValues({
+  configuration,
+  reportingYear,
+  legacyEntries,
+  values,
+}: {
+  configuration: ReturnType<typeof listEffectiveMeasurementConfigs>[number];
+  reportingYear: number;
+  legacyEntries: MonthlyEntryWithMeta[];
+  values: Map<string, number>;
+}): void {
+  const resolvedUnit = configuration.unit ?? legacyEntries.find(
+    (entry) => entry.kpi_id === configuration.kpi_id,
+  )?.kpi_unit ?? null;
+  if (
+    configuration.measurement_type !== "year_over_year" ||
+    resolvedUnit === null ||
+    resolvedUnit.trim() === "" ||
+    resolvedUnit.trim() === "%"
+  ) {
+    return;
+  }
+  const priorYear = reportingYear - 1;
+  const priorRows = legacyEntries.filter(
+    (entry) =>
+      entry.kpi_id === configuration.kpi_id && entry.year === priorYear,
+  );
+  if (configuration.reporting_frequency === "annual") {
+    const annual = priorRows.findLast((entry) => entry.month === 0);
+    if (!annual) return;
+    const key = reportingPeriodValueKey(configuration.kpi_id, priorYear, {
+      period_type: "annual",
+      period_index: 0,
+    });
+    if (!values.has(key)) values.set(key, annual.value);
+    return;
+  }
+  if (configuration.reporting_frequency === "monthly") {
+    for (const entry of priorRows) {
+      if (entry.month < 1 || entry.month > 12) continue;
+      const key = reportingPeriodValueKey(configuration.kpi_id, priorYear, {
+        period_type: "monthly",
+        period_index: entry.month,
+      });
+      if (!values.has(key)) values.set(key, entry.value);
+    }
+  }
+}
+
 function calculateMultiComponentPeriods({
   configuration,
   year,
@@ -102,7 +166,7 @@ function calculateMultiComponentPeriods({
 }: {
   configuration: ReturnType<typeof listEffectiveMeasurementConfigs>[number];
   year: number;
-  previousValues: Map<number, number>;
+  previousValues: Map<string, number>;
 }): StrategicCalculatedActual[] {
   const definitions = listComponentsForConfiguration(configuration.id, year);
   const entries = new Map<
@@ -143,12 +207,18 @@ function calculateMultiComponentPeriods({
     .map(([key, period]) => {
       const calculation = calculateStrategyMultiComponent({
         configuration,
+        reportingYear: year,
         components: definitions.map((definition) => {
           const record = entries.get(definition.id)?.get(key) ?? null;
           const previousPeriodValue =
-            previousValues.get(definition.id) ?? definition.previous_period_value;
+            previousValues.get(
+              reportingPeriodValueKey(definition.id, year - 1, period),
+            ) ?? definition.previous_period_value;
           if (record && "scalar_value" in record && Number.isFinite(record.scalar_value)) {
-            previousValues.set(definition.id, record.scalar_value as number);
+            previousValues.set(
+              reportingPeriodValueKey(definition.id, year, period),
+              record.scalar_value as number,
+            );
           }
           return {
             definition,
@@ -175,6 +245,14 @@ function periodKey(
   record: Pick<StrategyComponentEntryRecord, "period_type" | "period_index">,
 ): string {
   return `${record.period_type}:${record.period_index}`;
+}
+
+function reportingPeriodValueKey(
+  subjectId: number,
+  year: number,
+  period: Pick<StrategyComponentEntryRecord, "period_type" | "period_index">,
+): string {
+  return `${subjectId}:${year}:${periodKey(period)}`;
 }
 
 function periodRank(

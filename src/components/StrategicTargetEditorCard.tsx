@@ -40,6 +40,7 @@ export function StrategicTargetEditorCard({
   measurementType,
   runMutation,
   idPrefix,
+  lockedTargetYear,
 }: {
   title: string;
   description: string;
@@ -49,6 +50,7 @@ export function StrategicTargetEditorCard({
   measurementType: MeasurementType;
   runMutation: StrategyEditorMutationRunner;
   idPrefix: string;
+  lockedTargetYear?: number;
 }) {
   const [draft, setDraft] = useState(initialDraft);
   const [errors, setErrors] = useState<StrategyEditorFormErrors>({});
@@ -118,9 +120,14 @@ export function StrategicTargetEditorCard({
       <form onSubmit={submit} className="space-y-5">
         <fieldset disabled={busy} className="grid grid-cols-1 gap-4 md:grid-cols-2">
           <FormField
-            label="Target year"
+            label={lockedTargetYear === undefined ? "Target year" : "Reporting year"}
             htmlFor={fieldId("year")}
-            hint={errors.target_year ?? "Strategic-plan years are 2025–2029."}
+            hint={
+              errors.target_year ??
+              (lockedTargetYear === undefined
+                ? "Strategic-plan years are 2025–2029."
+                : "Use the page-level reporting-year selector to edit another annual target.")
+            }
           >
             <Input
               id={fieldId("year")}
@@ -128,21 +135,28 @@ export function StrategicTargetEditorCard({
               min={draft.externalTargetYear ? 1900 : 2025}
               max={draft.externalTargetYear ? 2100 : 2029}
               value={draft.targetYear}
+              disabled={lockedTargetYear !== undefined}
               aria-invalid={Boolean(errors.target_year)}
               onChange={(event) => update("targetYear", event.target.value)}
             />
           </FormField>
-          <div className="flex items-end pb-1">
-            <Checkbox
-              id={fieldId("external-year")}
-              checked={draft.externalTargetYear}
-              onChange={(event) =>
-                update("externalTargetYear", event.target.checked)
-              }
-              label="External target year"
-              description="Allow a target outside the 2025–2029 strategic-plan window."
-            />
-          </div>
+          {lockedTargetYear === undefined ? (
+            <div className="flex items-end pb-1">
+              <Checkbox
+                id={fieldId("external-year")}
+                checked={draft.externalTargetYear}
+                onChange={(event) =>
+                  update("externalTargetYear", event.target.checked)
+                }
+                label="External target year"
+                description="Allow a target outside the 2025–2029 strategic-plan window."
+              />
+            </div>
+          ) : (
+            <div className="flex items-end pb-2 text-sm leading-6 text-ink-600">
+              Annual pacing is stored independently for {lockedTargetYear}.
+            </div>
+          )}
           <FormField
             label="Target value"
             htmlFor={fieldId("value")}

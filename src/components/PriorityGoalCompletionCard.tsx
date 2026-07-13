@@ -97,7 +97,7 @@ export function GoalExclusionDetails({
   if (excludedGoalsCount === 0) return null;
 
   return (
-    <details className={className} open>
+    <details className={className}>
       <summary className="cursor-pointer text-sm font-semibold text-ink-900 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--color-focus)]">
         Review excluded goal details ({excludedGoalsCount})
       </summary>

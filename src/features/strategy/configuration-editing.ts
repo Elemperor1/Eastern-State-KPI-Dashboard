@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { getDb, transaction } from "@/lib/db";
+import { resolveConfiguredTargetValue } from "./calculations";
 import { recordStrategicAuditEvent } from "./audit";
 import {
   asComponent,
@@ -14,9 +15,16 @@ import {
   type PersistedStrategicGoal,
   type PersistedTarget,
 } from "./records";
-import type { MeasurementType, StrategyJsonValue } from "./types";
+import {
+  STRATEGIC_PLAN_END_YEAR,
+  STRATEGIC_PLAN_START_YEAR,
+  type ConfigurationStatus,
+  type MeasurementType,
+  type StrategyJsonValue,
+} from "./types";
 import {
   ComponentInputSchema,
+  ComponentSetInputSchema,
   MeasurementConfigInputSchema,
   MeasurementConfigurationCreateSchema,
   MeasurementConfigurationUpdateSchema,
@@ -174,6 +182,8 @@ function rawGoalMembership(id: number): RawRow {
       `SELECT membership.*,
               kpi.name AS kpi_name, kpi.archived_at AS kpi_archived_at,
               goal.name AS goal_name, goal.archived_at AS goal_archived_at,
+              goal.plan_start_year AS goal_plan_start_year,
+              goal.plan_end_year AS goal_plan_end_year,
               goal.source_reference AS goal_source_reference,
               category.name AS priority_name,
               category.archived_at AS priority_archived_at
@@ -244,7 +254,8 @@ function ensureConfigurationHistoryFits(
   startYear: number,
   endYear: number | null,
 ): void {
-  const row = getDb()
+  const configuration = rawConfiguration(id);
+  const normalized = getDb()
     .prepare(
       `SELECT MIN(year) AS min_year, MAX(year) AS max_year
        FROM (
@@ -266,16 +277,208 @@ function ensureConfigurationHistoryFits(
          WHERE configuration_id = ?
        ) historical_values`,
     )
-    .get(id, id, id) as { min_year: number | null; max_year: number | null };
+    .get(id, id, id) as {
+    min_year: number | null;
+    max_year: number | null;
+  };
+  const oldStart = Number(configuration.effective_from_year);
+  const oldEnd =
+    configuration.effective_to_year == null
+      ? null
+      : Number(configuration.effective_to_year);
+  const kpiId = Number(configuration.kpi_id);
+  const legacyWithinOldRange = getDb()
+    .prepare(
+      `SELECT MIN(year) AS min_year, MAX(year) AS max_year
+       FROM (
+         SELECT year FROM monthly_entries
+         WHERE kpi_id = ? AND year >= ?
+           AND (? IS NULL OR year <= ?)
+         UNION ALL
+         SELECT year FROM breakdown_entries
+         WHERE kpi_id = ? AND year >= ?
+           AND (? IS NULL OR year <= ?)
+       ) legacy_values`,
+    )
+    .get(
+      kpiId,
+      oldStart,
+      oldEnd,
+      oldEnd,
+      kpiId,
+      oldStart,
+      oldEnd,
+      oldEnd,
+    ) as { min_year: number | null; max_year: number | null };
+  const newlyAdoptedLegacy = getDb()
+    .prepare(
+      `SELECT 1 AS present
+       FROM (
+         SELECT year FROM monthly_entries WHERE kpi_id = ?
+         UNION ALL
+         SELECT year FROM breakdown_entries WHERE kpi_id = ?
+       ) legacy_values
+       WHERE year >= ? AND (? IS NULL OR year <= ?)
+         AND (year < ? OR (? IS NOT NULL AND year > ?))
+       LIMIT 1`,
+    )
+    .get(
+      kpiId,
+      kpiId,
+      startYear,
+      endYear,
+      endYear,
+      oldStart,
+      oldEnd,
+      oldEnd,
+    );
+  if (newlyAdoptedLegacy) {
+    throw new StrategyEditConflictError(
+      "The effective-year expansion would adopt legacy values that were not interpreted by this definition. Create an explicit successor or backfill instead.",
+      "legacy_range_adoption_conflict",
+    );
+  }
+  const historyFallsOutside = (range: {
+    min_year: number | null;
+    max_year: number | null;
+  }) =>
+    range.min_year !== null &&
+    (range.min_year < startYear ||
+      (endYear !== null && range.max_year! > endYear));
   if (
-    row.min_year !== null &&
-    (row.min_year < startYear || (endYear !== null && row.max_year! > endYear))
+    historyFallsOutside(normalized) ||
+    historyFallsOutside(legacyWithinOldRange)
   ) {
     throw new StrategyEditConflictError(
       "The effective-year change would orphan historical values.",
       "observation_year_conflict",
     );
   }
+}
+
+function configurationHasHistoricalValuesInRange(
+  id: number,
+  startYear: number,
+  endYear: number | null,
+): boolean {
+  const configuration = rawConfiguration(id);
+  return Boolean(
+    getDb()
+      .prepare(
+        `SELECT 1 AS present FROM kpi_observations
+         WHERE configuration_id = ?
+         UNION ALL
+         SELECT 1 AS present
+         FROM kpi_component_entries entry
+         JOIN kpi_components component ON component.id = entry.component_id
+         WHERE component.configuration_id = ?
+         UNION ALL
+         SELECT 1 AS present FROM distribution_observations
+         WHERE configuration_id = ?
+         UNION ALL
+         SELECT 1 AS present
+         FROM monthly_entries entry
+         WHERE entry.kpi_id = ? AND entry.year >= ?
+           AND (? IS NULL OR entry.year <= ?)
+         UNION ALL
+         SELECT 1 AS present
+         FROM breakdown_entries entry
+         WHERE entry.kpi_id = ? AND entry.year >= ?
+           AND (? IS NULL OR entry.year <= ?)
+         LIMIT 1`,
+      )
+      .get(
+        id,
+        id,
+        id,
+        Number(configuration.kpi_id),
+        startYear,
+        endYear,
+        endYear,
+        Number(configuration.kpi_id),
+        startYear,
+        endYear,
+        endYear,
+      ),
+  );
+}
+
+function kpiHasHistoricalValuesInRange(
+  kpiId: number,
+  startYear: number,
+  endYear: number | null,
+): boolean {
+  return Boolean(
+    getDb()
+      .prepare(
+        `WITH bounds(kpi_id, start_year, end_year) AS (VALUES (?, ?, ?))
+         SELECT 1 AS present
+         FROM kpi_observations observation, bounds
+         WHERE observation.kpi_id = bounds.kpi_id
+           AND observation.year >= bounds.start_year
+           AND (bounds.end_year IS NULL OR observation.year <= bounds.end_year)
+         UNION ALL
+         SELECT 1 AS present
+         FROM kpi_component_entries entry
+         JOIN kpi_components component ON component.id = entry.component_id
+         JOIN bounds ON component.kpi_id = bounds.kpi_id
+         WHERE entry.year >= bounds.start_year
+           AND (bounds.end_year IS NULL OR entry.year <= bounds.end_year)
+         UNION ALL
+         SELECT 1 AS present
+         FROM distribution_observations observation, bounds
+         WHERE observation.kpi_id = bounds.kpi_id
+           AND observation.year >= bounds.start_year
+           AND (bounds.end_year IS NULL OR observation.year <= bounds.end_year)
+         UNION ALL
+         SELECT 1 AS present
+         FROM monthly_entries entry, bounds
+         WHERE entry.kpi_id = bounds.kpi_id
+           AND entry.year >= bounds.start_year
+           AND (bounds.end_year IS NULL OR entry.year <= bounds.end_year)
+         UNION ALL
+         SELECT 1 AS present
+         FROM breakdown_entries entry, bounds
+         WHERE entry.kpi_id = bounds.kpi_id
+           AND entry.year >= bounds.start_year
+           AND (bounds.end_year IS NULL OR entry.year <= bounds.end_year)
+         LIMIT 1`,
+      )
+      .get(kpiId, startYear, endYear),
+  );
+}
+
+function fieldsChanged(
+  before: RawRow,
+  values: Record<string, unknown>,
+  fields: readonly string[],
+): boolean {
+  return fields.some((field) => !same(before[field], values[field]));
+}
+
+function calculationStatusMeaning(value: unknown): string {
+  return value === "ready" || value === "active"
+    ? "calculation_ready"
+    : String(value ?? "");
+}
+
+function calculationStatusMeaningChanged(
+  before: RawRow,
+  values: Record<string, unknown>,
+): boolean {
+  return (
+    calculationStatusMeaning(before.configuration_status) !==
+    calculationStatusMeaning(values.configuration_status)
+  );
+}
+
+function rejectHistoricalSemanticEdit(
+  message: string,
+): never {
+  throw new StrategyEditConflictError(
+    message,
+    "historical_semantics_conflict",
+  );
 }
 
 const CONFIG_FIELDS = [
@@ -298,6 +501,19 @@ const CONFIG_FIELDS = [
   "resolution_notes",
   "source_reference",
   "last_reviewed_date",
+  "allow_score_over_max",
+] as const;
+
+const CONFIG_CALCULATION_SEMANTIC_FIELDS = [
+  "measurement_type",
+  "unit",
+  "numerator_label",
+  "denominator_label",
+  "fixed_denominator",
+  "baseline_value",
+  "reporting_frequency",
+  "aggregation_method",
+  "calculation_precision",
   "allow_score_over_max",
 ] as const;
 
@@ -377,6 +593,18 @@ export function createMeasurementConfiguration(
       null,
     );
     const values = configurationValues(parsed);
+    assertFullPlanTargetConfigurationIntegrity({
+      kpiId: parsed.kpi_id,
+      configurations: [
+        ...activeConfigurationRows(parsed.kpi_id),
+        {
+          id: Number.MAX_SAFE_INTEGER,
+          kpi_id: parsed.kpi_id,
+          archived_at: null,
+          ...values,
+        },
+      ],
+    });
     const result = getDb()
       .prepare(
         `INSERT INTO kpi_measurement_configs (
@@ -398,6 +626,811 @@ export function createMeasurementConfiguration(
       source_reference: parsed.source_reference,
     });
     return asMeasurementConfig(row);
+  });
+}
+
+const SuccessorMeasurementConfigurationSchema = z
+  .object({
+    predecessor_id: z.number().int().positive(),
+    successor: MeasurementConfigurationCreateSchema,
+  })
+  .strict();
+
+export interface SuccessorMeasurementConfigurationResult {
+  predecessor: PersistedMeasurementConfig;
+  successor: PersistedMeasurementConfig;
+}
+
+function successorTargetApplies(
+  row: RawRow,
+  targets: RawRow[],
+  startYear: number,
+  endYear: number,
+): boolean {
+  if (row.target_scope === "annual") {
+    const reportingYear = Number(row.reporting_year);
+    return reportingYear >= startYear && reportingYear <= endYear;
+  }
+  for (let year = startYear; year <= endYear; year += 1) {
+    if (Number(selectedFullPlanTarget(targets, year)?.id) === Number(row.id)) {
+      return true;
+    }
+  }
+  return false;
+}
+
+function targetIncompatibility(
+  row: RawRow,
+  measurementType: MeasurementType,
+): string | null {
+  let structuredTarget: Record<string, unknown> | null = null;
+  const rawStructured = row.structured_target ?? row.structured_target_json;
+  if (rawStructured && typeof rawStructured === "object") {
+    structuredTarget = rawStructured as Record<string, unknown>;
+  } else if (typeof rawStructured === "string") {
+    try {
+      const parsed = JSON.parse(rawStructured) as unknown;
+      if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) {
+        structuredTarget = parsed as Record<string, unknown>;
+      }
+    } catch {
+      return "The structured target is not valid JSON.";
+    }
+  }
+  const targetValue = row.target_value == null ? null : Number(row.target_value);
+  const targetDescription =
+    row.target_description == null ? null : String(row.target_description);
+  const value = resolveConfiguredTargetValue({
+    measurementType,
+    targetValue,
+    structuredTarget,
+    targetDescription,
+    configurationStatus: "active",
+  });
+  if (
+    measurementType === "percentage" &&
+    value !== null &&
+    (!Number.isFinite(value) || value < 0 || value > 100)
+  ) {
+    return "Percentage targets must remain between 0 and 100.";
+  }
+  if (
+    measurementType === "binary" &&
+    value !== null &&
+    value !== 0 &&
+    value !== 1
+  ) {
+    return "Binary targets must be 0 or 1 when they are numeric.";
+  }
+  const status = String(row.configuration_status ?? "draft");
+  if (
+    (status === "ready" || status === "active") &&
+    resolveConfiguredTargetValue({
+      measurementType,
+      targetValue,
+      structuredTarget,
+      targetDescription,
+      configurationStatus: status,
+    }) === null
+  ) {
+    return "Ready and active targets must remain calculable under the measurement definition.";
+  }
+  return null;
+}
+
+function activeConfigurationRows(kpiId: number): RawRow[] {
+  return getDb()
+    .prepare(
+      `SELECT * FROM kpi_measurement_configs
+       WHERE kpi_id = ? AND archived_at IS NULL
+       ORDER BY effective_from_year, id`,
+    )
+    .all(kpiId) as RawRow[];
+}
+
+function activeParentTargetRows(kpiId: number): RawRow[] {
+  return getDb()
+    .prepare(
+      `SELECT * FROM kpi_targets
+       WHERE kpi_id = ? AND component_id IS NULL AND archived_at IS NULL
+       ORDER BY target_scope, reporting_year, target_year, id`,
+    )
+    .all(kpiId) as RawRow[];
+}
+
+function effectiveConfigurationFromRows(
+  configurations: RawRow[],
+  year: number,
+): RawRow | null {
+  return configurations
+    .filter(
+      (configuration) =>
+        Number(configuration.effective_from_year) <= year &&
+        (configuration.effective_to_year == null ||
+          Number(configuration.effective_to_year) >= year),
+    )
+    .sort(
+      (left, right) =>
+        Number(right.effective_from_year) - Number(left.effective_from_year) ||
+        Number(right.id) - Number(left.id),
+    )[0] ?? null;
+}
+
+function selectedFullPlanTarget(
+  targets: RawRow[],
+  year: number,
+): RawRow | null {
+  const fullPlanTargets = targets.filter(
+    (target) => target.target_scope === "full_plan",
+  );
+  const future = fullPlanTargets
+    .filter((target) => Number(target.target_year) >= year)
+    .sort(
+      (left, right) =>
+        Number(left.target_year) - Number(right.target_year) ||
+        Number(left.id) - Number(right.id),
+    )[0];
+  if (future) return future;
+  return fullPlanTargets
+    .filter((target) => Number(target.target_year) < year)
+    .sort(
+      (left, right) =>
+        Number(right.target_year) - Number(left.target_year) ||
+        Number(left.id) - Number(right.id),
+    )[0] ?? null;
+}
+
+function configurationSemanticSignature(configuration: RawRow): string {
+  const componentSemantics =
+    configuration.measurement_type === "multi_component"
+      ? activeComponentsForConfiguration(Number(configuration.id)).map(
+          (component) => [
+            component.slug ?? null,
+            component.label ?? null,
+            component.measurement_type ?? null,
+            component.unit ?? null,
+            component.numerator_label ?? null,
+            component.denominator_label ?? null,
+            component.fixed_denominator ?? null,
+            component.baseline_value ?? null,
+            component.previous_period_value ?? null,
+            component.aggregation_role ?? null,
+            component.weight ?? null,
+            calculationStatusMeaning(component.configuration_status),
+          ],
+        )
+      : null;
+  return JSON.stringify(
+    [
+      ...CONFIG_CALCULATION_SEMANTIC_FIELDS.map(
+        (field) => configuration[field] ?? null,
+      ),
+      componentSemantics,
+    ],
+  );
+}
+
+function targetCarriesDefinedSemantics(target: RawRow): boolean {
+  return (
+    target.target_value != null ||
+    target.structured_target_json != null ||
+    ((target.configuration_status === "ready" ||
+      target.configuration_status === "active") &&
+      target.target_description != null)
+  );
+}
+
+/**
+ * Parent Full-Plan Targets are KPI-scoped, so the nearest-future/latest-past
+ * policy can make one row visible in several Reporting Years. A defined Target
+ * must never cross a semantic measurement boundary. An unresolved, valueless
+ * placeholder may cross temporarily so editors can establish target-year
+ * boundaries one row at a time before finalizing either side.
+ */
+function assertFullPlanTargetConfigurationIntegrity({
+  kpiId,
+  configurations = activeConfigurationRows(kpiId),
+  targets = activeParentTargetRows(kpiId),
+}: {
+  kpiId: number;
+  configurations?: RawRow[];
+  targets?: RawRow[];
+}): void {
+  const signatures = new Map<number, string>();
+  for (
+    let year = STRATEGIC_PLAN_START_YEAR;
+    year <= STRATEGIC_PLAN_END_YEAR;
+    year += 1
+  ) {
+    const target = selectedFullPlanTarget(targets, year);
+    const configuration = effectiveConfigurationFromRows(configurations, year);
+    if (!target) {
+      continue;
+    }
+    if (!configuration || configuration.measurement_type == null) {
+      if (targetCarriesDefinedSemantics(target)) {
+        throw new StrategyEditConflictError(
+          `Full-plan target ${String(target.id)} has no measurement configuration for reporting year ${year}.`,
+          "target_configuration_coverage_conflict",
+        );
+      }
+      continue;
+    }
+    const issue = targetIncompatibility(
+      target,
+      String(configuration.measurement_type) as MeasurementType,
+    );
+    if (issue) {
+      throw new StrategyEditConflictError(
+        `Full-plan target ${String(target.id)} is incompatible with the measurement configuration for ${year}. ${issue}`,
+        "target_measurement_incompatible",
+      );
+    }
+    if (!targetCarriesDefinedSemantics(target)) continue;
+    const id = Number(target.id);
+    const signature = configurationSemanticSignature(configuration);
+    const previous = signatures.get(id);
+    if (previous !== undefined && previous !== signature) {
+      throw new StrategyEditConflictError(
+        `Full-plan target ${String(target.id)} would be interpreted by different measurement definitions across reporting years. Add unresolved boundary targets first, then finalize one target per compatible definition range.`,
+        "target_configuration_semantics_conflict",
+      );
+    }
+    signatures.set(id, signature);
+  }
+
+  for (const target of targets.filter(
+    (candidate) => candidate.target_scope === "annual",
+  )) {
+    if (!targetCarriesDefinedSemantics(target)) continue;
+    const targetYear = Number(target.reporting_year ?? target.target_year);
+    const configurationYear = Math.min(
+      Math.max(targetYear, STRATEGIC_PLAN_START_YEAR),
+      STRATEGIC_PLAN_END_YEAR,
+    );
+    const configuration = effectiveConfigurationFromRows(
+      configurations,
+      configurationYear,
+    );
+    if (!configuration || configuration.measurement_type == null) {
+      throw new StrategyEditConflictError(
+        `Annual target ${String(target.id)} has no measurement configuration for reporting year ${targetYear}.`,
+        "target_configuration_coverage_conflict",
+      );
+    }
+    const issue = targetIncompatibility(
+      target,
+      String(configuration.measurement_type) as MeasurementType,
+    );
+    if (issue) {
+      throw new StrategyEditConflictError(
+        `Annual target ${String(target.id)} is incompatible with the measurement configuration for ${targetYear}. ${issue}`,
+        "target_measurement_incompatible",
+      );
+    }
+  }
+}
+
+function configurationHasDefinedTarget(
+  kpiId: number,
+  startYear: number,
+  endYear: number | null,
+): boolean {
+  const targets = activeParentTargetRows(kpiId);
+  const lastYear = Math.min(endYear ?? STRATEGIC_PLAN_END_YEAR, STRATEGIC_PLAN_END_YEAR);
+  for (
+    let year = Math.max(startYear, STRATEGIC_PLAN_START_YEAR);
+    year <= lastYear;
+    year += 1
+  ) {
+    const annual = targets.find(
+      (target) =>
+        target.target_scope === "annual" &&
+        Number(target.reporting_year) === year &&
+        targetCarriesDefinedSemantics(target),
+    );
+    const fullPlan = selectedFullPlanTarget(targets, year);
+    if (annual || (fullPlan && targetCarriesDefinedSemantics(fullPlan))) {
+      return true;
+    }
+  }
+  return false;
+}
+
+function activeComponentsForConfiguration(configurationId: number): RawRow[] {
+  return getDb()
+    .prepare(
+      `SELECT * FROM kpi_components
+       WHERE configuration_id = ? AND archived_at IS NULL
+         AND configuration_status <> 'archived'
+       ORDER BY display_order, id`,
+    )
+    .all(configurationId) as RawRow[];
+}
+
+function assertSuccessorConfigurationCompatibility(
+  predecessor: RawRow,
+  successor: ValidatedMeasurementConfigurationCreate,
+): RawRow[] {
+  const endYear = successor.effective_end_year;
+  if (
+    successor.effective_start_year < STRATEGIC_PLAN_START_YEAR ||
+    successor.effective_start_year > STRATEGIC_PLAN_END_YEAR ||
+    endYear === null ||
+    endYear > STRATEGIC_PLAN_END_YEAR
+  ) {
+    throw new StrategyEditConflictError(
+      "Successor definitions in this strategic-plan workflow must stay within 2025–2029.",
+      "successor_outside_plan",
+    );
+  }
+
+  const kpiTargets = getDb()
+    .prepare(
+      `SELECT * FROM kpi_targets
+       WHERE kpi_id = ? AND component_id IS NULL AND archived_at IS NULL
+         AND configuration_status <> 'archived'`,
+    )
+    .all(Number(predecessor.kpi_id)) as RawRow[];
+  for (const target of kpiTargets) {
+    if (
+      successorTargetApplies(
+        target,
+        kpiTargets,
+        successor.effective_start_year,
+        endYear,
+      )
+    ) {
+      const issue = targetIncompatibility(target, successor.measurement_type);
+      if (issue) {
+        throw new StrategyEditConflictError(
+          `Target ${String(target.id)} is incompatible with the successor measurement type. ${issue}`,
+          "successor_target_incompatible",
+        );
+      }
+    }
+  }
+
+  const parentBands = getDb()
+    .prepare(
+      `SELECT id FROM distribution_bands
+       WHERE kpi_id = ? AND component_id IS NULL AND archived_at IS NULL
+         AND effective_from_year <= ?
+         AND (effective_to_year IS NULL OR effective_to_year >= ?)
+       LIMIT 1`,
+    )
+    .get(
+      Number(predecessor.kpi_id),
+      endYear,
+      successor.effective_start_year,
+    ) as { id: number } | undefined;
+  if (parentBands && successor.measurement_type !== "distribution") {
+    throw new StrategyEditConflictError(
+      `Distribution band ${parentBands.id} overlaps the successor range and cannot be interpreted by ${successor.measurement_type}.`,
+      "successor_distribution_bands_incompatible",
+    );
+  }
+
+  const components = activeComponentsForConfiguration(Number(predecessor.id));
+  if (successor.measurement_type === "multi_component") {
+    if (
+      predecessor.measurement_type !== "multi_component" ||
+      components.length === 0
+    ) {
+      if (
+        successor.configuration_status === "ready" ||
+        successor.configuration_status === "active"
+      ) {
+        throw new StrategyEditConflictError(
+          "An active multi-component successor requires reusable component definitions. Save it as draft or needs definition first.",
+          "successor_components_required",
+        );
+      }
+      return [];
+    }
+    for (const component of components) {
+      const targets = getDb()
+        .prepare(
+          `SELECT * FROM kpi_targets
+           WHERE component_id = ? AND kpi_id IS NULL AND archived_at IS NULL
+             AND configuration_status <> 'archived'`,
+        )
+        .all(Number(component.id)) as RawRow[];
+      for (const target of targets) {
+        if (
+          successorTargetApplies(
+            target,
+            targets,
+            successor.effective_start_year,
+            endYear,
+          )
+        ) {
+          const issue = targetIncompatibility(
+            target,
+            String(component.measurement_type) as MeasurementType,
+          );
+          if (issue) {
+            throw new StrategyEditConflictError(
+              `Component target ${String(target.id)} cannot be cloned. ${issue}`,
+              "successor_component_target_incompatible",
+            );
+          }
+        }
+      }
+      const incompatibleBand = getDb()
+        .prepare(
+          `SELECT id FROM distribution_bands
+           WHERE component_id = ? AND archived_at IS NULL
+             AND effective_from_year <= ?
+             AND (effective_to_year IS NULL OR effective_to_year >= ?)
+           LIMIT 1`,
+        )
+        .get(
+          Number(component.id),
+          endYear,
+          successor.effective_start_year,
+        ) as { id: number } | undefined;
+      if (
+        incompatibleBand &&
+        component.measurement_type !== "distribution"
+      ) {
+        throw new StrategyEditConflictError(
+          `Distribution band ${incompatibleBand.id} belongs to a non-distribution component and cannot be cloned safely.`,
+          "successor_component_bands_incompatible",
+        );
+      }
+    }
+    validateSuccessorComponentSet(components, successor);
+    return components;
+  }
+
+  if (predecessor.measurement_type === "multi_component") {
+    for (const component of components) {
+      const componentTargets = getDb()
+        .prepare(
+          `SELECT * FROM kpi_targets
+           WHERE component_id = ? AND kpi_id IS NULL AND archived_at IS NULL
+             AND configuration_status <> 'archived'`,
+        )
+        .all(Number(component.id)) as RawRow[];
+      const futureTarget = componentTargets.find((target) =>
+        successorTargetApplies(
+          target,
+          componentTargets,
+          successor.effective_start_year,
+          endYear,
+        ),
+      );
+      const futureBand = getDb()
+        .prepare(
+          `SELECT id FROM distribution_bands
+           WHERE component_id = ? AND archived_at IS NULL
+             AND effective_from_year <= ?
+             AND (effective_to_year IS NULL OR effective_to_year >= ?)
+           LIMIT 1`,
+        )
+        .get(
+          Number(component.id),
+          endYear,
+          successor.effective_start_year,
+        ) as { id: number } | undefined;
+      if (futureTarget || futureBand) {
+        throw new StrategyEditConflictError(
+          "Future component targets or distribution bands must be archived or bounded before changing away from a multi-component definition.",
+          "successor_component_artifacts_incompatible",
+        );
+      }
+    }
+  }
+  return [];
+}
+
+const SUCCESSOR_COMPONENT_CLONE_FIELDS = [
+  "label",
+  "measurement_type",
+  "unit",
+  "numerator_label",
+  "denominator_label",
+  "fixed_denominator",
+  "baseline_value",
+  "previous_period_value",
+  "aggregation_role",
+  "weight",
+  "display_order",
+  "configuration_status",
+  "unresolved_question",
+] as const;
+
+const SUCCESSOR_TARGET_CLONE_FIELDS = [
+  "target_scope",
+  "reporting_year",
+  "target_year",
+  "external_target_year",
+  "target_value",
+  "structured_target_json",
+  "target_description",
+  "baseline_year",
+  "baseline_value",
+  "configuration_status",
+  "source_reference",
+  "last_reviewed_date",
+] as const;
+
+function cloneSuccessorComponents(
+  components: RawRow[],
+  successor: PersistedMeasurementConfig,
+  actorId: number | null,
+): void {
+  if (components.length === 0) return;
+  const db = getDb();
+  const context = auditContextForKpi(successor.kpi_id);
+  const endYear = successor.effective_to_year!;
+  for (const before of components) {
+    const componentResult = db
+      .prepare(
+        `INSERT INTO kpi_components (
+           kpi_id, configuration_id, slug,
+           ${SUCCESSOR_COMPONENT_CLONE_FIELDS.join(", ")},
+           created_by, updated_by
+         ) VALUES (?, ?, ?, ${SUCCESSOR_COMPONENT_CLONE_FIELDS.map(() => "?").join(", ")}, ?, ?)`,
+      )
+      .run(
+        successor.kpi_id,
+        successor.id,
+        String(before.slug),
+        ...SUCCESSOR_COMPONENT_CLONE_FIELDS.map((field) => before[field] ?? null),
+        actorId,
+        actorId,
+      );
+    const cloned = rawComponent(Number(componentResult.lastInsertRowid));
+    recordStrategicAuditEvent({
+      entity_type: "component",
+      entity_id: Number(cloned.id),
+      event_type: "create",
+      entity_display_name: String(cloned.label),
+      parent_priority_name: context.priority_name,
+      parent_goal_name: context.goal_name,
+      previous_value: null,
+      new_value: {
+        ...stableSnapshot(cloned, ["slug", ...SUCCESSOR_COMPONENT_CLONE_FIELDS]),
+        predecessor_component_id: Number(before.id),
+      },
+      actor_id: actorId,
+      source_reference: successor.source_reference,
+    });
+
+    const allTargets = db
+      .prepare(
+        `SELECT * FROM kpi_targets
+         WHERE component_id = ? AND kpi_id IS NULL AND archived_at IS NULL
+           AND configuration_status <> 'archived'
+         ORDER BY target_scope, reporting_year, target_year, id`,
+      )
+      .all(Number(before.id)) as RawRow[];
+    const targets = allTargets.filter((target) =>
+      successorTargetApplies(
+        target,
+        allTargets,
+        successor.effective_from_year,
+        endYear,
+      ),
+    );
+    for (const target of targets) {
+      const targetResult = db
+        .prepare(
+          `INSERT INTO kpi_targets (
+             kpi_id, component_id, ${SUCCESSOR_TARGET_CLONE_FIELDS.join(", ")},
+             created_by, updated_by
+           ) VALUES (NULL, ?, ${SUCCESSOR_TARGET_CLONE_FIELDS.map(() => "?").join(", ")}, ?, ?)`,
+        )
+        .run(
+          Number(cloned.id),
+          ...SUCCESSOR_TARGET_CLONE_FIELDS.map((field) => target[field] ?? null),
+          actorId,
+          actorId,
+        );
+      const clonedTarget = rawTarget(Number(targetResult.lastInsertRowid));
+      recordStrategicAuditEvent({
+        entity_type: "target",
+        entity_id: Number(clonedTarget.id),
+        event_type: "create",
+        entity_display_name: String(
+          clonedTarget.target_description ?? `${String(cloned.label)} target`,
+        ),
+        parent_priority_name: context.priority_name,
+        parent_goal_name: context.goal_name,
+        previous_value: null,
+        new_value: {
+          ...stableSnapshot(clonedTarget, SUCCESSOR_TARGET_CLONE_FIELDS),
+          predecessor_target_id: Number(target.id),
+          predecessor_component_id: Number(before.id),
+        },
+        actor_id: actorId,
+        source_reference:
+          String(clonedTarget.source_reference ?? "") || null,
+      });
+    }
+
+    const bands = db
+      .prepare(
+        `SELECT * FROM distribution_bands
+         WHERE component_id = ? AND archived_at IS NULL
+           AND effective_from_year <= ?
+           AND (effective_to_year IS NULL OR effective_to_year >= ?)
+         ORDER BY display_order, id`,
+      )
+      .all(
+        Number(before.id),
+        endYear,
+        successor.effective_from_year,
+      ) as RawRow[];
+    for (const band of bands) {
+      const clonedStart = Math.max(
+        successor.effective_from_year,
+        Number(band.effective_from_year),
+      );
+      const clonedEnd = Math.min(
+        endYear,
+        band.effective_to_year == null
+          ? endYear
+          : Number(band.effective_to_year),
+      );
+      const bandResult = db
+        .prepare(
+          `INSERT INTO distribution_bands (
+             kpi_id, component_id, slug, label, effective_from_year,
+             effective_to_year, display_order, is_unknown, is_declined,
+             derived_group, created_by, updated_by
+           ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        )
+        .run(
+          successor.kpi_id,
+          Number(cloned.id),
+          String(band.slug),
+          String(band.label),
+          clonedStart,
+          clonedEnd,
+          Number(band.display_order),
+          Number(band.is_unknown),
+          Number(band.is_declined),
+          band.derived_group ?? null,
+          actorId,
+          actorId,
+        );
+      const clonedBand = db
+        .prepare("SELECT * FROM distribution_bands WHERE id = ?")
+        .get(Number(bandResult.lastInsertRowid)) as RawRow;
+      recordStrategicAuditEvent({
+        entity_type: "distribution_band",
+        entity_id: Number(clonedBand.id),
+        event_type: "create",
+        entity_display_name: String(clonedBand.label),
+        parent_priority_name: context.priority_name,
+        parent_goal_name: context.goal_name,
+        previous_value: null,
+        new_value: {
+          ...stableSnapshot(clonedBand, [
+            "slug",
+            "label",
+            "effective_from_year",
+            "effective_to_year",
+            "display_order",
+            "is_unknown",
+            "is_declined",
+            "derived_group",
+          ]),
+          predecessor_band_id: Number(band.id),
+          predecessor_component_id: Number(before.id),
+        },
+        actor_id: actorId,
+      });
+    }
+  }
+}
+
+/**
+ * Split an effective-dated definition at a future boundary without rewriting
+ * values already interpreted by the predecessor. The predecessor truncation,
+ * successor insert, and both audit events commit or roll back together.
+ */
+export function createSuccessorMeasurementConfiguration(
+  input: unknown,
+  actorId: number | null = null,
+): SuccessorMeasurementConfigurationResult {
+  const parsed = parse(
+    SuccessorMeasurementConfigurationSchema,
+    input,
+    "Invalid successor measurement configuration.",
+  );
+  return transaction(() => {
+    const before = rawConfiguration(parsed.predecessor_id);
+    requireEditable(before, "measurement configuration");
+    const kpiId = Number(before.kpi_id);
+    if (parsed.successor.kpi_id !== kpiId) {
+      throw new StrategyEditConflictError(
+        "The successor must belong to the predecessor KPI.",
+        "successor_kpi_mismatch",
+      );
+    }
+
+    const predecessorStart = Number(before.effective_from_year);
+    const predecessorEnd =
+      before.effective_to_year == null
+        ? null
+        : Number(before.effective_to_year);
+    const successorStart = parsed.successor.effective_start_year;
+    if (successorStart <= predecessorStart) {
+      throw new StrategyEditConflictError(
+        "A successor must start after the predecessor's first effective year.",
+        "invalid_successor_start",
+      );
+    }
+    if (predecessorEnd !== null && successorStart > predecessorEnd + 1) {
+      throw new StrategyEditConflictError(
+        "A successor must begin during or immediately after the predecessor range.",
+        "successor_effective_gap",
+      );
+    }
+    const reusableComponents = assertSuccessorConfigurationCompatibility(
+      before,
+      parsed.successor,
+    );
+    const requiredSuccessorEnd =
+      predecessorEnd !== null && successorStart <= predecessorEnd
+        ? predecessorEnd
+        : STRATEGIC_PLAN_END_YEAR;
+    if (parsed.successor.effective_end_year !== requiredSuccessorEnd) {
+      throw new StrategyEditConflictError(
+        `The successor must preserve continuous measurement coverage through ${requiredSuccessorEnd}.`,
+        "successor_effective_coverage",
+      );
+    }
+
+    const truncatedEnd = successorStart - 1;
+    ensureConfigurationHistoryFits(
+      parsed.predecessor_id,
+      predecessorStart,
+      truncatedEnd,
+    );
+    ensureNoConfigurationOverlap(
+      kpiId,
+      successorStart,
+      parsed.successor.effective_end_year,
+      parsed.predecessor_id,
+    );
+
+    if (predecessorEnd === null || predecessorEnd >= successorStart) {
+      getDb()
+        .prepare(
+          `UPDATE kpi_measurement_configs
+           SET effective_to_year = ?, updated_by = ?, updated_at = datetime('now')
+           WHERE id = ?`,
+        )
+        .run(truncatedEnd, actorId, parsed.predecessor_id);
+      const after = rawConfiguration(parsed.predecessor_id);
+      const context = auditContextForKpi(kpiId);
+      recordStrategicAuditEvent({
+        entity_type: "measurement_config",
+        entity_id: parsed.predecessor_id,
+        event_type: "update",
+        entity_display_name: `${context.kpi_name} measurement configuration`,
+        parent_priority_name: context.priority_name,
+        parent_goal_name: context.goal_name,
+        previous_value: stableSnapshot(before, CONFIG_FIELDS),
+        new_value: stableSnapshot(after, CONFIG_FIELDS),
+        actor_id: actorId,
+        source_reference: String(after.source_reference ?? "") || null,
+      });
+    }
+
+    const successor = createMeasurementConfiguration(parsed.successor, actorId);
+    cloneSuccessorComponents(reusableComponents, successor, actorId);
+    return {
+      predecessor: asMeasurementConfig(
+        rawConfiguration(parsed.predecessor_id),
+      ),
+      successor,
+    };
   });
 }
 
@@ -481,6 +1514,42 @@ export function updateMeasurementConfiguration(
     const before = rawConfiguration(patch.id);
     requireEditable(before, "measurement configuration");
     const merged = mergedConfiguration(before, patch);
+    const values = configurationValues(merged);
+    const semanticFieldsChanged = fieldsChanged(
+      before,
+      values,
+      CONFIG_CALCULATION_SEMANTIC_FIELDS,
+    );
+    if (
+      (semanticFieldsChanged ||
+        calculationStatusMeaningChanged(before, values)) &&
+      configurationHasHistoricalValuesInRange(
+        patch.id,
+        merged.effective_start_year,
+        merged.effective_end_year,
+      )
+    ) {
+      rejectHistoricalSemanticEdit(
+        "Historical values already use this calculation definition. Create a new effective-dated measurement configuration instead of editing it in place.",
+      );
+    }
+    if (
+      semanticFieldsChanged &&
+      configurationHasDefinedTarget(
+        Number(before.kpi_id),
+        Math.min(Number(before.effective_from_year), merged.effective_start_year),
+        Math.max(
+          before.effective_to_year == null
+            ? STRATEGIC_PLAN_END_YEAR
+            : Number(before.effective_to_year),
+          merged.effective_end_year ?? STRATEGIC_PLAN_END_YEAR,
+        ),
+      )
+    ) {
+      rejectHistoricalSemanticEdit(
+        "Configured targets already use this calculation definition. Create an effective-dated successor and boundary targets instead of reinterpreting them in place.",
+      );
+    }
     validateConfigurationTransition(before, merged);
     ensureNoConfigurationOverlap(
       Number(before.kpi_id),
@@ -493,7 +1562,15 @@ export function updateMeasurementConfiguration(
       merged.effective_start_year,
       merged.effective_end_year,
     );
-    const values = configurationValues(merged);
+    assertFullPlanTargetConfigurationIntegrity({
+      kpiId: Number(before.kpi_id),
+      configurations: activeConfigurationRows(Number(before.kpi_id)).map(
+        (configuration) =>
+          Number(configuration.id) === patch.id
+            ? { ...configuration, ...values }
+            : configuration,
+      ),
+    });
     if (!rowChanged(before, values)) return asMeasurementConfig(before);
     getDb()
       .prepare(
@@ -539,6 +1616,150 @@ const GOAL_SETTING_FIELDS = [
   "last_reviewed_date",
 ] as const;
 
+const GOAL_COMPLETION_SEMANTIC_FIELDS = [
+  "completion_rule",
+  "threshold_count",
+  "threshold_percentage",
+] as const;
+
+function goalHasHistoricalValuesInRange(
+  goal: RawRow,
+  requestedStart: number,
+  requestedEnd: number,
+): boolean {
+  const memberships = getDb()
+    .prepare(
+      `SELECT kpi_id, effective_from_year, effective_to_year
+       FROM goal_kpis
+       WHERE goal_id = ? AND is_required = 1`,
+    )
+    .all(Number(goal.id)) as Array<{
+    kpi_id: number;
+    effective_from_year: number;
+    effective_to_year: number | null;
+  }>;
+  const goalStart = Math.max(Number(goal.plan_start_year), requestedStart);
+  const goalEnd = Math.min(Number(goal.plan_end_year), requestedEnd);
+  return memberships.some((membership) => {
+    const startYear = Math.max(goalStart, membership.effective_from_year);
+    const endYear = Math.min(
+      goalEnd,
+      membership.effective_to_year ?? goalEnd,
+    );
+    return (
+      startYear <= endYear &&
+      kpiHasHistoricalValuesInRange(membership.kpi_id, startYear, endYear)
+    );
+  });
+}
+
+function goalHasHistoricalValues(goal: RawRow): boolean {
+  return goalHasHistoricalValuesInRange(
+    goal,
+    Number(goal.plan_start_year),
+    Number(goal.plan_end_year),
+  );
+}
+
+function snapshotContainsManualGoalResult(value: string | null): boolean {
+  if (!value) return false;
+  try {
+    const snapshot = JSON.parse(value) as Record<string, unknown>;
+    return (
+      snapshot.completion_rule === "manual_status" &&
+      snapshot.manual_status !== null &&
+      snapshot.manual_status !== undefined
+    );
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * A populated manual status proves that the manual completion rule has been
+ * used historically. The status value remains operational and editable; this
+ * guard exists to prevent the rule itself from being reinterpreted in place.
+ */
+function goalHasRecordedManualResult(goal: RawRow): boolean {
+  if (
+    goal.completion_rule === "manual_status" &&
+    goal.manual_status !== null &&
+    goal.manual_status !== undefined
+  ) {
+    return true;
+  }
+  const events = getDb()
+    .prepare(
+      `SELECT previous_value_json, new_value_json
+       FROM strategic_audit_events
+       WHERE entity_type = 'strategic_goal' AND entity_id = ?
+       ORDER BY id DESC`,
+    )
+    .all(Number(goal.id)) as Array<{
+    previous_value_json: string | null;
+    new_value_json: string | null;
+  }>;
+  return events.some(
+    (event) =>
+      snapshotContainsManualGoalResult(event.previous_value_json) ||
+      snapshotContainsManualGoalResult(event.new_value_json),
+  );
+}
+
+function mergedStrategicGoal(
+  before: RawRow,
+  patch: z.output<typeof StrategicGoalSettingsUpdateSchema>,
+) {
+  return parse(
+    StrategicGoalInputSchema,
+    {
+      priority_id: Number(before.priority_id),
+      slug: String(before.slug),
+      name: String(before.name),
+      description: before.description ?? null,
+      completion_rule: patch.completion_rule ?? before.completion_rule,
+      threshold_count:
+        patch.threshold_count === undefined
+          ? before.threshold_count ?? null
+          : patch.threshold_count,
+      threshold_percentage:
+        patch.threshold_percentage === undefined
+          ? before.threshold_percentage ?? null
+          : patch.threshold_percentage,
+      manual_status:
+        patch.manual_status === undefined
+          ? before.manual_status ?? null
+          : patch.manual_status,
+      board_level_status: patch.board_level_status ?? before.board_level_status,
+      display_order: Number(before.sort_order),
+      effective_start_year: Number(before.plan_start_year),
+      effective_end_year: Number(before.plan_end_year),
+      configuration_status:
+        patch.configuration_status ?? before.configuration_status,
+      unresolved_question:
+        patch.unresolved_question === undefined
+          ? before.unresolved_question ?? null
+          : patch.unresolved_question,
+      owner: patch.owner === undefined ? before.owner ?? null : patch.owner,
+      due_date:
+        patch.due_date === undefined ? before.due_date ?? null : patch.due_date,
+      resolution_notes:
+        patch.resolution_notes === undefined
+          ? before.resolution_notes ?? null
+          : patch.resolution_notes,
+      source_reference:
+        patch.source_reference === undefined
+          ? before.source_reference ?? null
+          : patch.source_reference,
+      last_reviewed_date:
+        patch.last_reviewed_date === undefined
+          ? before.last_reviewed_date ?? null
+          : patch.last_reviewed_date,
+    },
+    "Invalid strategic goal update.",
+  );
+}
+
 export function updateStrategicGoalSettings(
   input: unknown,
   actorId: number | null = null,
@@ -551,54 +1772,7 @@ export function updateStrategicGoalSettings(
   return transaction(() => {
     const before = rawGoal(patch.id);
     requireEditable(before, "strategic goal");
-    const merged = parse(
-      StrategicGoalInputSchema,
-      {
-        priority_id: Number(before.priority_id),
-        slug: String(before.slug),
-        name: String(before.name),
-        description: before.description ?? null,
-        completion_rule: patch.completion_rule ?? before.completion_rule,
-        threshold_count:
-          patch.threshold_count === undefined
-            ? before.threshold_count ?? null
-            : patch.threshold_count,
-        threshold_percentage:
-          patch.threshold_percentage === undefined
-            ? before.threshold_percentage ?? null
-            : patch.threshold_percentage,
-        manual_status:
-          patch.manual_status === undefined
-            ? before.manual_status ?? null
-            : patch.manual_status,
-        board_level_status: patch.board_level_status ?? before.board_level_status,
-        display_order: Number(before.sort_order),
-        effective_start_year: Number(before.plan_start_year),
-        effective_end_year: Number(before.plan_end_year),
-        configuration_status:
-          patch.configuration_status ?? before.configuration_status,
-        unresolved_question:
-          patch.unresolved_question === undefined
-            ? before.unresolved_question ?? null
-            : patch.unresolved_question,
-        owner: patch.owner === undefined ? before.owner ?? null : patch.owner,
-        due_date:
-          patch.due_date === undefined ? before.due_date ?? null : patch.due_date,
-        resolution_notes:
-          patch.resolution_notes === undefined
-            ? before.resolution_notes ?? null
-            : patch.resolution_notes,
-        source_reference:
-          patch.source_reference === undefined
-            ? before.source_reference ?? null
-            : patch.source_reference,
-        last_reviewed_date:
-          patch.last_reviewed_date === undefined
-            ? before.last_reviewed_date ?? null
-            : patch.last_reviewed_date,
-      },
-      "Invalid strategic goal update.",
-    );
+    const merged = mergedStrategicGoal(before, patch);
     const values: Record<string, unknown> = {
       completion_rule: merged.completion_rule,
       threshold_count: merged.threshold_count,
@@ -613,6 +1787,15 @@ export function updateStrategicGoalSettings(
       source_reference: merged.source_reference,
       last_reviewed_date: merged.last_reviewed_date,
     };
+    if (
+      (fieldsChanged(before, values, GOAL_COMPLETION_SEMANTIC_FIELDS) ||
+        calculationStatusMeaningChanged(before, values)) &&
+      (goalHasHistoricalValues(before) || goalHasRecordedManualResult(before))
+    ) {
+      rejectHistoricalSemanticEdit(
+        "Historical values already use this goal's completion semantics. In-place rule and threshold changes are not allowed.",
+      );
+    }
     if (!rowChanged(before, values)) return asStrategicGoal(before);
     getDb()
       .prepare(
@@ -642,11 +1825,304 @@ export function updateStrategicGoalSettings(
   });
 }
 
+const SuccessorStrategicGoalSchema = z
+  .object({
+    predecessor_id: z.number().int().positive(),
+    effective_start_year: z.number().int().min(1900).max(2100),
+    update: StrategicGoalSettingsUpdateSchema,
+  })
+  .strict();
+
+export interface SuccessorStrategicGoalResult {
+  predecessor: PersistedStrategicGoal;
+  successor: PersistedStrategicGoal;
+}
+
+const GOAL_VERSION_FIELDS = [
+  "plan_start_year",
+  "plan_end_year",
+  ...GOAL_SETTING_FIELDS,
+] as const;
+
+function availableSuccessorGoalSlug(baseSlug: string, startYear: number): string {
+  const stem = `${baseSlug.slice(0, 80)}-from-${startYear}`;
+  let candidate = stem;
+  let suffix = 2;
+  while (
+    getDb()
+      .prepare("SELECT 1 FROM strategic_goals WHERE slug = ?")
+      .get(candidate)
+  ) {
+    candidate = `${stem}-${suffix}`;
+    suffix += 1;
+  }
+  return candidate;
+}
+
+/** Version a goal rule while retaining one effective goal for each plan year. */
+export function createSuccessorStrategicGoal(
+  input: unknown,
+  actorId: number | null = null,
+): SuccessorStrategicGoalResult {
+  const parsed = parse(
+    SuccessorStrategicGoalSchema,
+    input,
+    "Invalid successor strategic goal.",
+  );
+  return transaction(() => {
+    const before = rawGoal(parsed.predecessor_id);
+    requireEditable(before, "strategic goal");
+    if (parsed.update.id !== parsed.predecessor_id) {
+      throw new StrategyEditConflictError(
+        "The successor update must reference its predecessor goal.",
+        "successor_goal_mismatch",
+      );
+    }
+    const predecessorStart = Number(before.plan_start_year);
+    const predecessorEnd = Number(before.plan_end_year);
+    const successorStart = parsed.effective_start_year;
+    if (successorStart > STRATEGIC_PLAN_END_YEAR) {
+      throw new StrategyEditConflictError(
+        "Successor goals in this strategic-plan workflow must start by 2029.",
+        "successor_outside_plan",
+      );
+    }
+    if (successorStart <= predecessorStart || successorStart > predecessorEnd) {
+      throw new StrategyEditConflictError(
+        "The successor goal must start after the predecessor begins and within its plan range.",
+        "invalid_successor_start",
+      );
+    }
+    if (
+      goalHasHistoricalValuesInRange(
+        before,
+        successorStart,
+        predecessorEnd,
+      )
+    ) {
+      rejectHistoricalSemanticEdit(
+        "Historical values already use the predecessor goal during the requested successor range. Choose a later start year.",
+      );
+    }
+
+    const merged = mergedStrategicGoal(before, parsed.update);
+    const successorSlug = availableSuccessorGoalSlug(
+      String(before.slug),
+      successorStart,
+    );
+    getDb()
+      .prepare(
+        `UPDATE strategic_goals
+         SET plan_end_year = ?, updated_by = ?, updated_at = datetime('now')
+         WHERE id = ?`,
+      )
+      .run(successorStart - 1, actorId, parsed.predecessor_id);
+
+    const successorResult = getDb()
+      .prepare(
+        `INSERT INTO strategic_goals (
+           priority_id, slug, name, description, plan_start_year, plan_end_year,
+           completion_rule, threshold_count, threshold_percentage, manual_status,
+           board_level_status, configuration_status, unresolved_question,
+           owner, due_date, resolution_notes, source_reference,
+           last_reviewed_date, sort_order, created_by, updated_by
+         ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      )
+      .run(
+        Number(before.priority_id),
+        successorSlug,
+        String(before.name),
+        before.description ?? null,
+        successorStart,
+        predecessorEnd,
+        merged.completion_rule,
+        merged.threshold_count,
+        merged.threshold_percentage,
+        merged.manual_status,
+        merged.board_level_status,
+        merged.configuration_status,
+        merged.unresolved_question,
+        merged.owner,
+        merged.due_date,
+        merged.resolution_notes,
+        merged.source_reference,
+        merged.last_reviewed_date,
+        Number(before.sort_order),
+        actorId,
+        actorId,
+      );
+    const successorId = Number(successorResult.lastInsertRowid);
+
+    const membershipIds = getDb()
+      .prepare(
+        `SELECT id FROM goal_kpis
+         WHERE goal_id = ? AND archived_at IS NULL
+           AND effective_from_year <= ?
+           AND (effective_to_year IS NULL OR effective_to_year >= ?)
+         ORDER BY display_order, id`,
+      )
+      .all(parsed.predecessor_id, predecessorEnd, successorStart) as Array<{
+      id: number;
+    }>;
+    for (const { id } of membershipIds) {
+      const membershipBefore = rawGoalMembership(id);
+      const memberStart = Number(membershipBefore.effective_from_year);
+      const memberEnd =
+        membershipBefore.effective_to_year == null
+          ? null
+          : Number(membershipBefore.effective_to_year);
+      const successorMemberStart = Math.max(successorStart, memberStart);
+      const successorMemberEnd =
+        memberEnd === null ? null : Math.min(predecessorEnd, memberEnd);
+
+      if (memberStart < successorStart) {
+        getDb()
+          .prepare(
+            `UPDATE goal_kpis
+             SET effective_to_year = ?, updated_by = ?, updated_at = datetime('now')
+             WHERE id = ?`,
+          )
+          .run(successorStart - 1, actorId, id);
+        const membershipAfter = rawGoalMembership(id);
+        recordStrategicAuditEvent({
+          entity_type: "goal_membership",
+          entity_id: id,
+          event_type: "update",
+          entity_display_name: `${String(membershipAfter.kpi_name)} membership`,
+          parent_priority_name: String(membershipAfter.priority_name),
+          parent_goal_name: String(membershipAfter.goal_name),
+          previous_value: stableSnapshot(membershipBefore, [
+            "is_required",
+            "weight",
+            "display_order",
+            "effective_from_year",
+            "effective_to_year",
+          ]),
+          new_value: {
+            ...stableSnapshot(membershipAfter, [
+              "is_required",
+              "weight",
+              "display_order",
+              "effective_from_year",
+              "effective_to_year",
+            ]),
+            successor_goal_id: successorId,
+          },
+          actor_id: actorId,
+          source_reference:
+            String(membershipAfter.goal_source_reference ?? "") || null,
+        });
+      }
+
+      const inserted = getDb()
+        .prepare(
+          `INSERT INTO goal_kpis (
+             goal_id, kpi_id, is_required, weight, display_order,
+             effective_from_year, effective_to_year, created_by, updated_by
+           ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        )
+        .run(
+          successorId,
+          Number(membershipBefore.kpi_id),
+          Number(membershipBefore.is_required),
+          Number(membershipBefore.weight),
+          Number(membershipBefore.display_order),
+          successorMemberStart,
+          successorMemberEnd,
+          actorId,
+          actorId,
+        );
+      const successorMembership = rawGoalMembership(
+        Number(inserted.lastInsertRowid),
+      );
+      recordStrategicAuditEvent({
+        entity_type: "goal_membership",
+        entity_id: Number(successorMembership.id),
+        event_type: "create",
+        entity_display_name: `${String(successorMembership.kpi_name)} membership`,
+        parent_priority_name: String(successorMembership.priority_name),
+        parent_goal_name: String(successorMembership.goal_name),
+        previous_value: {
+          predecessor_membership_id: id,
+          predecessor_goal_id: parsed.predecessor_id,
+        },
+        new_value: stableSnapshot(successorMembership, [
+          "is_required",
+          "weight",
+          "display_order",
+          "effective_from_year",
+          "effective_to_year",
+        ]),
+        actor_id: actorId,
+        source_reference:
+          String(successorMembership.goal_source_reference ?? "") || null,
+      });
+    }
+
+    const predecessor = rawGoal(parsed.predecessor_id);
+    const successor = rawGoal(successorId);
+    recordStrategicAuditEvent({
+      entity_type: "strategic_goal",
+      entity_id: parsed.predecessor_id,
+      event_type: "update",
+      entity_display_name: String(predecessor.name),
+      parent_priority_name: String(predecessor.priority_name),
+      parent_goal_name: String(predecessor.name),
+      previous_value: stableSnapshot(before, GOAL_VERSION_FIELDS),
+      new_value: {
+        ...stableSnapshot(predecessor, GOAL_VERSION_FIELDS),
+        successor_goal_id: successorId,
+      },
+      actor_id: actorId,
+      source_reference: String(predecessor.source_reference ?? "") || null,
+    });
+    recordStrategicAuditEvent({
+      entity_type: "strategic_goal",
+      entity_id: successorId,
+      event_type: "create",
+      entity_display_name: String(successor.name),
+      parent_priority_name: String(successor.priority_name),
+      parent_goal_name: String(successor.name),
+      previous_value: { predecessor_goal_id: parsed.predecessor_id },
+      new_value: stableSnapshot(successor, GOAL_VERSION_FIELDS),
+      actor_id: actorId,
+      source_reference: String(successor.source_reference ?? "") || null,
+    });
+    return {
+      predecessor: asStrategicGoal(predecessor),
+      successor: asStrategicGoal(successor),
+    };
+  });
+}
+
 const GOAL_MEMBERSHIP_SETTING_FIELDS = [
   "is_required",
   "weight",
   "display_order",
 ] as const;
+
+const GOAL_MEMBERSHIP_SEMANTIC_FIELDS = ["is_required", "weight"] as const;
+
+function membershipHasHistoricalValues(membership: RawRow): boolean {
+  const startYear = Math.max(
+    Number(membership.effective_from_year),
+    Number(membership.goal_plan_start_year),
+  );
+  const endYear = Math.min(
+    membership.effective_to_year == null
+      ? Number(membership.goal_plan_end_year)
+      : Number(membership.effective_to_year),
+    Number(membership.goal_plan_end_year),
+  );
+  return (
+    startYear <= endYear &&
+    kpiHasHistoricalValuesInRange(
+      Number(membership.kpi_id),
+      startYear,
+      endYear,
+    )
+  );
+}
 
 /**
  * Update an existing goal membership without changing its identity or
@@ -699,6 +2175,14 @@ export function updateStrategicGoalMembership(
       weight: merged.weight,
       display_order: merged.display_order,
     };
+    if (
+      fieldsChanged(before, values, GOAL_MEMBERSHIP_SEMANTIC_FIELDS) &&
+      membershipHasHistoricalValues(before)
+    ) {
+      rejectHistoricalSemanticEdit(
+        "Historical values already use this goal membership. In-place role and weight changes are not allowed.",
+      );
+    }
     if (!rowChanged(before, values)) return asGoalMembership(before);
 
     getDb()
@@ -727,6 +2211,171 @@ export function updateStrategicGoalMembership(
   });
 }
 
+const SuccessorStrategicGoalMembershipSchema = z
+  .object({
+    predecessor_id: z.number().int().positive(),
+    effective_start_year: z.number().int().min(1900).max(2100),
+    role: z.enum(["required", "informational"]),
+    weight: z.number().finite().positive(),
+    display_order: z.number().int().nonnegative(),
+  })
+  .strict();
+
+export interface SuccessorStrategicGoalMembershipResult {
+  predecessor: PersistedGoalMembership;
+  successor: PersistedGoalMembership;
+}
+
+export function createSuccessorStrategicGoalMembership(
+  input: unknown,
+  actorId: number | null = null,
+): SuccessorStrategicGoalMembershipResult {
+  const parsed = parse(
+    SuccessorStrategicGoalMembershipSchema,
+    input,
+    "Invalid successor strategic goal membership.",
+  );
+  return transaction(() => {
+    const before = rawGoalMembership(parsed.predecessor_id);
+    if (
+      before.archived_at != null ||
+      before.goal_archived_at != null ||
+      before.kpi_archived_at != null ||
+      before.priority_archived_at != null
+    ) {
+      throw new StrategyEditConflictError(
+        "Restore the membership and its strategic-plan parents before versioning it.",
+        "archived_membership_context",
+      );
+    }
+
+    const predecessorStart = Number(before.effective_from_year);
+    const predecessorEnd =
+      before.effective_to_year == null
+        ? null
+        : Number(before.effective_to_year);
+    const goalEnd = Number(before.goal_plan_end_year);
+    const successorStart = parsed.effective_start_year;
+    const effectiveEnd = predecessorEnd ?? goalEnd;
+    if (successorStart > STRATEGIC_PLAN_END_YEAR) {
+      throw new StrategyEditConflictError(
+        "Successor memberships in this strategic-plan workflow must start by 2029.",
+        "successor_outside_plan",
+      );
+    }
+    if (
+      successorStart <= predecessorStart ||
+      successorStart > effectiveEnd ||
+      successorStart > goalEnd
+    ) {
+      throw new StrategyEditConflictError(
+        "The successor membership must start after the predecessor begins and within its effective goal range.",
+        "invalid_successor_start",
+      );
+    }
+    if (
+      kpiHasHistoricalValuesInRange(
+        Number(before.kpi_id),
+        successorStart,
+        Math.min(effectiveEnd, goalEnd),
+      )
+    ) {
+      rejectHistoricalSemanticEdit(
+        "Historical values already use this membership during the requested successor range. Choose a later start year.",
+      );
+    }
+
+    const overlap = getDb()
+      .prepare(
+        `SELECT id FROM goal_kpis
+         WHERE goal_id = ? AND kpi_id = ? AND id <> ?
+           AND effective_from_year <= ?
+           AND (effective_to_year IS NULL OR effective_to_year >= ?)
+         LIMIT 1`,
+      )
+      .get(
+        Number(before.goal_id),
+        Number(before.kpi_id),
+        parsed.predecessor_id,
+        predecessorEnd ?? 2100,
+        successorStart,
+      ) as { id: number } | undefined;
+    if (overlap) {
+      throw new StrategyEditConflictError(
+        `Successor membership overlaps membership ${overlap.id}.`,
+        "effective_range_overlap",
+      );
+    }
+
+    getDb()
+      .prepare(
+        `UPDATE goal_kpis
+         SET effective_to_year = ?, updated_by = ?, updated_at = datetime('now')
+         WHERE id = ?`,
+      )
+      .run(successorStart - 1, actorId, parsed.predecessor_id);
+    const inserted = getDb()
+      .prepare(
+        `INSERT INTO goal_kpis (
+           goal_id, kpi_id, is_required, weight, display_order,
+           effective_from_year, effective_to_year, created_by, updated_by
+         ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      )
+      .run(
+        Number(before.goal_id),
+        Number(before.kpi_id),
+        parsed.role === "required" ? 1 : 0,
+        parsed.weight,
+        parsed.display_order,
+        successorStart,
+        predecessorEnd,
+        actorId,
+        actorId,
+      );
+    const predecessor = rawGoalMembership(parsed.predecessor_id);
+    const successor = rawGoalMembership(Number(inserted.lastInsertRowid));
+    const fields = [
+      ...GOAL_MEMBERSHIP_SETTING_FIELDS,
+      "effective_from_year",
+      "effective_to_year",
+    ] as const;
+    recordStrategicAuditEvent({
+      entity_type: "goal_membership",
+      entity_id: parsed.predecessor_id,
+      event_type: "update",
+      entity_display_name: `${String(predecessor.kpi_name)} membership`,
+      parent_priority_name: String(predecessor.priority_name),
+      parent_goal_name: String(predecessor.goal_name),
+      previous_value: stableSnapshot(before, fields),
+      new_value: {
+        ...stableSnapshot(predecessor, fields),
+        successor_membership_id: Number(successor.id),
+      },
+      actor_id: actorId,
+      source_reference:
+        String(predecessor.goal_source_reference ?? "") || null,
+    });
+    recordStrategicAuditEvent({
+      entity_type: "goal_membership",
+      entity_id: Number(successor.id),
+      event_type: "create",
+      entity_display_name: `${String(successor.kpi_name)} membership`,
+      parent_priority_name: String(successor.priority_name),
+      parent_goal_name: String(successor.goal_name),
+      previous_value: {
+        predecessor_membership_id: parsed.predecessor_id,
+      },
+      new_value: stableSnapshot(successor, fields),
+      actor_id: actorId,
+      source_reference: String(successor.goal_source_reference ?? "") || null,
+    });
+    return {
+      predecessor: asGoalMembership(predecessor),
+      successor: asGoalMembership(successor),
+    };
+  });
+}
+
 function targetSubject(
   target: Pick<
     ValidatedStrategicTargetCreate,
@@ -739,10 +2388,14 @@ function targetSubject(
       .prepare("SELECT id, archived_at FROM kpis WHERE id = ?")
       .get(kpiId) as { id: number; archived_at: string | null } | undefined;
     if (!kpi) throw new StrategyEditNotFoundError("kpi", kpiId);
-    const configurationYear =
+    const applicableConfigurationYear =
       target.target_scope === "annual"
         ? target.reporting_year ?? target.target_year
         : target.target_year;
+    const configurationYear = Math.min(
+      Math.max(applicableConfigurationYear, STRATEGIC_PLAN_START_YEAR),
+      STRATEGIC_PLAN_END_YEAR,
+    );
     const config = getDb()
       .prepare(
         `SELECT measurement_type, archived_at
@@ -791,28 +2444,165 @@ function validateTargetMeasurement(
       "archived_target_subject",
     );
   }
+  const domainValue = resolveConfiguredTargetValue({
+    measurementType: subject.measurement_type,
+    targetValue: target.target_value,
+    structuredTarget: target.structured_target,
+    targetDescription: target.target_description,
+    // Domain constraints apply even while a Target is still a draft.
+    configurationStatus: "active",
+  });
   if (
     subject.measurement_type === "percentage" &&
-    target.target_value !== null &&
-    (target.target_value < 0 || target.target_value > 100)
+    domainValue !== null &&
+    (domainValue < 0 || domainValue > 100)
   ) {
     throw new StrategyEditValidationError("Invalid strategic target.", [
       { path: "target_value", message: "Percentage targets must be between 0 and 100." },
     ]);
   }
   if (
+    subject.measurement_type === "binary" &&
+    domainValue !== null &&
+    domainValue !== 0 &&
+    domainValue !== 1
+  ) {
+    throw new StrategyEditValidationError("Invalid strategic target.", [
+      { path: "target_value", message: "Binary targets must resolve to 0 or 1." },
+    ]);
+  }
+  if (
     (target.configuration_status === "ready" ||
       target.configuration_status === "active") &&
-    target.target_value === null &&
-    target.structured_target === null &&
-    !(subject.measurement_type === "binary" && target.target_description !== null)
+    domainValue === null
   ) {
     throw new StrategyEditValidationError("Invalid strategic target.", [
       {
         path: "target_value",
-        message: "Ready and active targets require a numeric or structured value.",
+        message:
+          "Ready and active targets require a calculable numeric or supported structured value.",
       },
     ]);
+  }
+}
+
+/** Removing a boundary Target must not make another KPI-scoped target cross definitions. */
+export function assertStrategyEntityArchiveIntegrity(
+  kind: "component" | "target",
+  id: number,
+): void {
+  if (kind === "component") {
+    assertComponentTargetSemanticsMutable(rawComponent(id));
+    return;
+  }
+  const target = rawTarget(id);
+  if (
+    target.kpi_id == null ||
+    target.component_id != null ||
+    target.target_scope !== "full_plan"
+  ) {
+    return;
+  }
+  const kpiId = Number(target.kpi_id);
+  assertFullPlanTargetConfigurationIntegrity({
+    kpiId,
+    targets: activeParentTargetRows(kpiId).filter(
+      (candidate) => Number(candidate.id) !== id,
+    ),
+  });
+}
+
+/**
+ * Re-run temporal invariants before a generic archive lifecycle operation
+ * makes a configuration or Target effective again. Archived rows can be
+ * edited around by active rows, so restoration must be held to the same
+ * semantic-boundary rules as create and update.
+ */
+export function assertStrategyEntityRestoreIntegrity(
+  kind: "measurement_config" | "component" | "target",
+  id: number,
+  restoredStatus: ConfigurationStatus,
+): void {
+  if (kind === "measurement_config") {
+    const configuration = rawConfiguration(id);
+    const kpiId = Number(configuration.kpi_id);
+    ensureNoConfigurationOverlap(
+      kpiId,
+      Number(configuration.effective_from_year),
+      configuration.effective_to_year == null
+        ? null
+        : Number(configuration.effective_to_year),
+      id,
+    );
+    assertFullPlanTargetConfigurationIntegrity({
+      kpiId,
+      configurations: [
+        ...activeConfigurationRows(kpiId).filter(
+          (candidate) => Number(candidate.id) !== id,
+        ),
+        {
+          ...configuration,
+          archived_at: null,
+          configuration_status: restoredStatus,
+        },
+      ],
+    });
+    return;
+  }
+
+  if (kind === "component") {
+    assertComponentTargetSemanticsMutable(rawComponent(id));
+    return;
+  }
+
+  const target = rawTarget(id);
+  const candidate: RawRow = {
+    ...target,
+    archived_at: null,
+    configuration_status: restoredStatus,
+  };
+  const subject = targetSubject({
+    kpi_id: target.kpi_id == null ? null : Number(target.kpi_id),
+    component_id:
+      target.component_id == null ? null : Number(target.component_id),
+    target_scope: String(target.target_scope) as "annual" | "full_plan",
+    reporting_year:
+      target.reporting_year == null ? null : Number(target.reporting_year),
+    target_year: Number(target.target_year),
+  });
+  if (subject.archived) {
+    throw new StrategyEditConflictError(
+      "Restore the target subject before restoring its target.",
+      "archived_target_subject",
+    );
+  }
+  try {
+    validateTargetMeasurement(
+      mergedTarget(candidate, { id }),
+      subject,
+    );
+  } catch (error) {
+    if (error instanceof StrategyEditValidationError) {
+      throw new StrategyEditConflictError(
+        `Target ${id} is incompatible with its current measurement definition. ${error.issues.map((issue) => issue.message).join(" ")}`,
+        "target_measurement_incompatible",
+      );
+    }
+    throw error;
+  }
+  if (
+    subject.kpi_id !== null &&
+    candidate.target_scope === "full_plan"
+  ) {
+    assertFullPlanTargetConfigurationIntegrity({
+      kpiId: subject.kpi_id,
+      targets: [
+        ...activeParentTargetRows(subject.kpi_id).filter(
+          (active) => Number(active.id) !== id,
+        ),
+        candidate,
+      ],
+    });
   }
 }
 
@@ -899,6 +2689,21 @@ export function createStrategicTarget(
     validateTargetMeasurement(parsed, subject);
     ensureNoTargetConflict(parsed, null);
     const values = targetValues(parsed);
+    if (subject.kpi_id !== null && parsed.target_scope === "full_plan") {
+      assertFullPlanTargetConfigurationIntegrity({
+        kpiId: subject.kpi_id,
+        targets: [
+          ...activeParentTargetRows(subject.kpi_id),
+          {
+            id: Number.MAX_SAFE_INTEGER,
+            kpi_id: subject.kpi_id,
+            component_id: null,
+            archived_at: null,
+            ...values,
+          },
+        ],
+      });
+    }
     const result = getDb()
       .prepare(
         `INSERT INTO kpi_targets (
@@ -1016,6 +2821,24 @@ export function updateStrategicTarget(
     validateTargetMeasurement(merged, subject);
     ensureNoTargetConflict(merged, patch.id);
     const values = targetValues(merged);
+    if (subject.kpi_id !== null) {
+      const targets = activeParentTargetRows(subject.kpi_id).filter(
+        (target) => Number(target.id) !== patch.id,
+      );
+      if (merged.target_scope === "full_plan") {
+        targets.push({
+          ...before,
+          ...values,
+          id: patch.id,
+          kpi_id: subject.kpi_id,
+          component_id: null,
+        });
+      }
+      assertFullPlanTargetConfigurationIntegrity({
+        kpiId: subject.kpi_id,
+        targets,
+      });
+    }
     if (!rowChanged(before, values)) return asTarget(before);
     getDb()
       .prepare(
@@ -1055,11 +2878,58 @@ const COMPONENT_FIELDS = [
   "fixed_denominator",
   "baseline_value",
   "previous_period_value",
+  "aggregation_role",
   "weight",
   "display_order",
   "configuration_status",
   "unresolved_question",
 ] as const;
+
+const COMPONENT_CALCULATION_SEMANTIC_FIELDS = [
+  "label",
+  "measurement_type",
+  "unit",
+  "numerator_label",
+  "denominator_label",
+  "fixed_denominator",
+  "baseline_value",
+  "previous_period_value",
+  "aggregation_role",
+  "weight",
+] as const;
+
+function componentHasHistoricalValues(id: number): boolean {
+  return Boolean(
+    getDb()
+      .prepare(
+        `SELECT 1 AS present FROM kpi_component_entries
+         WHERE component_id = ?
+         UNION ALL
+         SELECT 1 AS present FROM distribution_observations
+         WHERE component_id = ?
+         UNION ALL
+         SELECT 1 AS present
+         FROM kpi_components component
+         JOIN kpi_measurement_configs config
+           ON config.id = component.configuration_id
+         JOIN monthly_entries entry ON entry.kpi_id = component.kpi_id
+         WHERE component.id = ?
+           AND entry.year >= config.effective_from_year
+           AND (config.effective_to_year IS NULL OR entry.year <= config.effective_to_year)
+         UNION ALL
+         SELECT 1 AS present
+         FROM kpi_components component
+         JOIN kpi_measurement_configs config
+           ON config.id = component.configuration_id
+         JOIN breakdown_entries entry ON entry.kpi_id = component.kpi_id
+         WHERE component.id = ?
+           AND entry.year >= config.effective_from_year
+           AND (config.effective_to_year IS NULL OR entry.year <= config.effective_to_year)
+         LIMIT 1`,
+      )
+      .get(id, id, id, id),
+  );
+}
 
 function configurationForComponent(id: number): RawRow {
   const config = rawConfiguration(id);
@@ -1115,32 +2985,91 @@ function validateComponentDefinition(
   }
   parse(
     ComponentInputSchema,
-    {
-      parent_kpi_id: Number(config.kpi_id),
-      slug: String(component.slug),
-      label: String(component.label),
-      measurement_type: component.measurement_type,
-      unit: component.unit ?? null,
-      numerator_label: component.numerator_label ?? null,
-      denominator_label: component.denominator_label ?? null,
-      fixed_denominator: component.fixed_denominator ?? null,
-      value: null,
-      baseline_value: component.baseline_value ?? null,
-      previous_period_value: component.previous_period_value ?? null,
-      target_value: target?.target_value ?? null,
-      annual_target_value:
-        target?.target_scope === "annual" ? target.target_value ?? null : null,
-      target_year: target?.target_year ?? null,
-      target_description: target?.target_description ?? null,
-      weight: component.weight ?? 1,
-      display_order: Number(component.display_order),
-      configuration_status: component.configuration_status,
-      effective_start_year: Number(config.effective_from_year),
-      effective_end_year:
-        config.effective_to_year == null ? null : Number(config.effective_to_year),
-    },
+    componentDefinitionInput(component, config, target),
     "Invalid strategy component.",
   );
+}
+
+function componentDefinitionInput(
+  component: Record<string, unknown>,
+  config: RawRow,
+  target: RawRow | null,
+) {
+  return {
+    parent_kpi_id: Number(config.kpi_id),
+    slug: String(component.slug),
+    label: String(component.label),
+    measurement_type: component.measurement_type,
+    unit: component.unit ?? null,
+    numerator_label: component.numerator_label ?? null,
+    denominator_label: component.denominator_label ?? null,
+    fixed_denominator: component.fixed_denominator ?? null,
+    value: null,
+    baseline_value: component.baseline_value ?? null,
+    previous_period_value: component.previous_period_value ?? null,
+    aggregation_role: component.aggregation_role ?? "value",
+    target_value: target?.target_value ?? null,
+    annual_target_value:
+      target?.target_scope === "annual" ? target.target_value ?? null : null,
+    target_year: target?.target_year ?? null,
+    target_description: target?.target_description ?? null,
+    weight: component.weight ?? 1,
+    display_order: Number(component.display_order),
+    configuration_status: component.configuration_status,
+    effective_start_year: Number(config.effective_from_year),
+    effective_end_year:
+      config.effective_to_year == null ? null : Number(config.effective_to_year),
+  };
+}
+
+function validateSuccessorComponentSet(
+  components: RawRow[],
+  successor: ValidatedMeasurementConfigurationCreate,
+): void {
+  const proposedConfig: RawRow = {
+    id: Number.MAX_SAFE_INTEGER,
+    kpi_id: successor.kpi_id,
+    ...configurationValues(successor),
+  };
+  const inputs = components.map((component) => {
+    const targets = getDb()
+      .prepare(
+        `SELECT * FROM kpi_targets
+         WHERE component_id = ? AND kpi_id IS NULL AND archived_at IS NULL
+           AND configuration_status <> 'archived'
+         ORDER BY target_scope, reporting_year, target_year, id`,
+      )
+      .all(Number(component.id)) as RawRow[];
+    const applicableTarget = targets.find((target) =>
+      successorTargetApplies(
+        target,
+        targets,
+        successor.effective_start_year,
+        successor.effective_end_year!,
+      ),
+    ) ?? null;
+    const validationTarget = applicableTarget === null
+      ? null
+      : {
+          ...applicableTarget,
+          target_year: Math.min(
+            Math.max(Number(applicableTarget.target_year), STRATEGIC_PLAN_START_YEAR),
+            STRATEGIC_PLAN_END_YEAR,
+          ),
+        };
+    return componentDefinitionInput(component, proposedConfig, validationTarget);
+  });
+  const result = ComponentSetInputSchema.safeParse({
+    parent_kpi_id: successor.kpi_id,
+    aggregation_method: successor.aggregation_method,
+    components: inputs,
+  });
+  if (!result.success) {
+    throw new StrategyEditConflictError(
+      `The cloned component set is incompatible with the successor aggregation: ${result.error.issues.map((issue) => issue.message).join(" ")}`,
+      "successor_component_set_incompatible",
+    );
+  }
 }
 
 function componentTarget(componentId: number): RawRow | null {
@@ -1155,6 +3084,45 @@ function componentTarget(componentId: number): RawRow | null {
   );
 }
 
+function configurationHasAnyDefinedComponentTarget(
+  configurationId: number,
+): boolean {
+  return (getDb()
+    .prepare(
+      `SELECT target.*
+       FROM kpi_targets target
+       JOIN kpi_components component ON component.id = target.component_id
+       WHERE component.configuration_id = ?
+         AND target.kpi_id IS NULL AND target.archived_at IS NULL`,
+    )
+    .all(configurationId) as RawRow[]).some(targetCarriesDefinedSemantics);
+}
+
+function componentParentHasDefinedTarget(component: RawRow): boolean {
+  const config = rawConfiguration(Number(component.configuration_id));
+  return configurationHasDefinedTarget(
+    Number(component.kpi_id),
+    Number(config.effective_from_year),
+    config.effective_to_year == null
+      ? null
+      : Number(config.effective_to_year),
+  );
+}
+
+function assertComponentTargetSemanticsMutable(component: RawRow): void {
+  if (
+    componentParentHasDefinedTarget(component) ||
+    configurationHasAnyDefinedComponentTarget(
+      Number(component.configuration_id),
+    )
+  ) {
+    throw new StrategyEditConflictError(
+      "Configured targets already use this component definition. Create an effective-dated successor or archive the affected targets before changing the component set.",
+      "target_component_semantics_conflict",
+    );
+  }
+}
+
 export function createStrategyComponent(
   input: unknown,
   actorId: number | null = null,
@@ -1166,9 +3134,39 @@ export function createStrategyComponent(
   );
   return transaction(() => {
     const config = configurationForComponent(parsed.configuration_id);
+    if (
+      configurationHasHistoricalValuesInRange(
+        parsed.configuration_id,
+        Number(config.effective_from_year),
+        config.effective_to_year == null
+          ? null
+          : Number(config.effective_to_year),
+      )
+    ) {
+      rejectHistoricalSemanticEdit(
+        "Historical values already use this component set. Create an effective-dated successor before adding a component.",
+      );
+    }
+    if (
+      configurationHasDefinedTarget(
+        Number(config.kpi_id),
+        Number(config.effective_from_year),
+        config.effective_to_year == null
+          ? null
+          : Number(config.effective_to_year),
+      ) ||
+      configurationHasAnyDefinedComponentTarget(parsed.configuration_id)
+    ) {
+      throw new StrategyEditConflictError(
+        "Configured parent targets already use this component set. Create an effective-dated successor before adding a component.",
+        "target_component_semantics_conflict",
+      );
+    }
     const duplicate = getDb()
-      .prepare("SELECT id FROM kpi_components WHERE kpi_id = ? AND slug = ?")
-      .get(Number(config.kpi_id), parsed.slug) as { id: number } | undefined;
+      .prepare(
+        "SELECT id FROM kpi_components WHERE configuration_id = ? AND slug = ?",
+      )
+      .get(parsed.configuration_id, parsed.slug) as { id: number } | undefined;
     if (duplicate) {
       throw new StrategyEditConflictError(
         `Component slug already exists (${duplicate.id}).`,
@@ -1185,6 +3183,7 @@ export function createStrategyComponent(
       fixed_denominator: parsed.fixed_denominator,
       baseline_value: parsed.baseline_value,
       previous_period_value: parsed.previous_period_value,
+      aggregation_role: parsed.aggregation_role,
       weight: parsed.weight,
       display_order: parsed.display_order,
       configuration_status: parsed.configuration_status,
@@ -1243,6 +3242,7 @@ function mergedComponent(
     fixed_denominator: value("fixed_denominator"),
     baseline_value: value("baseline_value"),
     previous_period_value: value("previous_period_value"),
+    aggregation_role: value("aggregation_role"),
     weight: value("weight"),
     display_order: value("display_order"),
     configuration_status: value("configuration_status"),
@@ -1264,6 +3264,39 @@ export function updateStrategyComponent(
     requireEditable(before, "component");
     const config = configurationForComponent(Number(before.configuration_id));
     const merged = mergedComponent(before, patch);
+    const values = Object.fromEntries(
+      COMPONENT_FIELDS.map((field) => [field, merged[field]]),
+    );
+    const componentSemanticsChanged =
+      fieldsChanged(before, values, COMPONENT_CALCULATION_SEMANTIC_FIELDS) ||
+      calculationStatusMeaningChanged(before, values);
+    const targetValueSemanticsChanged = fieldsChanged(
+      before,
+      values,
+      COMPONENT_CALCULATION_SEMANTIC_FIELDS.filter(
+        (field) => field !== "label",
+      ),
+    );
+    if (
+      (componentSemanticsChanged && componentParentHasDefinedTarget(before)) ||
+      (targetValueSemanticsChanged &&
+        configurationHasAnyDefinedComponentTarget(
+          Number(before.configuration_id),
+        ))
+    ) {
+      throw new StrategyEditConflictError(
+        "Configured targets already use this component definition. Create an effective-dated successor before changing its calculation semantics.",
+        "target_component_semantics_conflict",
+      );
+    }
+    if (
+      componentSemanticsChanged &&
+      componentHasHistoricalValues(patch.id)
+    ) {
+      rejectHistoricalSemanticEdit(
+        "Historical values already use this component calculation definition. Create a new effective-dated measurement configuration instead of editing it in place.",
+      );
+    }
     if (
       patch.measurement_type !== undefined &&
       patch.measurement_type !== before.measurement_type
@@ -1292,9 +3325,6 @@ export function updateStrategyComponent(
       patch.id,
     );
     validateComponentDefinition(merged, config, componentTarget(patch.id));
-    const values = Object.fromEntries(
-      COMPONENT_FIELDS.map((field) => [field, merged[field]]),
-    );
     if (!rowChanged(before, values)) return asComponent(before);
     getDb()
       .prepare(

@@ -6,14 +6,18 @@ Every export consumes the same calculated reporting models used on screen.
 Adapters may select, paginate, or style those values; they may not recalculate
 them.
 
-The overview deliberately has two PDF paths:
+The overview exposes three representations of the same detailed board report:
 
-- **Export PNG / Export PDF** capture the compact visible dashboard summary.
-  This keeps a raster export bounded and reviewable.
-- **Print / PDF** reveals the detailed board book, including every priority,
-  goal, KPI, target scope, component, demographic distribution, revenue
-  breakdown, and unresolved reason. Browser-native printing avoids a single
-  canvas that would exceed browser raster limits.
+- **Export PNG** captures the complete off-screen strategic board report as a
+  reviewable image;
+- **Export PDF** captures that same report as bounded raster pages and refuses
+  unsafe canvas dimensions instead of producing a blank artifact; and
+- **Print / PDF** reveals the same detailed report to browser-native printing,
+  including every priority, goal, KPI, target scope, component, demographic
+  distribution, revenue breakdown, and unresolved reason.
+
+The compact visible dashboard remains the interactive executive summary; it is
+not substituted for the detailed board-report export target.
 
 The board CSV uses the complete `StrategicBoardReportViewModel`. Metric and
 category PNG/CSV exports use their matching screen models and retain the same
@@ -30,6 +34,8 @@ exports, the export set includes:
 - annual target/pacing and full-plan target/progress when applicable;
 - target year and prominent target description;
 - board and configuration status;
+- stable KPI id alongside the display name, so metric-detail exports never
+  select rows by a mutable or duplicate name;
 - component results and explicit aggregation method;
 - demographic labels, percentages, respondent total, and the explicit derived
   non-white respondent share when configured;
@@ -70,7 +76,11 @@ the matching screen model, then validate PNG/PDF signatures, dimensions, text
 wrapping, and page layout. Final PDF pages are rendered to images and visually
 inspected for clipping, overlap, unreadable labels, and broken page transitions.
 
-The July 9, 2026 manual fixture produced a 1664×14,886 overview PNG and a
-15-page Letter-landscape overview PDF at 1.5 MB. Page count is data- and
-viewport-dependent; bounded size, nonblank pages, intact cards, and complete
-header/footer context are the acceptance contract, not a fixed page count.
+The July 13, 2026 Chrome acceptance fixture produced a 768×29,950 full-detail
+overview PNG at 4.32 MiB. Its top, middle, and bottom were visually inspected;
+the branded hierarchy, target cards, component tables, demographics, revenue,
+and footer remained intact. The same workflow validated the raster PDF
+signature and bounded size plus the browser-native print rendering. Page count
+is data- and viewport-dependent; bounded size, nonblank pages, intact cards,
+and complete header/footer context are the acceptance contract, not a fixed
+page count.

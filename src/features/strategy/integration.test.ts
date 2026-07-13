@@ -132,15 +132,56 @@ describe("strategy persistence integration", () => {
       goals: { created: 22, updated: 0, unchanged: 0 },
       measurement_configs: { created: 59, updated: 0, unchanged: 0 },
       memberships: { created: 59, updated: 0, unchanged: 0 },
-      components: { created: 45, updated: 0, unchanged: 0 },
+      components: { created: 46, updated: 0, unchanged: 0 },
       targets: { created: 21, updated: 0, unchanged: 0 },
     });
     expect(scalar("SELECT COUNT(*) AS count FROM strategic_goals")).toBe(23);
     expect(scalar("SELECT COUNT(*) AS count FROM kpi_measurement_configs")).toBe(59);
     expect(scalar("SELECT COUNT(*) AS count FROM goal_kpis")).toBe(59);
-    expect(scalar("SELECT COUNT(*) AS count FROM kpi_components")).toBe(45);
+    expect(scalar("SELECT COUNT(*) AS count FROM kpi_components")).toBe(46);
     expect(scalar("SELECT COUNT(*) AS count FROM kpi_targets")).toBe(21);
-    expect(scalar("SELECT COUNT(*) AS count FROM strategic_audit_events")).toBe(206);
+    expect(scalar("SELECT COUNT(*) AS count FROM strategic_audit_events")).toBe(207);
+    expect(
+      getDb()
+        .prepare(
+          `SELECT k.slug, c.measurement_type, c.unit, c.calculation_precision
+           FROM kpi_measurement_configs c
+           JOIN kpis k ON k.id = c.kpi_id
+           WHERE k.slug IN (
+             'justice-ed-states-represented',
+             'multi-year-grants-pledges-value',
+             'revenue-by-stream',
+             'government-support-percentage'
+           )
+           ORDER BY k.slug`,
+        )
+        .all(),
+    ).toEqual([
+      {
+        slug: "government-support-percentage",
+        measurement_type: "multi_component",
+        unit: "%",
+        calculation_precision: 1,
+      },
+      {
+        slug: "justice-ed-states-represented",
+        measurement_type: "ratio",
+        unit: "%",
+        calculation_precision: 1,
+      },
+      {
+        slug: "multi-year-grants-pledges-value",
+        measurement_type: "currency",
+        unit: "USD",
+        calculation_precision: 2,
+      },
+      {
+        slug: "revenue-by-stream",
+        measurement_type: "multi_component",
+        unit: "USD",
+        calculation_precision: 2,
+      },
+    ]);
 
     const second = ensureStrategicPlanConfiguration();
     expect(second.goals).toEqual({ created: 0, updated: 0, unchanged: 22 });
@@ -150,9 +191,9 @@ describe("strategy persistence integration", () => {
       unchanged: 59,
     });
     expect(second.memberships.unchanged).toBe(59);
-    expect(second.components.unchanged).toBe(45);
+    expect(second.components.unchanged).toBe(46);
     expect(second.targets.unchanged).toBe(21);
-    expect(scalar("SELECT COUNT(*) AS count FROM strategic_audit_events")).toBe(206);
+    expect(scalar("SELECT COUNT(*) AS count FROM strategic_audit_events")).toBe(207);
     expect(
       getDb()
         .prepare("SELECT name FROM strategic_goals WHERE slug = 'legacy-extra-goal'")
@@ -175,9 +216,12 @@ describe("strategy persistence integration", () => {
     expect(scalar("SELECT COUNT(*) AS count FROM strategic_audit_events")).toBe(
       beforeAudit + 1,
     );
-    const unresolved = getStrategicGoalBySlug("career-pipelines-employment");
+    const career = getStrategicGoalBySlug("career-pipelines-employment");
+    expect(career?.configuration_status).toBe("active");
+    expect(career?.members).toHaveLength(2);
+    const unresolved = getStrategicGoalBySlug("architecture-contemporary-education");
     expect(unresolved?.configuration_status).toBe("needs_definition");
-    expect(unresolved?.unresolved_question).toContain("only one KPI");
+    expect(unresolved?.unresolved_question).toContain("digital justice-education reach");
     expect(
       getDb()
         .prepare(
@@ -200,7 +244,7 @@ describe("strategy persistence integration", () => {
     expect(goals.flatMap((goal) => goal.members)).toHaveLength(59);
     expect(
       goals.flatMap((goal) => goal.members).flatMap((member) => member.components),
-    ).toHaveLength(45);
+    ).toHaveLength(46);
 
     const targetedKpi = STRATEGIC_KPI_DEFINITIONS.find(
       (definition) => (definition.targets?.length ?? 0) > 0,
@@ -274,6 +318,69 @@ describe("strategy persistence integration", () => {
     expect(counts.kpis_needing_targets).toBeGreaterThan(0);
     expect(counts.goals_excluded_from_completion).toBeGreaterThan(0);
     expect(counts.archived_kpis).toBe(0);
+  });
+
+  it.each(["needs_definition", "needs_target"] as const)(
+    "aligns the configuration-gap count with a goal-level %s exclusion",
+    (configurationStatus) => {
+      ensureStrategicPlanConfiguration();
+      const eligibleGoal = listStrategicGoals({ year: 2026 }).find(
+        (goal) =>
+          (goal.configuration_status === "active" ||
+            goal.configuration_status === "ready") &&
+          getConfigurationGapCounts({ year: 2026, goal_id: goal.id })
+            .goals_excluded_from_completion === 0,
+      );
+      expect(eligibleGoal).toBeDefined();
+
+      getDb()
+        .prepare(
+          `UPDATE strategic_goals
+           SET configuration_status = ?, unresolved_question = ?
+           WHERE id = ?`,
+        )
+        .run(
+          configurationStatus,
+          `Resolve ${configurationStatus}.`,
+          eligibleGoal!.id,
+        );
+
+      expect(
+        getConfigurationGapCounts({ year: 2026, goal_id: eligibleGoal!.id })
+          .goals_excluded_from_completion,
+      ).toBe(1);
+    },
+  );
+
+  it("counts an active non-manual goal with no memberships as excluded", () => {
+    ensureStrategicPlanConfiguration();
+    const priorityId = Number(
+      (
+        getDb()
+          .prepare("SELECT id FROM categories ORDER BY id LIMIT 1")
+          .get() as { id: number }
+      ).id,
+    );
+    const goalId = Number(
+      getDb()
+        .prepare(
+          `INSERT INTO strategic_goals (
+             priority_id, slug, name, plan_start_year, plan_end_year,
+             completion_rule, configuration_status
+           ) VALUES (?, 'zero-members-active-goal', 'Zero members active goal',
+                     2025, 2029, 'all_required_kpis', 'active')`,
+        )
+        .run(priorityId).lastInsertRowid,
+    );
+
+    expect(listStrategicGoals({ year: 2026, priority_id: priorityId }))
+      .toEqual(expect.arrayContaining([
+        expect.objectContaining({ id: goalId, members: [] }),
+      ]));
+    expect(
+      getConfigurationGapCounts({ year: 2026, goal_id: goalId })
+        .goals_excluded_from_completion,
+    ).toBe(1);
   });
 
   it("reports a membership whose KPI has no effective measurement configuration", () => {
@@ -351,22 +458,36 @@ describe("strategy persistence integration", () => {
     const component = listStrategicGoals({ year: 2026 })
       .flatMap((item) => item.members)
       .flatMap((item) => item.components)[0];
-    const target = getDb()
+    const affectedTargets = getDb()
+      .prepare(
+        `SELECT id FROM kpi_targets
+         WHERE kpi_id = ?
+            OR component_id IN (
+              SELECT id FROM kpi_components WHERE configuration_id = ?
+            )
+         ORDER BY id`,
+      )
+      .all(component.kpi_id, component.configuration_id) as Array<{ id: number }>;
+    const target = affectedTargets[0] ?? (getDb()
       .prepare("SELECT id FROM kpi_targets ORDER BY id LIMIT 1")
-      .get() as { id: number };
+      .get() as { id: number });
+    const targetIds = Array.from(new Set([
+      ...affectedTargets.map((row) => row.id),
+      target.id,
+    ]));
 
     updateMeasurementConfigurationStatus(config.id, "ready");
     archiveStrategicGoal(goal.id);
-    archiveMeasurementConfig(config.id);
+    targetIds.forEach((id) => archiveTarget(id));
     archiveComponent(component.id);
-    archiveTarget(target.id);
+    archiveMeasurementConfig(config.id);
     expect(getStrategicGoalBySlug(goal.slug)).toBeNull();
     expect(getEffectiveMeasurementConfig(member.kpi_id, 2026)).toBeNull();
 
     restoreStrategicGoal(goal.id);
     restoreMeasurementConfig(config.id);
     restoreComponent(component.id);
-    restoreTarget(target.id);
+    targetIds.forEach((id) => restoreTarget(id));
     expect(getStrategicGoalBySlug(goal.slug)?.archived_at).toBeNull();
     expect(getEffectiveMeasurementConfig(member.kpi_id, 2026)?.configuration_status).toBe(
       "ready",

@@ -44,10 +44,48 @@ describe("first-class strategic actual calculations", () => {
     });
     expect(average).toMatchObject({
       state: "ok",
+      averageMethod: "total_score",
       value: 80,
       respondentCount: 10,
       numerator: 40,
       denominator: 50,
+    });
+  });
+
+  it("retains every persisted average formula in the shared result", () => {
+    const averageScore = calculateStrategyObservation(
+      observation({
+        measurement_type: "average",
+        average_method: "average_score",
+        average_score: 4.2,
+        max_score_per_respondent: 5,
+      }),
+      { measurementType: "average", precision: 1 },
+    );
+    const percentPositive = calculateStrategyObservation(
+      observation({
+        measurement_type: "average",
+        average_method: "percent_positive",
+        positive_response_count: 34,
+        total_response_count: 40,
+      }),
+      { measurementType: "average", precision: 1 },
+    );
+
+    expect(averageScore).toMatchObject({
+      state: "ok",
+      averageMethod: "average_score",
+      value: 84,
+      numerator: 4.2,
+      denominator: 5,
+    });
+    expect(percentPositive).toMatchObject({
+      state: "ok",
+      averageMethod: "percent_positive",
+      value: 85,
+      numerator: 34,
+      denominator: 40,
+      respondentCount: 40,
     });
   });
 
@@ -67,6 +105,68 @@ describe("first-class strategic actual calculations", () => {
       value: 20,
       numerator: 10,
       denominator: 50,
+    });
+  });
+
+  it("uses the configured unit as the explicit direct-ratio scale", () => {
+    const percentageRatio = calculateStrategyObservation(
+      observation({
+        measurement_type: "ratio",
+        numerator: 30,
+        denominator: 50,
+      }),
+      { measurementType: "ratio", precision: 1, unit: "%" },
+    );
+    const unscaledRatio = calculateStrategyObservation(
+      observation({
+        measurement_type: "ratio",
+        numerator: 30,
+        denominator: 50,
+      }),
+      { measurementType: "ratio", precision: 2, unit: "states per state" },
+    );
+
+    expect(percentageRatio).toMatchObject({
+      state: "ok",
+      value: 60,
+      normalizedPercentage: 60,
+      numerator: 30,
+      denominator: 50,
+    });
+    expect(unscaledRatio).toMatchObject({
+      state: "ok",
+      value: 0.6,
+      normalizedPercentage: null,
+    });
+  });
+
+  it("preserves cents for direct and component currency inputs", () => {
+    const direct = calculateStrategyObservation(
+      observation({ measurement_type: "currency", scalar_value: 1.23 }),
+      { measurementType: "currency", precision: 1, unit: "USD" },
+    );
+    const componentResult = calculateStrategyMultiComponent({
+      configuration: configuration({ calculation_precision: 1 }),
+      components: [
+        {
+          definition: component(1, "Revenue", {
+            measurement_type: "currency",
+            unit: "USD",
+          }),
+          record: componentEntry(1, 1.23),
+        },
+      ],
+    });
+
+    expect(direct).toMatchObject({ state: "ok", precision: 2, value: 1.23 });
+    expect(componentResult).toMatchObject({
+      state: "ok",
+      precision: 1,
+      value: 1.2,
+    });
+    expect(componentResult.components?.[0]?.result).toMatchObject({
+      precision: 2,
+      value: 1.23,
     });
   });
 
@@ -104,6 +204,53 @@ describe("first-class strategic actual calculations", () => {
     expect(result.components?.map((item) => item.result.value)).toEqual([2, 3]);
   });
 
+  it("recalculates government support from shared contributed-revenue raw input", () => {
+    const result = calculateStrategyMultiComponent({
+      configuration: configuration({ aggregation_method: "ratio", unit: "%" }),
+      components: [
+        {
+          definition: component(1, "City government support", {
+            measurement_type: "currency",
+            unit: "USD",
+            aggregation_role: "numerator",
+          }),
+          record: componentEntry(1, 200.25),
+        },
+        {
+          definition: component(2, "State government support", {
+            measurement_type: "currency",
+            unit: "USD",
+            aggregation_role: "numerator",
+          }),
+          record: componentEntry(2, 100.25),
+        },
+        {
+          definition: component(3, "Contributed revenue", {
+            measurement_type: "currency",
+            unit: "USD",
+            aggregation_role: "denominator",
+          }),
+          record: componentEntry(3, 1_200.25),
+        },
+      ],
+    });
+
+    expect(result).toMatchObject({
+      state: "ok",
+      value: 25,
+      normalizedPercentage: 25,
+      numerator: 300.5,
+      denominator: 1_200.25,
+      aggregationMethod: "ratio",
+    });
+    expect(result.precision).toBe(1);
+    expect(result.components?.map((component) => component.result)).toEqual([
+      expect.objectContaining({ precision: 2, value: 200.25 }),
+      expect.objectContaining({ precision: 2, value: 100.25 }),
+      expect.objectContaining({ precision: 2, value: 1_200.25 }),
+    ]);
+  });
+
   it("selects the annual component target from a distribution record year", () => {
     const result = calculateStrategyMultiComponent({
       configuration: configuration({ aggregation_method: "none" }),
@@ -131,6 +278,27 @@ describe("first-class strategic actual calculations", () => {
     expect(result.components?.[0]?.progress).toMatchObject({
       status: "not_started",
       targetValue: 50,
+    });
+  });
+
+  it("uses the supplied Reporting Year for a KPI Component with no Observation", () => {
+    const result = calculateStrategyMultiComponent({
+      configuration: configuration({ effective_from_year: 2025 }),
+      reportingYear: 2026,
+      components: [{
+        definition: component(1, "Programs", {
+          targets: [
+            target({ id: 1, reporting_year: 2025, target_year: 2025, target_value: 5 }),
+            target({ id: 2, reporting_year: 2026, target_year: 2026, target_value: 10 }),
+          ],
+        }),
+        record: null,
+      }],
+    });
+
+    expect(result.components?.[0]?.progress).toMatchObject({
+      status: "not_started",
+      targetValue: 10,
     });
   });
 
@@ -171,6 +339,28 @@ describe("first-class strategic actual calculations", () => {
     expect(structured.components?.[0]?.progress).toMatchObject({
       targetValue: 4,
       actualProgressPercentage: 50,
+    });
+  });
+
+  it("does not let an active Target bypass an unresolved KPI Component", () => {
+    const result = calculateStrategyMultiComponent({
+      configuration: configuration(),
+      components: [
+        {
+          definition: component(1, "Programs", {
+            configuration_status: "needs_definition",
+            unresolved_question: "Define the component measurement.",
+            targets: [target({ target_value: 4, configuration_status: "active" })],
+          }),
+          record: componentEntry(1, 2),
+        },
+      ],
+    });
+
+    expect(result.components?.[0]?.progress).toMatchObject({
+      status: "needs_definition",
+      targetValue: 4,
+      actualProgressPercentage: null,
     });
   });
 });
@@ -216,6 +406,7 @@ function componentEntry(
   return {
     ...observation({ id: componentId, scalar_value: value }),
     component_id: componentId,
+    component_label: `Component ${componentId}`,
   };
 }
 
@@ -272,6 +463,7 @@ function component(
     fixed_denominator: null,
     baseline_value: null,
     previous_period_value: null,
+    aggregation_role: "value",
     weight: 1,
     display_order: id,
     configuration_status: "active",

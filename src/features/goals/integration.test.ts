@@ -1,11 +1,14 @@
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
+import { renderToStaticMarkup } from "react-dom/server";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
+import { StrategicAuditTable } from "@/components/StrategicAuditTable";
 import { MONTH_NUMBERS } from "@/features/metrics";
 import { upsertEntry } from "@/features/metrics/server";
 import { createKPI } from "@/features/catalog/server";
 import { ensureSeedAdmin } from "@/features/auth/server";
+import { listStrategicAuditEvents } from "@/features/strategy/server";
 import { getDb, resetDb } from "@/lib/db";
 import { deleteGoal, listGoals, toggleGoal, updateGoal, upsertGoal } from ".";
 import type {
@@ -81,7 +84,9 @@ describe("goals database integration", () => {
 
   beforeEach(() => {
     const db = getDb();
+    db.exec("DROP TRIGGER IF EXISTS reject_legacy_goal_audit;");
     db.exec("DELETE FROM entry_history;");
+    db.exec("DELETE FROM strategic_audit_events;");
     db.exec("DELETE FROM monthly_entries;");
     db.exec("DELETE FROM breakdown_entries;");
     db.exec("DELETE FROM kpi_goals;");
@@ -466,5 +471,352 @@ describe("goals database integration", () => {
     expect(
       listGoals({ year: 2025 }).filter((g) => g.kpi_id === kpiA),
     ).toHaveLength(0);
+  });
+
+  it("records an immutable Legacy KPI Goal create snapshot with actor and historical labels", () => {
+    const created = upsertGoal({
+      kpi_id: kpiA,
+      target_year: 2025,
+      baseline_year: 2024,
+      goal_type: "pct",
+      target_value: 20,
+      enabled: true,
+      notes: "Board baseline",
+      updated_by: 1,
+    });
+
+    getDb().prepare("UPDATE kpis SET name = ? WHERE id = ?").run("Renamed KPI", kpiA);
+    getDb()
+      .prepare("UPDATE categories SET name = ? WHERE id = ?")
+      .run("Renamed Priority", categoryId);
+
+    const events = listStrategicAuditEvents({ entity_type: "kpi", entity_id: kpiA });
+    expect(events).toHaveLength(1);
+    expect(events[0]).toMatchObject({
+      event_type: "create",
+      entity_display_name: "KPI A — 2025 Legacy KPI Goal",
+      parent_priority_name: "Test Category",
+      parent_goal_name: null,
+      previous_value: null,
+      new_value: {
+        id: created.id,
+        kpi_id: kpiA,
+        target_year: 2025,
+        baseline_year: 2024,
+        goal_type: "pct",
+        target_value: 20,
+        enabled: true,
+        notes: "Board baseline",
+        created_by: 1,
+        updated_by: 1,
+      },
+      actor_id: 1,
+      actor_email_snapshot: "kerry@easternstate.org",
+      source_reference: "Legacy KPI goal administration",
+    });
+
+    const html = renderToStaticMarkup(StrategicAuditTable({ events }));
+    expect(html).toContain("KPI A — 2025 Legacy KPI Goal");
+    expect(html).toContain("Test Category");
+    expect(html).toContain("kerry@easternstate.org");
+    expect(html).not.toContain("Renamed KPI");
+    expect(html).not.toContain("Renamed Priority");
+
+    getDb().prepare("UPDATE kpis SET name = ? WHERE id = ?").run("KPI A", kpiA);
+    getDb()
+      .prepare("UPDATE categories SET name = ? WHERE id = ?")
+      .run("Test Category", categoryId);
+  });
+
+  it("records actorless Legacy KPI Goal mutations as System events", () => {
+    const created = upsertGoal({
+      kpi_id: kpiA,
+      target_year: 2025,
+      baseline_year: 2024,
+      goal_type: "pct",
+      target_value: 20,
+      enabled: true,
+    });
+
+    const [event] = listStrategicAuditEvents({ entity_type: "kpi", entity_id: kpiA });
+    expect(event).toMatchObject({
+      event_type: "create",
+      entity_display_name: "KPI A — 2025 Legacy KPI Goal",
+      actor_id: null,
+      actor_email_snapshot: null,
+      new_value: { id: created.id, created_by: null, updated_by: null },
+    });
+    expect(renderToStaticMarkup(StrategicAuditTable({ events: [event] }))).toContain(
+      "System",
+    );
+  });
+
+  it("records before and after snapshots when an existing Legacy KPI Goal is upserted", () => {
+    const existing = upsertGoal({
+      kpi_id: kpiA,
+      target_year: 2025,
+      baseline_year: 2023,
+      goal_type: "pct",
+      target_value: 10,
+      enabled: false,
+      notes: "Original",
+    });
+
+    upsertGoal({
+      kpi_id: kpiA,
+      target_year: 2025,
+      baseline_year: 2024,
+      goal_type: "number",
+      target_value: 30,
+      enabled: true,
+      notes: "Revised",
+      updated_by: 1,
+    });
+
+    const [event] = listStrategicAuditEvents({ entity_type: "kpi", entity_id: kpiA });
+    expect(event).toMatchObject({
+      event_type: "update",
+      previous_value: {
+        id: existing.id,
+        baseline_year: 2023,
+        goal_type: "pct",
+        target_value: 10,
+        enabled: false,
+        notes: "Original",
+        updated_by: null,
+      },
+      new_value: {
+        id: existing.id,
+        baseline_year: 2024,
+        goal_type: "number",
+        target_value: 30,
+        enabled: true,
+        notes: "Revised",
+        updated_by: 1,
+      },
+      actor_id: 1,
+      actor_email_snapshot: "kerry@easternstate.org",
+    });
+  });
+
+  it("does not add an update event for a semantic Legacy KPI Goal no-op", () => {
+    const created = upsertGoal({
+      kpi_id: kpiA,
+      target_year: 2025,
+      baseline_year: 2024,
+      goal_type: "pct",
+      target_value: 20,
+      enabled: true,
+      notes: "Unchanged",
+      updated_by: 1,
+    });
+
+    const returned = upsertGoal({
+      kpi_id: kpiA,
+      target_year: 2025,
+      baseline_year: 2024,
+      goal_type: "pct",
+      target_value: 20,
+      enabled: true,
+      notes: "Unchanged",
+      updated_by: 1,
+    });
+    updateGoal({ id: created.id, enabled: true, updated_by: 1 });
+
+    expect(returned).toEqual(created);
+    expect(
+      listStrategicAuditEvents({ entity_type: "kpi", entity_id: kpiA }).map(
+        (event) => event.event_type,
+      ),
+    ).toEqual(["create"]);
+  });
+
+  it("records before and after snapshots for a direct Legacy KPI Goal update", () => {
+    const existing = upsertGoal({
+      kpi_id: kpiA,
+      target_year: 2025,
+      baseline_year: 2024,
+      goal_type: "pct",
+      target_value: 20,
+      enabled: true,
+      notes: null,
+    });
+
+    updateGoal({
+      id: existing.id,
+      goal_type: "number",
+      target_value: 55,
+      notes: "Approved revision",
+      updated_by: 1,
+    });
+
+    const [event] = listStrategicAuditEvents({ entity_type: "kpi", entity_id: kpiA });
+    expect(event).toMatchObject({
+      event_type: "update",
+      entity_display_name: "KPI A — 2025 Legacy KPI Goal",
+      parent_priority_name: "Test Category",
+      previous_value: {
+        id: existing.id,
+        goal_type: "pct",
+        target_value: 20,
+        notes: null,
+        updated_by: null,
+      },
+      new_value: {
+        id: existing.id,
+        goal_type: "number",
+        target_value: 55,
+        notes: "Approved revision",
+        updated_by: 1,
+      },
+      actor_id: 1,
+      actor_email_snapshot: "kerry@easternstate.org",
+    });
+  });
+
+  it("records a Legacy KPI Goal toggle as an attributed update", () => {
+    const existing = upsertGoal({
+      kpi_id: kpiA,
+      target_year: 2025,
+      baseline_year: 2024,
+      goal_type: "pct",
+      target_value: 20,
+      enabled: true,
+    });
+
+    toggleGoal(existing.id, false, 1);
+
+    const [event] = listStrategicAuditEvents({ entity_type: "kpi", entity_id: kpiA });
+    expect(event).toMatchObject({
+      event_type: "update",
+      previous_value: { id: existing.id, enabled: true, updated_by: null },
+      new_value: { id: existing.id, enabled: false, updated_by: 1 },
+      actor_id: 1,
+      actor_email_snapshot: "kerry@easternstate.org",
+    });
+  });
+
+  it("records a Legacy KPI Goal tombstone before deletion", () => {
+    const existing = upsertGoal({
+      kpi_id: kpiA,
+      target_year: 2025,
+      baseline_year: 2024,
+      goal_type: "number",
+      target_value: 25,
+      enabled: false,
+      notes: "Retired target",
+    });
+
+    deleteGoal(existing.id, 1);
+
+    expect(listGoals({ year: 2025, kpi_id: kpiA })).toHaveLength(0);
+    const [event] = listStrategicAuditEvents({ entity_type: "kpi", entity_id: kpiA });
+    expect(event).toMatchObject({
+      event_type: "delete",
+      entity_display_name: "KPI A — 2025 Legacy KPI Goal",
+      parent_priority_name: "Test Category",
+      previous_value: {
+        id: existing.id,
+        kpi_id: kpiA,
+        target_year: 2025,
+        baseline_year: 2024,
+        goal_type: "number",
+        target_value: 25,
+        enabled: false,
+        notes: "Retired target",
+      },
+      new_value: null,
+      actor_id: 1,
+      actor_email_snapshot: "kerry@easternstate.org",
+      source_reference: "Legacy KPI goal administration",
+    });
+  });
+
+  it("rolls back a Legacy KPI Goal create when its audit insert fails", () => {
+    getDb().exec(`
+      CREATE TRIGGER reject_legacy_goal_audit
+      BEFORE INSERT ON strategic_audit_events
+      WHEN NEW.source_reference = 'Legacy KPI goal administration'
+      BEGIN
+        SELECT RAISE(ABORT, 'reject legacy goal audit');
+      END;
+    `);
+
+    expect(() =>
+      upsertGoal({
+        kpi_id: kpiA,
+        target_year: 2025,
+        baseline_year: 2024,
+        goal_type: "pct",
+        target_value: 20,
+        enabled: true,
+        updated_by: 1,
+      }),
+    ).toThrow(/reject legacy goal audit/);
+
+    expect(listGoals({ year: 2025, kpi_id: kpiA })).toHaveLength(0);
+    expect(listStrategicAuditEvents({ entity_type: "kpi", entity_id: kpiA })).toEqual([]);
+  });
+
+  it("rolls back a Legacy KPI Goal update when its audit insert fails", () => {
+    const existing = upsertGoal({
+      kpi_id: kpiA,
+      target_year: 2025,
+      baseline_year: 2024,
+      goal_type: "pct",
+      target_value: 20,
+      enabled: true,
+      notes: "Original",
+    });
+    getDb().exec("DELETE FROM strategic_audit_events;");
+    getDb().exec(`
+      CREATE TRIGGER reject_legacy_goal_audit
+      BEFORE INSERT ON strategic_audit_events
+      WHEN NEW.source_reference = 'Legacy KPI goal administration'
+      BEGIN
+        SELECT RAISE(ABORT, 'reject legacy goal audit');
+      END;
+    `);
+
+    expect(() =>
+      updateGoal({
+        id: existing.id,
+        target_value: 99,
+        notes: "Should roll back",
+        updated_by: 1,
+      }),
+    ).toThrow(/reject legacy goal audit/);
+
+    expect(listGoals({ year: 2025, kpi_id: kpiA })).toMatchObject([
+      { id: existing.id, target_value: 20, notes: "Original", updated_by: null },
+    ]);
+    expect(listStrategicAuditEvents({ entity_type: "kpi", entity_id: kpiA })).toEqual([]);
+  });
+
+  it("rolls back a Legacy KPI Goal delete when its tombstone insert fails", () => {
+    const existing = upsertGoal({
+      kpi_id: kpiA,
+      target_year: 2025,
+      baseline_year: 2024,
+      goal_type: "pct",
+      target_value: 20,
+      enabled: true,
+    });
+    getDb().exec("DELETE FROM strategic_audit_events;");
+    getDb().exec(`
+      CREATE TRIGGER reject_legacy_goal_audit
+      BEFORE INSERT ON strategic_audit_events
+      WHEN NEW.source_reference = 'Legacy KPI goal administration'
+      BEGIN
+        SELECT RAISE(ABORT, 'reject legacy goal audit');
+      END;
+    `);
+
+    expect(() => deleteGoal(existing.id, 1)).toThrow(/reject legacy goal audit/);
+
+    expect(listGoals({ year: 2025, kpi_id: kpiA })).toMatchObject([
+      { id: existing.id, target_value: 20 },
+    ]);
+    expect(listStrategicAuditEvents({ entity_type: "kpi", entity_id: kpiA })).toEqual([]);
   });
 });

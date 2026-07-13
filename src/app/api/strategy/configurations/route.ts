@@ -4,11 +4,13 @@ import { authErrorResponse, requireAdmin } from "@/features/auth/session";
 import {
   MeasurementConfigurationCreateSchema,
   MeasurementConfigurationUpdateSchema,
+  STRATEGIC_PLAN_END_YEAR,
   StrategyEntityLifecycleSchema,
 } from "@/features/strategy";
 import {
   archiveMeasurementConfig,
   createMeasurementConfiguration,
+  createSuccessorMeasurementConfiguration,
   getMeasurementConfigRecord,
   restoreMeasurementConfig,
   updateMeasurementConfiguration,
@@ -24,6 +26,23 @@ const PatchSchema = z.discriminatedUnion("action", [
     .object({
       action: z.literal("update"),
       update: MeasurementConfigurationUpdateSchema,
+    })
+    .strict(),
+  z
+    .object({
+      action: z.literal("create_successor"),
+      predecessor_id: z.number().int().positive(),
+      successor: MeasurementConfigurationCreateSchema.refine(
+        (successor) =>
+          successor.effective_start_year >= 2025 &&
+          successor.effective_start_year <= STRATEGIC_PLAN_END_YEAR &&
+          successor.effective_end_year !== null &&
+          successor.effective_end_year <= STRATEGIC_PLAN_END_YEAR,
+        {
+          message: "Successor definitions must stay within 2025–2029.",
+          path: ["effective_start_year"],
+        },
+      ),
     })
     .strict(),
   z
@@ -75,6 +94,18 @@ export async function PATCH(req: NextRequest) {
           auth.user!.id,
         ),
       });
+    }
+    if (parsed.data.action === "create_successor") {
+      return NextResponse.json(
+        createSuccessorMeasurementConfiguration(
+          {
+            predecessor_id: parsed.data.predecessor_id,
+            successor: parsed.data.successor,
+          },
+          auth.user!.id,
+        ),
+        { status: 201 },
+      );
     }
     if (parsed.data.action === "archive") {
       archiveMeasurementConfig(parsed.data.id, auth.user!.id);
