@@ -1,7 +1,7 @@
 # Strategic KPI and Goal Dashboard Upgrade Plan
 
-- Status: schema-10 model/reporting/admin implementation landed; KPI-card completion plus build/smoke/e2e and manual browser/export proof remain open
-- Prepared and reconciled: 2026-07-09
+- Status: complete; every targeted integrity gap is closed and backed by fresh post-fix proof
+- Prepared: 2026-07-09; completion audit reconciled: 2026-07-13
 - Repository: `/Users/jacobcyber/Documents/Eastern State KPI`
 
 ## 1. Objective and source material
@@ -9,7 +9,8 @@
 This plan records the upgrade from a primarily year-over-year, scalar-KPI model
 to a 2025-2029 strategic-plan system whose executive summaries are calculated
 from named strategic goals. Schema 10 preserves schema-9 data through an
-additive migration and never turns an unresolved or missing target into zero.
+additive strategic-sidecar migration; schema 11 hardens component identity and
+ratio semantics. Neither turns an unresolved or missing target into zero.
 
 The audit used these sources:
 
@@ -30,7 +31,7 @@ configuration gaps. They are not permission to invent values.
 
 The following results are the pre-change schema-9 baseline captured at the
 start of the goal. They are historical evidence, not claims about the current
-schema-10 worktree:
+schema-11 worktree:
 
 - `npm test`: 45 test files, 642 tests passed.
 - `npm run design-system:guard`: design-token, component-library,
@@ -40,10 +41,10 @@ schema-10 worktree:
 - Current local schema-9 sample database: 3 users, 5 priorities, 59 KPIs,
   174 scalar annual rows, 24 breakdown rows, 214 immutable entry-history rows,
   and 25 per-KPI target rows.
-- The only pre-existing untracked source is the strategic-dashboard PDF. It
-  will not be modified or silently added to source control.
+- The strategic-dashboard PDF is a tracked source artifact. This upgrade reads
+  it as evidence and does not modify it.
 
-## 3. Current schema-10 architecture summary
+## 3. Current schema-11 architecture summary
 
 ### 3.1 Runtime and boundaries
 
@@ -54,18 +55,18 @@ models and call guarded JSON mutation routes through `apiFetch`.
 
 | Concern | Current owner | Current behavior |
 |---|---|---|
-| Schema and migration | `src/lib/db.ts`, `scripts/migrate.ts`, `src/lib/schema-version.json` | Schema version 10; `9 -> 10` is transactional, additive, and idempotent. `db:migrate` preserves existing IDs, values, targets, users, and history. |
-| Strategic mapping | `strategic-plan.ts`, `strategic-config.ts`, `src/features/strategy/` | Five priorities, 22 explicit named goals, 59 stable-slug KPI configurations, and 45 component definitions. TK/TBD values remain gaps. |
+| Schema and migration | `src/lib/db.ts`, `scripts/migrate.ts`, `src/lib/schema-version.json` | Schema version 11; `9 -> 10 -> 11` is transactional, additive, and idempotent. `db:migrate` preserves existing IDs, values, targets, users, and history while scoping component identity per effective configuration. |
+| Strategic mapping | `strategic-plan.ts`, `strategic-config.ts`, `src/features/strategy/` | Five priorities, 22 explicit named goals, 59 stable-slug KPI configurations, and 46 component definitions. TK/TBD values remain gaps. |
 | Hierarchy | `strategic_goals`, `goal_kpis` | Priority -> named goal -> KPI membership is durable and effective-dated; legacy name-prefix parsing is no longer the strategic source of truth. |
 | Targets | `kpi_targets`, legacy `kpi_goals` | Annual targets are selected by reporting year; full-plan targets are separate records. The 25 legacy per-KPI delta targets remain readable but are not named goals. |
 | Raw values | strategy value-entry operations and routes | KPI observations, component entries, and distribution responses preserve first-class raw inputs and typed periods instead of flattening them through legacy scalar values. |
 | Calculations | `src/features/strategy/calculations.ts` and reporting adapters | Typed formulas return explicit missing/invalid states, uncapped actual progress, capped visual progress, and separate annual pacing/full-plan progress. |
-| Dashboard/detail | reporting loaders and strategic UI components | The landing page intentionally stays executive: one organization `X of Y goals completed` score and five typed performance-area cards. Priority/named-goal detail, excluded reasons, formulas, raw inputs, components, and distributions remain in drill-downs, administration, and board reports. |
-| Administration | `/admin/strategy-data`, `/admin/kpis/[id]`, `/admin/strategic-goals`, `/admin/configuration-gaps` | First-class data entry, effective configuration, target/component/band editing, named-goal rules and KPI membership, lifecycle controls, and gap workflow supplement the legacy admin pages. |
-| Export | strategic board-report model and `/api/strategy/export` | Detailed CSV/native Print-PDF and compact overview PNG/raster-PDF adapters consume the same sanitized reporting layer; the server read is session-protected and private/no-store. |
+| Dashboard/detail | reporting loaders and strategic UI components | The landing page intentionally stays executive: one organization `X of Y goals completed` score and five typed performance-area cards. Excluded reasons are available through an accessible disclosure; formulas, raw inputs, components, and distributions remain in drill-downs, administration, and board reports. |
+| Administration | `/admin/strategy-data`, `/admin/kpis/[id]`, `/admin/strategic-goals`, `/admin/configuration-gaps` | First-class data entry, reporting-year target selection, atomic future-dated successors for measurement configurations/goals/memberships, target/component/band editing, lifecycle controls, and gap workflow supplement the legacy admin pages. |
+| Export | strategic board-report model and `/api/strategy/export` | Detailed CSV, PNG, raster-PDF, and native Print-PDF adapters consume the same sanitized reporting layer; the compact live overview is not used as a substitute export target, and the server read is session-protected and private/no-store. |
 | Auth and CSRF | auth feature, session layer, route guards, `request-guard.ts` | The exhaustive matrix contains 35 protected route/method combinations: 33 admin-gated and two session-gated reads. Strategic mutations are in the shared CSRF/origin/content-type suites. |
 | Audit/lifecycle | `strategic_audit_events`, strategy and catalog mutations | Configuration and value changes have immutable snapshots; strategic goals, KPI memberships, configurations, targets, components, bands, KPIs, and priorities have audited lifecycle behavior. |
-| Verification | Vitest, design-system gate, smoke, Playwright, QA manual | `npm test` is green at 81 files / 1,277 tests; the design-system/production-build gate, 64-check smoke, 5-workflow e2e suite, migration rehearsals, and manual browser/PNG/PDF review passed on July 9, 2026. |
+| Verification | Vitest, design-system gate, smoke, Playwright, Browser, QA manual | Post-fix unit, build, smoke, Playwright, migration, and live in-app Browser evidence is recorded in section 12 after the final worktree passes every gate. Automated acceptance covers 390 px navigation and validates export signatures and dimensions; the live Browser review covers the application UI at 1280 px. |
 
 ### 3.2 Compatibility boundaries that remain intentional
 
@@ -83,28 +84,68 @@ models and call guarded JSON mutation routes through `apiFetch`.
 
 ## 4. Gap analysis
 
-| Required capability | Current schema-10 state | Remaining final gate |
+| Required capability | Current schema-11 state | Remaining final gate |
 |---|---|---|
-| Named priority -> goal -> KPI hierarchy | Implemented with `strategic_goals` and effective `goal_kpis` membership; membership role, weight, and order are editable. | Authorized owners resolve the documented one-KPI goal exceptions. |
+| Named priority -> goal -> KPI hierarchy | Implemented with `strategic_goals` and effective `goal_kpis` membership; all 22 goals contain 2–5 KPIs, and membership role, weight, and order are editable. | Human owners confirm the documented digital-education attribution question. |
 | Eleven measurement types and full KPI configuration | Implemented in effective-dated sidecars, validation, calculations, and regression coverage. | None in code; human definitions remain in the gap queue. |
 | Historical annual targets | Implemented as year-specific `annual` targets; legacy rows remain compatible. | Production operators take the required backup before migration. |
 | Annual pacing vs full-plan completion | Implemented as distinct target selection, editors, progress fields, and exports. | Human owners finalize missing target values. |
 | Four goal-completion rules and summaries | Implemented for required/informational membership with organization and priority rollups. | Human approval policy for manual completion remains open. |
 | Typed progress visualization | Implemented on category cards, strategic detail, and export surfaces with accessible labels, uncapped result text, and capped visual fill. | None in code. |
-| Components and raw calculation inputs | Implemented with 45 canonical components and first-class KPI/component writes. | Human owners resolve incomplete component definitions/targets. |
+| Components and raw calculation inputs | Implemented with 46 canonical components, configuration-scoped identity, explicit ratio roles, and first-class KPI/component writes. | Human owners resolve incomplete component definitions/targets. |
 | Demographic distributions | Implemented with effective bands, respondent totals, label snapshots, and exclusivity validation. | Human owners finalize age/socioeconomic bands. |
 | Configuration-gap workflow | Implemented with filters, ownership, statuses, audit, and completion exclusions. | Authorized owners work the visible queue. |
 | Quarterly/cumulative/one-time periods | Implemented in validation, storage, labels, strategic editors, and tests. | None in code. |
-| Shared board-report contract | Implemented for detailed CSV/native Print-PDF, compact overview PNG/raster PDF, and session-protected server export. | Human owners may request a different board-book template. |
+| Shared board-report contract | Implemented for detailed CSV/PNG/raster-PDF/native Print-PDF plus a session-protected server export. | Human owners may request a different board-book template. |
 | Strategic audit and archive/restore | Implemented with immutable snapshots and audited lifecycle operations. | None in code. |
-| Representative strategic mapping | Implemented for 5 priorities, 22 goals, 59 KPIs, and 45 components without fabricating targets. | Authorized owners still resolve documented product gaps. |
+| Representative strategic mapping | Implemented for 5 priorities, 22 goals, 59 KPIs, and 46 components without fabricating targets. | Authorized owners still resolve documented product gaps. |
 
-## 5. Implemented data model (schema 10, additive)
+### 4.1 July 13 completion audit — confirmed closure work
+
+The post-merge audit re-ran the current unit suite and inspected the public
+mutation, reporting, detail, export, and history paths instead of relying on
+the July 9 evidence. It reopened the following requirements; every row is now
+closed by the implementation and focused verification seam shown below:
+
+| Gap | Required closure | Verification seam |
+|---|---|---|
+| Legacy entry deletion can commit before its tombstone history insert. | Put scalar and breakdown delete + history writes in one transaction. | Force the history insert to fail and prove both source rows roll back. |
+| Target selection is repeated and differs between calculated actuals, goal rollups, components, and board exports. | Introduce one pure effective-target policy with annual precedence, nearest-future/latest-past full-plan fallback, deterministic ties, zero preservation, and consistent unresolved status. | Table-driven policy tests plus cross-consumer rollup/export cases. |
+| Calculation-affecting measurement, goal-rule, and membership edits can rewrite the meaning of historical observations. | Treat both first-class and legacy scalar/breakdown values as history, reject in-place semantic edits once affected results exist, and provide atomic future-dated successors for measurement definitions, goal rules, and membership roles/weights. | Conflict and successor tests cover measurement fields, goal rules, roles, weights, range splitting, rollback, selected-year loading, and non-semantic workflow metadata. |
+| Component-only targets do not currently make a multi-component KPI eligible for goal completion. | Derive explicit compatible parent progress from component results when parent aggregation permits it; otherwise keep the KPI visibly unresolved. | Component-only all-complete/weighted/sum cases and incompatible-unit exclusions. |
+| Monthly year-over-year observations compare to the immediately preceding row instead of the same period in the prior year. | Key prior values by KPI/component plus period type/index and select the prior reporting-year value. | Monthly and quarterly same-period tests across years. |
+| Component identity cannot continue into a later effective configuration because the database uniqueness rule is KPI-wide. | Make component slug identity configuration-scoped while retaining stable ownership and non-overlap checks. | Schema migration plus later-configuration continuity and idempotence tests. |
+| Configuration-gap counts can label a goal excluded when the goal still has other eligible required KPIs. | Calculate excluded-goal counts from the goal-completion result, not from the presence of any gap row. | Mixed eligible/excluded membership rollup test. |
+| An active non-manual goal with zero effective memberships can disappear from the configuration-gap count. | Register empty goals in the same completion calculator so `NO_ELIGIBLE_KPIS` remains visible, while a populated manual goal stays eligible. | Integration coverage for a real zero-membership goal. |
+| The government-support KPI sums city/state currency instead of calculating government support as a share of contributed revenue. | Preserve city/state raw components and add the contributed-revenue denominator/ratio definition without inventing a target. | Canonical mapping and raw-input formula tests. |
+| Re-running the public migration entrypoint can resynchronize populated operator-owned strategy rows. | Initialize the full canonical map only when every strategic sidecar is empty; otherwise apply only narrowly fingerprinted corrections for the old government-support definition and prior system-owned canonical goal/membership/reporting contracts. | Exact-signature repair, operator-owned no-op, archived/history no-op, clean, populated-copy, and second-run idempotence tests. |
+| Successors can preserve the parent range while dropping component definitions, adopting out-of-range legacy values, or carrying an incompatible target. | Validate the proposed range and target/band compatibility, clone compatible component definitions plus future targets/bands atomically, never clone observations, and bound the UI/API to 2025–2029. | Component/target/band clone, rollback, range-adoption, manual-result, label-immutability, and 2029-boundary tests. |
+| KPI-detail strategic audit events are globally capped before they are filtered to the KPI. | Apply entity/name filtering in SQLite before the per-KPI limit. | More than 500 unrelated events cannot hide an older matching event. |
+| A hard-deleted category can cascade-delete child KPI metadata before each child receives a durable lifecycle snapshot, and ordinary catalog/legacy-goal edits can bypass the strategic audit stream. | Snapshot every affected child and the parent in the same transaction, and audit catalog plus legacy-goal create/update/delete operations with immutable names and actor context. | Cascade-child rendering, mutation snapshots, and forced audit-failure rollback tests. |
+| Playwright can be pointed at a predictable or pre-existing temporary path, risking an unrelated SQLite file. | Allocate a private owned run directory, propagate its exact path to teardown, reject unsafe overrides/symlinks/hardlinks, and remove DB/WAL/SHM only after ownership validation. | Filesystem adversarial tests plus the full acceptance run. |
+| Strategic quarterly/cumulative/one-time detail history can fall through to legacy monthly/annual chart semantics. | Render first-class strategic history with cadence-correct labels and suppress misleading legacy cadence controls/charts. | Render/model tests for all five strategic frequencies and no user-facing month zero. |
+| The overview exposes excluded counts but drops the supplied goal reasons. | Add an accessible visible details/drilldown from organization and priority completion summaries. | Component and browser assertions for reason text and configuration-gap navigation. |
+| Required editor/progress/filter interactions and current build/smoke/e2e evidence are incomplete or stale after the July 10 fixes. | Add focused interaction coverage, rerun every repository gate, and record fresh evidence. | Unit/integration, design-system build, e2e, 66-check smoke, live Browser inspection, automated PNG/PDF validation, migration rehearsals. |
+
+Implementation order for this closure pass is: (1) pure target/period and
+completion policies; (2) mutation atomicity and historical guards; (3) schema
+and canonical mapping corrections; (4) reporting/detail/history UI; (5)
+focused coverage; (6) full fresh verification and documentation reconciliation.
+All schema changes remain additive and must preserve existing IDs and values.
+
+## 5. Implemented data model (schemas 10-11, additive)
 
 Schema 10 uses an explicit `9 -> 10` migration and never enters the legacy
 reset path. Existing tables, primary keys, entries, users, and audit rows stay
 in place. Apply it to an existing database with `npm run db:migrate`; use
 `npm run db:seed` only for the deliberate disposable/sample-data reset.
+
+Schema 11 uses an explicit `10 -> 11` migration that rebuilds only the
+measurement-configuration and component parent tables inside the transaction.
+It preserves configuration/component IDs, leaves child observation, entry,
+target, distribution, and audit tables untouched, scopes component slugs to
+each effective configuration, and records
+`value`/`numerator`/`denominator` aggregation roles.
 
 ### 5.1 Existing-table extensions
 
@@ -129,7 +170,13 @@ in place. Apply it to an existing database with `npm run db:migrate`; use
 - retain the legacy scalar write/read contract unchanged;
 - new typed observations live in a separate sidecar table;
 - calculations prefer valid raw observations for derived measurement types and
-  use the legacy value only as an explicitly labeled direct-value fallback.
+  use the legacy value only through an explicit compatibility policy: preserve
+  already-derived percentage/average/denominator-free-ratio values, calculate
+  fixed-denominator ratios from the retained numerator, and calculate
+  non-percent year-over-year results from the same prior-year period.
+- the first first-class raw-count year-over-year observation may use a matching
+  prior-year legacy raw value; an already-derived legacy percentage is never a
+  raw baseline.
 
 `entry_history`
 
@@ -281,6 +328,10 @@ Every KPI/component calculation returns:
   mislabeled as an average;
 - year-over-year: current minus previous divided by the absolute previous
   value, with explicit no-baseline and zero-baseline states;
+- legacy compatibility: first-class values take precedence; retained direct
+  percentage/average/denominator-free-ratio values disclose unavailable raw
+  bases, while non-percent year-over-year and fixed-denominator ratios use the
+  shared formulas only when the necessary retained raw values are known;
 - distribution: count divided by respondent total for every band;
 - multi-component: none, average, weighted average, sum, or all-complete only
   when the explicit aggregation and compatible units permit it;
@@ -354,12 +405,16 @@ its index. Domain composition remains in feature components.
 - current result, selected-year annual pacing, full-plan progress, target
   description/year, board status, and configuration status are separate fields;
 - detail models expose raw inputs, formula, component/distribution breakdown,
-  history, and unresolved questions;
+  history, and unresolved questions; effective cadence drives history labels,
+  and first-class history takes precedence over compatibility rows;
 - charts are selected by measurement/reporting type and do not combine
   unrelated units;
-- category cards surface the schema-10 measurement type, current result,
+- category cards surface the schema-11 measurement type, current result,
   target description, annual pacing, full-plan progress, board/configuration
-  status, and unresolved reasons while retaining legacy comparison context;
+  status, and unresolved reasons while retaining only compatible legacy
+  comparison context. Strategically configured breakdown KPIs such as revenue
+  appear as cards without a fabricated year-over-year comparison and retain
+  their composition chart; legacy-only breakdowns remain chart-only;
 - demographic chart and table states keep a missing percentage as `Not
   reported`; they do not emit a numeric zero progress value or ARIA value.
 
@@ -385,12 +440,13 @@ its index. Domain composition remains in feature components.
   unresolved labels, and text equivalents for visual bars/status;
 - export adapters contain no business formulas;
 - long-text and page-break/keep-together behavior has source/model coverage;
-- fresh browser PNG/PDF artifact verification remains a Slice G gate.
+- browser and automated PNG/PDF artifact verification is part of the completed
+  Slice G/H evidence.
 
 ## 9. Strategic seed mapping
 
 The canonical catalog explicitly defines 22 strategic goals, 59 KPI
-measurement configurations, and 45 components. Existing 2024-2026 values
+measurement configurations, and 46 components. Existing 2024-2026 values
 remain sample data and retain their IDs through migration; reseeding a
 disposable database intentionally rebuilds the canonical fixture.
 
@@ -410,9 +466,9 @@ Mapping rules:
 
 ## 10. Implementation order and phase gates
 
-`Complete` below means the implementation and its focused automated gate are
-present. Slice G still requires one fresh aggregate run and manual browser/
-artifact evidence before the overall goal can be called complete.
+`Complete` below records both the July 9 implementation and the July 13 closure
+audit. The aggregate, migration, smoke, acceptance, and live Browser evidence
+was rerun after the final fixes.
 
 ### Slice A - model and migration — Complete
 
@@ -449,7 +505,7 @@ artifact evidence before the overall goal can be called complete.
    checks, selected-year correctness.
 
 The compact organization summary, five performance-area cards, KPI detail,
-responsive navigation, and retained browser captures are complete. Priority
+responsive navigation, and live Browser inspection are complete. Priority
 and named-goal detail is deliberately deferred to drill-downs and exports.
 
 ### Slice E - administration and gaps — Complete
@@ -471,9 +527,22 @@ and named-goal detail is deliberately deferred to drill-downs and exports.
 
 1. Complete all required docs and ADR/migration/operator notes.
 2. Run full unit/integration/auth/migration/build/smoke/e2e suites.
-3. Run manual browser, PNG/PDF, auth, configuration-gap, and audit checks.
+3. Run live Browser UI, auth, configuration-gap, and audit checks, plus
+   automated PNG/PDF signature and dimension validation.
 4. Gate: final checklist explicitly verifies `X of Y goals completed`, no
    user-facing month zero, and no NaN/undefined/Infinity.
+
+### Slice H - post-merge completion audit — Complete
+
+1. Close every item in section 4.1 with a focused regression test.
+2. Reconcile the calculation, migration, export, QA, and operator documents to
+   the final behavior and current test count.
+3. Rerun clean/copy migrations, unit/integration/auth, production build,
+   browser acceptance, smoke, live Browser UI checks, and automated export
+   validation from the final
+   worktree.
+4. Gate: no section 4.1 code gap remains and every definition-of-done claim is
+   backed by post-fix evidence.
 
 ## 11. Affected files
 
@@ -501,7 +570,7 @@ Current implementation owners include:
   README, AGENTS notes where commands/counts change, QA manual, ADR 0020, and
   the six required new documents.
 
-Schema-10 feature surfaces include:
+Schema-10/11 feature surfaces include:
 
 - `src/features/strategy/` for records, validation, calculations, queries,
   mutations, reporting models, and tests;
@@ -518,10 +587,12 @@ Schema-10 feature surfaces include:
 ## 12. Test plan
 
 The automated test files and focused coverage described below are present.
-The July 9, 2026 schema-10 run passed `npm test` at **81 files / 1,277 tests**,
-the design-system/type/production-build gate, **64/64** smoke checks, **5/5**
-Playwright workflows, clean and copied-database migration rehearsals, and
-manual browser/PNG/PDF inspection.
+The July 13, 2026 schema-11 run passed `npm test` at **91 files / 1,504 tests**,
+the design/security/architecture/type/production-build gate, **66/66** smoke
+checks, **5/5** Playwright workflows, clean/copied/idempotent migration
+rehearsals, and live 1280 px in-app Browser inspection with a clean console.
+The acceptance suite also covers 390 px navigation and validates the downloaded
+PNG/PDF signatures and dimensions.
 
 ### Unit
 
@@ -556,20 +627,24 @@ manual browser/PNG/PDF inspection.
 - multi-component and demographic editors/details;
 - configuration-gap filters and links;
 - annual vs cumulative vs YoY displays and year switching;
-- PNG/PDF signatures, dimensions, wrapped descriptions, page breaks, labels,
-  respondent totals, and same-values-as-screen assertions;
+- automated PNG/PDF signatures and dimensions;
+- manual QA for wrapped descriptions, page breaks, labels, respondent totals,
+  and same-values-as-screen review;
 - viewer/admin/auth-bypass production guard behavior;
 - deleted entity names and child history remain visible.
 
 ## 13. Rollback and backward compatibility
 
-- Schema 10 is additive and idempotent from schema 9. It does not drop or
-  rebuild any current table.
+- Schemas 10 and 11 are additive and idempotent from schema 9. Schema 11
+  transactionally rebuilds only the measurement-configuration and component
+  parent tables to change the identity constraint while preserving their IDs;
+  child observations, entries, targets, distributions, and audit rows are not
+  rebuilt.
 - Before applying to production, stop writes and copy the SQLite database and
   WAL/SHM files together or use SQLite's backup command.
-- Rollback to the old application requires restoring the schema-9 backup; the
-  old binary will not understand expanded frequency/check constraints or new
-  tables even though old rows remain present.
+- Rollback to the old application requires restoring the matching pre-migration
+  schema-10 backup (or schema-9 backup when crossing both versions); the old
+  binary will not understand the newer strategic constraints or roles.
 - Existing KPI slugs/IDs, category IDs, entry IDs, user IDs, and history IDs
   are compatibility contracts.
 - Legacy `unit_type`, `flexible`, `kpi_goals`, and scalar `value` reads remain
@@ -590,9 +665,10 @@ still requires an authorized owner.
 The remaining questions do not block safe infrastructure work, but final
 organizational answers must come from an authorized human owner:
 
-1. The stated “2-5 KPIs per goal” conflicts with several one-KPI goal bands in
-   the source. The implemented mapping preserves source ownership and flags the
-   cardinality gap rather than merge or invent KPIs.
+1. Every named goal now satisfies the required 2–5 KPI cardinality without
+   inventing KPIs. Confirm the documented attribution of digital
+   justice-education reach to the architecture/contemporary-education goal;
+   this remains a visible `needs_definition` question.
 2. Confirm the exact board-status vocabulary and who may override it.
 3. Confirm on-track/at-risk/off-track pacing thresholds and whether they vary
    by measurement type or goal.
@@ -615,9 +691,9 @@ organizational answers must come from an authorized human owner:
     uses calendar quarters.
 12. Confirm the authoritative owners/due dates/source references for every
     unresolved KPI.
-13. Confirm which artifact should be the board's default: the compact overview
-    PDF or the detailed native Print/PDF board book. Both are available; a
-    future branded template can standardize one without changing calculations.
+13. Confirm which detailed artifact should be the board's default: raster PDF
+    or native Print/PDF. Both use the same board-report content; a future
+    branded template can standardize one without changing calculations.
 
 Until answered, these items use `needs_definition` or `needs_target`, remain
 visible in the gap dashboard and exports, and are excluded from goal-completion
@@ -639,12 +715,13 @@ Current definition-of-done status:
 - [x] The exhaustive authorization/CSRF inventory covers 35 protected
   route/method combinations: 33 admin-gated and two session-gated reads.
 - [x] Schema-9 IDs, values, targets, users, and audit rows are preserved by the
-  additive schema-10 migration contract and focused migration coverage.
+  additive schema-10/11 migration contract and focused migration coverage.
 - [x] Run and record the current unit/integration/auth/migration suite:
-  `npm test` passed 81 files / 1,277 tests; `npx tsc --noEmit` passed.
+  `npm test` passed 91 files / 1,504 tests; `npx tsc --noEmit` passed.
 - [x] Run and record the production build/design-system gate, the loopback
-  development smoke (64/64), and the e2e suite (5/5). The credentialed
+  development smoke (66/66), and the e2e suite (5/5). The credentialed
   production smoke remains the normal operator pre-release step.
-- [x] Complete and record manual responsive browser, PNG/PDF,
-  configuration-gap, strategic editor, and retained-artifact checks; auth and
-  audit/lifecycle behavior are covered by the exhaustive automated suites.
+- [x] Complete and record live 1280 px in-app Browser checks for the
+  application UI plus automated 390 px navigation and PNG/PDF signature and
+  dimension checks; auth and audit/lifecycle behavior are covered by the
+  exhaustive automated suites.

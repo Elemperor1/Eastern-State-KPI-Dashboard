@@ -33,6 +33,13 @@ describe("strategic definition editors", () => {
     expect(html).toContain("Participant satisfaction full-plan target");
     expect(html).toContain("Structured target (JSON)");
     expect(html).toContain("Move Participant satisfaction up");
+    expect(html).toContain("Aggregation role");
+    expect(html).toContain("Numerator");
+    expect(html).toContain("Denominator");
+    expect(html).toContain(
+      "Use the page-level reporting-year selector to edit another annual target.",
+    );
+    expect(html).toContain("Annual pacing is stored independently for 2026.");
   });
 
   it("isolates demographic bands by their parent or component owner", () => {
@@ -72,7 +79,7 @@ function configuration(): PersistedMeasurementConfig {
     fixed_denominator: null,
     baseline_value: null,
     reporting_frequency: "annual",
-    aggregation_method: "none",
+    aggregation_method: "ratio",
     board_level_status: "on_track",
     calculation_precision: 1,
     configuration_status: "active",
@@ -105,6 +112,7 @@ function component(): StrategyComponentWithTargets {
     fixed_denominator: null,
     baseline_value: null,
     previous_period_value: null,
+    aggregation_role: "numerator",
     weight: 1,
     display_order: 0,
     configuration_status: "needs_target",

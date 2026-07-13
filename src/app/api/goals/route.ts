@@ -97,7 +97,7 @@ export async function PATCH(req: NextRequest) {
         updated_by: sessionUser.id,
       });
     } else {
-      toggleGoal(id, enabled);
+      toggleGoal(id, enabled, sessionUser.id);
     }
   } catch (err) {
     const message =
@@ -108,8 +108,9 @@ export async function PATCH(req: NextRequest) {
 }
 
 export async function DELETE(req: NextRequest) {
+  let sessionUser;
   try {
-    await requireAdmin();
+    sessionUser = await requireAdmin();
   } catch (err) {
     return authErrorResponse(err);
   }
@@ -119,6 +120,6 @@ export async function DELETE(req: NextRequest) {
   if (!parsed.success) {
     return NextResponse.json({ error: "Invalid input" }, { status: 400 });
   }
-  deleteGoal(parsed.data.id);
+  deleteGoal(parsed.data.id, sessionUser.id);
   return NextResponse.json({ ok: true, ...refreshedGoalsPayload(req) });
 }

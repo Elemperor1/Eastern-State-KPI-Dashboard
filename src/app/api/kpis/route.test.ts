@@ -128,15 +128,18 @@ describe("/api/kpis refreshed mutation payloads", () => {
     );
 
     expect(res.status).toBe(201);
-    expect(createKPIMock).toHaveBeenCalledWith({
-      category_id: 3,
-      slug: "new-tours",
-      name: "New tours",
-      unit: "people",
-      unit_type: "count",
-      reporting_frequency: "monthly",
-      direction: "higher",
-    });
+    expect(createKPIMock).toHaveBeenCalledWith(
+      {
+        category_id: 3,
+        slug: "new-tours",
+        name: "New tours",
+        unit: "people",
+        unit_type: "count",
+        reporting_frequency: "monthly",
+        direction: "higher",
+      },
+      ADMIN.id,
+    );
     expect(listKPIsMock).toHaveBeenCalledTimes(1);
     expect(listCategoriesMock).toHaveBeenCalledTimes(1);
     await expect(res.json()).resolves.toMatchObject({
@@ -156,10 +159,14 @@ describe("/api/kpis refreshed mutation payloads", () => {
     );
 
     expect(res.status).toBe(200);
-    expect(updateKPIMock).toHaveBeenCalledWith(22, {
-      name: "Updated tours",
-      direction: "neutral",
-    });
+    expect(updateKPIMock).toHaveBeenCalledWith(
+      22,
+      {
+        name: "Updated tours",
+        direction: "neutral",
+      },
+      ADMIN.id,
+    );
     await expect(res.json()).resolves.toMatchObject({
       ok: true,
       kpis: REFRESHED_KPIS,

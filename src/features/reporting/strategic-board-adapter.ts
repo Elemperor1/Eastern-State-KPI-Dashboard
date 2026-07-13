@@ -9,7 +9,9 @@ import type {
 import { buildStrategicBoardReport } from "./strategic-board-report";
 import {
   calculateMeasurement,
-  resolveConfiguredTargetValue,
+  resolveEffectiveTargetPolicy,
+  type AverageMethod,
+  type MeasurementResult,
   type StrategicGoalReadModel,
 } from "@/features/strategy";
 import type {
@@ -81,41 +83,58 @@ export function buildStrategicBoardReportFromSummary({
                 ),
               );
               const components = member?.components.map((component) => {
-                const componentTarget = selectComponentTarget(
-                  component.targets,
-                  summary.selectedYear,
-                );
-                const componentTargetValue = componentTarget
-                  ? resolveConfiguredTargetValue({
-                      measurementType: component.measurement_type,
-                      targetValue: componentTarget.target_value,
-                      structuredTarget: componentTarget.structured_target,
-                      targetDescription: componentTarget.target_description,
-                      configurationStatus:
-                        componentTarget.configuration_status,
-                    })
-                  : null;
+                const componentTargetPolicy = resolveEffectiveTargetPolicy({
+                  targets: component.targets,
+                  reportingYear: summary.selectedYear,
+                  measurementType: component.measurement_type,
+                  parentConfigurationStatus: component.configuration_status,
+                });
+                const componentTarget = componentTargetPolicy.effective.target;
+                const componentTargetValue = componentTargetPolicy.effective.value;
                 const calculated = calculatedComponents.get(String(component.id));
+                const componentMeasurementType = boardMeasurementType(
+                  component.measurement_type,
+                );
+                const componentUnit = boardResultUnit(
+                  componentMeasurementType,
+                  component.unit,
+                  null,
+                );
+                const componentResult = calculated?.result;
+                const componentState = componentResult?.state ?? "missing";
                 return {
                   id: String(component.id),
                   label: component.label,
-                  measurementType: boardMeasurementType(
-                    component.measurement_type,
-                  ),
-                  unit: component.unit,
+                  measurementType: componentMeasurementType,
+                  unit: componentUnit,
                   result: {
-                    state: calculated?.result.state ?? "missing" as const,
-                    value: calculated?.result.value ?? null,
-                    displayValue: formatValue(
-                      calculated?.result.value ?? null,
-                      component.unit,
-                    ),
-                    numerator: calculated?.result.numerator ?? null,
-                    denominator: calculated?.result.denominator ?? null,
+                    state: componentState,
+                    value: componentResult?.value ?? null,
+                    displayValue: presentBoardResult({
+                      measurementType: componentMeasurementType,
+                      state: componentState,
+                      value: componentResult?.value ?? null,
+                      unit: componentUnit,
+                      precision: componentResult?.precision ??
+                        config?.calculation_precision ?? 1,
+                      respondentCount: componentResult?.respondentCount ?? null,
+                      distributionRespondentTotal:
+                        componentResult?.distribution?.respondentTotal ?? null,
+                      aggregationMethod:
+                        componentResult?.aggregationMethod ?? null,
+                      componentStates:
+                        componentResult?.components?.map(
+                          (entry) => entry.result.state,
+                        ) ?? [],
+                    }),
+                    numerator: componentResult?.numerator ?? null,
+                    denominator: componentResult?.denominator ?? null,
                     respondentCount:
-                      calculated?.result.respondentCount ?? null,
+                      componentResult?.respondentCount ?? null,
                     formulaExplanation: formulaExplanation(
                       component.measurement_type,
+                      calculated?.result.averageMethod,
+                      calculated?.result.calculationProvenance,
                     ),
                   },
                   progress: calculated?.progress
@@ -134,10 +153,7 @@ export function buildStrategicBoardReportFromSummary({
                         actualValue: null,
                         targetValue: componentTargetValue,
                         actualProgressPercentage: null,
-                        status: componentTargetStatus(
-                          componentTarget.configuration_status,
-                          componentTargetValue,
-                        ),
+                        status: componentTargetPolicy.effective.progressStatus,
                         targetYear: componentTarget.target_year,
                         targetDescription:
                           componentTarget.target_description,
@@ -162,34 +178,60 @@ export function buildStrategicBoardReportFromSummary({
                   .filter((issue) => issue.code !== "MISSING_ACTUAL")
                   .map((issue) => issue.message),
               ];
+              const measurementType = boardMeasurementType(
+                kpiSummary.measurementType,
+              );
+              const calculation = kpiSummary.currentCalculation;
+              const resultState = calculation?.state ??
+                (kpiSummary.currentValue === null ? "missing" : "ok");
+              const resultValue = calculation
+                ? calculation.value
+                : kpiSummary.currentValue;
+              const unit = boardResultUnit(
+                measurementType,
+                config?.unit ?? null,
+                member?.kpi.unit ?? null,
+              );
 
               return {
                 id: String(kpiSummary.kpiId),
                 name: kpiSummary.kpiName,
-                measurementType: boardMeasurementType(
-                  kpiSummary.measurementType,
-                ),
+                measurementType,
                 reportingFrequency: boardReportingFrequency(
                   config?.reporting_frequency,
                 ),
-                unit: config?.unit ?? member?.kpi.unit ?? null,
+                unit,
                 result: {
-                  state:
-                    kpiSummary.currentCalculation?.state ??
-                    (kpiSummary.currentValue === null ? "missing" : "ok"),
-                  value: kpiSummary.currentValue,
-                  displayValue: formatValue(
-                    kpiSummary.currentValue,
-                    config?.unit ?? member?.kpi.unit ?? null,
-                  ),
+                  state: resultState,
+                  value: resultValue,
+                  displayValue: presentBoardResult({
+                    measurementType,
+                    state: resultState,
+                    value: resultValue,
+                    unit,
+                    precision: calculation?.precision ??
+                      config?.calculation_precision ?? 1,
+                    respondentCount: calculation?.respondentCount ?? null,
+                    distributionRespondentTotal:
+                      calculation?.distribution?.respondentTotal ?? null,
+                    aggregationMethod:
+                      calculation?.aggregationMethod ??
+                      config?.aggregation_method ?? null,
+                    componentStates:
+                      calculation?.components?.map(
+                        (component) => component.result.state,
+                      ) ?? [],
+                  }),
                   numerator:
-                    kpiSummary.currentCalculation?.numerator ?? null,
+                    calculation?.numerator ?? null,
                   denominator:
-                    kpiSummary.currentCalculation?.denominator ?? null,
+                    calculation?.denominator ?? null,
                   respondentCount:
-                    kpiSummary.currentCalculation?.respondentCount ?? null,
+                    calculation?.respondentCount ?? null,
                   formulaExplanation: formulaExplanation(
                     kpiSummary.measurementType,
+                    kpiSummary.currentCalculation?.averageMethod,
+                    kpiSummary.currentCalculation?.calculationProvenance,
                   ),
                 },
                 annualProgress: progressInput(
@@ -233,18 +275,23 @@ export function buildStrategicBoardReportFromSummary({
                       }
                     : null,
                 revenueBreakdown:
-                  kpiSummary.kpiSlug === "revenue-by-stream"
+                  isCurrencyComposition({
+                    measurementType,
+                    configuration: config ?? null,
+                    components: member?.components ?? [],
+                  })
                     ? {
                         totalRevenue:
-                          kpiSummary.currentCalculation?.value ?? null,
+                          calculation?.value ?? null,
                         streams: components.map((component) => ({
                           id: component.id,
                           label: component.label,
                           value: component.result.value,
                           sharePercentage: revenueShare(
                             component.result.value,
-                            kpiSummary.currentCalculation?.value ?? null,
-                            config?.calculation_precision ?? 1,
+                            calculation?.value ?? null,
+                            calculation?.precision ??
+                              config?.calculation_precision ?? 1,
                           ),
                         })),
                       }
@@ -257,6 +304,40 @@ export function buildStrategicBoardReportFromSummary({
       ),
     })),
   });
+}
+
+function isCurrencyComposition({
+  measurementType,
+  configuration,
+  components,
+}: {
+  measurementType: BoardMeasurementType;
+  configuration: StrategicGoalReadModel["members"][number]["configuration"];
+  components: StrategicGoalReadModel["members"][number]["components"];
+}): boolean {
+  if (
+    measurementType !== "multi_component" ||
+    configuration?.measurement_type !== "multi_component" ||
+    configuration.aggregation_method !== "sum" ||
+    currencyCode(configuration.unit) === null ||
+    components.length === 0
+  ) {
+    return false;
+  }
+
+  const parentCurrency = currencyCode(configuration.unit);
+  return components.every(
+    (component) =>
+      component.measurement_type === "currency" &&
+      currencyCode(component.unit) === parentCurrency,
+  );
+}
+
+function currencyCode(unit: string | null): "USD" | null {
+  const normalized = unit?.trim().toLowerCase();
+  return normalized === "usd" || normalized === "$" || normalized === "currency"
+    ? "USD"
+    : null;
 }
 
 function revenueShare(
@@ -336,32 +417,6 @@ function annualPacingStatus(
   return progress.status;
 }
 
-function selectComponentTarget(
-  targets: StrategicGoalReadModel["members"][number]["components"][number]["targets"],
-  year: number,
-) {
-  const annual = targets.find(
-    (target) =>
-      target.target_scope === "annual" && target.reporting_year === year,
-  );
-  if (annual) return annual;
-  return [...targets]
-    .filter((target) => target.target_scope === "full_plan")
-    .sort((a, b) => a.target_year - b.target_year)
-    .find((target) => target.target_year >= year) ?? null;
-}
-
-function componentTargetStatus(
-  status: StrategicGoalReadModel["members"][number]["components"][number]["targets"][number]["configuration_status"],
-  value: number | null,
-): BoardProgressStatus {
-  if (status === "needs_definition") return "needs_definition";
-  if (status !== "ready" && status !== "active") {
-    return "target_not_finalized";
-  }
-  return value === null ? "needs_definition" : "not_started";
-}
-
 function boardMeasurementType(value: unknown): BoardMeasurementType {
   const supported: BoardMeasurementType[] = [
     "binary",
@@ -409,35 +464,135 @@ function boardConfigurationStatus(value: unknown): BoardConfigurationStatus {
     : "draft";
 }
 
-function formatValue(value: number | null, unit: string | null): string {
+type BoardResultState = "ok" | "missing" | "invalid";
+
+function presentBoardResult({
+  measurementType,
+  state,
+  value,
+  unit,
+  precision,
+  respondentCount,
+  distributionRespondentTotal,
+  aggregationMethod,
+  componentStates,
+}: {
+  measurementType: BoardMeasurementType;
+  state: BoardResultState;
+  value: number | null;
+  unit: string | null;
+  precision: number;
+  respondentCount: number | null;
+  distributionRespondentTotal: number | null;
+  aggregationMethod: string | null;
+  componentStates: BoardResultState[];
+}): string {
+  if (state === "missing") return "Not reported";
+  if (state === "invalid") return "Needs review";
+  if (measurementType === "distribution") {
+    const total = respondentCount ?? distributionRespondentTotal;
+    return total === null
+      ? "Distribution reported"
+      : `${formatNumber(total, 0)} ${total === 1 ? "respondent" : "respondents"}`;
+  }
+  if (measurementType === "binary") {
+    if (value === 1) return "Complete";
+    if (value === 0) return "Not complete";
+    return "Needs review";
+  }
+  if (measurementType === "year_over_year") {
+    if (value === null || !Number.isFinite(value)) return "Not reported";
+    return `${value > 0 ? "+" : ""}${formatNumber(value, precision)}%`;
+  }
+  if (
+    measurementType === "multi_component" &&
+    aggregationMethod === "none"
+  ) {
+    const reportedCount = componentStates.filter((entry) => entry === "ok").length;
+    return `${reportedCount} ${reportedCount === 1 ? "component" : "components"}`;
+  }
+  return formatScalarValue(value, unit, precision);
+}
+
+function boardResultUnit(
+  measurementType: BoardMeasurementType,
+  configuredUnit: string | null,
+  legacyUnit: string | null,
+): string | null {
+  if (measurementType === "year_over_year") return "%";
+  if (measurementType === "distribution") return "respondents";
+  if (measurementType === "ratio") return configuredUnit;
+  return configuredUnit ?? legacyUnit;
+}
+
+function formatScalarValue(
+  value: number | null,
+  unit: string | null,
+  precision: number,
+): string {
   if (value === null || !Number.isFinite(value)) return "Not reported";
-  const formatted = new Intl.NumberFormat("en-US", {
-    maximumFractionDigits: 2,
-  }).format(value);
+  const formatted = formatNumber(value, precision);
   if (unit === "%") return `${formatted}%`;
   if (unit === "USD" || unit === "$" || unit?.toLowerCase() === "currency") {
     return new Intl.NumberFormat("en-US", {
       style: "currency",
       currency: "USD",
-      maximumFractionDigits: 2,
+      maximumFractionDigits: normalizedPrecision(precision),
     }).format(value);
   }
   return unit ? `${formatted} ${unit}` : formatted;
 }
 
-function formulaExplanation(measurementType: unknown): string {
+function formatNumber(value: number, precision: number): string {
+  return new Intl.NumberFormat("en-US", {
+    maximumFractionDigits: normalizedPrecision(precision),
+  }).format(value);
+}
+
+function normalizedPrecision(precision: number): number {
+  return Number.isInteger(precision) && precision >= 0 && precision <= 20
+    ? precision
+    : 2;
+}
+
+function formulaExplanation(
+  measurementType: unknown,
+  averageMethod?: AverageMethod,
+  calculationProvenance?: MeasurementResult["calculationProvenance"],
+): string {
   switch (measurementType) {
     case "binary":
       return "Completion is recorded as yes or no.";
     case "milestone":
       return "Completed milestones divided by required milestones.";
     case "percentage":
+      if (calculationProvenance === "legacy_direct_value") {
+        return "Retained direct legacy percentage; raw numerator and denominator are unavailable, so this result was not recalculated.";
+      }
       return "Numerator divided by denominator, multiplied by 100.";
     case "average":
-      return "Raw score inputs are normalized against the configured maximum.";
+      if (calculationProvenance === "legacy_direct_value") {
+        return "Retained direct legacy normalized value; raw score inputs and formula method are unavailable, so this result was not recalculated.";
+      }
+      if (averageMethod === "total_score") {
+        return "Total score divided by total possible score, multiplied by 100.";
+      }
+      if (averageMethod === "average_score") {
+        return "Average score divided by the configured maximum score, multiplied by 100.";
+      }
+      if (averageMethod === "percent_positive") {
+        return "Positive responses divided by total responses, multiplied by 100.";
+      }
+      return "Raw average inputs are normalized using the persisted formula.";
     case "year_over_year":
+      if (calculationProvenance === "legacy_direct_percentage") {
+        return "Retained direct legacy percentage; underlying current and prior raw values are unavailable, so this result was not recalculated.";
+      }
       return "Current value minus previous value, divided by the absolute previous value.";
     case "ratio":
+      if (calculationProvenance === "legacy_direct_value") {
+        return "Retained direct legacy ratio; raw numerator and denominator are unavailable, so this result was not recalculated.";
+      }
       return "Numerator divided by the configured denominator.";
     case "distribution":
       return "Each category count divided by the respondent total.";

@@ -3,6 +3,7 @@ import { readFile } from "node:fs/promises";
 
 const GOAL_KPI = "Interpretive Site Plan — Milestones completed on schedule";
 const GOAL_YEAR = "2026";
+const EXPORT_DOWNLOAD_TIMEOUT_MS = 60_000;
 
 test.describe.configure({ mode: "serial" });
 
@@ -15,7 +16,9 @@ function collectBrowserErrors(page: Page): string[] {
   return errors;
 }
 
-async function expectPngDownload(download: Download): Promise<void> {
+async function expectPngDownload(
+  download: Download,
+): Promise<{ width: number; height: number }> {
   expect(download.suggestedFilename()).toMatch(/\.png$/);
   const filePath = await download.path();
   expect(filePath).not.toBeNull();
@@ -23,8 +26,11 @@ async function expectPngDownload(download: Download): Promise<void> {
   expect(bytes.subarray(0, 8)).toEqual(
     Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]),
   );
-  expect(bytes.readUInt32BE(16)).toBeGreaterThan(500);
-  expect(bytes.readUInt32BE(20)).toBeGreaterThan(500);
+  const width = bytes.readUInt32BE(16);
+  const height = bytes.readUInt32BE(20);
+  expect(width).toBeGreaterThan(500);
+  expect(height).toBeGreaterThan(500);
+  return { width, height };
 }
 
 async function expectPdfDownload(download: Download): Promise<void> {
@@ -45,6 +51,7 @@ async function expectStrategicCsvDownload(download: Download): Promise<void> {
   expect(body).toContain("Organization Completion Percentage");
   expect(body).toContain("Annual Pacing Target");
   expect(body).toContain("Full Plan Actual Progress Percentage");
+  expect(body).toContain("KPI ID");
   expect(body).toContain("Demographic Respondent Total");
   expect(body).not.toMatch(/(?:NaN|undefined|Infinity)/);
 }
@@ -110,7 +117,9 @@ test("creates, edits, exports, and deletes a KPI goal", async ({ page }) => {
   await expect(goalPanel).toContainText(
     "2026 actual toward 2026 target · baseline 2025",
   );
-  const pngPromise = page.waitForEvent("download");
+  const pngPromise = page.waitForEvent("download", {
+    timeout: EXPORT_DOWNLOAD_TIMEOUT_MS,
+  });
   await page.getByRole("button", { name: "Export current view as PNG image" }).click();
   await expectPngDownload(await pngPromise);
 
@@ -209,6 +218,18 @@ test("keeps the executive overview concise and exposes strategic administration"
   ).toBeVisible();
   await expect(page.getByText("Goals completed", { exact: true })).toBeVisible();
   await expect(
+    page.getByText(/goal(?:s)? excluded because configuration is incomplete/),
+  ).toBeVisible();
+  const exclusionDetails = page.getByText(/Review excluded goal details/);
+  await expect(exclusionDetails).toBeVisible();
+  await exclusionDetails.click();
+  await expect(
+    page.getByLabel("Organization-wide excluded goal details"),
+  ).toBeVisible();
+  await expect(
+    page.getByRole("link", { name: "Review configuration gaps" }),
+  ).toBeVisible();
+  await expect(
     page
       .getByLabel("Strategic plan progress")
       .getByText(/\d+ of \d+ goals completed/)
@@ -223,6 +244,19 @@ test("keeps the executive overview concise and exposes strategic administration"
   await expect(page.getByRole("heading", { name: "Configuration gaps", level: 1 })).toBeVisible();
   await expect(page.getByText("Need targets", { exact: true })).toBeVisible();
   await expect(page.getByText("Need definitions", { exact: true })).toBeVisible();
+  const gapSearch = page.getByRole("searchbox", { name: "Search" });
+  await gapSearch.fill("contributed revenue");
+  await expect(page.getByText(/Showing \d+ of \d+/)).toBeVisible();
+  await expect(
+    page.getByText(
+      "Community & Civic Hub — % of contributed revenue from government (city & state)",
+      { exact: true },
+    ),
+  ).toBeVisible();
+  await page.getByRole("button", { name: "Clear filters" }).click();
+  await page.getByLabel("Status").selectOption("needs_target");
+  await expect(page.getByText(/Showing \d+ of \d+/)).toBeVisible();
+  await page.getByRole("button", { name: "Clear filters" }).click();
   const editorLink = page.getByRole("link", { name: /Open KPI editor for/ }).first();
   await expect(editorLink).toBeVisible();
   await editorLink.click();
@@ -230,6 +264,48 @@ test("keeps the executive overview concise and exposes strategic administration"
   await expect(page.getByText("Measurement", { exact: true })).toBeVisible();
   await expect(page.getByText(/Targets \(\d+\)/)).toBeVisible();
   await expect(page.getByText(/Components \(\d+\)/)).toBeVisible();
+  const measurementEditor = page.getByRole("region", {
+    name: "Measurement definition",
+  });
+  const ownerInput = measurementEditor.getByLabel("Assigned owner");
+  const originalOwner = await ownerInput.inputValue();
+  const editorUrl = page.url();
+  try {
+    await ownerInput.fill("Playwright acceptance owner");
+    await measurementEditor
+      .getByRole("button", { name: "Save measurement definition" })
+      .click();
+    await expect(measurementEditor.getByRole("status")).toContainText(
+      "Measurement configuration saved.",
+    );
+
+    await page.reload();
+    const persistedMeasurementEditor = page.getByRole("region", {
+      name: "Measurement definition",
+    });
+    await expect(
+      persistedMeasurementEditor.getByLabel("Assigned owner"),
+    ).toHaveValue("Playwright acceptance owner");
+  } finally {
+    await page.goto(editorUrl);
+    const restoreMeasurementEditor = page.getByRole("region", {
+      name: "Measurement definition",
+    });
+    await restoreMeasurementEditor.getByLabel("Assigned owner").fill(originalOwner);
+    await restoreMeasurementEditor
+      .getByRole("button", { name: "Save measurement definition" })
+      .click();
+    await expect(restoreMeasurementEditor.getByRole("status")).toContainText(
+      "Measurement configuration saved.",
+    );
+
+    await page.reload();
+    await expect(
+      page
+        .getByRole("region", { name: "Measurement definition" })
+        .getByLabel("Assigned owner"),
+    ).toHaveValue(originalOwner);
+  }
 
   await page.goto("/admin/strategy-data");
   await expect(page.getByRole("heading", { name: "Strategic data entry" })).toBeVisible();
@@ -263,18 +339,65 @@ test("downloads representative strategic-plan exports and renders native print P
 
   await page.goto("/dashboard/overview");
   await expect(page.getByRole("heading", { name: "Performance by area" })).toBeVisible();
-  let downloadPromise = page.waitForEvent("download");
+  let downloadPromise = page.waitForEvent("download", {
+    timeout: EXPORT_DOWNLOAD_TIMEOUT_MS,
+  });
   await page
     .getByRole("button", { name: /Download .*\.csv$/ })
     .click();
   await expectStrategicCsvDownload(await downloadPromise);
 
-  downloadPromise = page.waitForEvent("download");
-  await page.getByRole("button", { name: "Export current view as PNG image" }).click();
-  await expectPngDownload(await downloadPromise);
+  const detailedReport = page.locator("#strategic-board-export-root");
+  const pngButton = page.getByRole("button", {
+    name: "Export current view as PNG image",
+  });
+  const pdfButton = page.getByRole("button", {
+    name: "Export current dashboard view as PDF",
+  });
+  await expect(pngButton).toHaveAttribute(
+    "aria-controls",
+    "strategic-board-export-root",
+  );
+  await expect(pdfButton).toHaveAttribute(
+    "aria-controls",
+    "strategic-board-export-root",
+  );
+  await expect(detailedReport.locator("h4")).toHaveCount(59);
+  await expect(
+    detailedReport
+      .locator("h5")
+      .filter({ hasText: "Annual target and pacing" }),
+  ).toHaveCount(59);
+  await expect(
+    detailedReport
+      .locator("h5")
+      .filter({ hasText: "Full-plan target and progress" }),
+  ).toHaveCount(59);
+  expect(
+    await detailedReport.getByText("Component results", { exact: true }).count(),
+  ).toBeGreaterThan(0);
+  expect(
+    await detailedReport
+      .getByText("Demographic distribution", { exact: true })
+      .count(),
+  ).toBeGreaterThan(0);
+  expect(
+    await detailedReport.getByText("Revenue streams", { exact: true }).count(),
+  ).toBeGreaterThan(0);
+  await expect(detailedReport).toContainText("Report-wide unresolved reasons");
 
-  downloadPromise = page.waitForEvent("download");
-  await page.getByRole("button", { name: "Export current dashboard view as PDF" }).click();
+  downloadPromise = page.waitForEvent("download", {
+    timeout: EXPORT_DOWNLOAD_TIMEOUT_MS,
+  });
+  await pngButton.click();
+  const overviewPng = await expectPngDownload(await downloadPromise);
+  expect(overviewPng.height).toBeGreaterThan(5_000);
+  expect(overviewPng.height).toBeGreaterThan(overviewPng.width * 5);
+
+  downloadPromise = page.waitForEvent("download", {
+    timeout: EXPORT_DOWNLOAD_TIMEOUT_MS,
+  });
+  await pdfButton.click();
   await expectPdfDownload(await downloadPromise);
 
   await page.goto("/dashboard/category/visitor-experience");
@@ -286,7 +409,9 @@ test("downloads representative strategic-plan exports and renders native print P
       name: /Interpretive Site Plan — Milestones completed on schedule/,
     }),
   ).toBeVisible();
-  downloadPromise = page.waitForEvent("download");
+  downloadPromise = page.waitForEvent("download", {
+    timeout: EXPORT_DOWNLOAD_TIMEOUT_MS,
+  });
   await page.getByRole("button", { name: "Export current view as PNG image" }).click();
   await expectPngDownload(await downloadPromise);
 
@@ -294,21 +419,33 @@ test("downloads representative strategic-plan exports and renders native print P
     "/dashboard/category/visitor-experience?currentYear=2099&compareYear=2098",
   );
   await expect(page.getByText("No data", { exact: true })).toHaveCount(16);
-  downloadPromise = page.waitForEvent("download");
+  downloadPromise = page.waitForEvent("download", {
+    timeout: EXPORT_DOWNLOAD_TIMEOUT_MS,
+  });
   await page.getByRole("button", { name: "Export current view as PNG image" }).click();
   await expectPngDownload(await downloadPromise);
 
   await page.goto("/dashboard/category/visitor-experience?legacy=1");
-  downloadPromise = page.waitForEvent("download");
+  downloadPromise = page.waitForEvent("download", {
+    timeout: EXPORT_DOWNLOAD_TIMEOUT_MS,
+  });
   await page.getByRole("button", { name: "Export current dashboard view as PDF" }).click();
   await expectPdfDownload(await downloadPromise);
+
+  await page.goto("/dashboard/metric/revenue-by-stream");
+  await expect(page.getByText("++1", { exact: true })).toHaveCount(0);
+  await expect(
+    page.getByRole("row", { name: /Admissions 26 27 \+1/ }),
+  ).toBeVisible();
 
   await page.goto(
     "/dashboard/metric/interpretive-plan-milestones-on-schedule?legacy=1",
   );
   await expect(page.getByText("2027 Goal", { exact: true })).toBeVisible();
   await expect(page.getByText("2026 actual toward 2027 target · baseline 2026")).toBeVisible();
-  downloadPromise = page.waitForEvent("download");
+  downloadPromise = page.waitForEvent("download", {
+    timeout: EXPORT_DOWNLOAD_TIMEOUT_MS,
+  });
   await page.getByRole("button", { name: "Export current dashboard view as PDF" }).click();
   await expectPdfDownload(await downloadPromise);
 

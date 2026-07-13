@@ -8,6 +8,7 @@ import {
   BOARD_STATUSES,
   CONFIGURATION_STATUSES,
   MEASUREMENT_TYPES,
+  STRATEGIC_PLAN_REPORTING_YEARS,
   STRATEGY_REPORTING_FREQUENCIES,
   type AggregationMethod,
   type BoardStatus,
@@ -23,6 +24,7 @@ import {
   Card,
   Checkbox,
   FormField,
+  FilterToolbar,
   Input,
   PageHeader,
   Select,
@@ -33,9 +35,12 @@ import {
 import {
   buildConfigurationFormPayload,
   buildConfigurationMutation,
+  buildSuccessorConfigurationMutation,
+  canCreateMeasurementSuccessor,
   configurationDraftFromData,
   firstFormError,
   targetDraftForScope,
+  successorConfigurationDraftFromData,
   type ConfigurationFormDraft,
   type StrategicKpiEditorData,
   type StrategyEditorFormErrors,
@@ -149,8 +154,33 @@ export function StrategicKpiEditorClient({ data }: { data: StrategicKpiEditorDat
       />
 
       <StatusBanner variant="neutral">
-        Editing the strategic definition changes future calculations and board exports. Existing observations and audit history remain intact.
+        Semantic changes are versioned once results exist. Create a successor definition for future calculations; historical observations retain the definition that originally interpreted them.
       </StatusBanner>
+
+      <FilterToolbar className="mb-6">
+        <FormField
+          label="Reporting year"
+          htmlFor="strategic-kpi-reporting-year"
+          hint="Controls annual targets, effective definitions, components, and bands."
+          className="w-full sm:max-w-xs"
+        >
+          <Select
+            id="strategic-kpi-reporting-year"
+            value={data.reportingYear}
+            onChange={(event) =>
+              router.push(
+                `/admin/kpis/${data.kpi.id}?year=${Number(event.target.value)}`,
+              )
+            }
+          >
+            {STRATEGIC_PLAN_REPORTING_YEARS.map((year) => (
+              <option key={year} value={year}>
+                {year}
+              </option>
+            ))}
+          </Select>
+        </FormField>
+      </FilterToolbar>
 
       <Tabs
         value={tab}
@@ -263,9 +293,14 @@ function ConfigurationEditor({
   const [errors, setErrors] = useState<StrategyEditorFormErrors>({});
   const [feedback, setFeedback] = useState<Feedback>(null);
   const [busy, setBusy] = useState(false);
+  const [successorMode, setSuccessorMode] = useState(false);
   const archived = data.configuration?.archived_at !== null && data.configuration !== null;
+  const successorAvailable =
+    data.configuration !== null &&
+    canCreateMeasurementSuccessor(data.configuration, data.reportingYear);
 
   useEffect(() => {
+    setSuccessorMode(false);
     setDraft(
       configurationDraftFromData(data.configuration, data.kpi, data.reportingYear),
     );
@@ -290,7 +325,7 @@ function ConfigurationEditor({
     const built = buildConfigurationFormPayload(
       draft,
       data.kpi.id,
-      data.configuration?.id ?? null,
+      successorMode ? null : data.configuration?.id ?? null,
     );
     if (!built.ok) {
       setErrors(built.errors);
@@ -303,12 +338,35 @@ function ConfigurationEditor({
     setErrors({});
     setBusy(true);
     const result = await runMutation(
-      buildConfigurationMutation(built.payload, data.configuration === null),
+      successorMode && data.configuration
+        ? buildSuccessorConfigurationMutation(
+            data.configuration.id,
+            built.payload,
+          )
+        : buildConfigurationMutation(
+            built.payload,
+            data.configuration === null,
+          ),
     );
     setBusy(false);
+    if (result.ok && successorMode) {
+      setSuccessorMode(false);
+      setDraft(
+        configurationDraftFromData(
+          data.configuration,
+          data.kpi,
+          data.reportingYear,
+        ),
+      );
+    }
     setFeedback(
       result.ok
-        ? { variant: "success", message: "Measurement configuration saved." }
+        ? {
+            variant: "success",
+            message: successorMode
+              ? "Successor definition saved. Select its first reporting year to review it."
+              : "Measurement configuration saved.",
+          }
         : { variant: "error", message: result.error ?? "Could not save configuration." },
     );
   }
@@ -325,7 +383,11 @@ function ConfigurationEditor({
           </p>
         </div>
         <Badge variant={data.configuration ? "info" : "warning"}>
-          {data.configuration ? `Configuration #${data.configuration.id}` : "New configuration"}
+          {successorMode
+            ? `Successor to #${data.configuration?.id}`
+            : data.configuration
+              ? `Configuration #${data.configuration.id}`
+              : "New configuration"}
         </Badge>
       </div>
 
@@ -335,6 +397,11 @@ function ConfigurationEditor({
         </StatusBanner>
       ) : null}
       {feedback ? <StatusBanner variant={feedback.variant}>{feedback.message}</StatusBanner> : null}
+      {successorMode && data.configuration ? (
+        <StatusBanner variant="neutral">
+          The predecessor will end one year before this successor starts. Choose the first year without historical values; the save is atomic and rejects overlaps.
+        </StatusBanner>
+      ) : null}
 
       <form onSubmit={submit} className="space-y-8">
         <fieldset disabled={busy || archived} className="space-y-8">
@@ -475,8 +542,8 @@ function ConfigurationEditor({
                 <Input
                   id="strategy-effective-start"
                   type="number"
-                  min={1900}
-                  max={2100}
+                  min={successorMode ? 2025 : 1900}
+                  max={successorMode ? 2029 : 2100}
                   value={draft.effectiveStartYear}
                   aria-invalid={Boolean(errors.effective_start_year)}
                   onChange={(event) => update("effectiveStartYear", event.target.value)}
@@ -486,8 +553,8 @@ function ConfigurationEditor({
                 <Input
                   id="strategy-effective-end"
                   type="number"
-                  min={1900}
-                  max={2100}
+                  min={successorMode ? 2025 : 1900}
+                  max={successorMode ? 2029 : 2100}
                   value={draft.effectiveEndYear}
                   aria-invalid={Boolean(errors.effective_end_year)}
                   onChange={(event) => update("effectiveEndYear", event.target.value)}
@@ -572,9 +639,39 @@ function ConfigurationEditor({
           </section>
         </fieldset>
 
-        <div className="flex justify-end">
+        <div className="flex flex-wrap justify-between gap-3">
+          {data.configuration && !archived && successorAvailable ? (
+            <Button
+              type="button"
+              variant="secondary"
+              disabled={busy}
+              onClick={() => {
+                setFeedback(null);
+                setErrors({});
+                const next = !successorMode;
+                setSuccessorMode(next);
+                setDraft(
+                  next
+                    ? successorConfigurationDraftFromData(
+                        data.configuration!,
+                        data.kpi,
+                        data.reportingYear,
+                      )
+                    : configurationDraftFromData(
+                        data.configuration,
+                        data.kpi,
+                        data.reportingYear,
+                      ),
+                );
+              }}
+            >
+              {successorMode ? "Cancel successor" : "Create successor definition"}
+            </Button>
+          ) : (
+            <span />
+          )}
           <Button type="submit" variant="primary" isLoading={busy} disabled={archived}>
-            Save measurement definition
+            {successorMode ? "Save successor definition" : "Save measurement definition"}
           </Button>
         </div>
       </form>
@@ -601,7 +698,7 @@ function TargetsEditor({
   return (
     <div className="grid grid-cols-1 gap-5 xl:grid-cols-2">
       <StrategicTargetEditorCard
-        key={`annual-${data.targets.map((target) => target.updated_at).join("-")}`}
+        key={`annual-${data.reportingYear}-${data.targets.map((target) => target.updated_at).join("-")}`}
         title="Annual target"
         description="Pacing target for one reporting year. Its reporting year and target year remain aligned."
         initialDraft={targetDraftForScope(data.targets, "annual", data.reportingYear)}
@@ -609,6 +706,7 @@ function TargetsEditor({
         measurementType={data.configuration.measurement_type}
         runMutation={runMutation}
         idPrefix="kpi"
+        lockedTargetYear={data.reportingYear}
       />
       <StrategicTargetEditorCard
         key={`full-${data.targets.map((target) => target.updated_at).join("-")}`}

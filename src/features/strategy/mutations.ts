@@ -33,6 +33,10 @@ import type {
   MeasurementType,
   StrategyJsonValue,
 } from "./types";
+import {
+  assertStrategyEntityArchiveIntegrity,
+  assertStrategyEntityRestoreIntegrity,
+} from "./configuration-editing";
 
 const PLAN_START_YEAR = 2025;
 const PLAN_END_YEAR = 2029;
@@ -298,6 +302,7 @@ function syncConfig(
   actorId: number | null,
 ): { row: PersistedMeasurementConfig; change: Change } {
   const db = getDb();
+  const configuredUnit = (definition.unit ?? kpi.unit) || null;
   const before = db
     .prepare(
       "SELECT * FROM kpi_measurement_configs WHERE kpi_id = ? AND effective_from_year = ?",
@@ -312,7 +317,7 @@ function syncConfig(
   const expected: Record<string, unknown> = {
     effective_to_year: PLAN_END_YEAR,
     measurement_type: definition.measurement_type,
-    unit: kpi.unit || null,
+    unit: configuredUnit,
     numerator_label: definition.numerator_label ?? null,
     denominator_label: definition.denominator_label ?? null,
     fixed_denominator: definition.fixed_denominator ?? null,
@@ -329,7 +334,7 @@ function syncConfig(
   MeasurementConfigInputSchema.parse({
     kpi_id: kpi.id,
     measurement_type: definition.measurement_type,
-    unit: kpi.unit || null,
+    unit: configuredUnit,
     numerator_label: definition.numerator_label ?? null,
     denominator_label: definition.denominator_label ?? null,
     fixed_denominator: definition.fixed_denominator ?? null,
@@ -494,8 +499,8 @@ function syncComponent(
 ): { row: PersistedComponent; change: Change } {
   const db = getDb();
   const before = db
-    .prepare("SELECT * FROM kpi_components WHERE kpi_id = ? AND slug = ?")
-    .get(kpi.id, definition.slug) as Record<string, unknown> | undefined;
+    .prepare("SELECT * FROM kpi_components WHERE configuration_id = ? AND slug = ?")
+    .get(config.id, definition.slug) as Record<string, unknown> | undefined;
   const componentStatus =
     definition.configuration_status ?? parentDefinition.configuration_status;
   const unresolvedQuestion = unresolvedQuestionFor(
@@ -512,6 +517,7 @@ function syncComponent(
     numerator_label: definition.numerator_label ?? null,
     denominator_label: definition.denominator_label ?? null,
     fixed_denominator: definition.fixed_denominator ?? null,
+    aggregation_role: definition.aggregation_role ?? "value",
     weight: definition.weight ?? 1,
     display_order: displayOrder,
     configuration_status: before?.archived_at ? "archived" : componentStatus,
@@ -527,6 +533,7 @@ function syncComponent(
     numerator_label: definition.numerator_label ?? null,
     denominator_label: definition.denominator_label ?? null,
     fixed_denominator: definition.fixed_denominator ?? null,
+    aggregation_role: definition.aggregation_role ?? "value",
     value: null,
     baseline_value: null,
     previous_period_value: null,
@@ -546,10 +553,10 @@ function syncComponent(
     db.prepare(
       `INSERT INTO kpi_components (
          kpi_id, configuration_id, slug, label, measurement_type, unit,
-         numerator_label, denominator_label, fixed_denominator, weight,
+         numerator_label, denominator_label, fixed_denominator, aggregation_role, weight,
          display_order, configuration_status, unresolved_question,
          created_by, updated_by
-       ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+       ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     ).run(
       kpi.id,
       config.id,
@@ -560,6 +567,7 @@ function syncComponent(
       definition.numerator_label ?? null,
       definition.denominator_label ?? null,
       definition.fixed_denominator ?? null,
+      definition.aggregation_role ?? "value",
       definition.weight ?? 1,
       displayOrder,
       componentStatus,
@@ -572,7 +580,7 @@ function syncComponent(
     db.prepare(
       `UPDATE kpi_components SET configuration_id = ?, label = ?,
          measurement_type = ?, unit = ?, numerator_label = ?, denominator_label = ?,
-         fixed_denominator = ?, weight = ?, display_order = ?, configuration_status = ?,
+         fixed_denominator = ?, aggregation_role = ?, weight = ?, display_order = ?, configuration_status = ?,
          unresolved_question = ?, updated_by = ?, updated_at = datetime('now')
        WHERE id = ?`,
     ).run(...Object.values(expected), actorId, Number(before.id));
@@ -581,8 +589,8 @@ function syncComponent(
     change = "unchanged";
   }
   const after = db
-    .prepare("SELECT * FROM kpi_components WHERE kpi_id = ? AND slug = ?")
-    .get(kpi.id, definition.slug) as Record<string, unknown>;
+    .prepare("SELECT * FROM kpi_components WHERE configuration_id = ? AND slug = ?")
+    .get(config.id, definition.slug) as Record<string, unknown>;
   if (change !== "unchanged") {
     recordStrategicAuditEvent({
       entity_type: "component",
@@ -882,6 +890,15 @@ function setArchived(
     const restoredStatus = archived
       ? "archived"
       : (configurationStatusBeforeArchive(descriptor.entityType, id) ?? "draft");
+    if (archived && (kind === "component" || kind === "target")) {
+      assertStrategyEntityArchiveIntegrity(kind, id);
+    }
+    if (
+      !archived &&
+      (kind === "measurement_config" || kind === "component" || kind === "target")
+    ) {
+      assertStrategyEntityRestoreIntegrity(kind, id, restoredStatus);
+    }
     db.prepare(
       `UPDATE ${descriptor.table}
        SET archived_at = ${archived ? "datetime('now')" : "NULL"},

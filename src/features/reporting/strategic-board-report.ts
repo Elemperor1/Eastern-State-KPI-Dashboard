@@ -1,3 +1,5 @@
+import { escapeCell as escapeCsvCell } from "@/lib/csv";
+
 /**
  * Serializable board-report contract.
  *
@@ -704,6 +706,7 @@ export const STRATEGIC_BOARD_CSV_COLUMNS = [
   "Goal Eligible KPIs",
   "Goal Excluded KPIs",
   "Goal Excluded Reasons",
+  "KPI ID",
   "KPI",
   "Measurement Type",
   "Reporting Frequency",
@@ -854,6 +857,7 @@ export function buildStrategicBoardCsvRows(
             "Goal Eligible KPIs": goal.totalEligibleKpisCount,
             "Goal Excluded KPIs": goal.excludedKpisCount,
             "Goal Excluded Reasons": goal.excludedReasons.join("; "),
+            "KPI ID": kpi.id,
             KPI: kpi.name,
             "Measurement Type": kpi.measurementType,
             "Reporting Frequency": kpi.reportingFrequency,
@@ -972,10 +976,4 @@ export function buildStrategicBoardCsvText(
     output.columns.map((column) => escapeCsvCell(row[column])).join(","),
   );
   return { filename: output.filename, csv: [header, ...rows].join("\r\n") };
-}
-
-function escapeCsvCell(value: StrategicBoardCsvValue): string {
-  if (value === null) return "";
-  const text = String(value);
-  return /[",\r\n]/.test(text) ? `"${text.replaceAll('"', '""')}"` : text;
 }

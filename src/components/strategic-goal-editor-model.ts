@@ -1,6 +1,7 @@
 import {
   StrategicGoalInputSchema,
   StrategicGoalMembershipUpdateSchema,
+  STRATEGIC_PLAN_END_YEAR,
   type BoardStatus,
   type ConfigurationStatus,
   type GoalCompletionRuleName,
@@ -101,6 +102,55 @@ export interface StrategicGoalFilters {
   includeArchived: boolean;
 }
 
+export function canCreateStrategicGoalSuccessor(
+  goal: Pick<StrategicGoalEditorRecord, "plan_start_year" | "plan_end_year">,
+  reportingYear: number,
+): boolean {
+  return (
+    reportingYear < STRATEGIC_PLAN_END_YEAR &&
+    Math.max(goal.plan_start_year + 1, reportingYear + 1) <=
+      Math.min(goal.plan_end_year, STRATEGIC_PLAN_END_YEAR)
+  );
+}
+
+export function canCreateGoalMembershipSuccessor(
+  membership: Pick<
+    StrategicGoalMemberSummary,
+    "effectiveFromYear" | "effectiveToYear"
+  >,
+  reportingYear: number,
+): boolean {
+  const finalYear = Math.min(
+    membership.effectiveToYear ?? STRATEGIC_PLAN_END_YEAR,
+    STRATEGIC_PLAN_END_YEAR,
+  );
+  return (
+    reportingYear < STRATEGIC_PLAN_END_YEAR &&
+    Math.max(membership.effectiveFromYear + 1, reportingYear + 1) <= finalYear
+  );
+}
+
+export function resolveStrategicGoalSelection(
+  goals: StrategicGoalEditorRecord[],
+  requestedGoalId: number | null,
+): number | null {
+  if (
+    requestedGoalId !== null &&
+    goals.some((goal) => goal.id === requestedGoalId)
+  ) {
+    return requestedGoalId;
+  }
+  return (
+    goals.find((goal) => goal.archived_at === null)?.id ?? goals[0]?.id ?? null
+  );
+}
+
+export function strategicGoalSuccessorPath(
+  successor: Pick<PersistedStrategicGoal, "id" | "plan_start_year">,
+): string {
+  return `/admin/strategic-goals?year=${successor.plan_start_year}&goal=${successor.id}`;
+}
+
 function optionalText(value: string): string | null {
   const trimmed = value.trim();
   return trimmed ? trimmed : null;
@@ -162,6 +212,49 @@ export function buildStrategicGoalMembershipMutation(
       endpoint: STRATEGIC_GOAL_MEMBERSHIPS_ENDPOINT,
       method: "PATCH",
       body: parsed.data,
+    },
+  };
+}
+
+export function buildStrategicGoalMembershipSuccessorMutation(
+  membershipId: number,
+  effectiveStartYear: number,
+  draft: StrategicGoalMembershipDraft,
+): ReturnType<typeof buildStrategicGoalMembershipMutation> {
+  const built = buildStrategicGoalMembershipMutation(membershipId, draft);
+  if (!built.ok) return built;
+  if (
+    !Number.isInteger(effectiveStartYear) ||
+    effectiveStartYear < 2025 ||
+    effectiveStartYear > STRATEGIC_PLAN_END_YEAR
+  ) {
+    return {
+      ok: false,
+      mutation: null,
+      errors: {
+        effective_start_year: "Use a whole strategic-plan year from 2025 through 2029.",
+      },
+    };
+  }
+  const update = built.mutation.body as {
+    role: GoalMembershipRole;
+    weight: number;
+    display_order: number;
+  };
+  return {
+    ok: true,
+    errors: {},
+    mutation: {
+      endpoint: STRATEGIC_GOAL_MEMBERSHIPS_ENDPOINT,
+      method: "PATCH",
+      body: {
+        action: "create_successor",
+        predecessor_id: membershipId,
+        effective_start_year: effectiveStartYear,
+        role: update.role,
+        weight: update.weight,
+        display_order: update.display_order,
+      },
     },
   };
 }
@@ -268,6 +361,23 @@ export function buildStrategicGoalUpdateMutation(
     endpoint: STRATEGIC_GOALS_ENDPOINT,
     method: "PATCH",
     body: { action: "update", update: payload },
+  };
+}
+
+export function buildStrategicGoalSuccessorMutation(
+  predecessorId: number,
+  effectiveStartYear: number,
+  payload: Record<string, unknown>,
+): StrategicGoalMutation {
+  return {
+    endpoint: STRATEGIC_GOALS_ENDPOINT,
+    method: "PATCH",
+    body: {
+      action: "create_successor",
+      predecessor_id: predecessorId,
+      effective_start_year: effectiveStartYear,
+      update: payload,
+    },
   };
 }
 

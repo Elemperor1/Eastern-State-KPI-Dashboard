@@ -13,14 +13,18 @@ import type {
   StrategicBoardKpiViewModel,
   TargetProgressViewModel,
 } from "@/features/reporting/strategic-board-report";
-import type { StrategicCalculatedActual } from "@/features/reporting/strategy-actuals";
+import type { MetricDetailStrategicHistoryRow } from "@/features/reporting/metric-detail-history";
+import {
+  strategicHistoryPeriodLabel,
+  strategicHistoryPeriodRank,
+} from "./strategic-history-model";
 
 export function StrategicKpiProgressPanel({
   kpi,
   history = [],
 }: {
   kpi: StrategicBoardKpiViewModel;
-  history?: StrategicCalculatedActual[];
+  history?: MetricDetailStrategicHistoryRow[];
 }) {
   const unresolved = kpi.unresolvedReasons.length > 0 ||
     kpi.configurationStatus === "needs_definition" ||
@@ -110,23 +114,23 @@ function StrategicActualHistory({
   history,
 }: {
   kpi: StrategicBoardKpiViewModel;
-  history: StrategicCalculatedActual[];
+  history: MetricDetailStrategicHistoryRow[];
 }) {
   const rows = [...history].sort(
     (left, right) =>
       right.year - left.year ||
-      historyPeriodRank(right.periodType) - historyPeriodRank(left.periodType) ||
+      strategicHistoryPeriodRank(right.periodType) - strategicHistoryPeriodRank(left.periodType) ||
       right.periodIndex - left.periodIndex,
   );
   return (
     <Card as="section" className="mt-4 overflow-hidden" data-pdf-keep-together>
       <div className="border-b border-ink-100 p-5">
-        <p className="section-eyebrow">Recalculable history</p>
+        <p className="section-eyebrow">Strategic result history</p>
         <h3 className="text-xl font-semibold text-ink-900">
-          First-class strategic observations
+          Calculated and retained results
         </h3>
         <p className="mt-1 text-sm leading-6 text-ink-600">
-          Results are recalculated from the retained raw inputs for each reporting period.
+          {historyDescription(history)}
         </p>
       </div>
       <Table aria-label={`${kpi.name} strategic observation history`}>
@@ -142,7 +146,7 @@ function StrategicActualHistory({
           {rows.map((actual) => (
             <tr key={`${actual.year}-${actual.periodType}-${actual.periodIndex}`}>
               <td className="font-semibold text-ink-900">
-                {historyPeriodLabel(actual)}
+                {strategicHistoryPeriodLabel(actual)}
               </td>
               <td>{historyResultLabel(actual, kpi.unit)}</td>
               <td>{historyRawBasis(actual)}</td>
@@ -167,42 +171,19 @@ function StrategicActualHistory({
   );
 }
 
-function historyPeriodLabel(actual: StrategicCalculatedActual): string {
-  if (actual.periodType === "monthly") {
-    const month = new Intl.DateTimeFormat("en-US", {
-      month: "long",
-      timeZone: "UTC",
-    }).format(
-      new Date(Date.UTC(2020, Math.max(1, actual.periodIndex) - 1, 1)),
-    );
-    return `${month} ${actual.year}`;
-  }
-  if (actual.periodType === "quarterly") {
-    return `Q${actual.periodIndex} ${actual.year}`;
-  }
-  if (actual.periodType === "cumulative") return `Cumulative through ${actual.year}`;
-  if (actual.periodType === "one_time") return `One-time result · ${actual.year}`;
-  return `Annual · ${actual.year}`;
-}
-
-function historyPeriodRank(
-  period: StrategicCalculatedActual["periodType"],
-): number {
-  return {
-    monthly: 1,
-    quarterly: 2,
-    annual: 3,
-    cumulative: 4,
-    one_time: 5,
-  }[period];
-}
-
 function historyResultLabel(
-  actual: StrategicCalculatedActual,
+  actual: MetricDetailStrategicHistoryRow,
   unit: string | null,
 ): string {
   if (actual.calculation.value !== null) {
     const value = finiteLabel(actual.calculation.value);
+    if (actual.calculation.measurementType === "binary") {
+      return actual.calculation.value >= 1 ? "Complete" : "Not complete";
+    }
+    if (actual.calculation.measurementType === "year_over_year") {
+      return `${actual.calculation.value > 0 ? "+" : ""}${value}%`;
+    }
+    if (unit?.trim() === "%") return `${value}%`;
     return unit ? `${value} ${unit}` : value;
   }
   if (actual.calculation.distribution) {
@@ -214,8 +195,20 @@ function historyResultLabel(
   return "Not reported";
 }
 
-function historyRawBasis(actual: StrategicCalculatedActual): string {
+function historyRawBasis(actual: MetricDetailStrategicHistoryRow): string {
   const { calculation } = actual;
+  if (actual.historySource === "legacy_retained") {
+    return calculation.calculationProvenance === "legacy_direct_percentage"
+      ? "Retained compatibility percentage"
+      : "Retained compatibility value";
+  }
+  if (
+    calculation.measurementType === "year_over_year" &&
+    calculation.numerator !== null &&
+    calculation.denominator !== null
+  ) {
+    return `${finiteLabel(calculation.denominator + calculation.numerator)} current / ${finiteLabel(calculation.denominator)} prior`;
+  }
   if (calculation.numerator !== null || calculation.denominator !== null) {
     return `${finiteLabel(calculation.numerator)} / ${finiteLabel(calculation.denominator)}`;
   }
@@ -224,6 +217,25 @@ function historyRawBasis(actual: StrategicCalculatedActual): string {
   }
   if (calculation.components) return "Component observations";
   return "Retained scalar input";
+}
+
+function historyDescription(history: MetricDetailStrategicHistoryRow[]): string {
+  const hasRecalculatedLegacy = history.some(
+    (actual) => actual.historySource === "legacy_recalculated",
+  );
+  const hasRetainedLegacy = history.some(
+    (actual) => actual.historySource === "legacy_retained",
+  );
+  if (hasRecalculatedLegacy && hasRetainedLegacy) {
+    return "Calculated results use retained raw inputs where available; compatibility values are labeled when the original formula inputs are unavailable.";
+  }
+  if (hasRecalculatedLegacy) {
+    return "Calculated results use the retained current and prior raw inputs for each reporting period.";
+  }
+  if (hasRetainedLegacy) {
+    return "These compatibility values are retained from legacy annual reporting; the original formula inputs are unavailable.";
+  }
+  return "Results are recalculated from retained first-class raw inputs for each reporting period.";
 }
 
 function RawInputs({ kpi }: { kpi: StrategicBoardKpiViewModel }) {

@@ -190,6 +190,17 @@ function migrateSchema(raw: DatabaseSync): void {
     return;
   }
 
+  // v10 → v11 keeps every strategic row and id while narrowing component
+  // slug uniqueness to the effective measurement configuration that owns it
+  // and adding explicit numerator/denominator roles for ratio aggregation.
+  // This lets a logical component continue in a later, non-overlapping
+  // definition without rewriting its historical component or child rows.
+  if (version === 10) {
+    ensureStrategicSchemaV10Columns(raw);
+    migrateStrategicSchemaV11(raw);
+    return;
+  }
+
   // v9 → v10 is strictly additive. It preserves the legacy catalog, values,
   // KPI targets, and entry audit trail while installing the normalized strategic
   // planning sidecars used by the next dashboard model.
@@ -362,6 +373,189 @@ function ensureStrategicSchemaV10Columns(raw: DatabaseSync): void {
     raw.exec(
       "ALTER TABLE distribution_bands ADD COLUMN derived_group TEXT CHECK (derived_group IS NULL OR derived_group IN ('white','non_white'))",
     );
+  }
+}
+
+/**
+ * v10 → v11 additive component-identity and ratio-role migration.
+ *
+ * SQLite stores table-level UNIQUE constraints in an internal auto-index, so
+ * changing `(kpi_id, slug)` to `(configuration_id, slug)` and extending the
+ * aggregation constraint requires the documented table-rebuild procedure.
+ * Foreign-key enforcement is disabled only around the single transaction;
+ * every row and primary key is copied, child tables remain untouched, and
+ * `foreign_key_check` must pass before the version is committed.
+ */
+function migrateStrategicSchemaV11(raw: DatabaseSync): void {
+  const foreignKeysEnabled = Number(
+    (
+      raw.prepare("PRAGMA foreign_keys").get() as
+        | { foreign_keys?: number | bigint }
+        | undefined
+    )?.foreign_keys ?? 0,
+  ) === 1;
+
+  if (foreignKeysEnabled) raw.exec("PRAGMA foreign_keys = OFF;");
+  try {
+    raw.exec("BEGIN IMMEDIATE;");
+    try {
+      raw.exec(`
+        CREATE TABLE kpi_measurement_configs_v11 (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          kpi_id INTEGER NOT NULL REFERENCES kpis(id) ON DELETE RESTRICT,
+          effective_from_year INTEGER NOT NULL CHECK (effective_from_year BETWEEN 1900 AND 2100),
+          effective_to_year INTEGER CHECK (
+            effective_to_year IS NULL OR
+            (effective_to_year BETWEEN 1900 AND 2100 AND effective_to_year >= effective_from_year)
+          ),
+          measurement_type TEXT CHECK (
+            measurement_type IS NULL OR measurement_type IN (
+              'binary','milestone','count','percentage','average','cumulative',
+              'year_over_year','distribution','currency','ratio','multi_component'
+            )
+          ),
+          unit TEXT,
+          numerator_label TEXT,
+          denominator_label TEXT,
+          fixed_denominator REAL CHECK (fixed_denominator IS NULL OR fixed_denominator > 0),
+          baseline_value REAL,
+          reporting_frequency TEXT CHECK (
+            reporting_frequency IS NULL OR reporting_frequency IN (
+              'monthly','quarterly','annual','cumulative','one_time','flexible'
+            )
+          ),
+          aggregation_method TEXT CHECK (
+            aggregation_method IS NULL OR aggregation_method IN (
+              'none','average','weighted_average','sum','ratio','all_complete'
+            )
+          ),
+          board_level_status TEXT,
+          calculation_precision INTEGER NOT NULL DEFAULT 1
+            CHECK (calculation_precision BETWEEN 0 AND 6),
+          configuration_status TEXT NOT NULL DEFAULT 'draft'
+            CHECK (configuration_status IN ('draft','needs_definition','needs_target','ready','active','archived')),
+          unresolved_question TEXT,
+          owner TEXT,
+          due_date TEXT,
+          resolution_notes TEXT,
+          source_reference TEXT,
+          last_reviewed_date TEXT,
+          allow_score_over_max INTEGER NOT NULL DEFAULT 0
+            CHECK (allow_score_over_max IN (0,1)),
+          archived_at TEXT,
+          created_by INTEGER REFERENCES users(id) ON DELETE SET NULL,
+          created_at TEXT NOT NULL DEFAULT (datetime('now')),
+          updated_by INTEGER REFERENCES users(id) ON DELETE SET NULL,
+          updated_at TEXT NOT NULL DEFAULT (datetime('now')),
+          UNIQUE (kpi_id, effective_from_year),
+          UNIQUE (id, kpi_id)
+        );
+
+        INSERT INTO kpi_measurement_configs_v11 (
+          id, kpi_id, effective_from_year, effective_to_year, measurement_type,
+          unit, numerator_label, denominator_label, fixed_denominator,
+          baseline_value, reporting_frequency, aggregation_method,
+          board_level_status, calculation_precision, configuration_status,
+          unresolved_question, owner, due_date, resolution_notes,
+          source_reference, last_reviewed_date, allow_score_over_max,
+          archived_at, created_by, created_at, updated_by, updated_at
+        )
+        SELECT
+          id, kpi_id, effective_from_year, effective_to_year, measurement_type,
+          unit, numerator_label, denominator_label, fixed_denominator,
+          baseline_value, reporting_frequency, aggregation_method,
+          board_level_status, calculation_precision, configuration_status,
+          unresolved_question, owner, due_date, resolution_notes,
+          source_reference, last_reviewed_date, allow_score_over_max,
+          archived_at, created_by, created_at, updated_by, updated_at
+        FROM kpi_measurement_configs;
+
+        DROP TABLE kpi_measurement_configs;
+        ALTER TABLE kpi_measurement_configs_v11 RENAME TO kpi_measurement_configs;
+        CREATE INDEX idx_kpi_measurement_configs_effective
+          ON kpi_measurement_configs(kpi_id, effective_from_year, effective_to_year);
+        CREATE INDEX idx_kpi_measurement_configs_status
+          ON kpi_measurement_configs(configuration_status, archived_at);
+
+        CREATE TABLE kpi_components_v11 (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          kpi_id INTEGER NOT NULL REFERENCES kpis(id) ON DELETE RESTRICT,
+          configuration_id INTEGER NOT NULL,
+          slug TEXT NOT NULL,
+          label TEXT NOT NULL,
+          measurement_type TEXT CHECK (
+            measurement_type IS NULL OR measurement_type IN (
+              'binary','milestone','count','percentage','average','cumulative',
+              'year_over_year','distribution','currency','ratio','multi_component'
+            )
+          ),
+          unit TEXT,
+          numerator_label TEXT,
+          denominator_label TEXT,
+          fixed_denominator REAL CHECK (fixed_denominator IS NULL OR fixed_denominator > 0),
+          baseline_value REAL,
+          previous_period_value REAL,
+          aggregation_role TEXT NOT NULL DEFAULT 'value'
+            CHECK (aggregation_role IN ('value','numerator','denominator')),
+          weight REAL NOT NULL DEFAULT 1 CHECK (weight >= 0),
+          display_order INTEGER NOT NULL DEFAULT 0,
+          configuration_status TEXT NOT NULL DEFAULT 'draft'
+            CHECK (configuration_status IN ('draft','needs_definition','needs_target','ready','active','archived')),
+          unresolved_question TEXT,
+          archived_at TEXT,
+          created_by INTEGER REFERENCES users(id) ON DELETE SET NULL,
+          created_at TEXT NOT NULL DEFAULT (datetime('now')),
+          updated_by INTEGER REFERENCES users(id) ON DELETE SET NULL,
+          updated_at TEXT NOT NULL DEFAULT (datetime('now')),
+          UNIQUE (configuration_id, slug),
+          UNIQUE (id, kpi_id),
+          FOREIGN KEY (configuration_id, kpi_id)
+            REFERENCES kpi_measurement_configs(id, kpi_id) ON DELETE RESTRICT
+        );
+
+        INSERT INTO kpi_components_v11 (
+          id, kpi_id, configuration_id, slug, label, measurement_type, unit,
+          numerator_label, denominator_label, fixed_denominator, baseline_value,
+          previous_period_value, aggregation_role, weight, display_order, configuration_status,
+          unresolved_question, archived_at, created_by, created_at, updated_by,
+          updated_at
+        )
+        SELECT
+          id, kpi_id, configuration_id, slug, label, measurement_type, unit,
+          numerator_label, denominator_label, fixed_denominator, baseline_value,
+          previous_period_value, 'value', weight, display_order, configuration_status,
+          unresolved_question, archived_at, created_by, created_at, updated_by,
+          updated_at
+        FROM kpi_components;
+
+        DROP TABLE kpi_components;
+        ALTER TABLE kpi_components_v11 RENAME TO kpi_components;
+        CREATE INDEX idx_kpi_components_parent
+          ON kpi_components(kpi_id, display_order);
+        CREATE INDEX idx_kpi_components_configuration
+          ON kpi_components(configuration_id);
+      `);
+
+      const violations = raw.prepare("PRAGMA foreign_key_check").all();
+      if (violations.length > 0) {
+        throw new Error(
+          `Schema 11 component migration produced ${violations.length} foreign-key violation(s).`,
+        );
+      }
+      raw.exec(
+        `INSERT OR REPLACE INTO meta (key, value) VALUES ('schema_version', ${SCHEMA_VERSION});`,
+      );
+      raw.exec("COMMIT;");
+    } catch (error) {
+      try {
+        raw.exec("ROLLBACK;");
+      } catch {
+        // Surface the migration error.
+      }
+      throw error;
+    }
+  } finally {
+    if (foreignKeysEnabled) raw.exec("PRAGMA foreign_keys = ON;");
   }
 }
 
@@ -551,7 +745,7 @@ function initializeStrategicSchema(raw: DatabaseSync): void {
       ),
       aggregation_method TEXT CHECK (
         aggregation_method IS NULL OR aggregation_method IN (
-          'none','average','weighted_average','sum','all_complete'
+          'none','average','weighted_average','sum','ratio','all_complete'
         )
       ),
       board_level_status TEXT,
@@ -651,6 +845,8 @@ function initializeStrategicSchema(raw: DatabaseSync): void {
       fixed_denominator REAL CHECK (fixed_denominator IS NULL OR fixed_denominator > 0),
       baseline_value REAL,
       previous_period_value REAL,
+      aggregation_role TEXT NOT NULL DEFAULT 'value'
+        CHECK (aggregation_role IN ('value','numerator','denominator')),
       weight REAL NOT NULL DEFAULT 1 CHECK (weight >= 0),
       display_order INTEGER NOT NULL DEFAULT 0,
       configuration_status TEXT NOT NULL DEFAULT 'draft'
@@ -661,7 +857,7 @@ function initializeStrategicSchema(raw: DatabaseSync): void {
       created_at TEXT NOT NULL DEFAULT (datetime('now')),
       updated_by INTEGER REFERENCES users(id) ON DELETE SET NULL,
       updated_at TEXT NOT NULL DEFAULT (datetime('now')),
-      UNIQUE (kpi_id, slug),
+      UNIQUE (configuration_id, slug),
       UNIQUE (id, kpi_id),
       FOREIGN KEY (configuration_id, kpi_id)
         REFERENCES kpi_measurement_configs(id, kpi_id) ON DELETE RESTRICT

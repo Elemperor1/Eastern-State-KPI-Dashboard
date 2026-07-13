@@ -11,17 +11,17 @@ npm install
 # 2. Create/reset a disposable development database with sample data (2024–2026)
 npm run db:seed
 
-# 3. Start the loopback-only development server
-npm run dev
+# 3. Start the loopback-only development server with the local auth bypass
+AUTH_DISABLED=true npm run dev
 ```
 
-For an existing schema-9 database, especially a production SQLite volume, back
+For an existing schema-9 or schema-10 database, especially a production SQLite volume, back
 up the database and its WAL/SHM files and run the additive migration instead of
 the destructive sample seed:
 
 ```bash
 DATABASE_PATH=/absolute/path/to/kpi.db npm run db:migrate
-npm run build
+AUTH_DISABLED= npm run build
 npm start
 ```
 
@@ -29,21 +29,22 @@ npm start
 and audit history while preserving users. It is for disposable/sample
 databases, not production migration.
 
-Open <http://localhost:3000> and sign in.
+Open <http://localhost:3000>. With the quick-start bypass, the app opens
+directly; with auth enabled, sign in normally.
 
-> **Auth bypass (temporary).** `AUTH_DISABLED=true` is set in `.env.local`, so the
-> dashboard is publicly reachable in dev — `/` redirects straight to
+> **Auth bypass (temporary).** No tracked environment file enables the bypass.
+> Start development with `AUTH_DISABLED=true npm run dev` (or set the same value
+> in your untracked `.env.local`) to make the dashboard reachable without a
+> login — `/` redirects straight to
 > `/dashboard/overview` and the login form is skipped. The flag is read by
 > `src/lib/auth-flag.ts`; with it on, the auth feature session surface returns
 > the real `auth-disabled@local` users row and the `AccountBlock` in `AppShell`
 > hides its Logout button. The bypass is blocked in production/test: `next build` fails
 > with `AUTH_DISABLED=true`, and `next start` cannot serve app routes with the
-> flag set. To restore iron-session
-> login, set `AUTH_DISABLED=false` in `.env.local` (or unset it) and revert the
-> four conditional branches in `src/lib/session.ts`, `src/app/page.tsx`, and
-> `src/components/AppShell.tsx`. The `/login` page, `/api/auth/*` routes, seeded
-> accounts, and the `src/features/auth/session.ts` gate surface is preserved — no
-> other restoration work is needed.
+> flag set. To use the preserved iron-session login, unset `AUTH_DISABLED` or
+> set it to `false`; no code reversion is required. The `/login` page,
+> `/api/auth/*` routes, seeded accounts, and the
+> `src/features/auth/session.ts` gate surface remain active.
 
 ### Default accounts (seeded on first DB access)
 
@@ -54,14 +55,16 @@ On the first run against a fresh database, `ensureSeedAdmin()` creates `kerry@ea
 - **Forced rotation.** Every bootstrap account is created with `must_change_password=1`. The login response directs the user to `/setup-password`, every protected page redirects there, and `requireSession`/`requireAdmin` return HTTP 403 until the user replaces the temporary credential. Bootstrap users therefore cannot use the app with a seeded/temporary password.
 - **Operator recovery command.** `SETUP_ADMIN_PASSWORD=... npm run setup:admin` (optionally `SETUP_ADMIN_EMAIL=...`) sets a known password on a bootstrap account and clears the rotation flag. The password is read from the env var only — never from argv, stdout, or a log — so it cannot leak through shell history, `ps`, or CI logs. See `docs/operator-provisioning.md` for the full operator runbook.
 
-The default development workflow runs with `AUTH_DISABLED=true` and never logs in, so provisioning stays out of your way.
+The quick-start development command above runs with `AUTH_DISABLED=true` and
+never logs in, so provisioning stays out of your way.
 
 ## What you get
 
 ### Data model
 
-The legacy KPI catalog remains intact. Schema 10 adds a normalized strategic
-sidecar so every KPI can explicitly define:
+The legacy KPI catalog remains intact. Schema 10 introduced the normalized
+strategic sidecar, and schema 11 hardens its effective-dated component identity
+and ratio semantics, so every KPI can explicitly define:
 
 - **category** — one of the 5 Eastern State strategic priorities
 - **metric name**
@@ -89,7 +92,7 @@ breakdown metrics continue to use `breakdown_entries` keyed by label × year.
 - **Support Learning through Justice Education** — 9 KPIs, 1 with a target
 - **Enhance Organizational Capacity** — 12 KPIs, 4 with targets
 
-The source dashboard is mapped explicitly by stable slug. It includes 45
+The source dashboard is mapped explicitly by stable slug. It includes 46
 component definitions and preserves every TK/TBD target as an unresolved
 configuration item rather than inventing a zero. The older 25 per-KPI target
 rows remain available for backward compatibility; they are not the named goal
@@ -99,8 +102,8 @@ never exposed as a user-selectable month.
 ### Dashboard views
 
 - **Organization overview** (`/dashboard/overview`) — one organization-level “X of Y goals completed” score followed by five concise performance-area cards. Priority, named-goal, and configuration detail stays in drill-downs and board exports instead of expanding the landing page.
-- **Individual category pages** (`/dashboard/category/[slug]`) — every metric in the category as a direction-aware summary card, plus breakdown charts where applicable.
-- **Individual metric detail** (`/dashboard/metric/[slug]`) — calculated result, formula, raw inputs, target description, annual and full-plan progress, components/distributions/revenue, history, and exports.
+- **Individual category pages** (`/dashboard/category/[slug]`) — scalar and strategically configured breakdown KPIs as direction-aware summary cards, with composition charts for every breakdown KPI; legacy-only breakdowns remain chart-only.
+- **Individual metric detail** (`/dashboard/metric/[slug]`) — calculated result, formula, raw inputs, target description, annual and full-plan progress, components/distributions/revenue, provenance-aware history, audit history, and exports. Effective cadence controls history labels; first-class history wins over retained compatibility rows.
 - **Trend Explorer** (`/dashboard/trends`) — multi-KPI, multi-year overlays (monthly metrics).
 
 Comparison logic adapts to unit type:
@@ -116,11 +119,11 @@ Comparison logic adapts to unit type:
 - **Data entry** (`/admin/data`) — pick category, metric, and year. Monthly metrics get a 12-month grid; annual metrics get a single full-year value; breakdown metrics get editable label/value rows. Optional notes per entry.
 - **Strategic data entry** (`/admin/strategy-data`) — enter or remove first-class KPI observations, component entries, and distribution responses using the configured period and raw-input shape.
 - **KPIs & categories** (`/admin/kpis`) — manage legacy catalog metadata and open the strategic editor for formulas, targets, components, and bands.
-- **Strategic KPI editor** (`/admin/kpis/[id]`) — edit effective-dated measurement configuration, annual/full-plan targets, components, and distribution bands.
+- **Strategic KPI editor** (`/admin/kpis/[id]`) — select a reporting year, edit its annual/full-plan targets, components, and distribution bands, or atomically create a future-dated measurement successor when historical values make in-place formula changes unsafe.
 - **Legacy KPI goals** (`/admin/goals`) — maintain the backward-compatible per-KPI baseline/delta targets.
-- **Strategic goals** (`/admin/strategic-goals`) — edit named-goal rules, status, ownership, and lifecycle.
+- **Strategic goals** (`/admin/strategic-goals`) — edit named-goal rules, membership roles/weights/order, workflow metadata, lifecycle, and future-dated goal or membership successors without rewriting historical calculations.
 - **Configuration gaps** (`/admin/configuration-gaps`) — filter unresolved targets and definitions by priority, goal, owner, year, status, and frequency.
-- **History** (`/admin/history`) — browse value-entry and immutable strategic-configuration audit events.
+- **History** (`/admin/history`) — browse value-entry and immutable strategic-configuration audit events, including catalog and legacy-goal lifecycle snapshots with actor attribution.
 - **Users** (`/admin/users`) — invite viewers, reset passwords.
 
 ## Architecture
@@ -136,7 +139,15 @@ Comparison logic adapts to unit type:
 | PDF export  | `html2canvas` + `jspdf` (client-side)             |
 | Icons       | `lucide-react`                                    |
 
-The schema is versioned (`src/lib/schema-version.json` mirrored into `meta.schema_version`). Schema 10 migrates schema 9 transactionally and additively; it does not reset legacy KPI values, targets, IDs, users, or audit history. All sample data is flagged via `meta.sample_data` and surfaced as a "Sample data" badge throughout the UI.
+The schema is versioned (`src/lib/schema-version.json` mirrored into
+`meta.schema_version`). Schema 10 migrates schema 9 transactionally and
+additively; schema 11 then rebuilds only the strategic component sidecar so
+component slugs are configuration-scoped and ratio numerator/denominator roles
+are explicit. Neither migration resets legacy KPI values, targets, IDs, users,
+or audit history. The production migrator applies only narrowly fingerprinted,
+audited corrections to prior system-owned canonical contracts and leaves
+operator-attributed/customized rows unchanged. All sample data is flagged via `meta.sample_data` and surfaced
+as a "Sample data" badge throughout the UI.
 
 ## Routes
 
@@ -191,11 +202,11 @@ npm wrapper) against a running server. The bypass path is dev-only because
 
 ```bash
 # Smoke test the bypass-auth flow (no login required).
-AUTH_DISABLED=true node_modules/.bin/next dev -p 3290 &
+AUTH_DISABLED=true PORT=3290 npm run dev &
 AUTH_DISABLED=true PORT=3290 BASE=http://127.0.0.1:3290 bash ./scripts/smoke.sh
 
 # Stop the dev server before reusing :3290 for the production/auth-enabled flow.
-npm run build
+AUTH_DISABLED= npm run build
 AUTH_DISABLED=false PORT=3290 node_modules/.bin/next start -p 3290 &
 SMOKE_EMAIL=kerry@easternstate.org SMOKE_PASSWORD='<operator-provisioned password>' \
   AUTH_DISABLED=false PORT=3290 BASE=http://127.0.0.1:3290 bash ./scripts/smoke.sh
@@ -208,6 +219,13 @@ behavior of `POST /api/entries` (401 with no session when auth is enabled; 201
 when the bypass is in effect). For curl mutations, the harness first fetches
 the `eastern_state_kpi_csrf` cookie from `/api/auth/me` and sends both `Origin`
 and `X-CSRF-Token`, matching the browser `apiFetch` path.
+
+`npm run test:e2e` never points at `data/kpi.db`: Playwright atomically
+reserves a database in a private `0700` temporary run directory, propagates
+its exact identity to teardown, and removes its DB/WAL/SHM files only after
+owner, marker, inode, and link-count checks. An `E2E_DATABASE_PATH` override
+must be a new prefixed `.db` beneath the OS temp root; pre-existing files,
+directories, links, and path escapes are rejected before seeding.
 
 ## Deployment Notes
 
@@ -227,12 +245,17 @@ baked into the runtime image.
 ### CI gate
 
 `npm run design-system:test` is the **CI gate** and must pass on every PR.
-It chains four checks in order; any failure aborts:
+It chains seven checks in order; any failure aborts:
 
 1. `scripts/design-tokens-guard.sh` — fails if any literal hex color, raw `transition: all`, or inline `style={{ ... color: "#…" }}` bypass is introduced in `src/app/**` or `src/components/**` outside the design-system library (`src/components/ui/`) and the source-of-truth `src/app/globals.css`.
 2. `scripts/design-system-guard.sh` — fails if any raw `<button>` / `<input>` / `<select>` / `<table>` element or shared primitive class (`surface`, `btn-*`, `input`, `pill`, `data-table`, …) is used outside `src/components/ui/`.
-3. `npx tsc --noEmit` — typecheck.
-4. `npm run build` — production build.
+3. `scripts/auth-bypass-guard.sh` — proves deploy/build configuration cannot
+   enable the development bypass.
+4. `scripts/architecture-boundary-guard.sh` — enforces server/client and
+   internal data-access boundaries.
+5. `scripts/d8ad-can-008-ci-gate.sh` — rejects shell-injection regressions.
+6. `npx tsc --noEmit` — typecheck.
+7. `AUTH_DISABLED= npx next build` — production build with the bypass cleared.
 
 To verify the gate locally before opening a PR:
 
@@ -241,18 +264,21 @@ npm run design-system:test
 ```
 
 A **human-readable QA checklist** that exercises every flow the smoke harness
-covers — plus mobile rendering at 390 px, exports, and the self-service
-password change flow — lives at `docs/qa-manual.md`. New engineers should
+covers — plus mobile rendering at 390 px, exports, forced password rotation,
+and auth API regression coverage — lives at `docs/qa-manual.md`. New engineers should
 walk the checklist end-to-end after their first checkout.
 
-Current schema-10 verification recorded on July 9, 2026: `npm test` passed
-**81 files / 1,277 tests**; `npm run design-system:test` passed its guards,
-typecheck, and production build; the development smoke passed **64/64** checks;
-and `npm run test:e2e` passed **5/5** serial workflows. Manual Chrome review
-also retained a valid 1664×14,886 overview PNG and a readable 15-page,
-Letter-landscape, 1.5 MB overview PDF. Auth behavior is covered by the
-35-route regression matrix; run the documented auth-enabled smoke with an
-operator-provisioned credential before a production release.
+Current schema-11 verification recorded on July 13, 2026: `npm test` passed
+**91 files / 1,504 tests**; `npm run design-system:test` passed its security and
+architecture guards, typecheck, and production build; the loopback development
+smoke passed **66/66** checks; and `npm run test:e2e` passed **5/5** serial
+workflows, including 390 px navigation plus PNG/PDF signature and dimension
+checks. A final live in-app Browser review at 1280 px covered the overview,
+excluded-reason drilldown, configuration gaps, ratio editor, strategic-goal
+year boundaries, cumulative metric detail, and both history feeds with no
+console warnings or errors. Auth behavior is covered by the 35-route regression
+matrix; run the documented credentialed auth-enabled smoke as the normal
+operator pre-release step.
 
 Schema 8 intentionally replaced the former sample catalog with the strategic
 plan, resetting KPI data and audit history while preserving users. Schema 9 is
@@ -260,8 +286,10 @@ additive: it gives every goal a fixed baseline year so 2027/2029 progress can
 be measured against the 2026 strategic baseline. Schema 10 is also additive
 from schema 9: `npm run db:migrate` creates the strategic sidecars and
 idempotently maps the existing catalog without resetting legacy IDs, values,
-targets, users, or audit history. Back up a production database before any
-migration; see ADR 0020 and `docs/migration-notes.md`.
+targets, users, or audit history. Schema 11 additively scopes component identity
+to each effective configuration and records ratio aggregation roles while
+preserving existing component IDs and observations. Back up a production
+database before any migration; see ADR 0020 and `docs/migration-notes.md`.
 
 ## Data model (schema)
 
@@ -269,11 +297,11 @@ migration; see ADR 0020 and `docs/migration-notes.md`.
 - **kpis** — category, optional parent, slug, name, unit label, `unit_type`, `reporting_frequency`, `direction`, description, sort order, active flag
 - **monthly_entries** — KPI × year × month (1–12 monthly, 0 annual) = value + notes; unique per (kpi, year, month)
 - **breakdown_entries** — KPI × year × month × label = value + notes; `month = 0` for annual breakdowns, `1–12` for monthly breakdowns; unique per (kpi, year, month, label)
-- **strategic_goals / goal_kpis** — 22 named goals and explicit, effective-dated membership for all 59 KPIs
+- **strategic_goals / goal_kpis** — 22 named goals (each with 2–5 KPIs) and explicit, effective-dated membership for all 59 KPIs
 - **kpi_measurement_configs / kpi_targets** — typed formulas, frequencies, statuses, configuration gaps, and distinct annual/full-plan targets
 - **kpi_observations** — first-class KPI values and raw calculation inputs by typed period
-- **kpi_components / kpi_component_entries** — 45 canonical component definitions plus raw component values
-- **distribution_bands / distribution_observations / distribution_values** — effective band definitions, respondent totals, counts, and immutable label snapshots
+- **kpi_components / kpi_component_entries** — 46 canonical component definitions plus raw component values; identity is configuration-scoped and ratio roles are explicit
+- **distribution_bands / distribution_observations / distribution_values** — effective band definitions, respondent totals, counts, immutable label snapshots, and successor-only edits for referenced calculation classifications
 - **strategic_audit_events** — immutable snapshots for strategic configuration, lifecycle, and value changes
 - **users** — name, email, bcrypt-hashed password, role
 - **meta** — schema version + sample-data flag

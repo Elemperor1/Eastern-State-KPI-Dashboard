@@ -573,13 +573,14 @@ describe("strategic board report contract", () => {
       for (const priority of report.priorities) {
         for (const goal of priority.goals) {
           for (const item of goal.kpis) {
-            const row = rows.find((candidate) => candidate.KPI === item.name);
+            const row = rows.find((candidate) => candidate["KPI ID"] === item.id);
             expect(row, `Missing CSV row for ${item.name}`).toBeDefined();
             expect(row).toMatchObject({
               "Selected Year": report.selectedYear,
               Organization: report.organizationName,
               Priority: priority.name,
               Goal: goal.name,
+              "KPI ID": item.id,
               KPI: item.name,
               "Measurement Type": item.measurementType,
               "Reporting Frequency": item.reportingFrequency,
@@ -705,5 +706,21 @@ describe("strategic board CSV text", () => {
     expect(output.csv.split("\r\n")[0]).toContain("Selected Year");
     expect(output.csv).toContain('"Plan, ""adoption"""');
     expect(output.csv).not.toMatch(/\b(?:NaN|undefined|Infinity)\b/);
+  });
+
+  it.each([
+    ["=1+1", "'=1+1"],
+    ["+SUM(1,1)", '"\'+SUM(1,1)"'],
+    ["-2+3", "'-2+3"],
+    ["@SUM(A1:A2)", "'@SUM(A1:A2)"],
+    ["\tinjected tab", "'\tinjected tab"],
+    ["\rinjected CR", '"\'\rinjected CR"'],
+  ])("neutralizes spreadsheet-formula KPI text beginning with %j", (name, escaped) => {
+    const report = buildStrategicBoardReport(representativeInput());
+    report.priorities[0]!.goals[0]!.kpis[0]!.name = name;
+
+    const output = buildStrategicBoardCsvText(report);
+
+    expect(output.csv).toContain(escaped);
   });
 });

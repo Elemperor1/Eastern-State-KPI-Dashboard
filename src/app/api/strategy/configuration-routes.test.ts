@@ -28,6 +28,8 @@ const mocks = vi.hoisted(() => ({
   archiveStrategicGoal: vi.fn(),
   archiveTarget: vi.fn(),
   createMeasurementConfiguration: vi.fn(),
+  createSuccessorMeasurementConfiguration: vi.fn(),
+  createSuccessorStrategicGoal: vi.fn(),
   createStrategicTarget: vi.fn(),
   createStrategyComponent: vi.fn(),
   getComponentRecord: vi.fn(),
@@ -127,6 +129,14 @@ beforeEach(() => {
   requireAdminMock.mockResolvedValue(ADMIN);
   for (const mock of Object.values(mocks)) mock.mockReset();
   mocks.createMeasurementConfiguration.mockReturnValue({ id: 21, kpi_id: 12 });
+  mocks.createSuccessorMeasurementConfiguration.mockReturnValue({
+    predecessor: { id: 21, effective_to_year: 2026 },
+    successor: { id: 22, effective_from_year: 2027 },
+  });
+  mocks.createSuccessorStrategicGoal.mockReturnValue({
+    predecessor: { id: 51, plan_end_year: 2026 },
+    successor: { id: 52, plan_start_year: 2027 },
+  });
   mocks.updateMeasurementConfiguration.mockReturnValue({ id: 21, unit: "visits" });
   mocks.getMeasurementConfigRecord.mockReturnValue({ id: 21, archived_at: null });
   mocks.createStrategicTarget.mockReturnValue({ id: 31, target_value: 0 });
@@ -222,6 +232,45 @@ describe("strategic configuration admin routes", () => {
       }),
     );
     expect(mocks.restoreMeasurementConfig).toHaveBeenCalledWith(21, ADMIN.id);
+  });
+
+  it("creates a successor configuration through one atomic admin action", async () => {
+    const successor = {
+      ...configurationBody(),
+      effective_start_year: 2027,
+      unit: "visitors",
+    };
+    const response = await patchConfigurations(
+      request("/api/strategy/configurations", "PATCH", {
+        action: "create_successor",
+        predecessor_id: 21,
+        successor,
+      }),
+    );
+
+    expect(response.status).toBe(201);
+    expect(mocks.createSuccessorMeasurementConfiguration).toHaveBeenCalledWith(
+      { predecessor_id: 21, successor },
+      ADMIN.id,
+    );
+    await expect(response.json()).resolves.toEqual({
+      predecessor: { id: 21, effective_to_year: 2026 },
+      successor: { id: 22, effective_from_year: 2027 },
+    });
+
+    const outsidePlan = await patchConfigurations(
+      request("/api/strategy/configurations", "PATCH", {
+        action: "create_successor",
+        predecessor_id: 21,
+        successor: {
+          ...successor,
+          effective_start_year: 2030,
+          effective_end_year: 2030,
+        },
+      }),
+    );
+    expect(outsidePlan.status).toBe(400);
+    expect(mocks.createSuccessorMeasurementConfiguration).toHaveBeenCalledTimes(1);
   });
 
   it("maps repository validation, missing, and conflict errors to 400/404/409", async () => {
@@ -363,5 +412,31 @@ describe("strategic configuration admin routes", () => {
     );
     expect(mocks.archiveStrategicGoal).toHaveBeenCalledWith(51, ADMIN.id);
     expect(mocks.restoreStrategicGoal).toHaveBeenCalledWith(51, ADMIN.id);
+  });
+
+  it("creates an effective-dated successor goal through the admin boundary", async () => {
+    const update = {
+      id: 51,
+      completion_rule: "threshold_count",
+      threshold_count: 2,
+    };
+    const response = await patchGoals(
+      request("/api/strategy/goals", "PATCH", {
+        action: "create_successor",
+        predecessor_id: 51,
+        effective_start_year: 2027,
+        update,
+      }),
+    );
+
+    expect(response.status).toBe(201);
+    expect(mocks.createSuccessorStrategicGoal).toHaveBeenCalledWith(
+      {
+        predecessor_id: 51,
+        effective_start_year: 2027,
+        update,
+      },
+      ADMIN.id,
+    );
   });
 });

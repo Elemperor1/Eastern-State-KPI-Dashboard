@@ -1,9 +1,18 @@
 import { getDb } from "@/lib/db";
-import { resolveConfiguredTargetValue } from "./calculations";
+import type { GoalKpiInput } from "./calculations";
+import {
+  calculateStrategicGoalCompletion,
+  type StrategicGoalCompletionDefinition,
+} from "./goal-completion";
+import { resolveEffectiveTargetPolicy } from "./target-policy";
 import {
   STRATEGIC_PLAN_END_YEAR,
   STRATEGIC_PLAN_START_YEAR,
   type ConfigurationStatus,
+  type GoalCompletionRule as GoalCompletionRuleName,
+  type GoalManualStatus,
+  type MeasurementType,
+  type StrategyAuditEntityType,
   type StrategyReportingFrequency,
 } from "./types";
 import {
@@ -27,6 +36,70 @@ import {
 export interface StrategyReadOptions {
   year?: number;
   includeArchived?: boolean;
+}
+
+export interface StrategicAuditIdentity {
+  entity_type: StrategyAuditEntityType;
+  entity_id: number;
+}
+
+/** Every durable strategic entity ever owned by a KPI, across effective years. */
+export function listStrategicAuditIdentitiesForKpi(
+  kpiId: number,
+): StrategicAuditIdentity[] {
+  const rows = getDb()
+    .prepare(
+      `SELECT 'kpi' AS entity_type, ? AS entity_id
+       UNION SELECT 'measurement_config', id FROM kpi_measurement_configs WHERE kpi_id = ?
+       UNION SELECT 'kpi_config', id FROM kpi_measurement_configs WHERE kpi_id = ?
+       UNION SELECT 'component', id FROM kpi_components WHERE kpi_id = ?
+       UNION SELECT 'kpi_component', id FROM kpi_components WHERE kpi_id = ?
+       UNION SELECT 'target', id FROM kpi_targets
+         WHERE kpi_id = ? OR component_id IN (SELECT id FROM kpi_components WHERE kpi_id = ?)
+       UNION SELECT 'kpi_target', id FROM kpi_targets
+         WHERE kpi_id = ? OR component_id IN (SELECT id FROM kpi_components WHERE kpi_id = ?)
+       UNION SELECT 'distribution_band', id FROM distribution_bands WHERE kpi_id = ?
+       UNION SELECT 'kpi_observation', id FROM kpi_observations WHERE kpi_id = ?
+       UNION SELECT 'kpi_component_entry', entry.id
+         FROM kpi_component_entries entry
+         JOIN kpi_components component ON component.id = entry.component_id
+         WHERE component.kpi_id = ?
+       UNION SELECT 'distribution_observation', id
+         FROM distribution_observations WHERE kpi_id = ?
+       UNION SELECT 'goal_membership', id FROM goal_kpis WHERE kpi_id = ?
+       UNION SELECT 'goal_kpi', id FROM goal_kpis WHERE kpi_id = ?
+       UNION SELECT 'strategic_goal', goal.id
+         FROM strategic_goals goal
+         JOIN goal_kpis membership ON membership.goal_id = goal.id
+         WHERE membership.kpi_id = ?
+       UNION SELECT 'goal', goal.id
+         FROM strategic_goals goal
+         JOIN goal_kpis membership ON membership.goal_id = goal.id
+         WHERE membership.kpi_id = ?`,
+    )
+    .all(
+      kpiId,
+      kpiId,
+      kpiId,
+      kpiId,
+      kpiId,
+      kpiId,
+      kpiId,
+      kpiId,
+      kpiId,
+      kpiId,
+      kpiId,
+      kpiId,
+      kpiId,
+      kpiId,
+      kpiId,
+      kpiId,
+      kpiId,
+    ) as Array<{ entity_type: StrategyAuditEntityType; entity_id: number }>;
+  return rows.map((row) => ({
+    entity_type: row.entity_type,
+    entity_id: Number(row.entity_id),
+  }));
 }
 
 export function getStrategicGoalRecord(
@@ -365,9 +438,103 @@ function missingMeasurementConfiguration(
   };
 }
 
+export interface ConfigurationGoalCompletionRow {
+  goal_id: number;
+  /** Registers a goal whose effective membership set is genuinely empty. */
+  goal_only?: boolean;
+  goal_configuration_status?: ConfigurationStatus;
+  goal_completion_rule?: GoalCompletionRuleName;
+  goal_threshold_count?: number | null;
+  goal_threshold_percentage?: number | null;
+  goal_manual_status?: GoalManualStatus | null;
+  goal_unresolved_question?: string | null;
+  kpi_id?: number;
+  kpi_name?: string;
+  role: "required" | "informational";
+  weight?: number;
+  effective_configuration_status?: ConfigurationStatus;
+  exclusion_reasons: string[];
+}
+
+interface ConfigurationGapCollection {
+  rows: ConfigurationGapRow[];
+  completionRows: ConfigurationGoalCompletionRow[];
+}
+
+function hasCalculableEffectiveTarget({
+  targets,
+  year,
+  measurementType,
+  configurationStatus,
+}: {
+  targets: readonly PersistedTarget[];
+  year: number;
+  measurementType: MeasurementType | null;
+  configurationStatus: ConfigurationStatus;
+}): boolean {
+  const decision = resolveEffectiveTargetPolicy({
+    targets,
+    reportingYear: year,
+    measurementType,
+    parentConfigurationStatus: configurationStatus,
+  }).effective;
+  return (
+    decision.target !== null &&
+    decision.value !== null &&
+    (decision.calculationConfigurationStatus === "ready" ||
+      decision.calculationConfigurationStatus === "active")
+  );
+}
+
+function hasAggregationCompleteTarget(
+  member: StrategicGoalMemberReadModel,
+  config: PersistedMeasurementConfig,
+  year: number,
+): boolean {
+  const parentTargetReady = hasCalculableEffectiveTarget({
+    targets: member.targets,
+    year,
+    measurementType: config.measurement_type,
+    configurationStatus: config.configuration_status,
+  });
+  if (config.measurement_type !== "multi_component") {
+    return parentTargetReady;
+  }
+
+  const everyComponentTargetReady =
+    member.components.length > 0 &&
+    member.components.every((component) =>
+      hasCalculableEffectiveTarget({
+        targets: component.targets,
+        year,
+        measurementType: component.measurement_type,
+        configurationStatus: component.configuration_status,
+      }),
+    );
+
+  switch (config.aggregation_method) {
+    case "all_complete":
+      // The aggregate value itself cannot be calculated until every active
+      // component can be evaluated against its own target.
+      return everyComponentTargetReady;
+    case "average":
+    case "weighted_average":
+    case "sum":
+      // These methods support either a direct parent target or a complete set
+      // of component targets from which parent completion can be derived.
+      return parentTargetReady || everyComponentTargetReady;
+    case "ratio":
+      // Numerator/denominator component targets do not define a target for the
+      // resulting ratio; the aggregated ratio needs a parent target.
+      return parentTargetReady;
+    default:
+      return parentTargetReady;
+  }
+}
+
 function allConfigurationRows(
   filter: ConfigurationGapFilter,
-): ConfigurationGapRow[] {
+): ConfigurationGapCollection {
   const year = filter.year ?? 2026;
   const goals = listStrategicGoals({
     year,
@@ -376,8 +543,23 @@ function allConfigurationRows(
       : { priority_id: filter.priority_id }),
   });
   const rows: ConfigurationGapRow[] = [];
+  const completionRows: ConfigurationGoalCompletionRow[] = [];
   for (const goal of goals) {
     if (filter.goal_id !== undefined && goal.id !== filter.goal_id) continue;
+    if (goal.members.length === 0) {
+      completionRows.push({
+        goal_id: goal.id,
+        goal_only: true,
+        goal_configuration_status: goal.configuration_status,
+        goal_completion_rule: goal.completion_rule,
+        goal_threshold_count: goal.threshold_count,
+        goal_threshold_percentage: goal.threshold_percentage,
+        goal_manual_status: goal.manual_status,
+        goal_unresolved_question: goal.unresolved_question,
+        role: "informational",
+        exclusion_reasons: [],
+      });
+    }
     for (const member of goal.members) {
       const config =
         member.configuration ??
@@ -419,29 +601,11 @@ function allConfigurationRows(
       const missingComponents =
         config.measurement_type === "multi_component" &&
         member.components.length === 0;
-      const hasCalculableTarget =
-        member.targets.some(
-          (target) =>
-            resolveConfiguredTargetValue({
-              measurementType: config.measurement_type,
-              targetValue: target.target_value,
-              structuredTarget: target.structured_target,
-              targetDescription: target.target_description,
-              configurationStatus: target.configuration_status,
-            }) !== null,
-        ) ||
-        member.components.some((component) =>
-          component.targets.some(
-            (target) =>
-              resolveConfiguredTargetValue({
-                measurementType: component.measurement_type,
-                targetValue: target.target_value,
-                structuredTarget: target.structured_target,
-                targetDescription: target.target_description,
-                configurationStatus: target.configuration_status,
-              }) !== null,
-          ),
-        );
+      const hasCalculableTarget = hasAggregationCompleteTarget(
+        member,
+        config,
+        year,
+      );
       const missingTarget = !hasCalculableTarget;
       const missingDenominator =
         (config.measurement_type === "percentage" ||
@@ -470,6 +634,7 @@ function allConfigurationRows(
         priority_id: goal.priority_id,
         priority_slug: goal.priority_slug,
         priority_name: goal.priority_name,
+        membership_role: member.role,
         configuration: config,
         target_years: targetYears,
         missing_measurement_type: missingMeasurementType,
@@ -480,15 +645,37 @@ function allConfigurationRows(
         missing_target_year: missingTarget,
         exclusion_reasons: reasons,
       });
+      completionRows.push({
+        goal_id: goal.id,
+        goal_configuration_status: goal.configuration_status,
+        goal_completion_rule: goal.completion_rule,
+        goal_threshold_count: goal.threshold_count,
+        goal_threshold_percentage: goal.threshold_percentage,
+        goal_manual_status: goal.manual_status,
+        goal_unresolved_question: goal.unresolved_question,
+        kpi_id: member.kpi_id,
+        kpi_name: member.kpi.name,
+        role: member.role,
+        weight: member.weight,
+        effective_configuration_status: gapCompletionConfigurationStatus({
+          configurationStatus: config.configuration_status,
+          missingMeasurementType,
+          missingFormula,
+          missingComponents,
+          missingTarget,
+          missingDenominator,
+        }),
+        exclusion_reasons: reasons,
+      });
     }
   }
-  return rows;
+  return { rows, completionRows };
 }
 
 export function listConfigurationGaps(
   filter: ConfigurationGapFilter = {},
 ): ConfigurationGapRow[] {
-  return allConfigurationRows(filter).filter(
+  return allConfigurationRows(filter).rows.filter(
     (row) => row.exclusion_reasons.length > 0,
   );
 }
@@ -496,12 +683,8 @@ export function listConfigurationGaps(
 export function getConfigurationGapCounts(
   filter: ConfigurationGapFilter = {},
 ): ConfigurationGapCounts {
-  const all = allConfigurationRows(filter);
-  const excludedGoals = new Set(
-    all
-      .filter((row) => row.exclusion_reasons.length > 0)
-      .map((row) => row.goal_id),
-  );
+  const { rows: all, completionRows } = allConfigurationRows(filter);
+  const excludedGoals = countGoalsExcludedByConfiguration(completionRows);
   const year = filter.year ?? 2026;
   const archivedParams: Array<string | number> = [year, year];
   const archivedWhere = [
@@ -560,7 +743,101 @@ export function getConfigurationGapCounts(
         row.missing_components ||
         row.missing_denominator,
     ).length,
-    goals_excluded_from_completion: excludedGoals.size,
+    goals_excluded_from_completion: excludedGoals,
     archived_kpis: archivedKpis,
   };
+}
+
+export function countGoalsExcludedByConfiguration(
+  rows: ConfigurationGoalCompletionRow[],
+): number {
+  const grouped = new Map<number, {
+    goal: StrategicGoalCompletionDefinition;
+    kpis: GoalKpiInput[];
+  }>();
+
+  rows.forEach((row, index) => {
+    const group = grouped.get(row.goal_id) ?? {
+      goal: {
+        id: row.goal_id,
+        completion_rule: row.goal_completion_rule ?? "all_required_kpis",
+        threshold_count: row.goal_threshold_count ?? null,
+        threshold_percentage: row.goal_threshold_percentage ?? null,
+        manual_status: row.goal_manual_status ?? null,
+        configuration_status: row.goal_configuration_status ?? "active",
+        unresolved_question: row.goal_unresolved_question ?? null,
+      },
+      kpis: [],
+    };
+    if (!row.goal_only) {
+      const configurationStatus = row.effective_configuration_status ??
+        inferCompletionConfigurationStatus(row.exclusion_reasons);
+      group.kpis.push({
+        id: String(row.kpi_id ?? `${row.goal_id}:${index}`),
+        label: row.kpi_name,
+        role: row.role,
+        configurationStatus,
+        progress:
+          configurationStatus === "active" || configurationStatus === "ready"
+            ? 0
+            : null,
+        weight: row.weight ?? 1,
+      });
+    }
+    grouped.set(row.goal_id, group);
+  });
+
+  return Array.from(grouped.values()).filter(({ goal, kpis }) =>
+    !calculateStrategicGoalCompletion({ goal, kpis }).eligible
+  ).length;
+}
+
+function gapCompletionConfigurationStatus({
+  configurationStatus,
+  missingMeasurementType,
+  missingFormula,
+  missingComponents,
+  missingTarget,
+  missingDenominator,
+}: {
+  configurationStatus: ConfigurationStatus;
+  missingMeasurementType: boolean;
+  missingFormula: boolean;
+  missingComponents: boolean;
+  missingTarget: boolean;
+  missingDenominator: boolean;
+}): ConfigurationStatus {
+  if (configurationStatus !== "ready" && configurationStatus !== "active") {
+    return configurationStatus;
+  }
+  if (
+    missingMeasurementType ||
+    missingFormula ||
+    missingComponents ||
+    missingDenominator
+  ) {
+    return "needs_definition";
+  }
+  if (missingTarget) return "needs_target";
+  return configurationStatus;
+}
+
+function inferCompletionConfigurationStatus(
+  reasons: string[],
+): ConfigurationStatus {
+  if (reasons.includes("archived")) return "archived";
+  if (reasons.includes("draft")) return "draft";
+  if (
+    reasons.includes("needs_definition") ||
+    reasons.includes("missing_measurement_type") ||
+    reasons.includes("missing_formula") ||
+    reasons.includes("missing_components") ||
+    reasons.includes("missing_denominator")
+  ) {
+    return "needs_definition";
+  }
+  if (reasons.includes("needs_target") || reasons.includes("missing_target")) {
+    return "needs_target";
+  }
+  return "active";
 }

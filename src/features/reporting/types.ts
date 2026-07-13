@@ -51,6 +51,7 @@ export interface CategoryOverviewSummary {
   declining: number;
   flat: number;
   total: number;
+  comparisonMetricCount: number;
   pctImproving: number;
   topMover: CategoryMetricMovement | null;
   goalCount: number;

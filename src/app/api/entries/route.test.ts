@@ -105,7 +105,22 @@ describe("/api/entries mutation contract", () => {
 
     expect(res.status).toBe(400);
     await expect(res.json()).resolves.toEqual({
-      error: "Entry month 1 is invalid for an annual KPI; expected month 0.",
+      error:
+        "The selected reporting period is invalid for an annual KPI; select the annual reporting period.",
+    });
+  });
+
+  it("never exposes the internal annual sentinel in a monthly-period error", async () => {
+    upsertEntryMock.mockImplementationOnce(() => {
+      throw new EntryPeriodMismatchError("monthly", 0);
+    });
+
+    const res = await POST(postRequest(0));
+
+    expect(res.status).toBe(400);
+    await expect(res.json()).resolves.toEqual({
+      error:
+        "The selected reporting period is invalid for a monthly KPI; select a calendar month from January through December.",
     });
   });
 

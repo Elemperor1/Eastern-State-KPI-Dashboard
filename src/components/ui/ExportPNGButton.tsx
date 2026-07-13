@@ -6,6 +6,7 @@ import { Button } from "./Button";
 import {
   getPageBackground,
   prepareRasterExportTarget,
+  resolveRasterCaptureScale,
 } from "@/features/exports/dom-capture";
 
 interface Props {
@@ -38,29 +39,50 @@ export function ExportPNGButton({
       const html2canvas = (await import("html2canvas")).default;
       const restoreTarget = prepareRasterExportTarget(target);
       try {
+        const width = target.scrollWidth;
+        const height = target.scrollHeight;
+        const scale = resolveRasterCaptureScale({
+          width,
+          height,
+          preferredScale: 2,
+        });
         const canvas = await html2canvas(target, {
-          scale: 2,
+          scale,
           backgroundColor: getPageBackground(),
           logging: false,
           useCORS: true,
-          windowWidth: target.scrollWidth,
-          windowHeight: target.scrollHeight,
+          // `width`/`height` define the complete output crop. Do not set
+          // `windowHeight` to a tall report's height: html2canvas uses that
+          // value for its hidden clone iframe before output scaling applies.
+          width,
+          height,
+          windowWidth: width,
         });
-        const dataUrl = canvas.toDataURL("image/png");
+        if (canvas.width <= 0 || canvas.height <= 0) {
+          throw new Error("The PNG renderer produced an empty canvas.");
+        }
+        const blob = await new Promise<Blob>((resolve, reject) => {
+          canvas.toBlob((result) => {
+            if (result && result.size > 0) resolve(result);
+            else reject(new Error("The PNG renderer produced an empty file."));
+          }, "image/png");
+        });
+        const objectUrl = URL.createObjectURL(blob);
         const a = document.createElement("a");
-        a.href = dataUrl;
+        a.href = objectUrl;
         a.download = fileName;
         a.rel = "noopener";
         a.style.display = "none";
         document.body.appendChild(a);
         a.click();
         document.body.removeChild(a);
+        window.setTimeout(() => URL.revokeObjectURL(objectUrl), 0);
       } finally {
         restoreTarget();
       }
     } catch (err) {
       console.error("PNG export failed", err);
-      setError("PNG export failed. Try Print → Save as PNG.");
+      setError("PNG export failed. Try Print → Save as PDF.");
     } finally {
       setBusy(false);
     }
@@ -74,6 +96,7 @@ export function ExportPNGButton({
         isLoading={busy}
         icon={busy ? Loader2 : ImageDown}
         aria-label="Export current view as PNG image"
+        aria-controls={targetId}
       >
         {busy ? "Exporting" : "Export PNG"}
       </Button>

@@ -223,6 +223,7 @@ describe("strategy domain enums and compile-time inputs", () => {
       "average",
       "weighted_average",
       "sum",
+      "ratio",
       "all_complete",
     ]);
   });
@@ -645,6 +646,31 @@ describe("component and aggregation validation", () => {
           component(),
           component({ label: "Duplicate", display_order: 0 }),
         ],
+      }).success,
+    ).toBe(false);
+  });
+
+  it("requires explicit numerator and denominator roles for ratio aggregation", () => {
+    const numerator = component({ aggregation_role: "numerator" });
+    const denominator = component({
+      slug: "contributed-revenue",
+      label: "Contributed revenue",
+      aggregation_role: "denominator",
+      display_order: 1,
+    });
+
+    expect(
+      ComponentSetInputSchema.safeParse({
+        parent_kpi_id: 10,
+        aggregation_method: "ratio",
+        components: [numerator, denominator],
+      }).success,
+    ).toBe(true);
+    expect(
+      ComponentSetInputSchema.safeParse({
+        parent_kpi_id: 10,
+        aggregation_method: "ratio",
+        components: [numerator, { ...denominator, aggregation_role: "value" }],
       }).success,
     ).toBe(false);
   });

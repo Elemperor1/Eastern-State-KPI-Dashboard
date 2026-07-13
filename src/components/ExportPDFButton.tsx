@@ -47,6 +47,7 @@ export function ExportPDFButton({ targetId, fileName = "eastern-state-kpi.pdf" }
         isLoading={busy}
         icon={busy ? Loader2 : Download}
         aria-label="Export current dashboard view as PDF"
+        aria-controls={targetId}
       >
         {busy ? "Exporting" : "Export PDF"}
       </Button>

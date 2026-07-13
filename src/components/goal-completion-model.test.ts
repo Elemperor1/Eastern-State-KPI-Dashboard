@@ -126,6 +126,25 @@ describe("goal-completion presentation model", () => {
     ]);
   });
 
+  it("translates calculation and configuration codes into decision-ready copy", () => {
+    const normalized = normalizeGoalCompletionViewModel(model({
+      excludedGoalReasons: [{
+        goalId: "goal-a",
+        goalName: "Goal A",
+        reasons: ["NO_ELIGIBLE_KPIS", "needs_target", "GOAL_NEEDS_DEFINITION"],
+      }],
+    }));
+
+    expect(normalized.excludedGoalReasons[0]?.reasons).toEqual([
+      "No required, fully configured KPIs are eligible",
+      "One or more KPI targets are not finalized",
+      "Goal definition is not finalized",
+    ]);
+    expect(JSON.stringify(normalized.excludedGoalReasons)).not.toMatch(
+      /NO_ELIGIBLE_KPIS|needs_target|GOAL_NEEDS_DEFINITION/,
+    );
+  });
+
   it("never understates exclusions when detailed reasons exceed the supplied count", () => {
     expect(normalizeGoalCompletionViewModel(model({
       excludedGoalsCount: 0,

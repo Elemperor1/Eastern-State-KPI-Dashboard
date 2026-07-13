@@ -56,7 +56,6 @@ export function buildCategoryPageModel(
   }
 
   const categoryKpis = data.kpis.filter((kpi) => kpi.category_slug === categorySlug);
-  const nonBreakdownKpis = categoryKpis.filter((kpi) => kpi.unit_type !== "breakdown");
   const breakdownKpis = categoryKpis.filter((kpi) => kpi.unit_type === "breakdown");
   const strategicKpis = new Map(
     data.strategicBoardReport.priorities
@@ -65,7 +64,11 @@ export function buildCategoryPageModel(
         goal.kpis.map((kpi) => [kpi.id, { kpi, goalName: goal.name }] as const),
       ),
   );
-  const metricCards: CategoryMetricCardModel[] = nonBreakdownKpis.map((kpi) => {
+  const cardKpis = categoryKpis.filter(
+    (kpi) =>
+      kpi.unit_type !== "breakdown" || strategicKpis.has(String(kpi.id)),
+  );
+  const metricCards: CategoryMetricCardModel[] = cardKpis.map((kpi) => {
     const entries = data.entries.filter((entry) => entry.kpi_id === kpi.id);
     return {
       kpi,

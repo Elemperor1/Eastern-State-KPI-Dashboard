@@ -1,5 +1,9 @@
 import { describe, expect, it } from "vitest";
+import { createElement } from "react";
+import { renderToStaticMarkup } from "react-dom/server";
+import { CategoryMetricGrid } from "@/components/CategoryMetricGrid";
 import { buildCategoryPageModel } from "./category-page";
+import { buildStrategicBoardReport } from "./strategic-board-report";
 import type { ComparePeriod, DashboardData } from "./types";
 import type {
   BreakdownEntryWithMeta,
@@ -142,6 +146,14 @@ const annualBreakdownKpi = kpi({
   name: "Funders by breakdown",
   unit_type: "breakdown",
 });
+const revenueBreakdownKpi = kpi({
+  id: 7,
+  slug: "revenue-by-stream",
+  name: "Revenue by major stream",
+  unit: "USD",
+  unit_type: "breakdown",
+  reporting_frequency: "annual",
+});
 const otherCategoryKpi = kpi({
   id: 4,
   category_id: 2,
@@ -273,6 +285,115 @@ describe("reporting category page model", () => {
       [2026, 0, "Foundations"],
       [2025, 0, "Foundations"],
     ]);
+  });
+
+  it("keeps a strategic revenue breakdown in both the KPI cards and composition chart", () => {
+    const strategicData: DashboardData = {
+      ...data,
+      kpis: [...data.kpis, revenueBreakdownKpi],
+      breakdowns: [
+        ...data.breakdowns,
+        breakdown({
+          id: 6,
+          kpi_id: revenueBreakdownKpi.id,
+          kpi_name: revenueBreakdownKpi.name,
+          kpi_unit: revenueBreakdownKpi.unit,
+          label: "Admissions",
+          value: 600,
+        }),
+        breakdown({
+          id: 7,
+          kpi_id: revenueBreakdownKpi.id,
+          kpi_name: revenueBreakdownKpi.name,
+          kpi_unit: revenueBreakdownKpi.unit,
+          label: "Memberships",
+          value: 400,
+        }),
+      ],
+      strategicBoardReport: buildStrategicBoardReport({
+        selectedYear: 2026,
+        priorities: [{
+          id: "financial-strength",
+          name: "Financial Strength",
+          goals: [{
+            id: "diversify-revenue-streams",
+            name: "Diversify revenue streams",
+            kpis: [{
+              id: String(revenueBreakdownKpi.id),
+              name: revenueBreakdownKpi.name,
+              measurementType: "multi_component",
+              reportingFrequency: "annual",
+              unit: "USD",
+              result: {
+                state: "ok",
+                value: 1_000,
+                displayValue: "$1,000.00",
+              },
+              annualProgress: {
+                actualValue: 1_000,
+                targetValue: 1_250,
+                actualProgressPercentage: 80,
+                status: "in_progress",
+                targetYear: 2026,
+                targetDescription: "Reach $1,250 in total annual revenue.",
+              },
+              boardStatus: "on_track",
+              configurationStatus: "active",
+            }],
+          }],
+        }],
+      }),
+    };
+
+    const model = buildCategoryPageModel(strategicData, category.slug, period);
+    const revenueCard = model.metricCards.find(
+      (metric) => metric.kpi.slug === "revenue-by-stream",
+    );
+
+    expect(revenueCard).toMatchObject({
+      kpi: { slug: "revenue-by-stream" },
+      strategicGoalName: "Diversify revenue streams",
+      strategic: {
+        result: { displayValue: "$1,000.00" },
+        annualProgress: {
+          targetValue: 1_250,
+          targetYear: 2026,
+          status: "in_progress",
+        },
+      },
+    });
+    expect(revenueCard?.analytics.monthlyComparison.isEmpty).toBe(true);
+    expect(
+      model.metricGroups.find((group) => group.goal === "Diversify revenue streams")
+        ?.metrics.map((metric) => metric.kpi.slug),
+    ).toContain("revenue-by-stream");
+    expect(
+      model.annualBreakdowns.find(
+        (section) => section.kpi.slug === "revenue-by-stream",
+      )?.breakdowns.map((row) => row.label),
+    ).toEqual(["Admissions", "Memberships"]);
+    expect(model.metricCards.some(
+      (metric) => metric.kpi.slug === "funders-by-breakdown",
+    )).toBe(false);
+
+    const revenueGroup = model.metricGroups.filter(
+      (group) => group.goal === "Diversify revenue streams",
+    );
+    const html = renderToStaticMarkup(createElement(CategoryMetricGrid, {
+      groups: revenueGroup,
+      title: "Strategic KPI",
+      onMetricSelect: () => undefined,
+    }));
+
+    expect(html).toContain("<button");
+    expect(html).toContain("Revenue by major stream");
+    expect(html).toContain("$1,000.00");
+    expect(html).toContain("$1,250.00");
+    expect(html).toContain("Reporting year 2026");
+    expect(html).toContain("Reach $1,250 in total annual revenue.");
+    expect(html).toContain("On Track");
+    expect(html).not.toContain("No data");
+    expect(html).not.toContain("vs 2025");
   });
 
   it("returns an empty model for an unknown category slug", () => {

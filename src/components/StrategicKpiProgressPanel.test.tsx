@@ -13,7 +13,8 @@ describe("StrategicKpiProgressPanel", () => {
       />,
     );
 
-    expect(html).toContain("First-class strategic observations");
+    expect(html).toContain("Calculated and retained results");
+    expect(html).toContain("retained first-class raw inputs");
     expect(html).toContain("January 2026");
     expect(html).toContain("25 / 40");
     expect(html).toContain("Audience race demographic distribution chart");

@@ -3,6 +3,7 @@ export {
   AGGREGATION_METHODS,
   AVERAGE_INPUT_METHODS,
   BOARD_STATUSES,
+  COMPONENT_AGGREGATION_ROLES,
   CONFIGURATION_STATUSES,
   DISTRIBUTION_DERIVED_GROUPS,
   GOAL_COMPLETION_RULES,
@@ -20,6 +21,7 @@ export {
   type AggregationMethod,
   type AverageInputMethod,
   type BoardStatus,
+  type ComponentAggregationRole,
   type ComponentInput,
   type ComponentRecord,
   type ConfigurationGapFields,
@@ -57,7 +59,9 @@ export {
   type TargetScope,
 } from "./types";
 export * from "./records";
+export * from "./goal-completion";
 export * from "./validation";
+export * from "./target-policy";
 export {
   MEASUREMENT_TYPES as CALCULATION_MEASUREMENT_TYPES,
   calculateAnnualAndPlanProgress,

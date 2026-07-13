@@ -1,6 +1,6 @@
 import {
   calculateMeasurement,
-  resolveConfiguredTargetValue,
+  resolveEffectiveTargetPolicy,
   type AtomicMeasurementInput,
   type MeasurementResult,
   type PersistedMeasurementConfig,
@@ -28,6 +28,7 @@ export interface StrategicCalculatedActual {
 export interface StrategicObservationDefinition {
   measurementType: ObservationRecord["measurement_type"];
   precision: number;
+  unit?: string | null;
   fixedDenominator?: number | null;
   allowOverMaximum?: boolean;
 }
@@ -57,6 +58,7 @@ export function calculateStrategyDistribution(
 export function calculateStrategyMultiComponent({
   configuration,
   components,
+  reportingYear,
 }: {
   configuration: PersistedMeasurementConfig;
   components: Array<{
@@ -65,6 +67,7 @@ export function calculateStrategyMultiComponent({
     distribution?: StrategyDistributionRecord | null;
     previousPeriodValue?: number | null;
   }>;
+  reportingYear?: number;
 }): MeasurementResult {
   return calculateMeasurement({
     measurementType: "multi_component",
@@ -76,25 +79,17 @@ export function calculateStrategyMultiComponent({
       distribution,
       previousPeriodValue,
     }) => {
-      const target = selectComponentTarget(
-        definition,
-        distribution?.year ?? record?.year ?? null,
-      );
-      const resolvedTarget = target
-        ? resolveConfiguredTargetValue({
-            measurementType: definition.measurement_type,
-            targetValue: target.target_value,
-            structuredTarget: target.structured_target,
-            targetDescription: target.target_description,
-            configurationStatus: target.configuration_status,
-          })
-        : null;
-      const targetStatus = target
-        ? componentTargetCalculationStatus(
-            target.configuration_status,
-            resolvedTarget,
-          )
-        : definition.configuration_status;
+      const targetPolicy = resolveEffectiveTargetPolicy({
+        targets: definition.targets,
+        reportingYear:
+          reportingYear ??
+          distribution?.year ??
+          record?.year ??
+          configuration.effective_from_year,
+        measurementType: definition.measurement_type,
+        parentConfigurationStatus: definition.configuration_status,
+      });
+      const target = targetPolicy.effective.target;
       return {
         id: String(definition.id),
         label: definition.label,
@@ -109,20 +104,23 @@ export function calculateStrategyMultiComponent({
                 {
                   measurementType: definition.measurement_type ?? "count",
                   precision: configuration.calculation_precision,
+                  unit: definition.unit,
                   fixedDenominator: definition.fixed_denominator,
                   allowOverMaximum: configuration.allow_score_over_max,
                 },
                 previousPeriodValue ?? definition.previous_period_value,
               ),
         unit: definition.unit ?? undefined,
+        aggregationRole: definition.aggregation_role,
         weight: definition.weight,
         required: true,
         ...(target
           ? {
-              targetValue: resolvedTarget,
+              targetValue: targetPolicy.effective.value,
               baselineValue:
                 target.baseline_value ?? definition.baseline_value,
-              configurationStatus: targetStatus,
+              configurationStatus:
+                targetPolicy.effective.calculationConfigurationStatus,
             }
           : {}),
       };
@@ -170,7 +168,11 @@ function observationMeasurementInput(
   definition: StrategicObservationDefinition,
   previousPeriodValue: number | null,
 ): AtomicMeasurementInput {
-  const precision = definition.precision;
+  // Currency is a monetary atomic contract even when a parent percentage or
+  // ratio intentionally reports with fewer decimal places.
+  const precision = definition.measurementType === "currency"
+    ? Math.max(definition.precision, 2)
+    : definition.precision;
   switch (definition.measurementType) {
     case "binary":
       return {
@@ -200,6 +202,7 @@ function observationMeasurementInput(
         numerator: record?.numerator ?? null,
         denominator: record?.denominator ?? null,
         fixedDenominator: definition.fixedDenominator ?? null,
+        scale: definition.unit === "%" ? 100 : 1,
       };
     case "average": {
       const method = record?.average_method ?? "total_score";
@@ -251,32 +254,4 @@ function observationMeasurementInput(
         value: null,
       };
   }
-}
-
-function selectComponentTarget(
-  component: StrategyComponentWithTargets,
-  year: number | null,
-) {
-  if (year !== null) {
-    const annual = component.targets.find(
-      (target) =>
-        target.target_scope === "annual" && target.reporting_year === year,
-    );
-    if (annual) return annual;
-  }
-  const fullPlan = [...component.targets]
-    .filter((target) => target.target_scope === "full_plan")
-    .sort((a, b) => a.target_year - b.target_year || a.id - b.id);
-  return (year === null
-    ? fullPlan[0]
-    : fullPlan.find((target) => target.target_year >= year) ?? fullPlan.at(-1)) ?? null;
-}
-
-function componentTargetCalculationStatus(
-  status: StrategyComponentWithTargets["configuration_status"],
-  resolvedValue: number | null,
-) {
-  if (status === "needs_definition") return "needs_definition" as const;
-  if (status !== "ready" && status !== "active") return "needs_target" as const;
-  return resolvedValue === null ? "needs_definition" as const : status;
 }

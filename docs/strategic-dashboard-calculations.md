@@ -36,6 +36,26 @@ path: `{ "value": number }` supplies a scalar target and binary
 uses the explicit binary completion threshold of 1. Unknown structured shapes
 return `needs_definition` rather than being guessed.
 
+## Legacy compatibility provenance
+
+First-class strategic observations win for an entire KPI history series. When
+only legacy values exist, the calculation layer applies explicit, typed
+compatibility rules rather than guessing raw inputs:
+
+- stored percentage, normalized-average, and denominator-free-ratio results
+  remain exact `legacy_direct_value` results;
+- a fixed denominator converts a compatible legacy scalar numerator through
+  the normal ratio formula (`30 / 50 x 100 = 60%`);
+- non-percent year-over-year values use the matching period in the previous
+  reporting year;
+- already-derived `%` year-over-year rows remain exact
+  `legacy_direct_percentage` results; and
+- a first-class raw-count year-over-year observation may use a matching legacy
+  raw count as its prior base, but never an already-derived percentage.
+
+Report and export formula copy states when raw bases are unavailable. Retained
+compatibility values are not described as recalculated first-class inputs.
+
 ## Rounding
 
 `roundFinite` centralizes finite checks and decimal precision. Configuration

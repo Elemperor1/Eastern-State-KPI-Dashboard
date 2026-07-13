@@ -111,6 +111,11 @@ export function recordStrategicAuditEvent(
 export interface StrategicAuditFilter {
   entity_type?: StrategyAuditEntityType;
   entity_id?: number;
+  identities?: Array<{
+    entity_type: StrategyAuditEntityType;
+    entity_id: number;
+  }>;
+  entity_display_name_contains?: string;
   actor_id?: number;
   event_type?: StrategicAuditEventType;
   limit?: number;
@@ -136,6 +141,19 @@ export function listStrategicAuditEvents(
   if (filter.event_type !== undefined) {
     where.push("event_type = ?");
     params.push(filter.event_type);
+  }
+  const related: string[] = [];
+  for (const identity of filter.identities ?? []) {
+    related.push("(entity_type = ? AND entity_id = ?)");
+    params.push(identity.entity_type, identity.entity_id);
+  }
+  const displayName = filter.entity_display_name_contains?.trim();
+  if (displayName) {
+    related.push("instr(entity_display_name, ?) > 0");
+    params.push(displayName);
+  }
+  if (related.length > 0) {
+    where.push(`(${related.join(" OR ")})`);
   }
   const limit = Math.min(Math.max(filter.limit ?? 200, 1), 1_000);
   const rows = getDb()

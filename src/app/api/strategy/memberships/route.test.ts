@@ -1,9 +1,10 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { NextRequest } from "next/server";
 
-const { requireAdminMock, updateMembershipMock } = vi.hoisted(() => ({
+const { requireAdminMock, updateMembershipMock, successorMembershipMock } = vi.hoisted(() => ({
   requireAdminMock: vi.fn(),
   updateMembershipMock: vi.fn(),
+  successorMembershipMock: vi.fn(),
 }));
 
 vi.mock("@/features/auth/session", () => ({
@@ -21,6 +22,7 @@ vi.mock("@/features/strategy/server", async () => {
   );
   return {
     ...actual,
+    createSuccessorStrategicGoalMembership: successorMembershipMock,
     updateStrategicGoalMembership: updateMembershipMock,
   };
 });
@@ -60,6 +62,11 @@ beforeEach(() => {
     weight: 2,
     display_order: 3,
   });
+  successorMembershipMock.mockReset();
+  successorMembershipMock.mockReturnValue({
+    predecessor: { id: 41, effective_to_year: 2026 },
+    successor: { id: 42, effective_from_year: 2027 },
+  });
 });
 
 describe("PATCH /api/strategy/memberships", () => {
@@ -86,6 +93,30 @@ describe("PATCH /api/strategy/memberships", () => {
       (await PATCH(request({ id: 41, role: "required", extra: true }))).status,
     ).toBe(400);
     expect(updateMembershipMock).not.toHaveBeenCalled();
+  });
+
+  it("creates a future successor membership atomically", async () => {
+    const body = {
+      action: "create_successor",
+      predecessor_id: 41,
+      effective_start_year: 2027,
+      role: "informational",
+      weight: 2,
+      display_order: 3,
+    };
+    const response = await PATCH(request(body));
+
+    expect(response.status).toBe(201);
+    expect(successorMembershipMock).toHaveBeenCalledWith(
+      {
+        predecessor_id: 41,
+        effective_start_year: 2027,
+        role: "informational",
+        weight: 2,
+        display_order: 3,
+      },
+      7,
+    );
   });
 
   it("runs authorization before CSRF and rejects a forged origin", async () => {

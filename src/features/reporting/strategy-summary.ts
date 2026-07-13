@@ -1,7 +1,6 @@
 import type {
-  ConfigurationStatus,
   GoalCompletionResult,
-  GoalCompletionRule,
+  MeasurementType,
   MeasurementResult,
   ProgressResult,
   StrategicGoalReadModel,
@@ -9,9 +8,12 @@ import type {
 } from "@/features/strategy";
 import {
   calculateAnnualAndPlanProgress,
-  calculateGoalCompletion,
+  calculateMeasurement,
+  calculateStrategicGoalCompletion,
+  calculateProgress,
   calculateStrategyRollups,
-  resolveConfiguredTargetValue,
+  resolveEffectiveTargetPolicy,
+  roundFinite,
 } from "@/features/strategy";
 import { STRATEGIC_PLAN_START_YEAR } from "@/features/strategy";
 import type { KPIWithCategory, MonthlyEntryWithMeta } from "@/lib/types";
@@ -108,49 +110,48 @@ export function buildStrategicDashboardSummary({
     const kpiSummaries = goal.members.map((member) => {
       const config = member.configuration;
       const measurementType = config?.measurement_type ?? null;
-      const currentValue = resolveActualValue({
+      const precision = config?.calculation_precision ?? 1;
+      const unit = config?.unit ?? member.kpi.unit ?? null;
+      const currentActual = resolveActual({
         kpiId: member.kpi_id,
         measurementType,
         reportingFrequency: config?.reporting_frequency ?? null,
+        fixedDenominator: config?.fixed_denominator ?? null,
+        unit,
+        precision,
         selectedYear,
         throughMonth,
         firstClassActuals: actuals,
         legacyEntries: entries,
       });
+      const currentValue = currentActual.value;
       const cumulativeActual = resolveCumulativeActual({
         kpiId: member.kpi_id,
         measurementType,
         reportingFrequency: config?.reporting_frequency ?? null,
+        fixedDenominator: config?.fixed_denominator ?? null,
+        unit,
+        precision,
         selectedYear,
         throughMonth,
         firstClassActuals: actuals,
         legacyEntries: entries,
       });
-      const currentCalculation = resolveCurrentCalculation({
-        kpiId: member.kpi_id,
-        selectedYear,
-        throughMonth,
-        firstClassActuals: actuals,
+      const currentCalculation = currentActual.calculation;
+      const targetPolicy = resolveEffectiveTargetPolicy({
+        targets: member.targets,
+        reportingYear: selectedYear,
+        measurementType,
+        parentConfigurationStatus:
+          config?.configuration_status ?? "needs_definition",
       });
-      const annualTarget = member.targets.find(
-        (target) =>
-          target.target_scope === "annual" &&
-          target.reporting_year === selectedYear &&
-          target.archived_at === null,
-      ) ?? null;
-      const fullPlanTarget = selectFullPlanTarget(member.targets, selectedYear);
+      const annualTarget = targetPolicy.annual.target;
+      const fullPlanTarget = targetPolicy.fullPlan.target;
       const legacy = legacyById.get(member.kpi_id);
       const direction = legacy?.direction === "lower" ? "lower" : "higher";
       const configurationStatus = config?.configuration_status ?? "needs_definition";
-      const precision = config?.calculation_precision ?? 1;
-      const annualTargetValue = resolveStrategicTargetValue(
-        annualTarget,
-        measurementType,
-      );
-      const fullPlanTargetValue = resolveStrategicTargetValue(
-        fullPlanTarget,
-        measurementType,
-      );
+      const annualTargetValue = targetPolicy.annual.value;
+      const fullPlanTargetValue = targetPolicy.fullPlan.value;
 
       const annualAndPlanProgress = calculateAnnualAndPlanProgress({
         annualActual: currentValue,
@@ -168,22 +169,26 @@ export function buildStrategicDashboardSummary({
         direction,
         precision,
         configurationStatus,
-        annualConfigurationStatus: targetProgressConfigurationStatus(
-          annualTarget,
-          annualTargetValue,
-          configurationStatus,
-        ),
-        fullPlanConfigurationStatus: targetProgressConfigurationStatus(
-          fullPlanTarget,
-          fullPlanTargetValue,
-          configurationStatus,
-        ),
+        annualConfigurationStatus:
+          targetPolicy.annual.calculationConfigurationStatus,
+        fullPlanConfigurationStatus:
+          targetPolicy.fullPlan.calculationConfigurationStatus,
       });
       const annualProgress = annualAndPlanProgress.annualCompletion;
       const fullPlanProgress = annualAndPlanProgress.fullPlanProgress;
-      const completionProgress = fullPlanTarget
-        ? fullPlanProgress
-        : annualProgress;
+      const componentCompletionProgress = targetPolicy.effective.target === null
+        ? resolveComponentTargetCompletionProgress({
+            member,
+            currentCalculation,
+            selectedYear,
+            precision,
+            direction,
+          })
+        : null;
+      const completionProgress = componentCompletionProgress ??
+        (targetPolicy.effective.kind === "annual"
+          ? annualProgress
+          : fullPlanProgress);
 
       return {
         kpiId: member.kpi_id,
@@ -209,21 +214,18 @@ export function buildStrategicDashboardSummary({
       };
     });
 
-    const result = isGoalConfigurationEligible(goal.configuration_status)
-      ? calculateGoalCompletion({
-          goalId: String(goal.id),
-          rule: toGoalRule(goal),
-          kpis: goal.members.map((member, index) => ({
-            id: String(member.kpi_id),
-            label: member.kpi.name,
-            role: member.role,
-            configurationStatus:
-              member.configuration?.configuration_status ?? "needs_definition",
-            progress: kpiSummaries[index]?.completionProgress ?? null,
-            weight: member.weight,
-          })),
-        })
-      : excludedGoalResult(goal);
+    const result = calculateStrategicGoalCompletion({
+      goal,
+      kpis: goal.members.map((member, index) => ({
+        id: String(member.kpi_id),
+        label: member.kpi.name,
+        role: member.role,
+        configurationStatus:
+          member.configuration?.configuration_status ?? "needs_definition",
+        progress: kpiSummaries[index]?.completionProgress ?? null,
+        weight: member.weight,
+      })),
+    });
 
     return {
       goalId: String(goal.id),
@@ -282,228 +284,423 @@ function pacingElapsedFraction(
   return Math.min(12, Math.max(0, throughMonth)) / 12;
 }
 
-function isGoalConfigurationEligible(status: string): boolean {
-  return status === "ready" || status === "active";
-}
-
-function toGoalRule(goal: StrategicGoalReadModel): GoalCompletionRule {
-  switch (goal.completion_rule) {
-    case "weighted_average":
-      return {
-        type: "weighted_average",
-        ...(goal.threshold_percentage === null
-          ? {}
-          : { completionThresholdPercentage: goal.threshold_percentage }),
-      };
-    case "threshold_count":
-      return {
-        type: "threshold_count",
-        ...(goal.threshold_count === null
-          ? {}
-          : { thresholdCount: goal.threshold_count }),
-        ...(goal.threshold_percentage === null
-          ? {}
-          : { thresholdPercentage: goal.threshold_percentage }),
-      };
-    case "manual_status":
-      return {
-        type: "manual_status",
-        complete:
-          goal.manual_status === null
-            ? null
-            : goal.manual_status === "complete",
-      };
-    default:
-      return { type: "all_required_kpis" };
+function resolveComponentTargetCompletionProgress({
+  member,
+  currentCalculation,
+  selectedYear,
+  precision,
+  direction,
+}: {
+  member: StrategicGoalReadModel["members"][number];
+  currentCalculation: MeasurementResult | null;
+  selectedYear: number;
+  precision: number;
+  direction: "higher" | "lower";
+}): ProgressResult | null {
+  const configuration = member.configuration;
+  if (
+    configuration?.measurement_type !== "multi_component" ||
+    member.components.length === 0
+  ) {
+    return null;
   }
+
+  const componentTargets = member.components.map((component) =>
+    resolveEffectiveTargetPolicy({
+      targets: component.targets,
+      reportingYear: selectedYear,
+      measurementType: component.measurement_type,
+      parentConfigurationStatus: component.configuration_status,
+    }).effective
+  );
+  const everyComponentTargetReady = componentTargets.every(
+    (decision) =>
+      decision.target !== null &&
+      decision.value !== null &&
+      (decision.calculationConfigurationStatus === "ready" ||
+        decision.calculationConfigurationStatus === "active"),
+  );
+  if (!everyComponentTargetReady) return null;
+
+  if (
+    currentCalculation?.state === "invalid" ||
+    (currentCalculation !== null &&
+      (currentCalculation.measurementType !== "multi_component" ||
+        currentCalculation.aggregationMethod !== configuration.aggregation_method))
+  ) {
+    return needsDefinitionProgress(precision);
+  }
+
+  if (configuration.aggregation_method === "all_complete") {
+    return calculateProgress({
+      currentValue:
+        currentCalculation?.state === "ok" ? currentCalculation.value : null,
+      targetValue: 1,
+      precision,
+      configurationStatus: configuration.configuration_status,
+    });
+  }
+
+  if (configuration.aggregation_method === "sum") {
+    if (!componentsHaveCompatibleUnits(member.components)) {
+      return needsDefinitionProgress(precision);
+    }
+    const targetValue = roundFinite(
+      componentTargets.reduce(
+        (sum, decision) => sum + (decision.value as number),
+        0,
+      ),
+      precision,
+    );
+    if (targetValue === null) return null;
+    return calculateProgress({
+      currentValue:
+        currentCalculation?.state === "ok" ? currentCalculation.value : null,
+      targetValue,
+      direction,
+      precision,
+      configurationStatus: configuration.configuration_status,
+    });
+  }
+
+  if (
+    configuration.aggregation_method === "average" ||
+    configuration.aggregation_method === "weighted_average"
+  ) {
+    if (!componentsHaveCompatibleUnits(member.components)) {
+      return needsDefinitionProgress(precision);
+    }
+    if (currentCalculation === null) {
+      return calculateProgress({
+        currentValue: null,
+        targetValue: 100,
+        precision,
+        configurationStatus: configuration.configuration_status,
+      });
+    }
+
+    const calculatedById = new Map(
+      (currentCalculation.components ?? []).map((component) => [
+        component.id,
+        component,
+      ]),
+    );
+    const progressValues: Array<{ percentage: number; weight: number }> = [];
+    for (const component of member.components) {
+      const calculated = calculatedById.get(String(component.id));
+      const progress = calculated?.progress;
+      const percentage = progress?.actualProgressPercentage;
+      if (
+        progress === null ||
+        progress === undefined ||
+        progress.state === "invalid" ||
+        progress.status === "needs_definition" ||
+        progress.status === "target_not_finalized"
+      ) {
+        return needsDefinitionProgress(precision);
+      }
+      const normalizedPercentage = Number.isFinite(percentage)
+        ? (percentage as number)
+        : progress.state === "missing" && progress.status === "not_started"
+          ? 0
+          : null;
+      if (normalizedPercentage === null) {
+        return needsDefinitionProgress(precision);
+      }
+      if (!Number.isFinite(component.weight) || component.weight <= 0) {
+        return needsDefinitionProgress(precision);
+      }
+      progressValues.push({
+        percentage: normalizedPercentage,
+        weight: component.weight,
+      });
+    }
+
+    const totalWeight = configuration.aggregation_method === "weighted_average"
+      ? progressValues.reduce((sum, component) => sum + component.weight, 0)
+      : progressValues.length;
+    const currentValue = roundFinite(
+      progressValues.reduce(
+        (sum, component) =>
+          sum + component.percentage *
+            (configuration.aggregation_method === "weighted_average"
+              ? component.weight
+              : 1),
+        0,
+      ) / totalWeight,
+      precision,
+    );
+    if (currentValue === null) return needsDefinitionProgress(precision);
+    return calculateProgress({
+      currentValue,
+      targetValue: 100,
+      precision,
+      configurationStatus: configuration.configuration_status,
+    });
+  }
+
+  return null;
 }
 
-function excludedGoalResult(goal: StrategicGoalReadModel): GoalCompletionResult {
-  const code = `GOAL_${goal.configuration_status.toUpperCase()}`;
-  return {
-    goalId: String(goal.id),
-    rule: goal.completion_rule,
-    state: "missing",
-    eligible: false,
-    complete: false,
-    completionPercentage: null,
-    completedKpisCount: 0,
-    totalEligibleKpisCount: 0,
-    excludedKpisCount: goal.members.length,
-    excludedKpis: goal.members.map((member) => ({
-      id: String(member.kpi_id),
-      label: member.kpi.name,
-      reason:
-        goal.configuration_status === "needs_target"
-          ? "needs_target"
-          : goal.configuration_status === "archived"
-            ? "archived"
-            : goal.configuration_status === "draft"
-              ? "draft"
-              : "needs_definition",
-    })),
-    exclusionReasons: [code],
-    issues: [{
-      kind: "missing",
-      code,
-      message:
-        goal.unresolved_question ??
-        `Goal configuration is ${goal.configuration_status.replaceAll("_", " ")}.`,
-      field: "configuration_status",
-    }],
-  };
+function componentsHaveCompatibleUnits(
+  components: StrategicGoalReadModel["members"][number]["components"],
+): boolean {
+  const units = new Set(
+    components.map((component) => component.unit?.trim() || null),
+  );
+  return units.size === 1 && !units.has(null);
 }
 
-function selectFullPlanTarget(
-  targets: StrategicGoalReadModel["members"][number]["targets"],
-  selectedYear: number,
-) {
-  const candidates = targets
-    .filter(
-      (target) => target.target_scope === "full_plan" && target.archived_at === null,
-    )
-    .sort((a, b) => a.target_year - b.target_year || a.id - b.id);
-  return candidates.find((target) => target.target_year >= selectedYear)
-    ?? candidates.at(-1)
-    ?? null;
-}
-
-type StrategicTarget =
-  StrategicGoalReadModel["members"][number]["targets"][number];
-
-/** Resolve only documented structured forms; unknown structures stay unresolved. */
-function resolveStrategicTargetValue(
-  target: StrategicTarget | null,
-  measurementType: string | null,
-): number | null {
-  if (target === null) return null;
-  return resolveConfiguredTargetValue({
-    measurementType:
-      measurementType === null ? null : targetMeasurementType(measurementType),
-    targetValue: target.target_value,
-    structuredTarget: target.structured_target,
-    targetDescription: target.target_description,
-    configurationStatus: target.configuration_status,
+function needsDefinitionProgress(precision: number): ProgressResult {
+  return calculateProgress({
+    currentValue: null,
+    targetValue: 1,
+    precision,
+    configurationStatus: "needs_definition",
   });
 }
 
-function targetMeasurementType(value: string) {
-  return [
-    "binary",
-    "milestone",
-    "count",
-    "percentage",
-    "average",
-    "cumulative",
-    "year_over_year",
-    "distribution",
-    "currency",
-    "ratio",
-    "multi_component",
-  ].includes(value)
-    ? (value as import("@/features/strategy").MeasurementType)
-    : null;
+interface ResolvedActual {
+  value: number | null;
+  calculation: MeasurementResult | null;
 }
 
-function targetProgressConfigurationStatus(
-  target: StrategicTarget | null,
-  resolvedValue: number | null,
-  parentStatus: ConfigurationStatus,
-): ConfigurationStatus {
-  if (parentStatus !== "ready" && parentStatus !== "active") {
-    return parentStatus;
-  }
-  if (target === null) return parentStatus;
-  if (target.configuration_status === "needs_definition") {
-    return "needs_definition";
-  }
-  if (
-    target.configuration_status !== "ready" &&
-    target.configuration_status !== "active"
-  ) {
-    return "needs_target";
-  }
-  return resolvedValue === null ? "needs_definition" : parentStatus;
+interface LegacyActualContract {
+  measurementType: MeasurementType | null;
+  fixedDenominator: number | null;
+  unit: string | null;
+  precision: number;
 }
 
-function resolveActualValue({
+function resolveActual({
   kpiId,
   measurementType,
   reportingFrequency,
+  fixedDenominator,
+  unit,
+  precision,
   selectedYear,
   throughMonth,
   firstClassActuals,
   legacyEntries,
 }: {
   kpiId: number;
-  measurementType: string | null;
+  measurementType: MeasurementType | null;
   reportingFrequency: string | null;
+  fixedDenominator: number | null;
+  unit: string | null;
+  precision: number;
   selectedYear: number;
   throughMonth: number;
   firstClassActuals: StrategicActualValue[];
   legacyEntries: MonthlyEntryWithMeta[];
-}): number | null {
+}): ResolvedActual {
   const direct = firstClassActuals.filter(
     (actual) => actual.kpiId === kpiId && actual.year === selectedYear,
   );
   if (direct.length > 0) {
-    return combinePeriodValues(
-      direct.map((actual) => ({
-        periodType: actual.periodType,
-        periodIndex: actual.periodIndex,
-        value: actual.value,
-      })),
-      measurementType,
-      reportingFrequency,
-      throughMonth,
-    );
+    return {
+      value: combinePeriodValues(
+        direct.map((actual) => ({
+          periodType: actual.periodType,
+          periodIndex: actual.periodIndex,
+          value: actual.value,
+        })),
+        measurementType,
+        reportingFrequency,
+        throughMonth,
+      ),
+      calculation: direct
+        .filter((actual) => periodIncluded(actual, throughMonth))
+        .sort((a, b) => periodSortKey(a) - periodSortKey(b))
+        .at(-1)?.calculation ?? null,
+    };
   }
 
-  const legacy = legacyEntries
-    .filter((entry) => entry.kpi_id === kpiId && entry.year === selectedYear)
+  const legacyRows = legacyEntries.filter(
+    (entry) => entry.kpi_id === kpiId && entry.year === selectedYear,
+  );
+  const legacy = legacyRows
     .map((entry) => ({ periodIndex: entry.month, value: entry.value }));
-  return combinePeriodValues(
+  const legacyValue = combinePeriodValues(
     legacy,
     measurementType,
     reportingFrequency,
     throughMonth,
   );
+  const adapted = adaptLegacyScalarActual({
+    measurementType,
+    fixedDenominator,
+    unit,
+    precision,
+    value: legacyValue,
+    previousValue: previousLegacyPeriodValue({
+      kpiId,
+      selectedYear,
+      throughMonth,
+      currentRows: legacyRows,
+      legacyEntries,
+    }),
+  });
+  return adapted
+    ? { value: adapted.value, calculation: adapted }
+    : { value: legacyValue, calculation: null };
 }
 
-function resolveCurrentCalculation({
+/**
+ * Convert a legacy scalar only when the strategic contract proves what the
+ * scalar represents. A fixed-denominator ratio is safe because legacy values
+ * are the numerator and the configured denominator and unit fully determine
+ * the result. A non-percentage year-over-year contract is also safe when the
+ * same legacy reporting period exists in the prior year. Generic percentages,
+ * denominator-free ratios, and derived percentage YOY values remain opaque
+ * compatibility values rather than being guessed into a new formula.
+ */
+function adaptLegacyScalarActual({
+  measurementType,
+  fixedDenominator,
+  unit,
+  precision,
+  value,
+  previousValue,
+}: LegacyActualContract & {
+  value: number | null;
+  previousValue: number | null;
+}): MeasurementResult | null {
+  if (value === null || !Number.isFinite(value)) {
+    return null;
+  }
+  if (
+    measurementType === "ratio" &&
+    fixedDenominator !== null &&
+    Number.isFinite(fixedDenominator)
+  ) {
+    return calculateMeasurement({
+      measurementType: "ratio",
+      numerator: value,
+      fixedDenominator,
+      scale: unit === "%" ? 100 : 1,
+      precision,
+    });
+  }
+  if (measurementType === "year_over_year" && unit?.trim() === "%") {
+    return retainedLegacyResult({
+      measurementType,
+      value,
+      unit,
+      precision,
+      calculationProvenance: "legacy_direct_percentage",
+    });
+  }
+  if (
+    measurementType === "year_over_year" &&
+    unit !== null &&
+    unit.trim() !== "" &&
+    unit.trim() !== "%"
+  ) {
+    return calculateMeasurement({
+      measurementType: "year_over_year",
+      currentValue: value,
+      previousPeriodValue: previousValue,
+      precision,
+    });
+  }
+  if (
+    measurementType === "percentage" ||
+    measurementType === "average" ||
+    measurementType === "ratio"
+  ) {
+    return retainedLegacyResult({
+      measurementType,
+      value,
+      unit,
+      precision,
+      calculationProvenance: "legacy_direct_value",
+    });
+  }
+  return null;
+}
+
+function retainedLegacyResult({
+  measurementType,
+  value,
+  unit,
+  precision,
+  calculationProvenance,
+}: {
+  measurementType: MeasurementType;
+  value: number;
+  unit: string | null;
+  precision: number;
+  calculationProvenance: NonNullable<
+    MeasurementResult["calculationProvenance"]
+  >;
+}): MeasurementResult {
+  return {
+    state: "ok",
+    measurementType,
+    value,
+    normalizedPercentage:
+      measurementType === "percentage" ||
+      measurementType === "average" ||
+      (measurementType === "year_over_year" && unit?.trim() === "%") ||
+      (measurementType === "ratio" && unit?.trim() === "%")
+        ? value
+        : null,
+    numerator: null,
+    denominator: null,
+    respondentCount: null,
+    precision,
+    issues: [],
+    calculationProvenance,
+  };
+}
+
+function previousLegacyPeriodValue({
   kpiId,
   selectedYear,
   throughMonth,
-  firstClassActuals,
+  currentRows,
+  legacyEntries,
 }: {
   kpiId: number;
   selectedYear: number;
   throughMonth: number;
-  firstClassActuals: StrategicActualValue[];
-}): MeasurementResult | null {
-  return firstClassActuals
-    .filter(
-      (actual) =>
-        actual.kpiId === kpiId &&
-        actual.year === selectedYear &&
-        periodIncluded(actual, throughMonth),
-    )
-    .sort((a, b) => periodSortKey(a) - periodSortKey(b))
-    .at(-1)?.calculation ?? null;
+  currentRows: MonthlyEntryWithMeta[];
+  legacyEntries: MonthlyEntryWithMeta[];
+}): number | null {
+  const included = currentRows.filter((entry) =>
+    periodIncluded({ periodIndex: entry.month }, throughMonth)
+  );
+  const currentPeriod = included.findLast((entry) => entry.month === 0) ??
+    included.sort((a, b) => a.month - b.month).at(-1);
+  if (!currentPeriod) return null;
+  return legacyEntries.findLast(
+    (entry) =>
+      entry.kpi_id === kpiId &&
+      entry.year === selectedYear - 1 &&
+      entry.month === currentPeriod.month,
+  )?.value ?? null;
 }
 
 function resolveCumulativeActual({
   kpiId,
   measurementType,
   reportingFrequency,
+  fixedDenominator,
+  unit,
+  precision,
   selectedYear,
   throughMonth,
   firstClassActuals,
   legacyEntries,
 }: {
   kpiId: number;
-  measurementType: string | null;
+  measurementType: MeasurementType | null;
   reportingFrequency: string | null;
+  fixedDenominator: number | null;
+  unit: string | null;
+  precision: number;
   selectedYear: number;
   throughMonth: number;
   firstClassActuals: StrategicActualValue[];
@@ -511,15 +708,18 @@ function resolveCumulativeActual({
 }): number | null {
   if (reportingFrequency === "cumulative" || reportingFrequency === "one_time") {
     for (let year = selectedYear; year >= STRATEGIC_PLAN_START_YEAR; year -= 1) {
-      const value = resolveActualValue({
+      const value = resolveActual({
         kpiId,
         measurementType,
         reportingFrequency,
+        fixedDenominator,
+        unit,
+        precision,
         selectedYear: year,
         throughMonth: year === selectedYear ? throughMonth : 12,
         firstClassActuals,
         legacyEntries,
-      });
+      }).value;
       if (value !== null) return value;
     }
     return null;
@@ -528,15 +728,18 @@ function resolveCumulativeActual({
   if (measurementType === "cumulative" && reportingFrequency === "annual") {
     const values: number[] = [];
     for (let year = STRATEGIC_PLAN_START_YEAR; year <= selectedYear; year += 1) {
-      const value = resolveActualValue({
+      const value = resolveActual({
         kpiId,
         measurementType,
         reportingFrequency,
+        fixedDenominator,
+        unit,
+        precision,
         selectedYear: year,
         throughMonth: 12,
         firstClassActuals,
         legacyEntries,
-      });
+      }).value;
       if (value !== null) values.push(value);
     }
     return values.length === 0
@@ -544,15 +747,18 @@ function resolveCumulativeActual({
       : values.reduce((sum, value) => sum + value, 0);
   }
 
-  return resolveActualValue({
+  return resolveActual({
     kpiId,
     measurementType,
     reportingFrequency,
+    fixedDenominator,
+    unit,
+    precision,
     selectedYear,
     throughMonth,
     firstClassActuals,
     legacyEntries,
-  });
+  }).value;
 }
 
 function combinePeriodValues(
@@ -561,7 +767,7 @@ function combinePeriodValues(
     periodIndex: number;
     value: number | null | undefined;
   }>,
-  measurementType: string | null,
+  measurementType: MeasurementType | null,
   reportingFrequency: string | null,
   throughMonth: number,
 ): number | null {

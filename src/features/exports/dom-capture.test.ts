@@ -1,12 +1,14 @@
 import { describe, expect, it } from "vitest";
 import {
   EXPORT_ACTIONS_SELECTOR,
+  EXPORT_MIN_WIDTH_ATTRIBUTE,
   EXPORT_ONLY_SELECTOR,
   EXPORT_TEXT_SELECTOR,
   getPageBackground,
   hideActionsForExport,
   prepareRasterExportTarget,
   relaxTextForExport,
+  resolveRasterCaptureScale,
   showExportOnly,
 } from "./dom-capture";
 
@@ -47,12 +49,21 @@ function target({
   exportOnly = [],
   actions = [],
   exportText = [],
+  rasterMinWidth,
+  scrollWidth = 1_000,
 }: {
   exportOnly?: HTMLElement[];
   actions?: HTMLElement[];
   exportText?: HTMLElement[];
+  rasterMinWidth?: string;
+  scrollWidth?: number;
 }): HTMLElement {
   return {
+    style: new FakeStyle(),
+    scrollWidth,
+    getAttribute(name: string) {
+      return name === EXPORT_MIN_WIDTH_ATTRIBUTE ? rasterMinWidth ?? null : null;
+    },
     querySelectorAll(selector: string) {
       if (selector === EXPORT_ONLY_SELECTOR) return exportOnly;
       if (selector === EXPORT_ACTIONS_SELECTOR) return actions;
@@ -155,7 +166,62 @@ describe("export DOM capture helpers", () => {
     expect(exportText.style.getPropertyValue("line-height")).toBe("");
   });
 
+  it("temporarily gives a configured detailed report a readable export width", () => {
+    const root = target({ rasterMinWidth: "1600", scrollWidth: 976 });
+
+    const restore = prepareRasterExportTarget(root);
+
+    expect(root.style.getPropertyValue("width")).toBe("1600px");
+    expect(root.style.getPropertyValue("max-width")).toBe("none");
+
+    restore();
+
+    expect(root.style.getPropertyValue("width")).toBe("");
+    expect(root.style.getPropertyValue("max-width")).toBe("");
+  });
+
   it("uses white as the server/test fallback page background", () => {
     expect(getPageBackground()).toBe("white");
+  });
+
+  it("keeps the preferred scale for an ordinary report", () => {
+    expect(resolveRasterCaptureScale({
+      width: 1_200,
+      height: 2_000,
+      preferredScale: 2,
+    })).toBe(2);
+  });
+
+  it("downscales a tall detailed report below canvas dimension and pixel limits", () => {
+    const scale = resolveRasterCaptureScale({
+      width: 1_440,
+      height: 30_000,
+      preferredScale: 2,
+    });
+
+    expect(scale).toBe(0.745);
+    expect(1_440 * scale).toBeLessThanOrEqual(30_000);
+    expect(30_000 * scale).toBeLessThanOrEqual(30_000);
+    expect(1_440 * 30_000 * scale * scale).toBeLessThanOrEqual(24_000_000);
+  });
+
+  it("keeps a configured full-detail report wider than 500 output pixels", () => {
+    const scale = resolveRasterCaptureScale({
+      width: 1_600,
+      height: 60_000,
+      preferredScale: 2,
+    });
+
+    expect(scale).toBe(0.5);
+    expect(Math.floor(1_600 * scale)).toBeGreaterThan(500);
+    expect(1_600 * 60_000 * scale * scale).toBeLessThanOrEqual(24_000_000);
+  });
+
+  it("rejects a report that cannot fit a readable output width", () => {
+    expect(() => resolveRasterCaptureScale({
+      width: 1_440,
+      height: 100_000,
+      preferredScale: 2,
+    })).toThrow("too large for a readable raster export");
   });
 });

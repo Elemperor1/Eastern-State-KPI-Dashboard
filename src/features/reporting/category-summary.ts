@@ -17,12 +17,14 @@ import type {
   DashboardData,
   ReportingData,
 } from "./types";
+import type { StrategicBoardKpiViewModel } from "./strategic-board-report";
 
 interface BuildCategorySummaryArgs extends ReportingData {
   category: Category;
   period: ComparePeriod;
   goals?: KpiGoalWithMeta[];
   strategicSummary?: DashboardData["strategicSummary"];
+  strategicBoardReport?: DashboardData["strategicBoardReport"];
 }
 
 export function buildCategoryMetricMovement({
@@ -104,16 +106,33 @@ export function buildCategoryOverviewSummary({
   period,
   goals = [],
   strategicSummary,
+  strategicBoardReport,
 }: BuildCategorySummaryArgs): CategoryOverviewSummary {
   const categoryKpis = kpis.filter((kpi) => kpi.category_id === category.id);
-  const metrics = categoryKpis.map((kpi) =>
-    buildCategoryMetricMovement({ kpi, entries, breakdowns, period }),
-  );
+  const strategicKpis = strategicKpisById(strategicBoardReport);
+  const metrics = categoryKpis.flatMap((kpi) => {
+    const strategic = strategicKpis.get(String(kpi.id));
+    if (!strategic) {
+      return [
+        buildCategoryMetricMovement({ kpi, entries, breakdowns, period }),
+      ];
+    }
+    const movement = buildStrategicYearOverYearMovement({
+      kpi,
+      strategic,
+      period,
+      strategicReportYear: strategicBoardReport?.selectedYear ?? null,
+    });
+    return movement ? [movement] : [];
+  });
   const improving = metrics.filter((metric) => metric.favorable && metric.delta !== 0).length;
   const declining = metrics.filter((metric) => !metric.favorable && metric.delta !== 0).length;
   const flat = metrics.filter((metric) => metric.delta === 0).length;
-  const total = metrics.length;
-  const pctImproving = total ? Math.round((improving / total) * 100) : 0;
+  const total = categoryKpis.length;
+  const comparisonMetricCount = metrics.length;
+  const pctImproving = comparisonMetricCount
+    ? Math.round((improving / comparisonMetricCount) * 100)
+    : 0;
 
   const sorted = [...metrics].sort(
     (a, b) => Math.abs(b.pct ?? 0) - Math.abs(a.pct ?? 0),
@@ -146,6 +165,7 @@ export function buildCategoryOverviewSummary({
     declining,
     flat,
     total,
+    comparisonMetricCount,
     pctImproving,
     topMover,
     goalCount: activeGoals.length,
@@ -155,6 +175,47 @@ export function buildCategoryOverviewSummary({
     strategicGoalCompletionPercentage:
       strategicPriority?.completionPercentage ?? null,
     excludedStrategicGoals: strategicPriority?.excludedGoalsCount ?? 0,
+  };
+}
+
+function strategicKpisById(
+  report: DashboardData["strategicBoardReport"] | undefined,
+): Map<string, StrategicBoardKpiViewModel> {
+  return new Map(
+    (report?.priorities ?? []).flatMap((priority) =>
+      priority.goals.flatMap((goal) =>
+        goal.kpis.map((kpi) => [kpi.id, kpi] as const),
+      ),
+    ),
+  );
+}
+
+function buildStrategicYearOverYearMovement({
+  kpi,
+  strategic,
+  period,
+  strategicReportYear,
+}: {
+  kpi: KPIWithCategory;
+  strategic: StrategicBoardKpiViewModel;
+  period: ComparePeriod;
+  strategicReportYear: number | null;
+}): CategoryMetricMovement | null {
+  if (
+    strategicReportYear !== period.currentYear ||
+    period.compareYear !== period.currentYear - 1 ||
+    strategic.measurementType !== "year_over_year" ||
+    strategic.result.state !== "ok" ||
+    strategic.result.value === null
+  ) {
+    return null;
+  }
+
+  return {
+    kpi,
+    pct: strategic.result.value,
+    favorable: isFavorable(kpi.direction, strategic.result.value),
+    delta: strategic.result.value,
   };
 }
 

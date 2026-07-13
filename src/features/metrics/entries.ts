@@ -14,15 +14,20 @@ import {
 } from "./period-rules";
 
 export class EntryPeriodMismatchError extends Error {
+  readonly reportingFrequency: ReportingFrequency;
+  readonly receivedMonth: number;
+
   constructor(reportingFrequency: ReportingFrequency, month: number) {
-    const expected = isAnnualReportingFrequency(reportingFrequency)
-      ? "month 0"
-      : "a month from 1 through 12";
+    const guidance = isAnnualReportingFrequency(reportingFrequency)
+      ? "select the annual reporting period"
+      : "select a calendar month from January through December";
     const article = reportingFrequency === "annual" ? "an" : "a";
     super(
-      `Entry month ${month} is invalid for ${article} ${reportingFrequency} KPI; expected ${expected}.`,
+      `The selected reporting period is invalid for ${article} ${reportingFrequency} KPI; ${guidance}.`,
     );
     this.name = "EntryPeriodMismatchError";
+    this.reportingFrequency = reportingFrequency;
+    this.receivedMonth = month;
   }
 }
 
@@ -186,27 +191,29 @@ export function upsertEntry(input: {
 }
 
 export function deleteEntry(id: number, changedBy?: number | null): void {
-  const db = getDb();
-  const prior = db
-    .prepare(
-      "SELECT id, kpi_id, year, month, value, notes FROM monthly_entries WHERE id = ?",
-    )
-    .get(id) as
-    | { id: number; kpi_id: number; year: number; month: number; value: number; notes: string | null }
-    | undefined;
-  db.prepare("DELETE FROM monthly_entries WHERE id = ?").run(id);
-  if (prior) {
-    recordMetricEntryHistory({
-      entry_type: "monthly",
-      entry_id: prior.id,
-      kpi_id: prior.kpi_id,
-      year: prior.year,
-      month_or_label: String(prior.month),
-      prev_value: prior.value,
-      new_value: null,
-      prev_notes: prior.notes,
-      new_notes: null,
-      changed_by: changedBy ?? null,
-    });
-  }
+  transaction(() => {
+    const db = getDb();
+    const prior = db
+      .prepare(
+        "SELECT id, kpi_id, year, month, value, notes FROM monthly_entries WHERE id = ?",
+      )
+      .get(id) as
+      | { id: number; kpi_id: number; year: number; month: number; value: number; notes: string | null }
+      | undefined;
+    db.prepare("DELETE FROM monthly_entries WHERE id = ?").run(id);
+    if (prior) {
+      recordMetricEntryHistory({
+        entry_type: "monthly",
+        entry_id: prior.id,
+        kpi_id: prior.kpi_id,
+        year: prior.year,
+        month_or_label: String(prior.month),
+        prev_value: prior.value,
+        new_value: null,
+        prev_notes: prior.notes,
+        new_notes: null,
+        changed_by: changedBy ?? null,
+      });
+    }
+  });
 }

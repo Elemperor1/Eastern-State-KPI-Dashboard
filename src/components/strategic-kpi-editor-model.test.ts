@@ -13,17 +13,20 @@ import {
   buildComponentReorderMutation,
   buildConfigurationFormPayload,
   buildConfigurationMutation,
+  buildSuccessorConfigurationMutation,
   buildDistributionBandLifecycleMutation,
   buildDistributionBandMutation,
   buildDistributionBandPayload,
   buildDistributionBandReorderMutation,
   buildTargetFormPayload,
   buildTargetMutation,
+  canCreateMeasurementSuccessor,
   componentDraftFromData,
   configurationDraftFromData,
   distributionBandDraftFromData,
   moveId,
   targetDraftForScope,
+  successorConfigurationDraftFromData,
   type ComponentFormDraft,
   type ConfigurationFormDraft,
   type DistributionBandFormDraft,
@@ -122,6 +125,7 @@ function component(
     fixed_denominator: null,
     baseline_value: 0,
     previous_period_value: 0,
+    aggregation_role: "value",
     weight: 1,
     display_order: 0,
     configuration_status: "active",
@@ -193,6 +197,7 @@ function validComponentDraft(
     fixedDenominator: "",
     baselineValue: "0",
     previousPeriodValue: "0",
+    aggregationRole: "value",
     weight: "1",
     displayOrder: "0",
     configurationStatus: "draft",
@@ -277,6 +282,45 @@ describe("strategic KPI editor form model", () => {
     });
   });
 
+  it("builds an explicit future successor without mutating the predecessor payload", () => {
+    const draft = successorConfigurationDraftFromData(
+      configuration(),
+      kpi(),
+      2026,
+    );
+    expect(draft).toMatchObject({
+      effectiveStartYear: "2027",
+      effectiveEndYear: "2029",
+      measurementType: "percentage",
+    });
+    const built = buildConfigurationFormPayload(draft, 42, null);
+    expect(built.ok).toBe(true);
+    if (!built.ok) return;
+    expect(buildSuccessorConfigurationMutation(7, built.payload)).toEqual({
+      endpoint: STRATEGY_EDITOR_ENDPOINTS.configurations,
+      method: "PATCH",
+      body: {
+        action: "create_successor",
+        predecessor_id: 7,
+        successor: expect.objectContaining({
+          kpi_id: 42,
+          effective_start_year: 2027,
+        }),
+      },
+    });
+  });
+
+  it("does not offer an inaccessible successor after the final plan year", () => {
+    expect(canCreateMeasurementSuccessor(configuration(), 2028)).toBe(true);
+    expect(canCreateMeasurementSuccessor(configuration(), 2029)).toBe(false);
+    expect(
+      canCreateMeasurementSuccessor(
+        configuration({ effective_to_year: 2027 }),
+        2027,
+      ),
+    ).toBe(false);
+  });
+
   it("selects annual and full-plan targets independently and ignores archives", () => {
     const targets = [
       target({ id: 1, reporting_year: 2025, target_year: 2025 }),
@@ -291,6 +335,51 @@ describe("strategic KPI editor form model", () => {
     ];
     expect(targetDraftForScope(targets, "annual", 2026).id).toBe(2);
     expect(targetDraftForScope(targets, "full_plan", 2026).id).toBe(3);
+  });
+
+  it("edits the nearest-future then latest-past full-plan boundary target", () => {
+    const targets = [
+      target({
+        id: 26,
+        target_scope: "full_plan",
+        reporting_year: null,
+        target_year: 2026,
+      }),
+      target({
+        id: 29,
+        target_scope: "full_plan",
+        reporting_year: null,
+        target_year: 2029,
+      }),
+    ];
+    expect(targetDraftForScope(targets, "full_plan", 2025).id).toBe(26);
+    expect(targetDraftForScope(targets, "full_plan", 2027).id).toBe(29);
+    expect(targetDraftForScope(targets, "full_plan", 2030).id).toBe(29);
+  });
+
+  it("round-trips a future annual target draft for the selected reporting year", () => {
+    const future = target({
+      id: 28,
+      reporting_year: 2028,
+      target_year: 2028,
+      target_value: 24,
+    });
+    const reloaded = targetDraftForScope([future], "annual", 2028);
+    expect(reloaded).toMatchObject({
+      id: 28,
+      targetYear: "2028",
+      targetValue: "24",
+    });
+    const built = buildTargetFormPayload(reloaded, 42, "count");
+    expect(built).toMatchObject({
+      ok: true,
+      payload: {
+        id: 28,
+        reporting_year: 2028,
+        target_year: 2028,
+        target_value: 24,
+      },
+    });
   });
 
   it("preserves zero targets and rejects missing or invalid percentage targets", () => {
@@ -435,6 +524,18 @@ describe("strategic KPI editor form model", () => {
     expect(buildComponentReorderMutation(7, [20, 21]).body).toEqual({
       action: "reorder",
       reorder: { configuration_id: 7, ordered_component_ids: [20, 21] },
+    });
+  });
+
+  it("preserves an explicit ratio aggregation role in component mutations", () => {
+    const built = buildComponentFormPayload(
+      validComponentDraft({ aggregationRole: "denominator" }),
+      7,
+    );
+
+    expect(built).toMatchObject({
+      ok: true,
+      payload: { aggregation_role: "denominator" },
     });
   });
 

@@ -86,7 +86,58 @@ function downgradeStrategicFoundationToV9(db: TestDb): void {
   `);
 }
 
-describe("schema 10 migration", () => {
+function downgradeComponentIdentityToV10(db: TestDb): void {
+  // Recreate the actual schema-10 component identity on an otherwise-current,
+  // empty strategic sidecar. Child tables continue to reference the same table
+  // name, so the fixture can add representative child rows after this step.
+  db.exec(`
+    PRAGMA foreign_keys = OFF;
+    DROP INDEX IF EXISTS idx_kpi_components_parent;
+    DROP INDEX IF EXISTS idx_kpi_components_configuration;
+    DROP TABLE kpi_components;
+    CREATE TABLE kpi_components (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      kpi_id INTEGER NOT NULL REFERENCES kpis(id) ON DELETE RESTRICT,
+      configuration_id INTEGER NOT NULL,
+      slug TEXT NOT NULL,
+      label TEXT NOT NULL,
+      measurement_type TEXT CHECK (
+        measurement_type IS NULL OR measurement_type IN (
+          'binary','milestone','count','percentage','average','cumulative',
+          'year_over_year','distribution','currency','ratio','multi_component'
+        )
+      ),
+      unit TEXT,
+      numerator_label TEXT,
+      denominator_label TEXT,
+      fixed_denominator REAL CHECK (fixed_denominator IS NULL OR fixed_denominator > 0),
+      baseline_value REAL,
+      previous_period_value REAL,
+      weight REAL NOT NULL DEFAULT 1 CHECK (weight >= 0),
+      display_order INTEGER NOT NULL DEFAULT 0,
+      configuration_status TEXT NOT NULL DEFAULT 'draft'
+        CHECK (configuration_status IN ('draft','needs_definition','needs_target','ready','active','archived')),
+      unresolved_question TEXT,
+      archived_at TEXT,
+      created_by INTEGER REFERENCES users(id) ON DELETE SET NULL,
+      created_at TEXT NOT NULL DEFAULT (datetime('now')),
+      updated_by INTEGER REFERENCES users(id) ON DELETE SET NULL,
+      updated_at TEXT NOT NULL DEFAULT (datetime('now')),
+      UNIQUE (kpi_id, slug),
+      UNIQUE (id, kpi_id),
+      FOREIGN KEY (configuration_id, kpi_id)
+        REFERENCES kpi_measurement_configs(id, kpi_id) ON DELETE RESTRICT
+    );
+    CREATE INDEX idx_kpi_components_parent
+      ON kpi_components(kpi_id, display_order);
+    CREATE INDEX idx_kpi_components_configuration
+      ON kpi_components(configuration_id);
+    INSERT OR REPLACE INTO meta (key, value) VALUES ('schema_version', '10');
+    PRAGMA foreign_keys = ON;
+  `);
+}
+
+describe("schema 11 migration", () => {
   let tmpDir: string;
   let dbPath: string;
   let originalDbPath: string | undefined;
@@ -230,7 +281,7 @@ describe("schema 10 migration", () => {
     };
   }
 
-  it("creates a clean schema-10 database with legacy and strategic tables", () => {
+  it("creates a clean schema-11 database with legacy and strategic tables", () => {
     const db = getDb();
     const tableNames = new Set(
       (
@@ -240,8 +291,8 @@ describe("schema 10 migration", () => {
       ).map((row) => row.name),
     );
 
-    expect(SCHEMA_VERSION).toBe(10);
-    expect(schemaVersion(db)).toBe(10);
+    expect(SCHEMA_VERSION).toBe(11);
+    expect(schemaVersion(db)).toBe(11);
     for (const table of [...LEGACY_TABLES, ...STRATEGIC_TABLES]) {
       expect(tableNames.has(table), `${table} should exist`).toBe(true);
     }
@@ -267,6 +318,7 @@ describe("schema 10 migration", () => {
     );
     expect(columnNames(db, "kpi_observations")).toContain("average_score");
     expect(columnNames(db, "kpi_component_entries")).toContain("average_score");
+    expect(columnNames(db, "kpi_components")).toContain("aggregation_role");
     expect(columnNames(db, "distribution_bands")).toContain("derived_group");
 
     // Foundation only: canonical strategic goals/configurations are not
@@ -335,7 +387,7 @@ describe("schema 10 migration", () => {
     resetDb();
     const migrated = getDb();
 
-    expect(schemaVersion(migrated)).toBe(10);
+    expect(schemaVersion(migrated)).toBe(11);
     for (const [table, query] of Object.entries(legacyQueries)) {
       expect(countRows(migrated, table)).toBe(beforeCounts[table]);
       expect(migrated.prepare(query).all()).toEqual(before[table]);
@@ -419,8 +471,8 @@ describe("schema 10 migration", () => {
     const migrated = getDb();
     const goal = listGoals({ asOfYear: 2026 })[0];
 
-    expect(SCHEMA_VERSION).toBe(10);
-    expect(schemaVersion(migrated)).toBe(10);
+    expect(SCHEMA_VERSION).toBe(11);
+    expect(schemaVersion(migrated)).toBe(11);
     expect(goal).toMatchObject({
       kpi_id: kpiId,
       target_year: 2029,
@@ -444,6 +496,134 @@ describe("schema 10 migration", () => {
     for (const table of STRATEGIC_TABLES) {
       expect(countRows(migrated, table)).toBe(0);
     }
+  });
+
+  it("migrates schema-10 component slugs to configuration scope without changing ids or child data", () => {
+    const { db, kpiId, userId } = seedCurrentFixture();
+    downgradeComponentIdentityToV10(db);
+    const firstConfigId = Number(
+      db
+        .prepare(
+          `INSERT INTO kpi_measurement_configs (
+             kpi_id, effective_from_year, effective_to_year, measurement_type,
+             unit, reporting_frequency, aggregation_method,
+             configuration_status, created_by, updated_by
+           ) VALUES (?, 2025, 2026, 'multi_component', '%', 'annual', 'sum',
+                     'active', ?, ?)`,
+        )
+        .run(kpiId, userId, userId).lastInsertRowid,
+    );
+    const laterConfigId = Number(
+      db
+        .prepare(
+          `INSERT INTO kpi_measurement_configs (
+             kpi_id, effective_from_year, effective_to_year, measurement_type,
+             unit, reporting_frequency, aggregation_method,
+             configuration_status, created_by, updated_by
+           ) VALUES (?, 2027, 2029, 'multi_component', '%', 'annual', 'sum',
+                     'active', ?, ?)`,
+        )
+        .run(kpiId, userId, userId).lastInsertRowid,
+    );
+    const componentId = Number(
+      db
+        .prepare(
+          `INSERT INTO kpi_components (
+             kpi_id, configuration_id, slug, label, measurement_type, unit,
+             display_order, configuration_status, created_by, updated_by
+           ) VALUES (?, ?, 'city-support', 'City support', 'percentage', '%',
+                     10, 'active', ?, ?)`,
+        )
+        .run(kpiId, firstConfigId, userId, userId).lastInsertRowid,
+    );
+    const entryId = Number(
+      db
+        .prepare(
+          `INSERT INTO kpi_component_entries (
+             component_id, year, period_type, period_index, numerator,
+             denominator, updated_by
+           ) VALUES (?, 2026, 'annual', 0, 25, 100, ?)`,
+        )
+        .run(componentId, userId).lastInsertRowid,
+    );
+    const targetId = Number(
+      db
+        .prepare(
+          `INSERT INTO kpi_targets (
+             component_id, target_scope, reporting_year, target_year,
+             target_value, configuration_status, created_by, updated_by
+           ) VALUES (?, 'annual', 2026, 2026, 30, 'active', ?, ?)`,
+        )
+        .run(componentId, userId, userId).lastInsertRowid,
+    );
+    expect(schemaVersion(db)).toBe(10);
+
+    resetDb();
+    const migrated = getDb();
+
+    expect(SCHEMA_VERSION).toBe(11);
+    expect(schemaVersion(migrated)).toBe(11);
+    expect(
+      migrated.prepare("SELECT * FROM kpi_components WHERE id = ?").get(componentId),
+    ).toMatchObject({
+      id: componentId,
+      kpi_id: kpiId,
+      configuration_id: firstConfigId,
+      slug: "city-support",
+      aggregation_role: "value",
+    });
+    expect(
+      migrated.prepare("SELECT * FROM kpi_component_entries WHERE id = ?").get(entryId),
+    ).toMatchObject({ id: entryId, component_id: componentId, numerator: 25, denominator: 100 });
+    expect(
+      migrated.prepare("SELECT * FROM kpi_targets WHERE id = ?").get(targetId),
+    ).toMatchObject({ id: targetId, component_id: componentId, target_value: 30 });
+
+    expect(() =>
+      migrated
+        .prepare(
+          "UPDATE kpi_measurement_configs SET aggregation_method = 'ratio' WHERE id = ?",
+        )
+        .run(laterConfigId),
+    ).not.toThrow();
+    expect(() =>
+      migrated
+        .prepare(
+          `INSERT INTO kpi_components (
+             kpi_id, configuration_id, slug, label, measurement_type, unit,
+             display_order, configuration_status, created_by, updated_by
+           ) VALUES (?, ?, 'city-support', 'Duplicate city support', 'percentage', '%',
+                     20, 'active', ?, ?)`,
+        )
+        .run(kpiId, firstConfigId, userId, userId),
+    ).toThrow();
+
+    expect(() =>
+      migrated
+        .prepare(
+          `INSERT INTO kpi_components (
+             kpi_id, configuration_id, slug, label, measurement_type, unit,
+             display_order, configuration_status, created_by, updated_by
+           ) VALUES (?, ?, 'city-support', 'City support', 'percentage', '%',
+                     10, 'active', ?, ?)`,
+        )
+        .run(kpiId, laterConfigId, userId, userId),
+    ).not.toThrow();
+    expect(migrated.prepare("PRAGMA foreign_key_check").all()).toEqual([]);
+
+    resetDb();
+    const reopened = getDb();
+    expect(schemaVersion(reopened)).toBe(11);
+    expect(
+      reopened
+        .prepare(
+          "SELECT id, configuration_id, slug FROM kpi_components WHERE kpi_id = ? ORDER BY configuration_id",
+        )
+        .all(kpiId),
+    ).toEqual([
+      { id: componentId, configuration_id: firstConfigId, slug: "city-support" },
+      expect.objectContaining({ configuration_id: laterConfigId, slug: "city-support" }),
+    ]);
   });
 
   it.each([4, 5, 6, 7])(
@@ -473,7 +653,7 @@ describe("schema 10 migration", () => {
       expect(
         migrated.prepare("SELECT value FROM meta WHERE key = 'sample_data'").get(),
       ).toBeUndefined();
-      expect(schemaVersion(migrated)).toBe(10);
+      expect(schemaVersion(migrated)).toBe(11);
     },
   );
 });
