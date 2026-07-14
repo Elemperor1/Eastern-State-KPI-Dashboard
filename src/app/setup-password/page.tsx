@@ -92,7 +92,7 @@ export default function SetupPasswordPage() {
           <BrandMark size="md" />
           <div>
             <p className="text-sm font-semibold">Eastern State</p>
-            <p className="text-[10px] uppercase tracking-[0.12em] text-white/55">KPI Intelligence</p>
+            <p className="text-[10px] uppercase tracking-[0.12em] text-white/55">Strategic Plan</p>
           </div>
         </div>
         <div className="relative z-10 max-w-2xl py-16">
@@ -117,7 +117,7 @@ export default function SetupPasswordPage() {
             <BrandMark size="md" />
             <div>
               <p className="text-sm font-semibold text-ink-900">Eastern State</p>
-              <p className="text-[10px] uppercase tracking-[0.12em] text-ink-500">KPI Intelligence</p>
+              <p className="text-[10px] uppercase tracking-[0.12em] text-ink-500">Strategic Plan</p>
             </div>
           </div>
 

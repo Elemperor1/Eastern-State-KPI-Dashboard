@@ -18,6 +18,21 @@ an additive integrity migration over that foundation. It:
 Both `9 -> 10` and `10 -> 11` run transactionally and never enter
 `resetKpiSchema`.
 
+## Issue 42 application boundary
+
+ADR 0022 changes the active product boundary without changing schema 11.
+Legacy `monthly_entries`, `breakdown_entries`, legacy KPI goals, and
+`entry_history` are retained as a read-only archive. Current browser writes use
+strategic observations, component entries, distributions, configurations,
+targets, memberships, and strategic goals only. No legacy row is remapped or
+deleted by deployment.
+
+Back up SQLite and run the existing `npm run db:migrate` for an existing
+volume. Do not run `db:seed`. Rollback is an application rollback; restore the
+pre-deploy backup as well only when post-deploy strategic writes must be
+discarded. Physical legacy-table removal requires a future schema version and
+separate approval.
+
 ## Schema 10 foundation
 
 Schema 10 added archive/update metadata to `categories` and `kpis`, plus:

@@ -18,13 +18,16 @@ import type {
   StrategicDashboardSummary,
   StrategicKpiProgressSummary,
 } from "./strategy-summary";
+import { humanizeReportingReasons } from "./language";
 
 export function buildStrategicBoardReportFromSummary({
   summary,
   goals,
+  reportingPeriod,
 }: {
   summary: StrategicDashboardSummary;
   goals: StrategicGoalReadModel[];
+  reportingPeriod?: string;
 }): StrategicBoardReportViewModel {
   const goalsById = new Map(goals.map((goal) => [String(goal.id), goal]));
   const goalSummariesByPriority = new Map<string, typeof summary.goals>();
@@ -37,10 +40,12 @@ export function buildStrategicBoardReportFromSummary({
   return buildStrategicBoardReport({
     organizationName: "Eastern State Penitentiary Historic Site",
     selectedYear: summary.selectedYear,
+    reportingPeriod,
     organizationGoalCompletion: {
       ...summary.organization,
       excludedGoalReasons: summary.organization.excludedGoalReasons.map(
-        (reason) => `${reason.goalName}: ${reason.reasons.join("; ")}`,
+        (reason) =>
+          `${reason.goalName}: ${humanizeReportingReasons(reason.reasons).join("; ")}`,
       ),
     },
     priorities: summary.priorities.map((priority) => ({
@@ -49,7 +54,8 @@ export function buildStrategicBoardReportFromSummary({
       goalCompletion: {
         ...priority,
         excludedGoalReasons: priority.excludedGoalReasons.map(
-          (reason) => `${reason.goalName}: ${reason.reasons.join("; ")}`,
+          (reason) =>
+            `${reason.goalName}: ${humanizeReportingReasons(reason.reasons).join("; ")}`,
         ),
       },
       goals: (goalSummariesByPriority.get(priority.priorityId) ?? []).map(
@@ -65,10 +71,10 @@ export function buildStrategicBoardReportFromSummary({
             totalEligibleKpisCount:
               goalSummary.result.totalEligibleKpisCount,
             excludedKpisCount: goalSummary.result.excludedKpisCount,
-            excludedReasons: [
+            excludedReasons: humanizeReportingReasons([
               ...(goal?.unresolved_question ? [goal.unresolved_question] : []),
               ...goalSummary.result.exclusionReasons,
-            ],
+            ]),
             kpis: goalSummary.kpis.map((kpiSummary) => {
               const member = goal?.members.find(
                 (candidate) => candidate.kpi_id === kpiSummary.kpiId,
@@ -162,12 +168,14 @@ export function buildStrategicBoardReportFromSummary({
                   configurationStatus: boardConfigurationStatus(
                     component.configuration_status,
                   ),
-                  unresolvedReasons: component.unresolved_question
-                    ? [component.unresolved_question]
-                    : [],
+                  unresolvedReasons: humanizeReportingReasons(
+                    component.unresolved_question
+                      ? [component.unresolved_question]
+                      : [],
+                  ),
                 };
               }) ?? [];
-              const unresolvedReasons = [
+              const unresolvedReasons = humanizeReportingReasons([
                 ...(config?.unresolved_question
                   ? [config.unresolved_question]
                   : []),
@@ -177,7 +185,7 @@ export function buildStrategicBoardReportFromSummary({
                 ...kpiSummary.completionProgress.issues
                   .filter((issue) => issue.code !== "MISSING_ACTUAL")
                   .map((issue) => issue.message),
-              ];
+              ]);
               const measurementType = boardMeasurementType(
                 kpiSummary.measurementType,
               );

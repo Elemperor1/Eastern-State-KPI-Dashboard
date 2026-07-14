@@ -1,34 +1,5 @@
 #!/usr/bin/env bash
-# Eastern State KPI Dashboard — repeatable smoke harness.
-#
-# Verifies, against a live server, the finalized 5-priority strategic metric set:
-#   1.  The admin catalog page renders the seeded finalized metric set.
-#   2.  Dashboard overview renders all 5 priorities.
-#   3.  Category pages render for each category.
-#   4.  Metric detail pages render (monthly, annual, breakdown).
-#   5.  Through-month URL parameter is respected.
-#   6.  Admin pages render successfully.
-#   7.  Annual percentage, annual currency, and breakdown entries round-trip.
-#   8.  Strategic goal summaries, configuration surfaces, exports, and raw
-#       percentage observations use the schema-10 calculation path.
-#
-# D8AD-CAN-008: HTTP response bodies (body, me, kpis_html, ov, bdy,
-# trends_html, etc.) are NEVER interpolated into bash -c or eval strings. They are:
-#   - piped through stdin to parsers (echo "$var" | python3 -c ...)
-#   - passed via here-string to grep (grep -q ... <<< "$var")
-#   - tested with [ ] or [[ ]] conditionals directly
-# Every variable expansion is double-quoted. The check() helper runs its
-# arguments as an unquoted command (safe — the command name + args are
-# literal tokens, never an HTTP response).
-#
-# If AUTH_DISABLED=true (login temporarily bypassed), the auth wall + login
-# round-trip checks are skipped, and requests are made without a session cookie.
-# Mutation checks still fetch the non-auth CSRF cookie from /api/auth/me and
-# echo it with a same-origin header, matching the browser-side apiFetch flow.
-#
-# Usage:
-#   PORT=3200 ./scripts/smoke.sh
-#   BASE=http://127.0.0.1:3100 ./scripts/smoke.sh
+# Eastern State KPI — canonical Strategic Plan smoke harness.
 set -euo pipefail
 
 PORT="${PORT:-3100}"
@@ -37,44 +8,15 @@ AUTH_DISABLED="${AUTH_DISABLED:-false}"
 CSRF_COOKIE_NAME="eastern_state_kpi_csrf"
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
+BASE_ORIGIN="${SMOKE_ORIGIN:-${BASE%/}}"
 
-if [ -n "${SMOKE_ORIGIN:-}" ]; then
-  BASE_ORIGIN="${SMOKE_ORIGIN%/}"
-elif [ -n "${APP_CANONICAL_ORIGIN:-}" ]; then
-  BASE_ORIGIN="${APP_CANONICAL_ORIGIN%%,*}"
-  BASE_ORIGIN="${BASE_ORIGIN%/}"
-elif [[ "$BASE" =~ ^(https?://)127\.0\.0\.1(:[0-9]+)?/?$ ]]; then
-  BASE_ORIGIN="${BASH_REMATCH[1]}localhost${BASH_REMATCH[2]}"
-else
-  BASE_ORIGIN="${BASE%/}"
+if [ "$AUTH_DISABLED" != "true" ] && { [ -z "${SMOKE_EMAIL:-}" ] || [ -z "${SMOKE_PASSWORD:-}" ]; }; then
+  echo "ERROR: SMOKE_EMAIL and SMOKE_PASSWORD are required when auth is enabled." >&2
+  exit 1
 fi
-
-# Auth-enabled runs require the caller to supply a credential pair via
-# the environment. Bootstrap accounts are provisioned with either an
-# operator-provided secret (BOOTSTRAP_ADMIN_PASSWORD / BOOTSTRAP_VIEWER_PASSWORD)
-# or a random unlogged password (see src/features/auth/server.ts::ensureSeedAdmin);
-# ensureSeedAdmin() writes NO plaintext to stdout (D8AD-CAN-001), so the
-# harness cannot scrape a password from the seed output. CI seeds with a
-# known BOOTSTRAP_ADMIN_PASSWORD and passes SMOKE_PASSWORD explicitly (the
-# account still has must_change_password=1, so a smoke run that needs the
-# dashboard must rotate it first via `npm run setup:admin`). Local dev runs
-# typically use AUTH_DISABLED=true to skip this section.
-if [ -z "${SMOKE_EMAIL:-}" ] || [ -z "${SMOKE_PASSWORD:-}" ]; then
-  if [ "$AUTH_DISABLED" != "true" ]; then
-    echo "ERROR: SMOKE_EMAIL and SMOKE_PASSWORD are required for an auth-enabled smoke run." >&2
-    echo "       The seed never publishes a plaintext password (D8AD-CAN-001)." >&2
-    echo "       Seed with BOOTSTRAP_ADMIN_PASSWORD=... npm run db:seed (or use" >&2
-    echo "       SETUP_ADMIN_PASSWORD=... npm run setup:admin), then pass that" >&2
-    echo "       credential here, or run with AUTH_DISABLED=true." >&2
-    exit 1
-  fi
-fi
-EMAIL="${SMOKE_EMAIL:-}"
-PASSWORD="${SMOKE_PASSWORD:-}"
 
 PASS=0
 FAIL=0
-
 check() {
   local name="$1"
   shift
@@ -90,30 +32,14 @@ check() {
 csrf_token_for() {
   local jar="$1"
   curl -sk -b "$jar" -c "$jar" -o /dev/null "$BASE/api/auth/me"
-  awk -v name="$CSRF_COOKIE_NAME" '
-    BEGIN { value = "" }
-    $0 !~ /^#/ && $6 == name { value = $7 }
-    END { print value }
-  ' "$jar"
+  awk -v name="$CSRF_COOKIE_NAME" '$0 !~ /^#/ && $6 == name { value = $7 } END { print value }' "$jar"
 }
 
 MUTATION_STATUS=""
 MUTATION_BODY=""
-
 mutation_request() {
-  local jar="$1"
-  local method="$2"
-  local path="$3"
-  local payload="$4"
-  local body_file
-  local token
-  MUTATION_STATUS="000"
-  MUTATION_BODY=""
+  local jar="$1" method="$2" path="$3" payload="$4" body_file token
   token="$(csrf_token_for "$jar")"
-  if [ -z "$token" ]; then
-    printf "ERROR: could not obtain CSRF token for %s %s\n" "$method" "$path" >&2
-    return 0
-  fi
   body_file="$(mktemp)"
   MUTATION_STATUS="$(curl -sk -b "$jar" -c "$jar" -o "$body_file" -w '%{http_code}' \
     -X "$method" "$BASE$path" \
@@ -121,313 +47,135 @@ mutation_request() {
     -H "Origin: $BASE_ORIGIN" \
     -H "X-CSRF-Token: $token" \
     --data "$payload")"
-  MUTATION_BODY="$(cat "$body_file")"
+  MUTATION_BODY="$(tr -d '\000' < "$body_file")"
   rm -f "$body_file"
 }
 
 cookie_jar="$(mktemp)"
-noauth_jar="$(mktemp)"
-# Single-quoted trap: ensures $cookie_jar / $noauth_jar expand at
-# cleanup time, not definition time (ShellCheck SC2064).
-# shellcheck disable=SC2064
-trap 'rm -f "$cookie_jar" "$noauth_jar"' EXIT
+anonymous_jar="$(mktemp)"
+trap 'rm -f "$cookie_jar" "$anonymous_jar"' EXIT
 
 echo "== Eastern State KPI smoke test =="
 echo "Base: $BASE"
-echo "Auth: $([ "$AUTH_DISABLED" = "true" ] && echo "DISABLED" || echo "enabled")"
-echo
 
 if [ "$AUTH_DISABLED" != "true" ]; then
-  echo "Public surface"
   code=$(curl -sk -o /dev/null -w '%{http_code}' "$BASE/login")
-  check "login page renders (200)" test "$code" = "200"
-
-  echo
-  echo "Auth wall"
-  code=$(curl -sk -o /dev/null -w '%{http_code}' \
-    -X POST "$BASE/api/entries" \
+  check "login page renders" test "$code" = "200"
+  curl -sk -c "$cookie_jar" -o /dev/null -X POST "$BASE/api/auth/login" \
     -H "Content-Type: application/json" \
-    --data '{"kpi_id":1,"year":2099,"month":1,"value":1}')
-  if [ "$code" = "401" ] || [ "$code" = "403" ]; then
-    check "mutation API rejects anonymous request (401/403)" true
-  else
-    check "mutation API rejects anonymous request (401/403)" false
-  fi
-
-  body=$(curl -sk "$BASE/dashboard/overview")
-  check "dashboard redirects anonymous to /login" grep -qE 'NEXT_REDIRECT.*login|http-equiv="refresh".*url=/login' <<< "$body"
-
-  echo
-  echo "Admin login"
-  curl -sk -c "$cookie_jar" -o /dev/null -X POST "$BASE/api/auth/login" -H "Content-Type: application/json" --data "{\"email\":\"$EMAIL\",\"password\":\"$PASSWORD\"}"
-  code=$(curl -sk -b "$cookie_jar" -o /dev/null -w '%{http_code}' "$BASE/api/auth/me")
-  check "login + session round-trip (200)" test "$code" = "200"
+    --data "{\"email\":\"${SMOKE_EMAIL}\",\"password\":\"${SMOKE_PASSWORD}\"}"
   me=$(curl -sk -b "$cookie_jar" "$BASE/api/auth/me")
-  if grep -q '"role":"admin"' <<< "$me"; then
-    check "session identifies admin" true
-  else
-    check "session identifies admin" false
-  fi
-  echo
+  check "session identifies admin" grep -q '"role":"admin"' <<< "$me"
 fi
 
-echo
-echo "Finalized metric set (KPIs & categories)"
-kpis_html=$(curl -sk -b "$cookie_jar" "$BASE/admin/kpis")
-kpis_text=$(printf "%s" "$kpis_html" | python3 -c "import sys,re,html as h; t=sys.stdin.read(); t=re.sub(r'<!--.*?-->', '', t, flags=re.S); t=re.sub(r'<[^>]+>', ' ', t); t=h.unescape(t); print(re.sub(r'\\s+', ' ', t))")
-check "admin catalog renders 59 finalized KPIs" grep -q "Showing 59 of 59 measures across 5 categories" <<< "$kpis_text"
-for cname in "Reimagine Visitor Experience" "Advance Historic Preservation" "Expand Workforce Development" "Support Learning through Justice Education" "Enhance Organizational Capacity"; do
-  if grep -q "$cname" <<< "$kpis_text"; then
-    check "category $cname present in admin catalog" true
-  else
-    check "category $cname present in admin catalog" false
-  fi
-done
-for kpi in "Interpretive Site Plan" "Modernized Exhibits" "Conservation Management Plan" "Total participants in justice education" "Board participation in annual giving" "Revenue Diversification" "Climate-Responsive Solutions"; do
-  if grep -q "$kpi" <<< "$kpis_text"; then
-    check "admin catalog includes $kpi" true
-  else
-    check "admin catalog includes $kpi" false
-  fi
-done
-catalog_json="$("$REPO_ROOT/node_modules/.bin/tsx" "$REPO_ROOT/scripts/smoke-catalog.ts")"
-
-echo
-echo "Dashboard overview renders"
-ov=$(curl -sk -b "$cookie_jar" "$BASE/dashboard/overview")
-check "overview renders (200)" grep -q "Organizational Performance" <<< "$ov"
-if grep -q "Performance by area" <<< "$ov"; then
-  check "overview shows performance-area section" true
-else
-  check "overview shows performance-area section" false
-fi
-if grep -q "Sample data" <<< "$ov"; then
-  check "overview marks sample data" true
-else
-  check "overview marks sample data" false
-fi
-check "overview shows the strategic plan progress summary" grep -q "Strategic plan progress" <<< "$ov"
-if grep -q "Goal completion by priority" <<< "$ov"; then
-  check "overview omits the expanded priority grid" false
-else
-  check "overview omits the expanded priority grid" true
-fi
-if grep -q "Goal-level completion" <<< "$ov"; then
-  check "overview omits the expanded named-goal grid" false
-else
-  check "overview omits the expanded named-goal grid" true
-fi
-check "overview renders a raw completed-goal count" grep -qE '[0-9]+ of [0-9]+ goals completed' <<< "$ov"
-
-echo
-echo "Category pages render"
-for slug in visitor-experience historic-preservation workforce-development justice-education organizational-capacity; do
-  code=$(curl -sk -b "$cookie_jar" -o /dev/null -w '%{http_code}' "$BASE/dashboard/category/$slug")
-  check "category $slug renders (200)" test "$code" = "200"
-done
-
-echo
-echo "Metric detail pages render"
-code=$(curl -sk -b "$cookie_jar" -o /dev/null -w '%{http_code}' "$BASE/dashboard/metric/interpretive-plan-milestones-on-schedule")
-check "annual metric detail renders (200)" test "$code" = "200"
-code=$(curl -sk -b "$cookie_jar" -o /dev/null -w '%{http_code}' "$BASE/dashboard/metric/conservation-funds-utilized")
-check "currency metric detail renders (200)" test "$code" = "200"
-bdy=$(curl -sk -b "$cookie_jar" "$BASE/dashboard/metric/revenue-by-stream")
-if grep -q "Breakdown" <<< "$bdy"; then
-  check "breakdown metric detail renders breakdown" true
-else
-  check "breakdown metric detail renders breakdown" false
-fi
-
-echo
-echo "Through-month URL parameter respected"
-html=$(curl -sk -b "$cookie_jar" "$BASE/dashboard/overview?currentYear=2025&compareYear=2024&currentMonth=11")
-text=$(printf "%s" "$html" | python3 -c "import sys,re,html as h; t=sys.stdin.read(); t=re.sub(r'<!--.*?-->', '', t, flags=re.S); t=re.sub(r'<[^>]+>', ' ', t); t=h.unescape(t); print(re.sub(r'\s+', ' ', t))")
-if grep -q "November 2025" <<< "$text"; then
-  check "November through-month rendered" true
-else
-  check "November through-month rendered" false
-fi
-html=$(curl -sk -b "$cookie_jar" "$BASE/dashboard/overview?currentYear=2025&compareYear=2024&currentMonth=3")
-text=$(printf "%s" "$html" | python3 -c "import sys,re,html as h; t=sys.stdin.read(); t=re.sub(r'<!--.*?-->', '', t, flags=re.S); t=re.sub(r'<[^>]+>', ' ', t); t=h.unescape(t); print(re.sub(r'\s+', ' ', t))")
-if grep -q "March 2025" <<< "$text"; then
-  check "March through-month rendered" true
-else
-  check "March through-month rendered" false
-fi
-
-echo
-echo "No-data badge when both years lack entries"
-# Pick a year that has no entries (2099) and a compare year with no entries either.
-empty_html=$(curl -sk -b "$cookie_jar" "$BASE/dashboard/category/visitor-experience?currentYear=2099&compareYear=2098&currentMonth=12")
-if grep -q "No data" <<< "$empty_html"; then
-  check "category page surfaces 'No data' badge when both years empty" true
-else
-  check "category page surfaces 'No data' badge when both years empty" false
-fi
-
-echo
-echo "Trend Explorer renders the annual-only empty state"
-trends_html=$(curl -sk -b "$cookie_jar" "$BASE/dashboard/trends")
-code=$(curl -sk -b "$cookie_jar" -o /dev/null -w '%{http_code}' "$BASE/dashboard/trends")
-check "/dashboard/trends renders (200)" test "$code" = "200"
-if grep -q "No monthly KPIs in this category" <<< "$trends_html"; then
-  check "/dashboard/trends explains that the strategic set is annual-only" true
-else
-  check "/dashboard/trends explains that the strategic set is annual-only" false
-fi
-
-echo
-echo "Admin pages render"
-for path in /admin /admin/data /admin/strategy-data /admin/kpis /admin/goals /admin/strategic-goals /admin/configuration-gaps /admin/users; do
-  code=$(curl -sk -b "$cookie_jar" -o /dev/null -w '%{http_code}' "$BASE$path")
-  check "$path renders (200)" test "$code" = "200"
-done
-code=$(curl -sk -b "$cookie_jar" -o /dev/null -w '%{http_code}' "$BASE/admin/history")
-check "/admin/history renders (200)" test "$code" = "200"
-history_body=$(curl -sk -b "$cookie_jar" "$BASE/admin/history")
-if grep -q "Edit history" <<< "$history_body"; then
-  check "/admin/history shows 'Edit history' heading" true
-else
-  check "/admin/history shows 'Edit history' heading" false
-fi
-if grep -q "Add a new KPI" <<< "$kpis_html" && grep -q "Existing KPIs" <<< "$kpis_html"; then
-  check "/admin/kpis renders 'Add a new KPI' + 'Existing KPIs'" true
-else
-  check "/admin/kpis renders 'Add a new KPI' + 'Existing KPIs'" false
-fi
-
-configuration_gaps_body=$(curl -sk -b "$cookie_jar" "$BASE/admin/configuration-gaps")
-check "/admin/configuration-gaps shows target and definition readiness" grep -q "Need targets" <<< "$configuration_gaps_body"
-check "/admin/configuration-gaps links to KPI editors" grep -q "/admin/kpis/" <<< "$configuration_gaps_body"
-
-administration_body=$(curl -sk -b "$cookie_jar" "$BASE/admin")
-check "/admin provides the consolidated administration hub" grep -q "Configure and review" <<< "$administration_body"
-
-echo
-echo "Strategic board export renders"
-strategy_export=$(curl -sk -b "$cookie_jar" "$BASE/api/strategy/export?year=2026&format=json")
-check "authorized strategic JSON export includes the organization" grep -q "Eastern State Penitentiary Historic Site" <<< "$strategy_export"
-strategy_csv=$(curl -sk -b "$cookie_jar" "$BASE/api/strategy/export?year=2026&format=csv")
-check "strategic CSV export includes annual pacing and full-plan columns" grep -q "Annual Pacing Target.*Full Plan Actual" <<< "$strategy_csv"
-if grep -qE 'NaN|undefined|Infinity' <<< "$strategy_csv"; then
-  check "strategic CSV export has no unsafe numeric artifacts" false
-else
-  check "strategic CSV export has no unsafe numeric artifacts" true
-fi
-
-echo
-echo "First-class raw percentage observation round-trip"
-strategy_percentage_kpi=$(printf "%s" "$catalog_json" | python3 -c "import sys,json; print(json.load(sys.stdin)['ids']['strategyPercentageKpi'])")
-strategy_percentage_year=$(printf "%s" "$catalog_json" | python3 -c "import sys,json; print(json.load(sys.stdin)['ids']['strategyPercentageYear'])")
-mutation_request "$cookie_jar" POST "/api/strategy/observations" "{\"kpi_id\": $strategy_percentage_kpi, \"reporting_year\": $strategy_percentage_year, \"numerator\": 2, \"denominator\": 4, \"source_reference\": \"Smoke test; delete after verification\"}"
-strategy_post="$MUTATION_STATUS"
-check "POST /api/strategy/observations stores raw percentage inputs (201)" test "$strategy_post" = "201"
-strategy_observation_id=$(printf "%s" "$MUTATION_BODY" | python3 -c "import sys,json; d=json.load(sys.stdin); e=d.get('observation') or {}; print(e.get('id','') if e.get('numerator')==2 and e.get('denominator')==4 and e.get('scalar_value') is None else '')")
-if [ -n "$strategy_observation_id" ]; then
-  check "strategic percentage response preserves raw inputs without a stored result" true
-  mutation_request "$cookie_jar" DELETE "/api/strategy/observations" "{\"id\": $strategy_observation_id}"
-  check "DELETE /api/strategy/observations returns 200" test "$MUTATION_STATUS" = "200"
-else
-  check "strategic percentage response preserves raw inputs without a stored result" false
-fi
-
-echo
-echo "Annual percentage entries round-trip"
-entry_kpi=$(printf "%s" "$catalog_json" | python3 -c "import sys,json; print(json.load(sys.stdin)['ids']['entryKpi'])")
-mutation_request "$cookie_jar" POST "/api/entries" "{\"kpi_id\": $entry_kpi, \"year\": 2099, \"month\": 0, \"value\": 12345}"
-post="$MUTATION_STATUS"
-check "POST /api/entries (annual percentage, month=0) returns 201" test "$post" = "201"
-new_id=$(printf "%s" "$MUTATION_BODY" | python3 -c "import sys,json; d=json.load(sys.stdin); e=d.get('entry') or {}; print(e.get('id','') if e.get('value')==12345 and e.get('month')==0 else '')")
-if [ -n "$new_id" ]; then
-  check "annual percentage entry returned from POST" true
-else
-  check "annual percentage entry returned from POST" false
-fi
-mutation_request "$cookie_jar" DELETE "/api/entries" "{\"id\": $new_id}"
-del="$MUTATION_STATUS"
-check "DELETE /api/entries returns 200" test "$del" = "200"
-
-echo
-echo "Annual currency entries round-trip"
-currency_kpi=$(printf "%s" "$catalog_json" | python3 -c "import sys,json; print(json.load(sys.stdin)['ids']['currencyKpi'])")
-mutation_request "$cookie_jar" POST "/api/entries" "{\"kpi_id\": $currency_kpi, \"year\": 2099, \"month\": 0, \"value\": 765432}"
-post="$MUTATION_STATUS"
-check "POST /api/entries (annual currency, month=0) returns 201" test "$post" = "201"
-new_id=$(printf "%s" "$MUTATION_BODY" | python3 -c "import sys,json; d=json.load(sys.stdin); e=d.get('entry') or {}; print(e.get('id','') if e.get('value')==765432 and e.get('month')==0 else '')")
-if [ -n "$new_id" ]; then
-  check "annual currency entry returned from POST" true
-else
-  check "annual currency entry returned from POST" false
-fi
-mutation_request "$cookie_jar" DELETE "/api/entries" "{\"id\": $new_id}"
-del="$MUTATION_STATUS"
-check "DELETE annual entry returns 200" test "$del" = "200"
-
-echo
-echo "Breakdown entries round-trip"
-brk_kpi=$(printf "%s" "$catalog_json" | python3 -c "import sys,json; print(json.load(sys.stdin)['ids']['breakdownKpi'])")
-mutation_request "$cookie_jar" POST "/api/breakdowns" "{\"kpi_id\": $brk_kpi, \"year\": 2099, \"label\": \"Test row\", \"value\": 99}"
-post="$MUTATION_STATUS"
-check "POST /api/breakdowns returns 201" test "$post" = "201"
-new_id=$(printf "%s" "$MUTATION_BODY" | python3 -c "import sys,json; d=json.load(sys.stdin); e=d.get('breakdown') or {}; print(e.get('id','') if e.get('label')=='Test row' and e.get('value')==99 else '')")
-if [ -n "$new_id" ]; then
-  check "breakdown entry returned from POST" true
-else
-  check "breakdown entry returned from POST" false
-fi
-mutation_request "$cookie_jar" DELETE "/api/breakdowns" "{\"id\": $new_id}"
-del="$MUTATION_STATUS"
-check "DELETE /api/breakdowns returns 200" test "$del" = "200"
-
-echo
-echo "Auth-bypass flow on POST /api/entries (no cookie)"
-# $noauth_jar was created above and starts without a session cookie. The
-# mutation helper may add only the CSRF cookie, which is not an auth credential.
-bypass_kpi=$(printf "%s" "$catalog_json" | python3 -c "import sys,json; print(json.load(sys.stdin)['ids']['bypassKpi'])")
-mutation_request "$noauth_jar" POST "/api/entries" "{\"kpi_id\": $bypass_kpi, \"year\": 2099, \"month\": 0, \"value\": 54321}"
-bypass_status="$MUTATION_STATUS"
-bypass_id=$(printf "%s" "$MUTATION_BODY" | python3 -c "import sys,json; d=json.load(sys.stdin); e=d.get('entry') or {}; print(e.get('id','') if e.get('value')==54321 and e.get('month')==0 else '')")
+mutation_request "$anonymous_jar" POST "/api/strategy/observations" \
+  '{}'
 if [ "$AUTH_DISABLED" = "true" ]; then
-  check "no-cookie POST succeeds when AUTH_DISABLED=true (201)" test "$bypass_status" = "201"
-  if [ -n "$bypass_id" ]; then
-    bypass_row=$(printf "%s" "$MUTATION_BODY" | python3 -c "import sys,json; d=json.load(sys.stdin); e=d.get('entry') or {}; print(e.get('updated_by', 'missing'))")
-    if [ "$bypass_row" != "missing" ] && [ "$bypass_row" != "None" ] && [ -n "$bypass_row" ]; then
-      check "bypass entry has real updated_by FK (no FK error)" true
-    else
-      check "bypass entry has real updated_by FK (no FK error)" false
-    fi
-    mutation_request "$noauth_jar" DELETE "/api/entries" "{\"id\": $bypass_id}"
-    del="$MUTATION_STATUS"
-    check "cleanup DELETE bypass entry returns 200" test "$del" = "200"
-  else
-    check "bypass entry returned after POST" false
-  fi
+  check "development bypass reaches canonical mutation boundary" test "$MUTATION_STATUS" != "401"
 else
-  # Without the bypass, no session cookie means requireAdmin() fails.
-  # The handler returns 403 (forbidden — admin required), which proves the
-  # auth wall is up; 401 is acceptable too.
-  # D8AD-CAN-008: avoid bash -c here — use inline if/else so that
-  # $bypass_status is never reparsed as shell syntax.
-  if [ "$bypass_status" = "401" ] || [ "$bypass_status" = "403" ]; then
-    check "no-cookie POST rejected when AUTH_DISABLED=false (401/403)" true
+  if [ "$MUTATION_STATUS" = "401" ] || [ "$MUTATION_STATUS" = "403" ]; then
+    check "canonical mutation rejects anonymous requests" true
   else
-    check "no-cookie POST rejected when AUTH_DISABLED=false (401/403)" false
-  fi
-  if [ -z "$bypass_id" ]; then
-    check "no-cookie POST returned no created row" true
-  else
-    check "no-cookie POST returned no created row" false
+    check "canonical mutation rejects anonymous requests" false
   fi
 fi
 
-history_after_mutations=$(curl -sk -b "$cookie_jar" "$BASE/admin/history")
-if grep -q "2099" <<< "$history_after_mutations" && grep -q "Deleted" <<< "$history_after_mutations"; then
-  check "/admin/history renders smoke mutation audit rows" true
+echo
+echo "Product routes"
+overview=$(curl -sk -b "$cookie_jar" "$BASE/dashboard/overview?year=2026")
+check "Overview renders" grep -q '>Overview<' <<< "$overview"
+check "Overview shows organization progress" grep -q "Organization progress" <<< "$overview"
+check "Overview shows Strategic Priorities" grep -q "Strategic Priorities" <<< "$overview"
+check "Overview shows Needs attention" grep -q "Needs attention" <<< "$overview"
+if grep -qE 'strategic-board-export-root|board-report-root|Board Report' <<< "$overview"; then
+  check "Overview contains no Board Report payload or markup" false
 else
-  check "/admin/history renders smoke mutation audit rows" false
+  check "Overview contains no Board Report payload or markup" true
 fi
+overview_bytes=$(printf "%s" "$overview" | wc -c | tr -d ' ')
+check "Overview decoded HTML stays below 250 KB" test "$overview_bytes" -lt 250000
+
+for priority in \
+  "Reimagine Visitor Experience" \
+  "Advance Historic Preservation" \
+  "Expand Workforce Development" \
+  "Support Learning through Justice Education" \
+  "Enhance Organizational Capacity"; do
+  check "Overview includes $priority" grep -q "$priority" <<< "$overview"
+done
+
+data_entry=$(curl -sk -b "$cookie_jar" "$BASE/data-entry?year=2026")
+check "Data Entry renders" grep -q '>Data Entry<' <<< "$data_entry"
+check "Data Entry has reporting checklist" grep -q "Reporting checklist" <<< "$data_entry"
+check "Data Entry exposes status language" grep -qE "Not started|Needs attention|Complete" <<< "$data_entry"
+if grep -qi "month 0" <<< "$data_entry"; then
+  check "Data Entry hides the annual storage sentinel" false
+else
+  check "Data Entry hides the annual storage sentinel" true
+fi
+
+reports=$(curl -sk -b "$cookie_jar" "$BASE/reports?view=board&year=2026")
+check "Reports renders Board Report on demand" grep -q "board-report-root" <<< "$reports"
+check "Board Report includes all 59 KPIs" test "$(grep -o 'data-board-kpi=' <<< "$reports" | wc -l | tr -d ' ')" -eq 59
+trends=$(curl -sk -b "$cookie_jar" "$BASE/reports?view=trends&year=2026")
+check "Reports renders strategic Trends on demand" grep -q "trend-measure" <<< "$trends"
+if grep -q "board-report-root" <<< "$trends"; then
+  check "Trends does not render Board Report" false
+else
+  check "Trends does not render Board Report" true
+fi
+
+for area in measures goals people activity; do
+  code=$(curl -sk -b "$cookie_jar" -o /dev/null -w '%{http_code}' "$BASE/setup?area=$area")
+  check "Setup $area renders" test "$code" = "200"
+done
+setup=$(curl -sk -b "$cookie_jar" "$BASE/setup?area=measures")
+for label in Measures Goals People Activity; do
+  check "Setup exposes $label" grep -q ">$label<" <<< "$setup"
+done
+needs_attention=$(curl -sk -b "$cookie_jar" "$BASE/setup?area=measures&filter=needs-attention")
+check "Measures integrates setup attention" grep -q "Needs attention (" <<< "$needs_attention"
+check "Attention rows link into Setup details" grep -q "area=measures&amp;item=" <<< "$needs_attention"
+
+echo
+echo "Removed production workflows"
+for path in \
+  /admin /admin/data /admin/strategy-data /admin/goals /admin/kpis \
+  /admin/strategic-goals /admin/configuration-gaps /admin/history /admin/users \
+  /dashboard/trends; do
+  code=$(curl -sk -b "$cookie_jar" -o /dev/null -w '%{http_code}' "$BASE$path")
+  check "$path is removed" test "$code" = "404"
+done
+for path in /api/entries /api/breakdowns /api/goals; do
+  code=$(curl -sk -b "$cookie_jar" -o /dev/null -w '%{http_code}' -X POST "$BASE$path")
+  check "$path legacy mutation is removed" test "$code" = "404"
+done
+
+echo
+echo "Canonical strategic mutation and report truth"
+catalog_json="$("$REPO_ROOT/node_modules/.bin/tsx" "$REPO_ROOT/scripts/smoke-catalog.ts")"
+kpi=$(printf "%s" "$catalog_json" | python3 -c "import sys,json; print(json.load(sys.stdin)['ids']['strategyPercentageKpi'])")
+year=$(printf "%s" "$catalog_json" | python3 -c "import sys,json; print(json.load(sys.stdin)['ids']['strategyPercentageYear'])")
+mutation_request "$cookie_jar" POST "/api/strategy/observations" \
+  "{\"kpi_id\":$kpi,\"reporting_year\":$year,\"numerator\":2,\"denominator\":4,\"source_reference\":\"Smoke test; delete after verification\"}"
+check "strategic observation saves raw inputs" test "$MUTATION_STATUS" = "201"
+observation_id=$(printf "%s" "$MUTATION_BODY" | python3 -c "import sys,json; d=json.load(sys.stdin); print((d.get('observation') or {}).get('id',''))")
+check "strategic observation returns a durable id" test -n "$observation_id"
+report_json=$(curl -sk -b "$cookie_jar" "$BASE/api/strategy/export?year=$year&format=json")
+check "report export reads strategic calculation truth" grep -q '"report"' <<< "$report_json"
+report_csv=$(curl -sk -b "$cookie_jar" "$BASE/api/strategy/export?year=$year&format=csv")
+check "CSV uses annual and full-plan columns" grep -q "Annual Pacing Target.*Full Plan Actual" <<< "$report_csv"
+if grep -qE 'NaN|undefined|Infinity' <<< "$report_csv"; then
+  check "CSV has finite output" false
+else
+  check "CSV has finite output" true
+fi
+mutation_request "$cookie_jar" DELETE "/api/strategy/observations" "{\"id\":$observation_id}"
+check "strategic observation cleanup succeeds" test "$MUTATION_STATUS" = "200"
+
+activity=$(curl -sk -b "$cookie_jar" "$BASE/setup?area=activity")
+check "Activity retains the deleted observation audit" grep -q "Smoke test; delete after verification" <<< "$activity"
 
 echo
 printf "== Smoke test complete: %d passed, %d failed ==\n" "$PASS" "$FAIL"
-[ "$FAIL" -eq 0 ] && exit 0 || exit 1
+[ "$FAIL" -eq 0 ]

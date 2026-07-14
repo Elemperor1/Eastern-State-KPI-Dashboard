@@ -32,12 +32,10 @@ import {
   componentDraftFromData,
   firstFormError,
   moveId,
-  targetDraftForScope,
   type ComponentFormDraft,
   type StrategyEditorFormErrors,
   type StrategyEditorMutationRunner,
 } from "./strategic-kpi-editor-model";
-import { StrategicTargetEditorCard } from "./StrategicTargetEditorCard";
 
 type Feedback = { variant: "success" | "error"; message: string } | null;
 
@@ -45,6 +43,23 @@ function displayLabel(value: string): string {
   return value
     .replaceAll("_", " ")
     .replace(/^./, (first) => first.toLocaleUpperCase());
+}
+
+function measurementLabel(value: MeasurementType): string {
+  const labels: Record<MeasurementType, string> = {
+    binary: "Yes or no",
+    milestone: "Milestone progress",
+    count: "Number",
+    percentage: "Percentage",
+    average: "Average",
+    cumulative: "Running total",
+    year_over_year: "Change from last year",
+    distribution: "Reporting groups",
+    currency: "Money",
+    ratio: "Ratio",
+    multi_component: "Several related inputs",
+  };
+  return labels[value];
 }
 
 function ErrorHint({ error, fallback }: { error?: string; fallback?: string }) {
@@ -58,12 +73,11 @@ function ErrorHint({ error, fallback }: { error?: string; fallback?: string }) {
 export function StrategicKpiComponentsEditor({
   configuration,
   components: initialComponents,
-  reportingYear,
   runMutation,
 }: {
   configuration: PersistedMeasurementConfig | null;
   components: StrategyComponentWithTargets[];
-  reportingYear: number;
+  reportingYear?: number;
   runMutation: StrategyEditorMutationRunner;
 }) {
   const [components, setComponents] = useState(initialComponents);
@@ -88,7 +102,7 @@ export function StrategicKpiComponentsEditor({
     return (
       <Card className="p-6">
         <StatusBanner variant="error">
-          Save a measurement configuration before adding components.
+          Save the measure details before adding inputs.
         </StatusBanner>
       </Card>
     );
@@ -104,11 +118,11 @@ export function StrategicKpiComponentsEditor({
       result.ok
         ? {
             variant: "success",
-            message: action === "archive" ? "Component archived." : "Component restored.",
+            message: action === "archive" ? "Input archived." : "Input restored.",
           }
         : {
             variant: "error",
-            message: result.error ?? `Could not ${action} component.`,
+            message: result.error ?? `Could not ${action} this input.`,
           },
     );
   }
@@ -135,11 +149,11 @@ export function StrategicKpiComponentsEditor({
       setComponents(before);
       setFeedback({
         variant: "error",
-        message: result.error ?? "Could not reorder components.",
+        message: result.error ?? "Could not reorder inputs.",
       });
       return;
     }
-    setFeedback({ variant: "success", message: "Component order saved." });
+    setFeedback({ variant: "success", message: "Input order saved." });
   }
 
   const supportsComponents = configuration.measurement_type === "multi_component";
@@ -149,20 +163,17 @@ export function StrategicKpiComponentsEditor({
       {feedback ? <StatusBanner variant={feedback.variant}>{feedback.message}</StatusBanner> : null}
       {!supportsComponents ? (
         <StatusBanner variant="neutral">
-          Select the Multi component measurement type before adding component definitions. Existing component history remains visible below.
+          Choose “Several related inputs” above before adding inputs here.
         </StatusBanner>
       ) : null}
 
       {supportsComponents ? (
         <ComponentFormCard
           key={`new-${configurationId}-${active.length}`}
-          title="Add component"
-          description="Create the component as a draft, then configure any component target before activation."
+          title="Add input"
+          description=""
           initialDraft={componentDraftFromData(null, active.length)}
           configurationId={configurationId}
-          kpiId={configuration.kpi_id}
-          reportingYear={reportingYear}
-          component={null}
           runMutation={runMutation}
           isCreate
         />
@@ -172,11 +183,8 @@ export function StrategicKpiComponentsEditor({
         <div className="flex flex-wrap items-end justify-between gap-3">
           <div>
             <h2 id="active-components-title" className="text-xl font-semibold text-ink-900">
-              Active component definitions
+              Inputs
             </h2>
-            <p className="mt-1 text-sm text-ink-500">
-              Each result remains independently visible unless an explicit compatible aggregation is configured.
-            </p>
           </div>
           <Badge variant="info">{active.length} active</Badge>
         </div>
@@ -184,7 +192,7 @@ export function StrategicKpiComponentsEditor({
         {active.length === 0 ? (
           <Card className="p-6">
             <StatusBanner variant="neutral">
-              No active components are configured for this KPI.
+              No inputs have been added yet.
             </StatusBanner>
           </Card>
         ) : (
@@ -192,12 +200,9 @@ export function StrategicKpiComponentsEditor({
             <ComponentFormCard
               key={`${component.id}-${component.display_order}-${component.updated_at}`}
               title={component.label}
-              description={`Component #${component.id} · ${component.targets.length} target record${component.targets.length === 1 ? "" : "s"}`}
+              description=""
               initialDraft={componentDraftFromData(component, index)}
               configurationId={configurationId}
-              kpiId={configuration.kpi_id}
-              reportingYear={reportingYear}
-              component={component}
               runMutation={runMutation}
               reorderActions={
                 <div className="flex gap-1">
@@ -236,7 +241,7 @@ export function StrategicKpiComponentsEditor({
         <section aria-labelledby="archived-components-title" className="space-y-3">
           <div className="flex items-center justify-between gap-3">
             <h2 id="archived-components-title" className="text-xl font-semibold text-ink-900">
-              Archived components
+              Archived inputs
             </h2>
             <Badge variant="default">{archived.length} archived</Badge>
           </div>
@@ -245,7 +250,7 @@ export function StrategicKpiComponentsEditor({
               <div className="min-w-0">
                 <p className="break-words font-semibold text-ink-900">{component.label}</p>
                 <p className="mt-1 text-xs text-ink-500">
-                  {component.slug} · {displayLabel(component.measurement_type ?? "unknown")}
+                  {displayLabel(component.measurement_type ?? "unknown")}
                 </p>
               </div>
               <Button
@@ -257,7 +262,7 @@ export function StrategicKpiComponentsEditor({
                 disabled={busyId !== null && busyId !== component.id}
                 onClick={() => lifecycle(component.id, "restore")}
               >
-                Restore component
+                Restore input
               </Button>
             </Card>
           ))}
@@ -272,9 +277,6 @@ function ComponentFormCard({
   description,
   initialDraft,
   configurationId,
-  kpiId,
-  reportingYear,
-  component,
   runMutation,
   isCreate = false,
   reorderActions,
@@ -283,9 +285,6 @@ function ComponentFormCard({
   description: string;
   initialDraft: ComponentFormDraft;
   configurationId: number;
-  kpiId: number;
-  reportingYear: number;
-  component: StrategyComponentWithTargets | null;
   runMutation: StrategyEditorMutationRunner;
   isCreate?: boolean;
   reorderActions?: React.ReactNode;
@@ -312,7 +311,7 @@ function ComponentFormCard({
       setErrors(built.errors);
       setFeedback({
         variant: "error",
-        message: firstFormError(built.errors) ?? "Review the component fields.",
+        message: firstFormError(built.errors) ?? "Review the highlighted fields.",
       });
       return;
     }
@@ -324,11 +323,11 @@ function ComponentFormCard({
       result.ok
         ? {
             variant: "success",
-            message: isCreate ? "Component created." : "Component saved.",
+            message: isCreate ? "Input created." : "Input saved.",
           }
         : {
             variant: "error",
-            message: result.error ?? "Could not save component.",
+            message: result.error ?? "Could not save this input.",
           },
     );
     if (result.ok && isCreate) {
@@ -348,31 +347,22 @@ function ComponentFormCard({
       {feedback ? <StatusBanner variant={feedback.variant}>{feedback.message}</StatusBanner> : null}
       <form onSubmit={submit} className="space-y-5">
         <fieldset disabled={busy} className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-3">
-          <FormField label="Slug" htmlFor={`${prefix}-slug`} hint={<ErrorHint error={errors.slug} fallback={isCreate ? "Lowercase kebab-case; immutable after creation." : "Slug is immutable after creation."} />}>
-            <Input
-              id={`${prefix}-slug`}
-              value={draft.slug}
-              disabled={!isCreate}
-              aria-invalid={Boolean(errors.slug)}
-              onChange={(event) => update("slug", event.target.value)}
-            />
-          </FormField>
-          <FormField label="Label" htmlFor={`${prefix}-label`} hint={<ErrorHint error={errors.label} />}>
+          <FormField label="Input name" htmlFor={`${prefix}-label`} hint={<ErrorHint error={errors.label ?? errors.slug} />}>
             <Input
               id={`${prefix}-label`}
               value={draft.label}
-              aria-invalid={Boolean(errors.label)}
+              aria-invalid={Boolean(errors.label ?? errors.slug)}
               onChange={(event) => update("label", event.target.value)}
             />
           </FormField>
-          <FormField label="Measurement type" htmlFor={`${prefix}-type`} hint={<ErrorHint error={errors.measurement_type} />}>
+          <FormField label="What will people enter?" htmlFor={`${prefix}-type`} hint={<ErrorHint error={errors.measurement_type} />}>
             <Select
               id={`${prefix}-type`}
               value={draft.measurementType}
               onChange={(event) => update("measurementType", event.target.value as MeasurementType)}
             >
               {MEASUREMENT_TYPES.map((type) => (
-                <option key={type} value={type}>{displayLabel(type)}</option>
+                <option key={type} value={type}>{measurementLabel(type)}</option>
               ))}
             </Select>
           </FormField>
@@ -383,7 +373,7 @@ function ComponentFormCard({
               onChange={(event) => update("unit", event.target.value)}
             />
           </FormField>
-          <FormField label="Aggregation role" htmlFor={`${prefix}-aggregation-role`} hint={<ErrorHint error={errors.aggregation_role} fallback="For Ratio aggregation, assign each raw input to the numerator or denominator." />}>
+          <FormField label="Used as" htmlFor={`${prefix}-aggregation-role`} hint={<ErrorHint error={errors.aggregation_role} />}>
             <Select
               id={`${prefix}-aggregation-role`}
               value={draft.aggregationRole}
@@ -391,25 +381,26 @@ function ComponentFormCard({
               onChange={(event) => update("aggregationRole", event.target.value as ComponentAggregationRole)}
             >
               {COMPONENT_AGGREGATION_ROLES.map((role) => (
-                <option key={role} value={role}>{displayLabel(role)}</option>
+                <option key={role} value={role}>{role === "numerator" ? "Top number" : role === "denominator" ? "Total number" : "Value"}</option>
               ))}
             </Select>
           </FormField>
-          <FormField label="Numerator label" htmlFor={`${prefix}-numerator`} hint={<ErrorHint error={errors.numerator_label} />}>
+          {draft.measurementType === "percentage" || draft.measurementType === "ratio" ? <>
+          <FormField label="Top number label" htmlFor={`${prefix}-numerator`} hint={<ErrorHint error={errors.numerator_label} />}>
             <Input
               id={`${prefix}-numerator`}
               value={draft.numeratorLabel}
               onChange={(event) => update("numeratorLabel", event.target.value)}
             />
           </FormField>
-          <FormField label="Denominator label" htmlFor={`${prefix}-denominator`} hint={<ErrorHint error={errors.denominator_label} />}>
+          <FormField label="Total number label" htmlFor={`${prefix}-denominator`} hint={<ErrorHint error={errors.denominator_label} />}>
             <Input
               id={`${prefix}-denominator`}
               value={draft.denominatorLabel}
               onChange={(event) => update("denominatorLabel", event.target.value)}
             />
           </FormField>
-          <FormField label="Fixed denominator" htmlFor={`${prefix}-fixed-denominator`} hint={<ErrorHint error={errors.fixed_denominator} />}>
+          <FormField label="Fixed total" htmlFor={`${prefix}-fixed-denominator`} hint={<ErrorHint error={errors.fixed_denominator} />}>
             <Input
               id={`${prefix}-fixed-denominator`}
               type="number"
@@ -418,7 +409,8 @@ function ComponentFormCard({
               onChange={(event) => update("fixedDenominator", event.target.value)}
             />
           </FormField>
-          <FormField label="Baseline value" htmlFor={`${prefix}-baseline`} hint={<ErrorHint error={errors.baseline_value} />}>
+          </> : null}
+          <FormField label="Starting value" htmlFor={`${prefix}-baseline`} hint={<ErrorHint error={errors.baseline_value} />}>
             <Input
               id={`${prefix}-baseline`}
               type="number"
@@ -427,7 +419,7 @@ function ComponentFormCard({
               onChange={(event) => update("baselineValue", event.target.value)}
             />
           </FormField>
-          <FormField label="Previous-period value" htmlFor={`${prefix}-previous`} hint={<ErrorHint error={errors.previous_period_value} />}>
+          {draft.measurementType === "year_over_year" ? <FormField label="Previous result" htmlFor={`${prefix}-previous`} hint={<ErrorHint error={errors.previous_period_value} />}>
             <Input
               id={`${prefix}-previous`}
               type="number"
@@ -435,8 +427,8 @@ function ComponentFormCard({
               value={draft.previousPeriodValue}
               onChange={(event) => update("previousPeriodValue", event.target.value)}
             />
-          </FormField>
-          <FormField label="Weight" htmlFor={`${prefix}-weight`} hint={<ErrorHint error={errors.weight} fallback="Positive relative weight for weighted aggregation." />}>
+          </FormField> : null}
+          <FormField label="Importance" htmlFor={`${prefix}-weight`} hint={<ErrorHint error={errors.weight} />}>
             <Input
               id={`${prefix}-weight`}
               type="number"
@@ -446,7 +438,7 @@ function ComponentFormCard({
               onChange={(event) => update("weight", event.target.value)}
             />
           </FormField>
-          <FormField label="Display order" htmlFor={`${prefix}-order`} hint={<ErrorHint error={errors.display_order} fallback={isCreate ? "New components append at this position." : "Use the arrow controls to reorder."} />}>
+          <FormField label="List order" htmlFor={`${prefix}-order`} hint={<ErrorHint error={errors.display_order} />}>
             <Input
               id={`${prefix}-order`}
               type="number"
@@ -457,7 +449,7 @@ function ComponentFormCard({
               onChange={(event) => update("displayOrder", event.target.value)}
             />
           </FormField>
-          <FormField label="Configuration status" htmlFor={`${prefix}-status`} hint={<ErrorHint error={errors.configuration_status} fallback={isCreate ? "Create as Draft, Needs definition, or Needs target." : undefined} />}>
+          <FormField label="Setup status" htmlFor={`${prefix}-status`} hint={<ErrorHint error={errors.configuration_status} />}>
             <Select
               id={`${prefix}-status`}
               value={draft.configurationStatus}
@@ -472,7 +464,7 @@ function ComponentFormCard({
               ))}
             </Select>
           </FormField>
-          <FormField label="Unresolved question" htmlFor={`${prefix}-question`} className="md:col-span-2 lg:col-span-3" hint={<ErrorHint error={errors.unresolved_question} fallback="Required for Needs definition or Needs target." />}>
+          <FormField label="What still needs an answer?" htmlFor={`${prefix}-question`} className="md:col-span-2 lg:col-span-3" hint={<ErrorHint error={errors.unresolved_question} />}>
             <Textarea
               id={`${prefix}-question`}
               value={draft.unresolvedQuestion}
@@ -489,52 +481,10 @@ function ComponentFormCard({
             icon={isCreate ? Plus : Save}
             isLoading={busy}
           >
-            {isCreate ? "Create component" : "Save component"}
+            {isCreate ? "Create input" : "Save input"}
           </Button>
         </div>
       </form>
-      {component ? (
-        <div className="mt-6 border-t border-ink-100 pt-6">
-          <div className="mb-4">
-            <p className="section-eyebrow">Component targets</p>
-            <p className="text-sm leading-6 text-ink-600">
-              Component targets calculate independently from the parent KPI target.
-            </p>
-          </div>
-          <div className="grid grid-cols-1 gap-4 xl:grid-cols-2">
-            <StrategicTargetEditorCard
-              key={`component-${component.id}-annual-${reportingYear}`}
-              title={`${component.label} annual target`}
-              description="Selected-year pacing target for this component."
-              initialDraft={targetDraftForScope(
-                component.targets,
-                "annual",
-                reportingYear,
-              )}
-              kpiId={kpiId}
-              componentId={component.id}
-              measurementType={component.measurement_type ?? "count"}
-              runMutation={runMutation}
-              idPrefix={`component-${component.id}`}
-              lockedTargetYear={reportingYear}
-            />
-            <StrategicTargetEditorCard
-              title={`${component.label} full-plan target`}
-              description="Long-range target for this component."
-              initialDraft={targetDraftForScope(
-                component.targets,
-                "full_plan",
-                reportingYear,
-              )}
-              kpiId={kpiId}
-              componentId={component.id}
-              measurementType={component.measurement_type ?? "count"}
-              runMutation={runMutation}
-              idPrefix={`component-${component.id}`}
-            />
-          </div>
-        </div>
-      ) : null}
     </Card>
   );
 }

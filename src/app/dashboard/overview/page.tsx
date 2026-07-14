@@ -1,12 +1,8 @@
 import { redirect } from "next/navigation";
 import { getCurrentUserReadOnly } from "@/features/auth/session";
 import { AppShell } from "@/components/AppShell";
-import { DashboardOverviewClient } from "./DashboardOverviewClient";
-import { resolveDashboardCompareState } from "@/features/reporting/period";
-import {
-  listDashboardYears,
-  loadOverviewPageData,
-} from "@/features/reporting/server";
+import { ExecutiveOverview } from "./ExecutiveOverview";
+import { listDashboardYears, loadExecutiveOverviewPageData } from "@/features/reporting/server";
 
 export const dynamic = "force-dynamic";
 
@@ -20,15 +16,14 @@ export default async function DashboardOverviewPage({
   if (!user) redirect("/login");
   if (user.must_change_password) redirect("/setup-password");
 
-  const initialState = resolveDashboardCompareState(sp, listDashboardYears());
-  const data = loadOverviewPageData({
-    throughMonth: initialState.currentMonth,
-    year: initialState.currentYear,
-  });
+  const years = listDashboardYears();
+  const rawYear = Number(Array.isArray(sp.year) ? sp.year[0] : sp.year);
+  const year = years.includes(rawYear) ? rawYear : Math.max(...years);
+  const data = loadExecutiveOverviewPageData({ year });
 
   return (
     <AppShell user={user}>
-      <DashboardOverviewClient data={data} initialState={initialState} />
+      <ExecutiveOverview data={data} />
     </AppShell>
   );
 }

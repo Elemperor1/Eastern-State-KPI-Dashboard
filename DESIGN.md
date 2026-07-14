@@ -314,11 +314,11 @@ Typography collapses to two families: **Galano Grotesque** (Eastern State Penite
 
 - **Current Year** (`--chart-primary` / `{colors.primary}` — `#209ba5`): The main stroke and primary bar fill. Always the loudest series in any chart.
 - **Compare Year** (`--chart-secondary` / `{colors.secondary}` — `#005f6f`): The compare-year bar/line. Reads as a depth step below the current year.
-- **Tertiary** (`--chart-tertiary` / `{colors.tertiary}` — `#003649`): Used for the "recent" trend line on `TrendChart` and for the third stacked series in breakdown charts.
+- **Tertiary** (`--chart-tertiary` / `{colors.tertiary}` — `#003649`): Used for a recent comparison series and for the third stacked series in breakdown charts.
 - **Brand Soft** (`--chart-brand-soft` — `#9cd9de`): Low-emphasis fills for area charts and stacked backgrounds.
 - **Brand Mid** (`--chart-brand-mid` — `#36adb6`): Mid-tone variant for stacked series that need a third step.
 - **Accent** (`--chart-accent` / `{colors.accent}` — `#f7f242`): The yellow, used at most once per chart — for the most recent data point in a trend line, or for the single most important slice in a breakdown. Never as a continuous stroke, never as a series fill.
-- **Ink Soft** (`--chart-ink-soft` — `#557883`): The third historic year on `TrendChart`. A grey that still carries a teal tint so it reads as part of the family.
+- **Ink Soft** (`--chart-ink-soft` — `#557883`): An additional comparison-series color. A grey that still carries a teal tint so it reads as part of the family.
 - **Muted** (`--chart-muted` — `#a9c2c8`): Disabled and null data.
 - **Grid** (`--chart-grid` — `{colors.hairline-cloud}`): 1px gridline stroke.
 - **Axis** (`--chart-axis` — `#557883`): Axis tick labels.

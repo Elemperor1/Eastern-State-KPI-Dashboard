@@ -382,7 +382,7 @@ describe("fresh session works after a legitimate reset (req 7)", () => {
 
     // The fresh viewer session is valid; admin-only adapters remain forbidden.
     await expect(getCurrentUser()).resolves.toMatchObject({ id: viewer.id, role: "viewer" });
-    await assertForbidden(await dispatch("POST", "/api/entries"));
+    await assertForbidden(await dispatch("POST", "/api/strategy/observations"));
   });
 });
 
@@ -489,9 +489,6 @@ describe("route table coverage", () => {
     for (const g of [
       "kpis",
       "categories",
-      "entries",
-      "breakdowns",
-      "goals",
       "users",
       "exports",
       "strategy_values",

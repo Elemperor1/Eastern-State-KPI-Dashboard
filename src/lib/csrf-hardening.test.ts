@@ -91,29 +91,6 @@ vi.mock("@/features/catalog/server", () => ({
   retireOrDeleteCategory: vi.fn(() => "deleted"),
 }));
 
-vi.mock("@/features/goals", async () => {
-  const actual = await vi.importActual<typeof import("@/features/goals")>(
-    "@/features/goals",
-  );
-  return {
-    ...actual,
-    listGoals: vi.fn(() => []),
-    upsertGoal: vi.fn(() => ({ id: 1 })),
-    updateGoal: vi.fn(() => {}),
-    toggleGoal: vi.fn(() => {}),
-    deleteGoal: vi.fn(() => {}),
-  };
-});
-
-vi.mock("@/features/metrics/server", () => ({
-  listEntries: vi.fn(() => []),
-  upsertEntry: vi.fn(() => ({ id: 1 })),
-  deleteEntry: vi.fn(() => {}),
-  listBreakdowns: vi.fn(() => []),
-  upsertBreakdown: vi.fn(() => ({ id: 1 })),
-  deleteBreakdown: vi.fn(() => {}),
-}));
-
 vi.mock("@/features/strategy/server", async () => {
   const actual = await vi.importActual<typeof import("@/features/strategy/server")>(
     "@/features/strategy/server",
@@ -160,11 +137,8 @@ vi.mock("@/features/strategy/server", async () => {
 import * as users from "@/app/api/users/route";
 import * as usersAccount from "@/app/api/users/account/route";
 import * as changePassword from "@/app/api/auth/change-password/route";
-import * as entries from "@/app/api/entries/route";
-import * as breakdowns from "@/app/api/breakdowns/route";
 import * as kpis from "@/app/api/kpis/route";
 import * as categories from "@/app/api/categories/route";
-import * as goals from "@/app/api/goals/route";
 import * as strategyObservations from "@/app/api/strategy/observations/route";
 import * as strategyComponentEntries from "@/app/api/strategy/component-entries/route";
 import * as strategyDistributions from "@/app/api/strategy/distributions/route";
@@ -232,14 +206,6 @@ const CASES: Case[] = [
     body: { id: 2, role: "viewer" } },
   { name: "POST /api/auth/change-password", method: "POST", path: "/api/auth/change-password", handler: changePassword.POST, okStatus: 200,
     body: { currentPassword: "tempPass123!", newPassword: "newPass456!" } },
-  { name: "POST /api/entries", method: "POST", path: "/api/entries", handler: entries.POST, okStatus: 201,
-    body: { kpi_id: 1, year: 2025, month: 1, value: 10 } },
-  { name: "DELETE /api/entries", method: "DELETE", path: "/api/entries", handler: entries.DELETE, okStatus: 200,
-    body: { id: 1 } },
-  { name: "POST /api/breakdowns", method: "POST", path: "/api/breakdowns", handler: breakdowns.POST, okStatus: 201,
-    body: { kpi_id: 1, year: 2025, label: "Q1", value: 10 } },
-  { name: "DELETE /api/breakdowns", method: "DELETE", path: "/api/breakdowns", handler: breakdowns.DELETE, okStatus: 200,
-    body: { id: 1 } },
   { name: "POST /api/kpis", method: "POST", path: "/api/kpis", handler: kpis.POST, okStatus: 201,
     body: { category_id: 1, slug: "k", name: "K" } },
   { name: "PATCH /api/kpis", method: "PATCH", path: "/api/kpis", handler: kpis.PATCH, okStatus: 200,
@@ -251,12 +217,6 @@ const CASES: Case[] = [
   { name: "PATCH /api/categories", method: "PATCH", path: "/api/categories", handler: categories.PATCH, okStatus: 200,
     body: { id: 1, name: "C2" } },
   { name: "DELETE /api/categories", method: "DELETE", path: "/api/categories", handler: categories.DELETE, okStatus: 200,
-    body: { id: 1 } },
-  { name: "POST /api/goals", method: "POST", path: "/api/goals", handler: goals.POST, okStatus: 201,
-    body: { kpi_id: 1, target_year: 2029, baseline_year: 2026, goal_type: "number", target_value: 3 } },
-  { name: "PATCH /api/goals", method: "PATCH", path: "/api/goals", handler: goals.PATCH, okStatus: 200,
-    body: { id: 1, enabled: true } },
-  { name: "DELETE /api/goals", method: "DELETE", path: "/api/goals", handler: goals.DELETE, okStatus: 200,
     body: { id: 1 } },
 ];
 
@@ -377,6 +337,18 @@ describe("D8AD-CAN-004 shared request guard — per-handler", () => {
 });
 
 describe("D8AD-CAN-004 shared request guard — guard unit functions", () => {
+  it("uses the incoming Host when Next's internal URL has a different authority", async () => {
+    const req = new NextRequest("http://localhost:3000/api/users", {
+      method: "POST",
+      headers: {
+        host: "127.0.0.1:3290",
+        origin: "http://127.0.0.1:3290",
+      },
+    });
+    const { checkOriginOrReferer } = await import("@/lib/request-guard");
+    expect(checkOriginOrReferer(req)).toBeNull();
+  });
+
   it("canonicalOrigins honors APP_CANONICAL_ORIGIN (comma list)", async () => {
     process.env.APP_CANONICAL_ORIGIN = "https://app.example.com, https://app2.example.com";
     const req = new NextRequest("http://other.test/api/users", {

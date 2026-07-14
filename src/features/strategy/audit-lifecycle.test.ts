@@ -181,6 +181,35 @@ describe("strategic audit deletion lifecycle", () => {
     ]);
   });
 
+  it("pages audit events with a validated offset", () => {
+    const first = recordStrategicAuditEvent({
+      entity_type: "kpi",
+      entity_id: 51,
+      event_type: "create",
+      entity_display_name: "First measure",
+      new_value: { name: "First measure" },
+    });
+    const second = recordStrategicAuditEvent({
+      entity_type: "kpi",
+      entity_id: 52,
+      event_type: "create",
+      entity_display_name: "Second measure",
+      new_value: { name: "Second measure" },
+    });
+
+    expect(listStrategicAuditEvents({ limit: 1, offset: 0 }).map((event) => event.id)).toEqual([
+      second.id,
+    ]);
+    expect(listStrategicAuditEvents({ limit: 1, offset: 1 }).map((event) => event.id)).toEqual([
+      first.id,
+    ]);
+    expect(
+      listStrategicAuditEvents({ limit: 1, offset: Number.POSITIVE_INFINITY }).map(
+        (event) => event.id,
+      ),
+    ).toEqual([second.id]);
+  });
+
   it("rejects incomplete audit snapshots before writing a row", () => {
     expect(() =>
       recordStrategicAuditEvent({

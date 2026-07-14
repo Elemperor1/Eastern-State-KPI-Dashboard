@@ -154,12 +154,12 @@
   --chart-primary: #209ba5;        /* main stroke / current year */
   --chart-secondary: #005f6f;      /* compare year bar / secondary stroke */
   --chart-tertiary: #003649;       /* deep tertiary, used for the
-                                      'recent' trend line on TrendChart */
+                                      the current strategic trend line */
   --chart-brand-soft: #9cd9de;     /* fills at low emphasis */
   --chart-brand-mid: #36adb6;      /* mid-tone variant for stacked series */
   --chart-accent: #f7f242;         /* yellow — used sparingly, never
                                       stacked next to itself */
-  --chart-ink-soft: #557883;       /* 3rd historic year on TrendChart */
+  --chart-ink-soft: #557883;       /* additional comparison series */
   --chart-muted: #a9c2c8;          /* disabled / null data */
   --chart-grid: #e7eef0;
   --chart-axis: #557883;

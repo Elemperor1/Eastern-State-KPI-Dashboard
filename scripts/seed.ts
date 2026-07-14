@@ -13,10 +13,13 @@ import {
   STRATEGIC_PLAN_CATEGORIES,
   STRATEGIC_PLAN_YEARS,
 } from "../src/features/catalog/strategic-plan";
-import { upsertGoal } from "../src/features/goals";
-import { upsertBreakdown, upsertEntry } from "../src/features/metrics/server";
 import { getDb, transaction } from "../src/lib/db";
 import { ensureStrategicPlanConfiguration } from "../src/features/strategy/server";
+import {
+  seedLegacyBreakdown,
+  seedLegacyGoal,
+  seedLegacyScalar,
+} from "./legacy-seed";
 
 function resetStrategicPlanData(): void {
   const db = getDb();
@@ -73,10 +76,9 @@ function main(): void {
           sort_order: definition.sort_order,
         });
         for (const year of STRATEGIC_PLAN_YEARS) {
-          upsertEntry({
-            kpi_id: kpi.id,
+          seedLegacyScalar({
+            kpiId: kpi.id,
             year,
-            month: 0,
             value: definition.annual[year],
             notes: null,
           });
@@ -85,15 +87,14 @@ function main(): void {
         if (definition.goal) {
           const baselineValue =
             definition.annual[STRATEGIC_PLAN_BASELINE_YEAR];
-          upsertGoal({
-            kpi_id: kpi.id,
-            target_year: definition.goal.target_year,
-            baseline_year: STRATEGIC_PLAN_BASELINE_YEAR,
-            goal_type: "growth_pct" in definition.goal ? "pct" : "number",
-            target_value: "growth_pct" in definition.goal
+          seedLegacyGoal({
+            kpiId: kpi.id,
+            targetYear: definition.goal.target_year,
+            baselineYear: STRATEGIC_PLAN_BASELINE_YEAR,
+            goalType: "growth_pct" in definition.goal ? "pct" : "number",
+            targetValue: "growth_pct" in definition.goal
               ? definition.goal.growth_pct
               : definition.goal.target - baselineValue,
-            enabled: true,
             notes: definition.goal.notes ?? null,
           });
           goalCount++;
@@ -115,12 +116,12 @@ function main(): void {
         for (const year of STRATEGIC_PLAN_YEARS) {
           const values = definition.breakdown[year];
           for (const [sortOrder, label] of definition.labels.entries()) {
-            upsertBreakdown({
-              kpi_id: kpi.id,
+            seedLegacyBreakdown({
+              kpiId: kpi.id,
               year,
               label,
               value: values[label] ?? 0,
-              sort_order: sortOrder,
+              sortOrder,
               notes: null,
             });
             entryCount++;

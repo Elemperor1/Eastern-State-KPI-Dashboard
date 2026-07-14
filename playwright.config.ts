@@ -1,4 +1,5 @@
 import { defineConfig } from "@playwright/test";
+import { randomBytes } from "node:crypto";
 import os from "node:os";
 import path from "node:path";
 import {
@@ -12,6 +13,8 @@ const databaseRun = createE2EDatabaseRun({
   port,
   explicitPath: process.env.E2E_DATABASE_PATH,
 });
+const adminPassword = `E2E-${randomBytes(24).toString("base64url")}`;
+const sessionSecret = randomBytes(48).toString("base64url");
 
 export default defineConfig({
   testDir: "./e2e",
@@ -25,6 +28,7 @@ export default defineConfig({
   globalTeardown: "./e2e/global-teardown.ts",
   metadata: {
     [E2E_DATABASE_RUN_METADATA_KEY]: databaseRun,
+    e2eAdminPassword: adminPassword,
   },
   reporter: "line",
   use: {
@@ -36,15 +40,19 @@ export default defineConfig({
     trace: "retain-on-failure",
   },
   webServer: {
-    // Polling avoids macOS/sandbox watcher exhaustion (EMFILE) during the
-    // browser suite while retaining the loopback-only development bypass.
-    command: "npm run db:seed && npm run dev",
+    // Polling avoids macOS/sandbox watcher exhaustion (EMFILE). The suite uses
+    // a real credentialed session against its private disposable database.
+    command: "npm run db:seed && npm run setup:admin && npm run dev",
     env: {
       APP_CANONICAL_ORIGIN: baseURL,
-      AUTH_DISABLED: "true",
+      AUTH_DISABLED: "false",
       BIND_HOST: "127.0.0.1",
+      BOOTSTRAP_ADMIN_PASSWORD: adminPassword,
       DATABASE_PATH: databaseRun.databasePath,
       PORT: String(port),
+      SESSION_SECRET: sessionSecret,
+      SESSION_SECURE: "false",
+      SETUP_ADMIN_PASSWORD: adminPassword,
       WATCHPACK_POLLING: "true",
       WATCHPACK_POLLING_INTERVAL: "1000",
     },

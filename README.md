@@ -1,4 +1,4 @@
-# Eastern State KPI Intelligence Dashboard
+# Eastern State Strategic Plan
 
 A production-quality internal KPI Intelligence Dashboard for **Eastern State Penitentiary Historic Site**. Built for executive leadership and board reporting to understand completion of the 2025–2029 strategic plan, annual pacing, full-plan progress, unresolved measurement definitions, and supporting year comparisons.
 
@@ -58,6 +58,11 @@ On the first run against a fresh database, `ensureSeedAdmin()` creates `kerry@ea
 The quick-start development command above runs with `AUTH_DISABLED=true` and
 never logs in, so provisioning stays out of your way.
 
+If normal development reports `EMFILE` or stops noticing file changes, use
+`AUTH_DISABLED=true npm run dev:stable`. It runs the same loopback development
+server with Watchpack polling and is the stable fallback for constrained macOS
+file-watcher limits.
+
 ## What you get
 
 ### Data model
@@ -99,12 +104,20 @@ rows remain available for backward compatibility; they are not the named goal
 count. Legacy annual values continue to use internal `month = 0`, which is
 never exposed as a user-selectable month.
 
-### Dashboard views
+### Product destinations
 
-- **Organization overview** (`/dashboard/overview`) — one organization-level “X of Y goals completed” score followed by five concise performance-area cards. Priority, named-goal, and configuration detail stays in drill-downs and board exports instead of expanding the landing page.
-- **Individual category pages** (`/dashboard/category/[slug]`) — scalar and strategically configured breakdown KPIs as direction-aware summary cards, with composition charts for every breakdown KPI; legacy-only breakdowns remain chart-only.
-- **Individual metric detail** (`/dashboard/metric/[slug]`) — calculated result, formula, raw inputs, target description, annual and full-plan progress, components/distributions/revenue, provenance-aware history, audit history, and exports. Effective cadence controls history labels; first-class history wins over retained compatibility rows.
-- **Trend Explorer** (`/dashboard/trends`) — multi-KPI, multi-year overlays (monthly metrics).
+- **Overview** (`/dashboard/overview`) — a route-scoped organization score, the five Strategic Priorities, and a bounded Needs attention list. It never calculates or renders the Board Report.
+- **Data Entry** (`/data-entry`, Admin) — one resumable reporting-year checklist. Each measure renders only the raw inputs required by its effective strategic configuration. Save state is server-confirmed and failed saves retain the draft.
+- **Reports** (`/reports`) — Board Report and strategic Trends behind one selector. Only the selected report is loaded; CSV/PNG/PDF exports operate from the visible report.
+- **Setup** (`/setup`, Admin) — one Measures, Goals, People, and Activity workspace. Configuration gaps are a Measures attention filter rather than a destination.
+
+Overview also links to two deliberate drill-down routes; they are not top-level
+destinations or additional workflows:
+
+- **Strategic Priority** (`/dashboard/category/[slug]`) — goal progress and the
+  measures that contribute to it, using strategic calculated results only.
+- **Measure** (`/dashboard/metric/[slug]`) — current result, target progress,
+  related inputs, and strategic reported-result history.
 
 Comparison logic adapts to unit type:
 
@@ -114,17 +127,10 @@ Comparison logic adapts to unit type:
 - Direction-aware coloring marks an increase as good/bad depending on whether higher or lower is better.
 - Board CSV/PNG/PDF exports consume the same sanitized report model as the UI; the server export route is session-protected.
 
-### Admin
-
-- **Data entry** (`/admin/data`) — pick category, metric, and year. Monthly metrics get a 12-month grid; annual metrics get a single full-year value; breakdown metrics get editable label/value rows. Optional notes per entry.
-- **Strategic data entry** (`/admin/strategy-data`) — enter or remove first-class KPI observations, component entries, and distribution responses using the configured period and raw-input shape.
-- **KPIs & categories** (`/admin/kpis`) — manage legacy catalog metadata and open the strategic editor for formulas, targets, components, and bands.
-- **Strategic KPI editor** (`/admin/kpis/[id]`) — select a reporting year, edit its annual/full-plan targets, components, and distribution bands, or atomically create a future-dated measurement successor when historical values make in-place formula changes unsafe.
-- **Legacy KPI goals** (`/admin/goals`) — maintain the backward-compatible per-KPI baseline/delta targets.
-- **Strategic goals** (`/admin/strategic-goals`) — edit named-goal rules, membership roles/weights/order, workflow metadata, lifecycle, and future-dated goal or membership successors without rewriting historical calculations.
-- **Configuration gaps** (`/admin/configuration-gaps`) — filter unresolved targets and definitions by priority, goal, owner, year, status, and frequency.
-- **History** (`/admin/history`) — browse value-entry and immutable strategic-configuration audit events, including catalog and legacy-goal lifecycle snapshots with actor attribution.
-- **Users** (`/admin/users`) — invite viewers, reset passwords.
+The former `/admin/*`, `/dashboard/trends`, `/api/entries`, `/api/breakdowns`,
+and `/api/goals` production workflows are removed, not aliased. Legacy values,
+breakdowns, targets, snapshots, and tombstones remain a read-only historical
+archive. ADR 0022 documents backup, migration, and rollback.
 
 ## Architecture
 
@@ -157,17 +163,9 @@ as a "Sample data" badge throughout the UI.
 | `/dashboard/overview`          | Category overview (executive summary)       | viewer + admin      |
 | `/dashboard/category/[slug]`   | Individual category page                    | viewer + admin      |
 | `/dashboard/metric/[slug]`     | Individual metric detail view               | viewer + admin      |
-| `/dashboard/trends`            | Multi-KPI, multi-year trend explorer         | viewer + admin      |
-| `/admin`                       | Consolidated administration hub            | admin only          |
-| `/admin/data`                  | Data entry (monthly/annual/breakdown)       | admin only          |
-| `/admin/strategy-data`         | Strategic raw-value data entry              | admin only          |
-| `/admin/kpis`                  | Manage KPIs and categories                  | admin only          |
-| `/admin/kpis/[id]`             | Edit strategic KPI configuration            | admin only          |
-| `/admin/goals`                 | Manage legacy per-KPI targets               | admin only          |
-| `/admin/strategic-goals`       | Manage named strategic goals                | admin only          |
-| `/admin/configuration-gaps`    | Resolve strategic KPI configuration gaps   | admin only          |
-| `/admin/history`               | Value and strategic audit history           | admin only          |
-| `/admin/users`                 | Manage team members                         | admin only          |
+| `/reports`                     | Board Report and strategic Trends           | viewer + admin      |
+| `/data-entry`                  | Reporting checklist and strategic values    | admin only          |
+| `/setup`                       | Measures, Goals, People, and Activity        | admin only          |
 
 ### Strategic API surfaces
 
@@ -188,8 +186,8 @@ through legacy scalar entry routes:
 - `PATCH /api/strategy/memberships` manages effective KPI completion role,
   weight, and display order within a named goal.
 
-The exhaustive auth regression matrix currently contains 35 protected
-route/method combinations: 33 admin-gated mutations and two session-gated
+The exhaustive auth regression matrix currently contains 28 protected
+route/method combinations: 26 admin-gated mutations and two session-gated
 reads (`strategy/export` and `strategy/distribution-bands`). Every mutation is
 also enrolled in the shared same-origin, JSON content-type, and CSRF checks.
 
@@ -202,7 +200,8 @@ npm wrapper) against a running server. The bypass path is dev-only because
 
 ```bash
 # Smoke test the bypass-auth flow (no login required).
-AUTH_DISABLED=true PORT=3290 npm run dev &
+AUTH_DISABLED=true APP_CANONICAL_ORIGIN=http://127.0.0.1:3290 \
+  WATCHPACK_POLLING=true PORT=3290 npm run dev &
 AUTH_DISABLED=true PORT=3290 BASE=http://127.0.0.1:3290 bash ./scripts/smoke.sh
 
 # Stop the dev server before reusing :3290 for the production/auth-enabled flow.
@@ -212,13 +211,19 @@ SMOKE_EMAIL=kerry@easternstate.org SMOKE_PASSWORD='<operator-provisioned passwor
   AUTH_DISABLED=false PORT=3290 BASE=http://127.0.0.1:3290 bash ./scripts/smoke.sh
 ```
 
-It verifies the 5-priority/59-KPI strategic catalog, every category page,
-representative annual percentage/currency/breakdown metrics, the annual-only
-Trend Explorer state, admin pages, mutation round-trips, and the auth-bypass
-behavior of `POST /api/entries` (401 with no session when auth is enabled; 201
-when the bypass is in effect). For curl mutations, the harness first fetches
+It verifies the four-destination product, the 5-priority/59-KPI strategic
+catalog, a narrow Overview with no report markup, removed-route 404s, on-demand
+Reports, Setup areas, canonical strategic mutation/export round-trips, and the
+development-bypass boundary. For curl mutations, the harness first fetches
 the `eastern_state_kpi_csrf` cookie from `/api/auth/me` and sends both `Origin`
 and `X-CSRF-Token`, matching the browser `apiFetch` path.
+
+With that server still running, use `PERF_EMAIL` and `PERF_PASSWORD` with
+`BASE=http://127.0.0.1:3290 npm run perf:profile`. It verifies the session,
+records server response, LCP, decoded HTML/JavaScript, DOM size, and hidden
+Board Report presence, and saves a raw Chrome trace for every desktop/mobile
+destination pair. The evidence set contains eight current and eight controlled
+baseline traces. See `docs/performance/issue-42.md`.
 
 `npm run test:e2e` never points at `data/kpi.db`: Playwright atomically
 reserves a database in a private `0700` temporary run directory, propagates
@@ -268,17 +273,17 @@ covers — plus mobile rendering at 390 px, exports, forced password rotation,
 and auth API regression coverage — lives at `docs/qa-manual.md`. New engineers should
 walk the checklist end-to-end after their first checkout.
 
-Current schema-11 verification recorded on July 13, 2026: `npm test` passed
-**91 files / 1,504 tests**; `npm run design-system:test` passed its security and
+Current schema-11 verification recorded on July 14, 2026: `npm test` passed
+**68 files / 1,141 tests**; `npm run design-system:test` passed its security and
 architecture guards, typecheck, and production build; the loopback development
-smoke passed **66/66** checks; and `npm run test:e2e` passed **5/5** serial
-workflows, including 390 px navigation plus PNG/PDF signature and dimension
-checks. A final live in-app Browser review at 1280 px covered the overview,
-excluded-reason drilldown, configuration gaps, ratio editor, strategic-goal
-year boundaries, cumulative metric detail, and both history feeds with no
-console warnings or errors. Auth behavior is covered by the 35-route regression
-matrix; run the documented credentialed auth-enabled smoke as the normal
-operator pre-release step.
+smoke passed **50/50** checks; the credentialed production smoke passed
+**52/52**; and `npm run test:e2e` passed **8/8** serial workflows through a
+real provisioned admin login, including 390 px navigation plus CSV/PNG/PDF
+validation. The authenticated production
+profile set saved sixteen raw Chrome traces: eight current and eight controlled
+baseline. The exact-route Overview comparison reduced decoded HTML by 94.2%
+and DOM elements by 96.7%, with no hidden Board Report. Auth behavior is
+covered by the current 28-route regression matrix.
 
 Schema 8 intentionally replaced the former sample catalog with the strategic
 plan, resetting KPI data and audit history while preserving users. Schema 9 is

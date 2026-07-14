@@ -136,9 +136,9 @@ describe("goal-completion presentation model", () => {
     }));
 
     expect(normalized.excludedGoalReasons[0]?.reasons).toEqual([
-      "No required, fully configured KPIs are eligible",
-      "One or more KPI targets are not finalized",
-      "Goal definition is not finalized",
+      "No required, fully configured measures are ready",
+      "One or more measure targets are not finalized",
+      "The goal definition is not finalized",
     ]);
     expect(JSON.stringify(normalized.excludedGoalReasons)).not.toMatch(
       /NO_ELIGIBLE_KPIS|needs_target|GOAL_NEEDS_DEFINITION/,

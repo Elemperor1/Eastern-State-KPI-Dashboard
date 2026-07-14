@@ -34,8 +34,6 @@ MALICIOUS_HOOK = (
     '`touch /tmp/eskpi-d8ad-marker`'
 )
 
-NEXT_ENTRY_ID = 999001
-NEXT_BREAKDOWN_ID = 888001
 NEXT_STRATEGY_OBSERVATION_ID = 777001
 
 CATALOG_TEXT = (
@@ -97,27 +95,25 @@ class SmokeFakeHandler(http.server.BaseHTTPRequestHandler):
                     "text/csv; charset=utf-8",
                 )
             return self._json({
-                "organizationName": "Eastern State Penitentiary Historic Site",
-                "selectedYear": 2026,
+                "report": {
+                    "organizationName": "Eastern State Penitentiary Historic Site",
+                    "selectedYear": 2026,
+                },
                 "injectionProbe": MALICIOUS_HOOK,
             })
 
         # API routes
         # Dashboard pages
         if path == "/dashboard/overview":
-            month = params.get("currentMonth", [None])[0]
-            if month:
-                month_names = {"3": "March", "11": "November"}
-                mn = month_names.get(month, "January")
-                text = f"Organizational Performance</h1><p>{mn} 2025 sample"
-            else:
-                text = (
-                    "Organizational Performance</h1><p>Sample data</p>"
-                    "<h2>Strategic plan progress</h2>"
-                    "<p>Goals completed</p>"
-                    "<p>7 of 12 goals completed</p>"
-                    "<h2>Performance by area</h2>"
-                )
+            text = (
+                "Overview</h1><p>Organization progress</p>"
+                "<h2>Strategic Priorities</h2><h2>Needs attention</h2>"
+                "<p>Reimagine Visitor Experience</p>"
+                "<p>Advance Historic Preservation</p>"
+                "<p>Expand Workforce Development</p>"
+                "<p>Support Learning through Justice Education</p>"
+                "<p>Enhance Organizational Capacity</p>"
+            )
             return self._html_resp(200, html_body(text))
 
         if path.startswith("/dashboard/category/"):
@@ -133,31 +129,35 @@ class SmokeFakeHandler(http.server.BaseHTTPRequestHandler):
                 return self._html_resp(200, html_body("Breakdown metric data"))
             return self._html_resp(200, html_body("Metric detail"))
 
-        if path == "/dashboard/trends":
+        if path == "/data-entry":
             return self._html_resp(200, html_body(
-                "No monthly KPIs in this category."
+                "Data Entry</h1><h2>Reporting checklist</h2>"
+                "<p>Not started — Needs attention — Complete</p>"
             ))
 
-        # Admin pages
-        if path == "/admin":
-            return self._html_resp(
-                200,
-                html_body("Administration — Enter data — Configure and review"),
-            )
-        if path.startswith("/admin/"):
-            if "/history" in path:
-                return self._html_resp(200, html_body("Edit history log 2099 Deleted"))
-            if "/kpis" in path:
-                return self._html_resp(200, html_body(CATALOG_TEXT))
-            if "/configuration-gaps" in path:
-                return self._html_resp(
-                    200,
-                    html_body(
-                        'Configuration gaps — Need targets — Need definitions — '
-                        '<a href="/admin/kpis/1">Open KPI editor</a>'
-                    ),
-                )
-            return self._html_resp(200, html_body("Admin panel"))
+        if path == "/reports":
+            if params.get("view", ["board"])[0] == "trends":
+                return self._html_resp(200, html_body(
+                    '<label for="trend-measure">Measure</label>'
+                    '<select id="trend-measure"></select>'
+                ))
+            kpis = "".join('<article data-board-kpi="1"></article>' for _ in range(59))
+            return self._html_resp(200, html_body(
+                f'<div id="board-report-root">{kpis}</div>'
+            ))
+
+        if path == "/setup":
+            area = params.get("area", ["measures"])[0]
+            if area == "measures" and params.get("filter") == ["needs-attention"]:
+                return self._html_resp(200, html_body(
+                    'Setup — Needs attention (2) — '
+                    '<a href="/setup?area=measures&amp;item=1">Open measure</a>'
+                ))
+            return self._html_resp(200, html_body(
+                "Setup</h1><nav><a>Measures</a><a>Goals</a>"
+                "<a>People</a><a>Activity</a></nav>"
+                "<p>Setup changes — Smoke test; delete after verification</p>"
+            ))
 
         # Fallback
         self._empty(404)
@@ -171,34 +171,6 @@ class SmokeFakeHandler(http.server.BaseHTTPRequestHandler):
             data = json.loads(body)
         except json.JSONDecodeError:
             return self._json_error(400, "Invalid JSON")
-
-        if self.path == "/api/entries":
-            global NEXT_ENTRY_ID
-            entry = {
-                "id": NEXT_ENTRY_ID,
-                "kpi_id": data.get("kpi_id", 0),
-                "year": data.get("year", 2099),
-                "month": data.get("month", 1),
-                "value": data.get("value", 0),
-                "updated_by": 1,
-                "description": MALICIOUS_HOOK,
-            }
-            NEXT_ENTRY_ID += 1
-            return self._json({"entry": entry}, code=201)
-
-        if self.path == "/api/breakdowns":
-            global NEXT_BREAKDOWN_ID
-            bd = {
-                "id": NEXT_BREAKDOWN_ID,
-                "kpi_id": data.get("kpi_id", 0),
-                "year": data.get("year", 2099),
-                "label": data.get("label", "Test row"),
-                "value": data.get("value", 0),
-                "updated_by": 1,
-                "description": MALICIOUS_HOOK,
-            }
-            NEXT_BREAKDOWN_ID += 1
-            return self._json({"breakdown": bd}, code=201)
 
         if self.path == "/api/strategy/observations":
             global NEXT_STRATEGY_OBSERVATION_ID

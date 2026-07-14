@@ -3,6 +3,9 @@
 Status: accepted
 Date: 2026-07-08
 
+Superseded in part by ADR 0022: the Board Report export root now exists only on
+the visible Reports route and is never rendered inside Overview.
+
 ## Context
 
 PNG and PDF output are approved product functionality. CSV row construction is already owned by `src/features/reporting/csv.ts`, but PNG and legacy PDF export behavior still depended on generic `src/lib` helpers for dashboard-specific DOM rules: temporarily revealing `.export-only` report chrome, hiding `.no-print` and page-header action controls, and resolving the themed page background before html2canvas capture.

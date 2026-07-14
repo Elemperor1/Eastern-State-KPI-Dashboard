@@ -2,9 +2,9 @@ import type { Metadata } from "next";
 import "./globals.css";
 
 export const metadata: Metadata = {
-  title: "Eastern State KPI Intelligence",
+  title: "Eastern State Strategic Plan",
   description:
-    "Internal KPI intelligence dashboard for Eastern State Penitentiary Historic Site.",
+    "Internal strategic plan reporting for Eastern State Penitentiary Historic Site.",
   robots: { index: false, follow: false },
   icons: {
     // Multi-size .ico (16/32/48/64/128/256) for legacy browsers — generated

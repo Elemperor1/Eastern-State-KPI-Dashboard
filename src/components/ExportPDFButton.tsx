@@ -14,10 +14,8 @@ interface Props {
  * `@/features/exports/legacy-pdf-export` and is loaded on first click via a dynamic
  * `import()` so it stays out of the initial page bundle.
  *
- * For metric and category pages, prefer the always-on `PrintButton`
- * (browser-native print → Save as PDF) plus `ExportCSVButton`. This button
- * remains for the dashboard overview and as a hidden fallback when callers
- * explicitly want raster output.
+ * Reports also expose browser-native print. This explicit download remains for
+ * people who need a ready-to-share raster PDF without using the print dialog.
  */
 export function ExportPDFButton({ targetId, fileName = "eastern-state-kpi.pdf" }: Props) {
   const [busy, setBusy] = useState(false);
@@ -46,7 +44,7 @@ export function ExportPDFButton({ targetId, fileName = "eastern-state-kpi.pdf" }
         onClick={handleExport}
         isLoading={busy}
         icon={busy ? Loader2 : Download}
-        aria-label="Export current dashboard view as PDF"
+        aria-label="Export current report as PDF"
         aria-controls={targetId}
       >
         {busy ? "Exporting" : "Export PDF"}

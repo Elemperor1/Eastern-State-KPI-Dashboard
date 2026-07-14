@@ -1,5 +1,4 @@
 import { STRATEGIC_PLAN_START_YEAR } from "@/features/strategy";
-import type { MonthlyEntryWithMeta } from "@/lib/types";
 import {
   listComponentsForConfiguration,
   listEffectiveMeasurementConfigs,
@@ -21,12 +20,9 @@ import {
 export function listCalculatedStrategyActuals({
   kpiIds,
   throughYear,
-  legacyEntries = [],
 }: {
   kpiIds: number[];
   throughYear: number;
-  /** Legacy raw rows used only for an explicit first-class YOY transition. */
-  legacyEntries?: MonthlyEntryWithMeta[];
 }): StrategicCalculatedActual[] {
   if (kpiIds.length === 0 || throughYear < STRATEGIC_PLAN_START_YEAR) return [];
   const wanted = new Set(kpiIds);
@@ -40,12 +36,6 @@ export function listCalculatedStrategyActuals({
     );
     for (const configuration of configurations) {
       if (configuration.measurement_type === null) continue;
-      seedLegacyYearOverYearPriorValues({
-        configuration,
-        reportingYear: year,
-        legacyEntries,
-        values: kpiValuesByReportingPeriod,
-      });
       if (configuration.measurement_type === "distribution") {
         for (const record of listStrategyDistributions({
           kpi_id: configuration.kpi_id,
@@ -108,55 +98,6 @@ export function listCalculatedStrategyActuals({
       periodRank(a.periodType) - periodRank(b.periodType) ||
       a.periodIndex - b.periodIndex,
   );
-}
-
-function seedLegacyYearOverYearPriorValues({
-  configuration,
-  reportingYear,
-  legacyEntries,
-  values,
-}: {
-  configuration: ReturnType<typeof listEffectiveMeasurementConfigs>[number];
-  reportingYear: number;
-  legacyEntries: MonthlyEntryWithMeta[];
-  values: Map<string, number>;
-}): void {
-  const resolvedUnit = configuration.unit ?? legacyEntries.find(
-    (entry) => entry.kpi_id === configuration.kpi_id,
-  )?.kpi_unit ?? null;
-  if (
-    configuration.measurement_type !== "year_over_year" ||
-    resolvedUnit === null ||
-    resolvedUnit.trim() === "" ||
-    resolvedUnit.trim() === "%"
-  ) {
-    return;
-  }
-  const priorYear = reportingYear - 1;
-  const priorRows = legacyEntries.filter(
-    (entry) =>
-      entry.kpi_id === configuration.kpi_id && entry.year === priorYear,
-  );
-  if (configuration.reporting_frequency === "annual") {
-    const annual = priorRows.findLast((entry) => entry.month === 0);
-    if (!annual) return;
-    const key = reportingPeriodValueKey(configuration.kpi_id, priorYear, {
-      period_type: "annual",
-      period_index: 0,
-    });
-    if (!values.has(key)) values.set(key, annual.value);
-    return;
-  }
-  if (configuration.reporting_frequency === "monthly") {
-    for (const entry of priorRows) {
-      if (entry.month < 1 || entry.month > 12) continue;
-      const key = reportingPeriodValueKey(configuration.kpi_id, priorYear, {
-        period_type: "monthly",
-        period_index: entry.month,
-      });
-      if (!values.has(key)) values.set(key, entry.value);
-    }
-  }
 }
 
 function calculateMultiComponentPeriods({

@@ -250,7 +250,7 @@ describe("strategic goal editor model", () => {
     const firstVisible = goal({ id: 99, name: "Another goal" });
     expect(resolveStrategicGoalSelection([firstVisible, successor], 52)).toBe(52);
     expect(strategicGoalSuccessorPath(successor)).toBe(
-      "/admin/strategic-goals?year=2027&goal=52",
+      "/setup?area=goals&year=2027&goal=52",
     );
     expect(canCreateStrategicGoalSuccessor(goal(), 2028)).toBe(true);
     expect(canCreateStrategicGoalSuccessor(goal(), 2029)).toBe(false);

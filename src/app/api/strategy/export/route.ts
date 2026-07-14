@@ -1,12 +1,17 @@
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 import { authErrorResponse, requireSession } from "@/features/auth/session";
-import { loadOverviewPageData } from "@/features/reporting/server";
+import {
+  listStrategicReportingPeriods,
+  loadBoardReportPageData,
+  reportingCycleThroughMonth,
+} from "@/features/reporting/server";
 import { buildStrategicBoardCsvText } from "@/features/reporting/strategic-board-report";
 
 const ExportQuerySchema = z.object({
   year: z.coerce.number().int().min(1900).max(2100),
   throughMonth: z.coerce.number().int().min(1).max(12).default(12),
+  period: z.string().min(1).optional(),
   format: z.enum(["json", "csv"]).default("json"),
 });
 
@@ -20,6 +25,7 @@ export async function GET(req: NextRequest) {
   const parsed = ExportQuerySchema.safeParse({
     year: req.nextUrl.searchParams.get("year") ?? new Date().getFullYear(),
     throughMonth: req.nextUrl.searchParams.get("throughMonth") ?? 12,
+    period: req.nextUrl.searchParams.get("period") ?? undefined,
     format: req.nextUrl.searchParams.get("format") ?? "json",
   });
   if (!parsed.success) {
@@ -29,12 +35,24 @@ export async function GET(req: NextRequest) {
     );
   }
 
-  const data = loadOverviewPageData({
+  const reportingPeriod = parsed.data.period
+    ? listStrategicReportingPeriods(parsed.data.year).find(
+        (candidate) => candidate.value === parsed.data.period,
+      )
+    : undefined;
+  if (parsed.data.period && !reportingPeriod) {
+    return NextResponse.json({ error: "Invalid reporting period" }, { status: 400 });
+  }
+
+  const data = loadBoardReportPageData({
     year: parsed.data.year,
-    throughMonth: parsed.data.throughMonth,
+    throughMonth: reportingPeriod
+      ? reportingCycleThroughMonth(reportingPeriod)
+      : parsed.data.throughMonth,
+    ...(reportingPeriod ? { reportingPeriod } : {}),
   });
   if (parsed.data.format === "csv") {
-    const output = buildStrategicBoardCsvText(data.strategicBoardReport);
+    const output = buildStrategicBoardCsvText(data.report);
     return new NextResponse(`\ufeff${output.csv}`, {
       status: 200,
       headers: {
@@ -46,7 +64,7 @@ export async function GET(req: NextRequest) {
   }
 
   return NextResponse.json(
-    { report: data.strategicBoardReport },
+    { report: data.report },
     { headers: { "cache-control": "private, no-store" } },
   );
 }

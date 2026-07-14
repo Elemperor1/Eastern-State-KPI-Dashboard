@@ -3,6 +3,9 @@
 Status: accepted
 Date: 2026-07-08
 
+Superseded in part by ADR 0022: Overview and Reports now use route-scoped
+server view models and URL navigation instead of retaining broad client data.
+
 ## Context
 
 Dashboard pages need authenticated server reads, but their year/month controls,

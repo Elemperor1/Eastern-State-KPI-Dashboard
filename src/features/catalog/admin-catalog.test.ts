@@ -1,27 +1,13 @@
 import { describe, expect, it } from "vitest";
 import {
-  buildCatalogCategorySummaries,
-  buildCatalogDeleteConfirmation,
-  buildCreateCategoryPayload,
   buildCreateKpiPayload,
   CATALOG_DIRECTIONS,
   CATALOG_REPORTING_FREQUENCIES,
-  CATALOG_SLUG_PATTERN,
   CATALOG_UNIT_TYPES,
   filterCatalogKpis,
   formatCatalogDirection,
 } from "./admin-catalog";
-import type { Category, KPIWithCategory } from "@/lib/types";
-
-function category(id: number, name: string): Category {
-  return {
-    id,
-    name,
-    slug: name.toLowerCase().replaceAll(" ", "-"),
-    description: null,
-    sort_order: id,
-  };
-}
+import type { KPIWithCategory } from "@/lib/types";
 
 function kpi(id: number, name: string, categoryId: number, categoryName: string): KPIWithCategory {
   return {
@@ -44,11 +30,6 @@ function kpi(id: number, name: string, categoryId: number, categoryName: string)
 }
 
 describe("admin catalog view helpers", () => {
-  const categories = [
-    category(1, "Education"),
-    category(2, "Fundraising"),
-    category(3, "Museum"),
-  ];
   const kpis = [
     kpi(1, "Video views", 1, "Education"),
     kpi(2, "Webpage views", 1, "Education"),
@@ -66,56 +47,11 @@ describe("admin catalog view helpers", () => {
     ]);
   });
 
-  it("keeps the catalog slug pattern compatible with browser validation", () => {
-    expect(() => new RegExp(CATALOG_SLUG_PATTERN, "v")).not.toThrow();
-    const slugPattern = new RegExp(`^(?:${CATALOG_SLUG_PATTERN})$`, "v");
-    expect(slugPattern.test("virtual-attendees-2026")).toBe(true);
-    expect(slugPattern.test("Virtual attendees")).toBe(false);
-  });
-
-  it("builds category chip summaries from the server-provided category order", () => {
-    expect(buildCatalogCategorySummaries(categories, kpis)).toEqual([
-      { id: 1, name: "Education", kpiCount: 2 },
-      { id: 2, name: "Fundraising", kpiCount: 1 },
-      { id: 3, name: "Museum", kpiCount: 0 },
-    ]);
-  });
-
   it("filters KPIs by category and by KPI name or slug", () => {
     expect(filterCatalogKpis(kpis, { query: "video", categoryId: null }).map((item) => item.id)).toEqual([1]);
     expect(filterCatalogKpis(kpis, { query: "webpage-views", categoryId: null }).map((item) => item.id)).toEqual([2]);
     expect(filterCatalogKpis(kpis, { query: "", categoryId: 1 }).map((item) => item.id)).toEqual([1, 2]);
     expect(filterCatalogKpis(kpis, { query: "fund", categoryId: null })).toEqual([]);
-  });
-
-  it("describes the guarded KPI deletion workflow without promising entry cascades", () => {
-    expect(
-      buildCatalogDeleteConfirmation({
-        kind: "kpi",
-        id: 3,
-        name: "Overall donors",
-      }),
-    ).toEqual({
-      title: "Archive or delete “Overall donors”?",
-      description:
-        "Configured strategic KPIs are archived so their configuration and history remain restorable. Unconfigured legacy KPIs are deleted only after their monthly and breakdown entries are cleared.",
-      confirmLabel: "Continue",
-    });
-  });
-
-  it("describes the guarded category deletion workflow and its KPI metadata cascade", () => {
-    expect(
-      buildCatalogDeleteConfirmation({
-        kind: "category",
-        id: 2,
-        name: "Fundraising",
-      }),
-    ).toEqual({
-      title: "Archive or delete “Fundraising”?",
-      description:
-        "Configured strategic priorities are archived with their goals, KPIs, and history preserved. Unconfigured legacy categories are deleted only after dependent entries are cleared.",
-      confirmLabel: "Continue",
-    });
   });
 
   it("builds create-KPI payloads with the existing defaults", () => {
@@ -138,16 +74,12 @@ describe("admin catalog view helpers", () => {
     });
   });
 
-  it("builds create-category payloads and preserves optional descriptions", () => {
+  it("creates the internal link name from the measure name", () => {
     const form = new FormData();
-    form.set("slug", "community");
-    form.set("name", "Community");
-    form.set("description", "Public programs");
+    form.set("category_id", "1");
+    form.set("name", "Café attendance & tours");
+    form.set("unit", "people");
 
-    expect(buildCreateCategoryPayload(form)).toEqual({
-      slug: "community",
-      name: "Community",
-      description: "Public programs",
-    });
+    expect(buildCreateKpiPayload(form).slug).toBe("cafe-attendance-tours");
   });
 });

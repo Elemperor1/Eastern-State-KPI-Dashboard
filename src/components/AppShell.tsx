@@ -1,18 +1,28 @@
 "use client";
 
 import Link from "next/link";
-import { usePathname } from "next/navigation";
-import { useState } from "react";
+import { usePathname, useRouter } from "next/navigation";
+import {
+  type MouseEvent as ReactMouseEvent,
+  useCallback,
+  useEffect,
+  useRef,
+  useState,
+} from "react";
 import {
   BarChart3,
+  FileText,
   LayoutDashboard,
   Menu,
   Settings,
-  TrendingUp,
   X,
 } from "lucide-react";
-import { Avatar, BrandMark, Button } from "@/components/ui";
+import { Avatar, BrandMark, Button, ConfirmDialog } from "@/components/ui";
 import { LogoutButton } from "./LogoutButton";
+import {
+  UnsavedChangesContext,
+  type UnsavedChangesState,
+} from "./UnsavedChangesContext";
 import type { SessionUser } from "@/lib/types";
 
 const NAV = [
@@ -20,47 +30,35 @@ const NAV = [
     href: "/dashboard/overview",
     label: "Overview",
     icon: LayoutDashboard,
-    group: "Dashboard",
     matches: ["/dashboard/overview"],
   },
   {
-    href: "/dashboard/trends",
-    label: "Trends",
-    icon: TrendingUp,
-    group: "Dashboard",
-    matches: ["/dashboard/trends"],
+    href: "/reports",
+    label: "Reports",
+    icon: FileText,
+    matches: ["/reports"],
   },
   {
-    href: "/admin/data",
-    label: "Data entry",
+    href: "/data-entry",
+    label: "Data Entry",
     icon: BarChart3,
     adminOnly: true,
-    group: "Admin",
-    matches: ["/admin/data", "/admin/strategy-data"],
+    matches: ["/data-entry"],
   },
   {
-    href: "/admin",
-    label: "Administration",
+    href: "/setup",
+    label: "Setup",
     icon: Settings,
     adminOnly: true,
-    group: "Admin",
     matches: [
-      "/admin",
-      "/admin/kpis",
-      "/admin/goals",
-      "/admin/strategic-goals",
-      "/admin/configuration-gaps",
-      "/admin/history",
-      "/admin/users",
+      "/setup",
     ],
   },
 ];
 
 function navItemIsActive(item: (typeof NAV)[number], pathname: string): boolean {
-  return item.matches.some((route) =>
-    route === "/admin"
-      ? pathname === route
-      : pathname === route || pathname.startsWith(`${route}/`),
+  return item.matches.some(
+    (route) => pathname === route || pathname.startsWith(`${route}/`),
   );
 }
 
@@ -97,29 +95,19 @@ function ShellNavigation({
   onNavigate?: () => void;
 }) {
   const visibleNav = NAV.filter((item) => !item.adminOnly || user.role === "admin");
-  const groups = Array.from(new Set(visibleNav.map((item) => item.group)));
 
   return (
     <nav className="flex-1 overflow-y-auto px-3 pb-4" aria-label="Primary">
-      {groups.map((group) => (
-        <div key={group} className="mb-6">
-          <p className="mb-2 px-3 text-[10px] font-semibold uppercase tracking-[0.12em] text-white/45">
-            {group}
-          </p>
-          <div className="space-y-1">
-            {visibleNav
-              .filter((item) => item.group === group)
-              .map((item) => (
-                <NavItem
-                  key={item.href}
-                  item={item}
-                  active={navItemIsActive(item, pathname)}
-                  onClick={onNavigate}
-                />
-              ))}
-          </div>
-        </div>
-      ))}
+      <div className="space-y-1">
+        {visibleNav.map((item) => (
+          <NavItem
+            key={item.href}
+            item={item}
+            active={navItemIsActive(item, pathname)}
+            onClick={onNavigate}
+          />
+        ))}
+      </div>
     </nav>
   );
 }
@@ -153,10 +141,87 @@ function AccountBlock({ user }: { user: SessionUser }) {
 
 export function AppShell({ user, children }: { user: SessionUser; children: React.ReactNode }) {
   const pathname = usePathname();
+  const router = useRouter();
   const [mobileOpen, setMobileOpen] = useState(false);
+  const [unsaved, setUnsaved] = useState<UnsavedChangesState>({
+    dirty: false,
+    busy: false,
+  });
+  const [pendingNavigation, setPendingNavigation] = useState<
+    { kind: "link"; href: string } | { kind: "history" } | null
+  >(null);
+  const historyGuardArmed = useRef(false);
+  const setUnsavedState = useCallback((state: UnsavedChangesState) => {
+    setUnsaved(state);
+  }, []);
+
+  useEffect(() => {
+    function warnBeforeUnload(event: BeforeUnloadEvent) {
+      if (!unsaved.dirty) return;
+      event.preventDefault();
+    }
+    window.addEventListener("beforeunload", warnBeforeUnload);
+    return () => window.removeEventListener("beforeunload", warnBeforeUnload);
+  }, [unsaved.dirty]);
+
+  const armHistoryGuard = useCallback(() => {
+    if (historyGuardArmed.current) return;
+    window.history.pushState(
+      { ...window.history.state, easternStateUnsavedGuard: true },
+      "",
+      window.location.href,
+    );
+    historyGuardArmed.current = true;
+  }, []);
+
+  useEffect(() => {
+    if (!unsaved.dirty) {
+      if (
+        historyGuardArmed.current &&
+        window.history.state?.easternStateUnsavedGuard
+      ) {
+        historyGuardArmed.current = false;
+        window.history.back();
+      }
+      return;
+    }
+
+    armHistoryGuard();
+    function guardHistoryNavigation() {
+      if (!historyGuardArmed.current) return;
+      historyGuardArmed.current = false;
+      setPendingNavigation({ kind: "history" });
+    }
+    window.addEventListener("popstate", guardHistoryNavigation);
+    return () => window.removeEventListener("popstate", guardHistoryNavigation);
+  }, [armHistoryGuard, unsaved.dirty]);
+
+  function guardLinkNavigation(event: ReactMouseEvent<HTMLDivElement>) {
+    if (!unsaved.dirty || event.defaultPrevented) return;
+    if (event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) {
+      return;
+    }
+    const target = event.target as Element | null;
+    const anchor = target?.closest<HTMLAnchorElement>("a[href]");
+    if (!anchor || anchor.target === "_blank" || anchor.hasAttribute("download")) return;
+    const url = new URL(anchor.href, window.location.href);
+    if (url.origin !== window.location.origin) return;
+    if (`${url.pathname}${url.search}${url.hash}` === `${window.location.pathname}${window.location.search}${window.location.hash}`) {
+      return;
+    }
+    event.preventDefault();
+    event.stopPropagation();
+    setPendingNavigation({
+      kind: "link",
+      href: `${url.pathname}${url.search}${url.hash}`,
+    });
+  }
 
   return (
-    <div className="min-h-screen bg-ink-50">
+    <UnsavedChangesContext.Provider
+      value={{ state: unsaved, setState: setUnsavedState }}
+    >
+    <div className="min-h-screen bg-ink-50" onClickCapture={guardLinkNavigation}>
       <a
         href="#main-content"
         className="fixed left-4 top-4 z-[80] -translate-y-24 rounded-lg bg-white px-4 py-3 text-sm font-semibold text-ink-950 shadow-floating transition-transform focus:translate-y-0"
@@ -165,11 +230,11 @@ export function AppShell({ user, children }: { user: SessionUser; children: Reac
       </a>
 
       <header className="fixed inset-x-0 top-0 z-40 flex h-16 items-center justify-between bg-ink-900 px-4 text-white lg:hidden">
-        <Link href="/dashboard/overview" className="flex min-h-11 items-center gap-3" aria-label="Eastern State KPI home">
+        <Link href="/dashboard/overview" className="flex min-h-11 items-center gap-3" aria-label="Eastern State home">
           <BrandMark size="sm" />
           <div>
             <span className="block text-sm font-semibold leading-tight">Eastern State</span>
-            <span className="block text-[10px] uppercase tracking-[0.1em] text-white/50">KPI Intelligence</span>
+            <span className="block text-[10px] uppercase tracking-[0.1em] text-white/50">Strategic Plan</span>
           </div>
         </Link>
         <Button
@@ -185,12 +250,12 @@ export function AppShell({ user, children }: { user: SessionUser; children: Reac
       </header>
 
       <aside className="fixed inset-y-0 left-0 hidden w-60 flex-col bg-ink-900 text-white lg:flex">
-        <Link href="/dashboard/overview" className="mx-4 mb-8 mt-5 flex items-center gap-3" aria-label="Eastern State KPI home">
+        <Link href="/dashboard/overview" className="mx-4 mb-8 mt-5 flex items-center gap-3" aria-label="Eastern State home">
             <BrandMark size="md" />
           <div className="min-w-0">
             <span className="block truncate text-sm font-semibold leading-tight">Eastern State</span>
             <span className="mt-1 block truncate text-[10px] uppercase tracking-[0.1em] text-white/50">
-              KPI Intelligence
+              Strategic Plan
             </span>
           </div>
         </Link>
@@ -217,7 +282,7 @@ export function AppShell({ user, children }: { user: SessionUser; children: Reac
                 <BrandMark size="md" />
                 <div>
                   <span className="block text-sm font-semibold">Eastern State</span>
-                  <span className="block text-[10px] uppercase tracking-[0.1em] text-white/50">KPI Intelligence</span>
+                  <span className="block text-[10px] uppercase tracking-[0.1em] text-white/50">Strategic Plan</span>
                 </div>
               </Link>
               <Button
@@ -239,6 +304,31 @@ export function AppShell({ user, children }: { user: SessionUser; children: Reac
       <main id="main-content" className="min-w-0 pt-16 lg:ml-60 lg:pt-0">
         {children}
       </main>
+      <ConfirmDialog
+        open={pendingNavigation !== null}
+        title="Leave without saving?"
+        description="Your changes have not been saved. Stay here to keep working, or leave and discard them."
+        confirmLabel="Leave page"
+        cancelLabel="Keep editing"
+        tone="danger"
+        onClose={() => {
+          const pending = pendingNavigation;
+          setPendingNavigation(null);
+          if (pending?.kind === "history" && unsaved.dirty) armHistoryGuard();
+        }}
+        onConfirm={() => {
+          const pending = pendingNavigation;
+          setPendingNavigation(null);
+          historyGuardArmed.current = false;
+          setUnsaved({ dirty: false, busy: false });
+          if (pending?.kind === "history") {
+            window.history.back();
+          } else if (pending?.kind === "link") {
+            router.replace(pending.href);
+          }
+        }}
+      />
     </div>
+    </UnsavedChangesContext.Provider>
   );
 }

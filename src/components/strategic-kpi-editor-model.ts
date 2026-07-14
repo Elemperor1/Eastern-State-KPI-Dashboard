@@ -20,6 +20,7 @@ import {
   type StrategyReportingFrequency,
   type TargetScope,
 } from "@/features/strategy";
+import { slugFromLabel } from "@/lib/slug";
 
 export const STRATEGY_EDITOR_ENDPOINTS = {
   configurations: "/api/strategy/configurations",
@@ -526,7 +527,7 @@ export function buildComponentFormPayload(
   if (draft.id === null) {
     return parseWithSchema(StrategyComponentCreateSchema, {
       configuration_id: configurationId,
-      slug: draft.slug.trim(),
+      slug: draft.slug.trim() || slugFromLabel(draft.label),
       label: draft.label.trim(),
       measurement_type: draft.measurementType,
       unit: optionalText(draft.unit),
@@ -632,7 +633,7 @@ export function buildDistributionBandPayload(
   componentId: number | null = null,
 ): StrategyEditorBuildResult {
   const errors: StrategyEditorFormErrors = {};
-  const slug = draft.slug.trim();
+  const slug = draft.slug.trim() || slugFromLabel(draft.label);
   const label = draft.label.trim();
   const start = requiredNumber(draft.effectiveFromYear);
   const end = optionalNumber(draft.effectiveToYear);

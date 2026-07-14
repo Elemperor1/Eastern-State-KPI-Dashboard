@@ -148,7 +148,7 @@ export function resolveStrategicGoalSelection(
 export function strategicGoalSuccessorPath(
   successor: Pick<PersistedStrategicGoal, "id" | "plan_start_year">,
 ): string {
-  return `/admin/strategic-goals?year=${successor.plan_start_year}&goal=${successor.id}`;
+  return `/setup?area=goals&year=${successor.plan_start_year}&goal=${successor.id}`;
 }
 
 function optionalText(value: string): string | null {

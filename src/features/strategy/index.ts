@@ -118,3 +118,23 @@ export {
 // Namespaces remain convenient for callers that prefer an explicit domain.
 export * as strategyCalculations from "./calculations";
 export * as strategyPeriods from "./periods";
+export {
+  STRATEGIC_DATA_ENTRY_YEARS,
+  type StrategicDataEntryBandOption,
+  type StrategicDataEntryBandValue,
+  type StrategicDataEntryComponentOption,
+  type StrategicDataEntryKpiOption,
+  type StrategicDataEntryPageData,
+  type StrategicDataEntryRecord,
+  type StrategicDataEntryRecordKind,
+  type StrategicDataEntrySelectedKpi,
+} from "./data-entry-model";
+export {
+  buildReportingCycleOptions,
+  isReportingItemComplete,
+  reportingCycleForSelection,
+  reportingCycleMatchesFrequency,
+  reportingRecordMatchesCycle,
+  type ReportingCycleOption,
+  type ReportingCyclePeriodType,
+} from "./reporting-cycle";

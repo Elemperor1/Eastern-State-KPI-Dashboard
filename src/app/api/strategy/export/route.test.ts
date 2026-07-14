@@ -1,9 +1,14 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { NextRequest } from "next/server";
 
-const { requireSessionMock, loadOverviewPageDataMock } = vi.hoisted(() => ({
+const {
+  requireSessionMock,
+  listStrategicReportingPeriodsMock,
+  loadBoardReportPageDataMock,
+} = vi.hoisted(() => ({
   requireSessionMock: vi.fn(),
-  loadOverviewPageDataMock: vi.fn(),
+  listStrategicReportingPeriodsMock: vi.fn(),
+  loadBoardReportPageDataMock: vi.fn(),
 }));
 
 vi.mock("@/features/auth/session", () => ({
@@ -16,7 +21,10 @@ vi.mock("@/features/auth/session", () => ({
 }));
 
 vi.mock("@/features/reporting/server", () => ({
-  loadOverviewPageData: loadOverviewPageDataMock,
+  listStrategicReportingPeriods: listStrategicReportingPeriodsMock,
+  loadBoardReportPageData: loadBoardReportPageDataMock,
+  reportingCycleThroughMonth: (period: { periodType: string; periodIndex: number }) =>
+    period.periodType === "quarterly" ? period.periodIndex * 3 : period.periodIndex,
 }));
 
 import { GET } from "./route";
@@ -39,8 +47,15 @@ const REPORT = {
 beforeEach(() => {
   requireSessionMock.mockReset();
   requireSessionMock.mockResolvedValue({ id: 1, role: "viewer" });
-  loadOverviewPageDataMock.mockReset();
-  loadOverviewPageDataMock.mockReturnValue({ strategicBoardReport: REPORT });
+  loadBoardReportPageDataMock.mockReset();
+  loadBoardReportPageDataMock.mockReturnValue({ report: REPORT });
+  listStrategicReportingPeriodsMock.mockReset();
+  listStrategicReportingPeriodsMock.mockReturnValue([{
+    value: "monthly:1",
+    label: "January",
+    periodType: "monthly",
+    periodIndex: 1,
+  }]);
 });
 
 describe("GET /api/strategy/export", () => {
@@ -52,7 +67,7 @@ describe("GET /api/strategy/export", () => {
     expect(response.status).toBe(200);
     expect(response.headers.get("cache-control")).toBe("private, no-store");
     await expect(response.json()).resolves.toEqual({ report: REPORT });
-    expect(loadOverviewPageDataMock).toHaveBeenCalledWith({
+    expect(loadBoardReportPageDataMock).toHaveBeenCalledWith({
       year: 2026,
       throughMonth: 12,
     });
@@ -71,6 +86,30 @@ describe("GET /api/strategy/export", () => {
       "eastern-state-strategic-board-2026.csv",
     );
     expect(await response.text()).toContain("Selected Year");
+    expect(loadBoardReportPageDataMock).toHaveBeenCalledWith({
+      year: 2026,
+      throughMonth: 6,
+    });
+  });
+
+  it("uses the exact reporting period when the export names one", async () => {
+    const response = await GET(
+      new NextRequest(
+        "http://localhost/api/strategy/export?year=2026&period=monthly%3A1",
+      ),
+    );
+
+    expect(response.status).toBe(200);
+    expect(loadBoardReportPageDataMock).toHaveBeenCalledWith({
+      year: 2026,
+      throughMonth: 1,
+      reportingPeriod: {
+        value: "monthly:1",
+        label: "January",
+        periodType: "monthly",
+        periodIndex: 1,
+      },
+    });
   });
 
   it("rejects invalid periods before loading data", async () => {
@@ -80,7 +119,7 @@ describe("GET /api/strategy/export", () => {
       ),
     );
     expect(response.status).toBe(400);
-    expect(loadOverviewPageDataMock).not.toHaveBeenCalled();
+    expect(loadBoardReportPageDataMock).not.toHaveBeenCalled();
   });
 
   it("rejects an unauthenticated request", async () => {
@@ -89,6 +128,6 @@ describe("GET /api/strategy/export", () => {
       new NextRequest("http://localhost/api/strategy/export?year=2026"),
     );
     expect(response.status).toBe(401);
-    expect(loadOverviewPageDataMock).not.toHaveBeenCalled();
+    expect(loadBoardReportPageDataMock).not.toHaveBeenCalled();
   });
 });

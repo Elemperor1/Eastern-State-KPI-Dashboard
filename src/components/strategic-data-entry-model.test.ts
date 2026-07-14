@@ -9,6 +9,7 @@ import {
   deleteEndpointForRecord,
   draftFromStrategicDataEntryRecord,
   emptyStrategicDataEntryDraft,
+  initialStrategicDataEntryDrafts,
   entryPeriodOptions,
   strategicDataEntryPeriodLabel,
   strategicDataEntryRawValueLabel,
@@ -21,21 +22,28 @@ function selected(
   measurementType: MeasurementType,
   overrides: Partial<StrategicDataEntrySelectedKpi> = {},
 ): StrategicDataEntrySelectedKpi {
-  return {
+  const result = {
     id: 12,
     slug: "visitor-participation",
     name: "Visitor participation",
     priorityName: "Reimagine Visitor Experience",
     goalName: "Build a primary interpretive plan",
     unit: "people",
+    numeratorLabel: null,
+    denominatorLabel: null,
     measurementType,
-    reportingFrequency: "annual",
-    configurationStatus: "active",
+    reportingFrequency: "annual" as const,
+    configurationStatus: "active" as const,
     calculationPrecision: 1,
     fixedDenominator: null,
     components: [],
     bands: [],
     ...overrides,
+  };
+  return {
+    ...result,
+    numeratorLabel: result.numeratorLabel ?? null,
+    denominatorLabel: result.denominatorLabel ?? null,
   };
 }
 
@@ -89,6 +97,54 @@ function record(
 }
 
 describe("strategic data-entry model", () => {
+  it("creates one period-scoped draft for every component in a focused form", () => {
+    const kpi = selected("multi_component", {
+      reportingFrequency: "annual",
+      components: [
+        {
+          id: 11,
+          label: "Admissions",
+          measurementType: "count",
+          unit: "visits",
+          numeratorLabel: null,
+          denominatorLabel: null,
+          fixedDenominator: null,
+        },
+        {
+          id: 12,
+          label: "Members",
+          measurementType: "count",
+          unit: "visits",
+          numeratorLabel: null,
+          denominatorLabel: null,
+          fixedDenominator: null,
+        },
+      ],
+    });
+    const drafts = initialStrategicDataEntryDrafts(
+      kpi,
+      2027,
+      {
+        value: "annual:0",
+        label: "Full year",
+        periodType: "annual",
+        periodIndex: 0,
+      },
+      [record({ componentId: 11, scalarValue: 42 })],
+    );
+
+    expect(Object.keys(drafts)).toEqual(["11", "12"]);
+    expect(drafts["11"]).toMatchObject({
+      componentId: "11",
+      periodIndex: "0",
+      value: "42",
+    });
+    expect(drafts["12"]).toMatchObject({
+      componentId: "12",
+      periodIndex: "0",
+      value: "",
+    });
+  });
   it("uses real calendar months and never presents storage month zero", () => {
     const kpi = selected("count", { reportingFrequency: "monthly" });
     const draft = draftFor(kpi);
@@ -298,6 +354,8 @@ describe("strategic data-entry model", () => {
           label: "Participants enrolled",
           measurementType: "count",
           unit: "people",
+          numeratorLabel: null,
+          denominatorLabel: null,
           fixedDenominator: null,
         },
       ],
@@ -370,6 +428,8 @@ describe("strategic data-entry model", () => {
           label: "Audience mix",
           measurementType: "distribution",
           unit: "respondents",
+          numeratorLabel: null,
+          denominatorLabel: null,
           fixedDenominator: null,
         },
       ],
