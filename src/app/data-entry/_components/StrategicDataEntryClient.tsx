@@ -6,6 +6,7 @@ import { useRouter } from "next/navigation";
 import { ArrowLeft, Save } from "lucide-react";
 import {
   activeBandsForDraft,
+  buildStrategicDataEntryRequests,
   buildStrategicDataEntryMutation,
   displayStrategyLabel,
   initialStrategicDataEntryDrafts,
@@ -211,11 +212,15 @@ export function StrategicDataEntryClient({
     setErrors({});
     setBusy(true);
     try {
-      for (const entry of built) {
-        if (!entry.result.ok) continue;
-        const response = await apiFetch(entry.result.mutation.endpoint, {
+      const requests = buildStrategicDataEntryRequests(
+        built.flatMap((entry) =>
+          entry.result.ok ? [entry.result.mutation] : [],
+        ),
+      );
+      for (const request of requests) {
+        const response = await apiFetch(request.endpoint, {
           method: "POST",
-          body: entry.result.mutation.body,
+          body: request.body,
         });
         const body = (await response.json().catch(() => ({}))) as {
           error?: string;

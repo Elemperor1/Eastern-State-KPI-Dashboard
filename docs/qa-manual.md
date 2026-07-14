@@ -30,7 +30,8 @@ AUTH_DISABLED=true PORT=3290 BASE=http://127.0.0.1:3290 bash ./scripts/smoke.sh
 - Open `/data-entry?year=2029` as an Admin.
 - Exercise one atomic, one multi-component, and one distribution measure.
 - Force one strategic mutation to return 500. Confirm the input remains,
-  Couldn't save is announced, and the checklist is not Complete.
+  Couldn't save is announced, and the checklist is not Complete. For a
+  multi-component measure, confirm no component from the failed batch was saved.
 - Retry. Confirm Saved appears only after the response, Save and continue opens
   the next unfinished item, reload preserves the value, and Activity records
   the Actor and time.

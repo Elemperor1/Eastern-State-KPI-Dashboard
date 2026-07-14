@@ -60,6 +60,11 @@ export interface StrategicDataEntryMutation {
   body: Record<string, unknown>;
 }
 
+export interface StrategicDataEntryRequest {
+  endpoint: StrategicDataEntryMutation["endpoint"];
+  body: Record<string, unknown>;
+}
+
 export type StrategicDataEntryBuildResult =
   | {
       ok: true;
@@ -67,6 +72,40 @@ export type StrategicDataEntryBuildResult =
       errors: Record<string, never>;
     }
   | { ok: false; mutation: null; errors: StrategicDataEntryErrors };
+
+/**
+ * Multi-component measures must cross the HTTP boundary as one request so the
+ * server can commit every related input in a single transaction.
+ */
+export function buildStrategicDataEntryRequests(
+  mutations: StrategicDataEntryMutation[],
+): StrategicDataEntryRequest[] {
+  if (
+    mutations.length > 1 &&
+    mutations.every(
+      (mutation) =>
+        mutation.endpoint === "/api/strategy/component-entries" ||
+        mutation.endpoint === "/api/strategy/distributions",
+    )
+  ) {
+    return [
+      {
+        endpoint: "/api/strategy/observations",
+        body: {
+          submission_type: "multi_input",
+          writes: mutations.map((mutation) => ({
+            kind:
+              mutation.endpoint === "/api/strategy/distributions"
+                ? "distribution"
+                : "component_entry",
+            input: mutation.body,
+          })),
+        },
+      },
+    ];
+  }
+  return mutations;
+}
 
 export function displayStrategyLabel(value: string): string {
   return value

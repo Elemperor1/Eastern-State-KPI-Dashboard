@@ -4,6 +4,11 @@ import {
   type ConcreteStrategyReportingFrequency,
 } from "./periods";
 import type { MeasurementType, StrategyReportingFrequency } from "./types";
+import {
+  STRATEGIC_PLAN_END_YEAR,
+  STRATEGIC_PLAN_REPORTING_YEARS,
+  STRATEGIC_PLAN_START_YEAR,
+} from "./types";
 
 export type ReportingCyclePeriodType = ConcreteStrategyReportingFrequency;
 
@@ -26,6 +31,24 @@ const FREQUENCY_ORDER: ReportingCyclePeriodType[] = [
   "cumulative",
   "one_time",
 ];
+
+export function resolveStrategicReportingYear(
+  requested: string | number | null | undefined,
+  currentYear = new Date().getFullYear(),
+): number {
+  const parsed = Number(requested);
+  if (
+    STRATEGIC_PLAN_REPORTING_YEARS.includes(
+      parsed as (typeof STRATEGIC_PLAN_REPORTING_YEARS)[number],
+    )
+  ) {
+    return parsed;
+  }
+  return Math.max(
+    STRATEGIC_PLAN_START_YEAR,
+    Math.min(currentYear, STRATEGIC_PLAN_END_YEAR),
+  );
+}
 
 function option(
   periodType: ReportingCyclePeriodType,

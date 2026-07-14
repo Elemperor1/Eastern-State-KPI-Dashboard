@@ -106,8 +106,8 @@ SMOKE_EMAIL=kerry@easternstate.org SMOKE_PASSWORD='<operator-provisioned passwor
 Tests the four product destinations, all five priorities, the 59-KPI Board
 Report, strategic Trends, Setup areas, canonical strategic mutation/export,
 immutable Activity, and removed-route 404s. The July 14, 2026 loopback run
-passed **50/50** checks and the credentialed production run passed **52/52**.
-Current unit evidence is **68 files / 1,141 tests**; the Chrome e2e suite passed
+passed **51/51** checks and the credentialed production run passed **52/52**.
+Current unit evidence is **69 files / 1,151 tests**; the Chrome e2e suite passed
 **8/8** workflows through a real provisioned admin login. The authenticated production evidence includes eight
 current and eight controlled-baseline Chrome traces in `docs/performance/`.
 
@@ -153,7 +153,7 @@ and `/setup`. Setup areas are Measures, Goals, People, and Activity.
 - Annual pacing and full-plan progress are separate contracts. Annual targets are selected by `reporting_year`; full-plan targets have no reporting year and use their plan target year. Do not substitute one for the other when a target is missing.
 - Effective-dated target/configuration integrity is enforced. Defined annual and full-plan targets must retain compatible configuration coverage, and full-plan selection uses nearest future then latest past. Once values or targets use calculation semantics, create a successor instead of editing them in place. For component lifecycle changes, archive affected parent/component targets first; restore the configuration and components before restoring targets.
 - First-class strategic observations are the sole live reporting source. Retained legacy rows are visible only as archive/history evidence and are never used as a fallback calculation input.
-- First-class raw values use `kpi_observations`, `kpi_component_entries`, and `distribution_observations`/`distribution_values` through `/api/strategy/{observations,component-entries,distributions}`. First-class configuration uses `/api/strategy/{configurations,components,targets,goals,distribution-bands}`. Do not tunnel these writes through legacy scalar entry routes.
+- First-class raw values use `kpi_observations`, `kpi_component_entries`, and `distribution_observations`/`distribution_values` through `/api/strategy/{observations,component-entries,distributions}`. A multi-input Data Entry submission uses one atomic batch payload through `POST /api/strategy/observations`; it does not create a fourth value boundary. First-class configuration uses `/api/strategy/{configurations,components,targets,goals,distribution-bands}`. Do not tunnel these writes through legacy scalar entry routes.
 - Distribution-band labels are snapshotted on recorded values. A referenced band's calculation-semantic classification (`derived_group`, unknown, declined) is immutable; end its effective range and create a successor band so historical demographic percentages do not change.
 - Goal targets use a persisted baseline year, not an inferred moving prior year. Overview/Setup loaders pass an explicit progress year, and the goal form exposes the baseline. `baseline_year < target_year` is enforced in validation and SQLite.
 - Metric storage integrity is enforced by `src/features/metrics/{entries,breakdowns}.ts`: scalar entries cannot target breakdown KPIs, breakdown rows cannot target scalar KPIs, annual/flexible KPIs accept only `month = 0`, monthly KPIs accept only `1–12`, and blank breakdown labels are rejected. The APIs return 400 for storage-type or period mismatches and 404 for unknown KPIs.

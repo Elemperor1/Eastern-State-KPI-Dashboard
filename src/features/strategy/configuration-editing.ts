@@ -2103,6 +2103,140 @@ const GOAL_MEMBERSHIP_SETTING_FIELDS = [
 
 const GOAL_MEMBERSHIP_SEMANTIC_FIELDS = ["is_required", "weight"] as const;
 
+export interface AppendStrategicGoalMembershipInput {
+  goal_id: number;
+  role: "required" | "informational";
+  weight?: number | null;
+  effective_start_year: number;
+  effective_end_year?: number | null;
+}
+
+export interface StrategicGoalMembershipCatalogContext {
+  kpi_id: number;
+  priority_id: number;
+  kpi_archived_at: string | null;
+  priority_archived_at: string | null;
+}
+
+/**
+ * Append a catalog-owned KPI identity to a strategic goal. The catalog caller
+ * supplies its current lifecycle context; this feature owns membership order,
+ * effective dates, persistence, and audit history.
+ */
+export function appendStrategicGoalMembership(
+  input: AppendStrategicGoalMembershipInput,
+  catalog: StrategicGoalMembershipCatalogContext,
+  actorId: number | null = null,
+): PersistedGoalMembership {
+  return transaction(() => {
+    const goal = rawGoal(input.goal_id);
+    const displayOrder = Number(
+      (
+        getDb()
+          .prepare(
+            `SELECT COALESCE(MAX(display_order), -1) + 1 AS next_order
+             FROM goal_kpis
+             WHERE goal_id = ? AND archived_at IS NULL`,
+          )
+          .get(input.goal_id) as { next_order: number }
+      ).next_order,
+    );
+    const parsed = parse(
+      StrategicGoalMembershipInputSchema,
+      {
+        ...input,
+        kpi_id: catalog.kpi_id,
+        display_order: displayOrder,
+      },
+      "Invalid strategic goal membership.",
+    );
+    if (
+      goal.archived_at != null ||
+      catalog.kpi_archived_at != null ||
+      catalog.priority_archived_at != null
+    ) {
+      throw new StrategyEditConflictError(
+        "Restore the measure, goal, and Strategic Priority before assigning the measure.",
+        "archived_membership_context",
+      );
+    }
+    if (Number(goal.priority_id) !== catalog.priority_id) {
+      throw new StrategyEditConflictError(
+        "The measure and goal must belong to the same Strategic Priority.",
+        "membership_priority_mismatch",
+      );
+    }
+    const effectiveEnd = parsed.effective_end_year ?? Number(goal.plan_end_year);
+    if (
+      parsed.effective_start_year < Number(goal.plan_start_year) ||
+      effectiveEnd > Number(goal.plan_end_year)
+    ) {
+      throw new StrategyEditConflictError(
+        "The measure assignment must stay within the goal's plan years.",
+        "membership_outside_goal_range",
+      );
+    }
+    const overlap = getDb()
+      .prepare(
+        `SELECT id FROM goal_kpis
+         WHERE goal_id = ? AND kpi_id = ?
+           AND effective_from_year <= ?
+           AND (effective_to_year IS NULL OR effective_to_year >= ?)
+         LIMIT 1`,
+      )
+      .get(
+        parsed.goal_id,
+        parsed.kpi_id,
+        effectiveEnd,
+        parsed.effective_start_year,
+      ) as { id: number } | undefined;
+    if (overlap) {
+      throw new StrategyEditConflictError(
+        `The measure is already assigned to this goal during membership ${overlap.id}.`,
+        "effective_range_overlap",
+      );
+    }
+
+    const inserted = getDb()
+      .prepare(
+        `INSERT INTO goal_kpis (
+           goal_id, kpi_id, is_required, weight, display_order,
+           effective_from_year, effective_to_year, created_by, updated_by
+         ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      )
+      .run(
+        parsed.goal_id,
+        parsed.kpi_id,
+        parsed.role === "required" ? 1 : 0,
+        parsed.weight ?? 1,
+        parsed.display_order,
+        parsed.effective_start_year,
+        effectiveEnd,
+        actorId,
+        actorId,
+      );
+    const after = rawGoalMembership(Number(inserted.lastInsertRowid));
+    const fields = [
+      ...GOAL_MEMBERSHIP_SETTING_FIELDS,
+      "effective_from_year",
+      "effective_to_year",
+    ] as const;
+    recordStrategicAuditEvent({
+      entity_type: "goal_membership",
+      entity_id: Number(after.id),
+      event_type: "create",
+      entity_display_name: `${String(after.kpi_name)} membership`,
+      parent_priority_name: String(after.priority_name),
+      parent_goal_name: String(after.goal_name),
+      previous_value: null,
+      new_value: stableSnapshot(after, fields),
+      actor_id: actorId,
+      source_reference: String(after.goal_source_reference ?? "") || null,
+    });
+    return asGoalMembership(after);
+  });
+}
+
 function membershipHasHistoricalValues(membership: RawRow): boolean {
   const startYear = Math.max(
     Number(membership.effective_from_year),

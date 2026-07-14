@@ -3,8 +3,10 @@ import { z } from "zod";
 import { authErrorResponse, requireAdmin } from "@/features/auth/session";
 import {
   deleteStrategyObservation,
+  StrategyObservationSubmissionSchema,
   StrategyValueEntryNotFoundError,
   StrategyValueEntryValidationError,
+  upsertStrategyMultiComponentBatch,
   upsertStrategyObservation,
 } from "@/features/strategy/server";
 import { assertMutationRequest } from "@/lib/request-guard";
@@ -34,10 +36,25 @@ export async function POST(req: NextRequest) {
   const guard = assertMutationRequest(req);
   if (guard) return guard;
   try {
-    const observation = upsertStrategyObservation(
-      await req.json().catch(() => ({})),
-      user.id,
-    );
+    const input = await req.json().catch(() => ({}));
+    const parsed = StrategyObservationSubmissionSchema.safeParse(input);
+    if (!parsed.success) {
+      return NextResponse.json(
+        {
+          error: "Invalid observation submission.",
+          issues: parsed.error.issues.map((issue) => ({
+            path: issue.path.join("."),
+            message: issue.message,
+          })),
+        },
+        { status: 400 },
+      );
+    }
+    if ("submission_type" in parsed.data) {
+      const results = upsertStrategyMultiComponentBatch(input, user.id);
+      return NextResponse.json({ results }, { status: 201 });
+    }
+    const observation = upsertStrategyObservation(input, user.id);
     return NextResponse.json({ observation }, { status: 201 });
   } catch (error) {
     const response = valueEntryError(error);

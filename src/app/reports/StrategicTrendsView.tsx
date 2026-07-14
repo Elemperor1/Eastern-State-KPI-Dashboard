@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import {
   CartesianGrid,
   Line,
@@ -20,6 +20,19 @@ import {
 } from "@/components/ui";
 import type { StrategicTrendReportData } from "@/features/reporting/types";
 
+export function resolveStrategicTrendSelection(
+  series: Array<{
+    kpiId: number;
+    points: Array<{ value: number | null }>;
+  }>,
+  selectedId: number,
+): number {
+  if (series.some((item) => item.kpiId === selectedId)) return selectedId;
+  return series.find((item) =>
+    item.points.some((point) => point.value !== null),
+  )?.kpiId ?? series[0]?.kpiId ?? 0;
+}
+
 export function StrategicTrendsView({
   data,
   reportingPeriod,
@@ -27,13 +40,21 @@ export function StrategicTrendsView({
   data: StrategicTrendReportData;
   reportingPeriod: string;
 }) {
-  const firstWithData = data.series.find((item) =>
-    item.points.some((point) => point.value !== null),
-  );
   const [selectedId, setSelectedId] = useState(
-    firstWithData?.kpiId ?? data.series[0]?.kpiId ?? 0,
+    resolveStrategicTrendSelection(data.series, 0),
   );
-  const selected = data.series.find((item) => item.kpiId === selectedId) ?? null;
+  const resolvedSelectedId = resolveStrategicTrendSelection(
+    data.series,
+    selectedId,
+  );
+  useEffect(() => {
+    if (resolvedSelectedId !== selectedId) {
+      setSelectedId(resolvedSelectedId);
+    }
+  }, [resolvedSelectedId, selectedId]);
+  const selected = data.series.find(
+    (item) => item.kpiId === resolvedSelectedId,
+  ) ?? null;
   const csvRows = useMemo(
     () => selected?.points.map((point) => ({
       "Measure ID": selected.kpiId,
@@ -53,7 +74,7 @@ export function StrategicTrendsView({
         <FormField label="Measure" htmlFor="trend-measure" className="w-full max-w-xl">
           <Select
             id="trend-measure"
-            value={selectedId}
+            value={resolvedSelectedId}
             onChange={(event) => setSelectedId(Number(event.target.value))}
           >
             {data.series.map((item) => (

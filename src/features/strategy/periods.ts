@@ -1,5 +1,6 @@
 import {
   STRATEGY_REPORTING_FREQUENCIES,
+  type ExplicitStrategyReportingFrequency,
   type StrategyReportingFrequency,
 } from "./types";
 
@@ -22,10 +23,8 @@ export const STRATEGY_QUARTER_LABELS = ["Q1", "Q2", "Q3", "Q4"] as const;
 export const FLEXIBLE_PERIOD_MODES = ["monthly", "annual"] as const;
 
 export type FlexiblePeriodMode = (typeof FLEXIBLE_PERIOD_MODES)[number];
-export type ConcreteStrategyReportingFrequency = Exclude<
-  StrategyReportingFrequency,
-  "flexible"
->;
+export type ConcreteStrategyReportingFrequency =
+  ExplicitStrategyReportingFrequency;
 
 export type StrategyPeriodDefinition =
   | {

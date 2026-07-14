@@ -80,6 +80,18 @@ else
   fi
 fi
 
+mutation_request "$anonymous_jar" POST "/api/strategy/observations" \
+  '{"submission_type":"multi_input","writes":[]}'
+if [ "$AUTH_DISABLED" = "true" ]; then
+  check "development bypass reaches atomic batch boundary" test "$MUTATION_STATUS" != "401"
+else
+  if [ "$MUTATION_STATUS" = "401" ] || [ "$MUTATION_STATUS" = "403" ]; then
+    check "atomic batch rejects anonymous requests" true
+  else
+    check "atomic batch rejects anonymous requests" false
+  fi
+fi
+
 echo
 echo "Product routes"
 overview=$(curl -sk -b "$cookie_jar" "$BASE/dashboard/overview?year=2026")

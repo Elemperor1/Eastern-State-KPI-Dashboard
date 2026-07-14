@@ -5,6 +5,7 @@ import type {
 } from "@/features/strategy";
 import {
   activeBandsForDraft,
+  buildStrategicDataEntryRequests,
   buildStrategicDataEntryMutation,
   deleteEndpointForRecord,
   draftFromStrategicDataEntryRecord,
@@ -145,6 +146,83 @@ describe("strategic data-entry model", () => {
       value: "",
     });
   });
+
+  it("batches every component mutation into one atomic request", () => {
+    const requests = buildStrategicDataEntryRequests([
+      {
+        endpoint: "/api/strategy/component-entries",
+        body: { component_id: 11, reporting_year: 2027, value: 42 },
+      },
+      {
+        endpoint: "/api/strategy/component-entries",
+        body: { component_id: 12, reporting_year: 2027, value: 18 },
+      },
+    ]);
+
+    expect(requests).toEqual([
+      {
+        endpoint: "/api/strategy/observations",
+        body: {
+          submission_type: "multi_input",
+          writes: [
+            {
+              kind: "component_entry",
+              input: { component_id: 11, reporting_year: 2027, value: 42 },
+            },
+            {
+              kind: "component_entry",
+              input: { component_id: 12, reporting_year: 2027, value: 18 },
+            },
+          ],
+        },
+      },
+    ]);
+  });
+
+  it("includes distribution components in the same atomic request", () => {
+    const requests = buildStrategicDataEntryRequests([
+      {
+        endpoint: "/api/strategy/component-entries",
+        body: { component_id: 11, reporting_year: 2027, value: 42 },
+      },
+      {
+        endpoint: "/api/strategy/distributions",
+        body: {
+          kpi_id: 12,
+          component_id: 13,
+          reporting_year: 2027,
+          respondent_count: 42,
+          bands: [],
+        },
+      },
+    ]);
+
+    expect(requests).toEqual([
+      {
+        endpoint: "/api/strategy/observations",
+        body: {
+          submission_type: "multi_input",
+          writes: [
+            {
+              kind: "component_entry",
+              input: { component_id: 11, reporting_year: 2027, value: 42 },
+            },
+            {
+              kind: "distribution",
+              input: {
+                kpi_id: 12,
+                component_id: 13,
+                reporting_year: 2027,
+                respondent_count: 42,
+                bands: [],
+              },
+            },
+          ],
+        },
+      },
+    ]);
+  });
+
   it("uses real calendar months and never presents storage month zero", () => {
     const kpi = selected("count", { reportingFrequency: "monthly" });
     const draft = draftFor(kpi);

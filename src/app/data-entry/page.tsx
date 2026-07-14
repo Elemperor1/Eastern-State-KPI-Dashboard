@@ -4,7 +4,7 @@ import { AppShell } from "@/components/AppShell";
 import { getCurrentUserReadOnly } from "@/features/auth/session";
 import { firstSearchParam } from "@/lib/search-params";
 import {
-  STRATEGIC_DATA_ENTRY_YEARS,
+  resolveStrategicReportingYear,
   type StrategicDataEntryPageData,
 } from "@/features/strategy";
 import {
@@ -21,15 +21,6 @@ type SearchParams = Promise<{
   saved?: string | string[];
 }>;
 
-function selectedReportingYear(value: string | undefined): number {
-  const parsed = Number(value);
-  return STRATEGIC_DATA_ENTRY_YEARS.includes(
-    parsed as (typeof STRATEGIC_DATA_ENTRY_YEARS)[number],
-  )
-    ? parsed
-    : Math.max(2025, Math.min(new Date().getFullYear(), 2029));
-}
-
 export default async function UnifiedDataEntryPage({
   searchParams,
 }: {
@@ -41,7 +32,9 @@ export default async function UnifiedDataEntryPage({
   if (user.role !== "admin") redirect("/dashboard/overview");
 
   const params = await searchParams;
-  const reportingYear = selectedReportingYear(firstSearchParam(params.year));
+  const reportingYear = resolveStrategicReportingYear(
+    firstSearchParam(params.year),
+  );
   const reportingPeriod = firstSearchParam(params.period);
   const rawKpiId = Number(firstSearchParam(params.kpi));
   const requestedKpiId =

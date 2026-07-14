@@ -2,7 +2,8 @@ import { redirect } from "next/navigation";
 import { getCurrentUserReadOnly } from "@/features/auth/session";
 import { AppShell } from "@/components/AppShell";
 import { ExecutiveOverview } from "./ExecutiveOverview";
-import { listDashboardYears, loadExecutiveOverviewPageData } from "@/features/reporting/server";
+import { loadExecutiveOverviewPageData } from "@/features/reporting/server";
+import { resolveStrategicReportingYear } from "@/features/strategy";
 
 export const dynamic = "force-dynamic";
 
@@ -16,9 +17,9 @@ export default async function DashboardOverviewPage({
   if (!user) redirect("/login");
   if (user.must_change_password) redirect("/setup-password");
 
-  const years = listDashboardYears();
-  const rawYear = Number(Array.isArray(sp.year) ? sp.year[0] : sp.year);
-  const year = years.includes(rawYear) ? rawYear : Math.max(...years);
+  const year = resolveStrategicReportingYear(
+    Array.isArray(sp.year) ? sp.year[0] : sp.year,
+  );
   const data = loadExecutiveOverviewPageData({ year });
 
   return (

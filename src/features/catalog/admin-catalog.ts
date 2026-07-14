@@ -1,20 +1,18 @@
-import type { Direction, KPIWithCategory, ReportingFrequency, UnitType } from "@/lib/types";
+import {
+  EXPLICIT_STRATEGY_REPORTING_FREQUENCIES,
+  MEASUREMENT_TYPES,
+  type ExplicitStrategyReportingFrequency,
+  type MeasurementType,
+} from "@/features/strategy";
+import type { Direction, KPIWithCategory } from "@/lib/types";
 import { slugFromLabel } from "@/lib/slug";
 
-export const CATALOG_UNIT_TYPES: UnitType[] = [
-  "count",
-  "percent",
-  "currency",
-  "attendance",
-  "note",
-  "breakdown",
-];
+export const STRATEGIC_MEASURE_TYPES: MeasurementType[] = [...MEASUREMENT_TYPES];
 
-export const CATALOG_REPORTING_FREQUENCIES: ReportingFrequency[] = [
-  "monthly",
-  "annual",
-  "flexible",
-];
+export const STRATEGIC_MEASURE_FREQUENCIES:
+  ExplicitStrategyReportingFrequency[] = [
+    ...EXPLICIT_STRATEGY_REPORTING_FREQUENCIES,
+  ];
 
 export const CATALOG_DIRECTIONS: Direction[] = ["higher", "lower", "neutral"];
 
@@ -23,12 +21,19 @@ export interface CatalogFilters {
   categoryId: number | null;
 }
 
+export interface StrategicMeasureGoalOption {
+  id: number;
+  name: string;
+  priorityName: string;
+}
+
 export interface CreateKpiPayload extends Record<string, unknown> {
-  category_id: number;
+  goal_id: number;
+  reporting_year: number;
   slug: string;
   name: string;
   unit: string;
-  unit_type: string;
+  measurement_type: string;
   reporting_frequency: string;
   direction: string;
   description: string | null;
@@ -60,11 +65,12 @@ export function formatCatalogDirection(direction: Direction): string {
 export function buildCreateKpiPayload(form: FormData): CreateKpiPayload {
   const name = String(form.get("name") || "");
   return {
-    category_id: Number(form.get("category_id")),
+    goal_id: Number(form.get("goal_id")),
+    reporting_year: Number(form.get("reporting_year")),
     slug: String(form.get("slug") || "") || slugFromLabel(name),
     name,
     unit: String(form.get("unit") || ""),
-    unit_type: String(form.get("unit_type") || "count"),
+    measurement_type: String(form.get("measurement_type") || "count"),
     reporting_frequency: String(form.get("reporting_frequency") || "monthly"),
     direction: String(form.get("direction") || "higher"),
     description: String(form.get("description") || "") || null,

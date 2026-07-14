@@ -177,6 +177,9 @@ through legacy scalar entry routes:
 - `POST`/`DELETE /api/strategy/observations`,
   `/api/strategy/component-entries`, and `/api/strategy/distributions` write or
   remove raw KPI, component, and distribution values.
+- `POST /api/strategy/observations` also accepts the atomic multi-input payload
+  (`submission_type: "multi_input"`) used to save every component and
+  distribution in one form submission.
 - `GET`/`POST`/`PATCH /api/strategy/distribution-bands` reads effective bands
   and creates, updates, reorders, archives, or restores them.
 - `POST`/`PATCH /api/strategy/configurations`,
@@ -274,9 +277,9 @@ and auth API regression coverage — lives at `docs/qa-manual.md`. New engineers
 walk the checklist end-to-end after their first checkout.
 
 Current schema-11 verification recorded on July 14, 2026: `npm test` passed
-**68 files / 1,141 tests**; `npm run design-system:test` passed its security and
+**69 files / 1,151 tests**; `npm run design-system:test` passed its security and
 architecture guards, typecheck, and production build; the loopback development
-smoke passed **50/50** checks; the credentialed production smoke passed
+smoke passed **51/51** checks; the credentialed production smoke passed
 **52/52**; and `npm run test:e2e` passed **8/8** serial workflows through a
 real provisioned admin login, including 390 px navigation plus CSV/PNG/PDF
 validation. The authenticated production

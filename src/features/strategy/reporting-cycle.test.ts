@@ -5,9 +5,17 @@ import {
   reportingCycleForSelection,
   reportingCycleMatchesFrequency,
   reportingRecordMatchesCycle,
+  resolveStrategicReportingYear,
 } from "./reporting-cycle";
 
 describe("reporting cycle", () => {
+  it("uses a requested plan year or clamps the current year to the plan", () => {
+    expect(resolveStrategicReportingYear("2028", 2026)).toBe(2028);
+    expect(resolveStrategicReportingYear(undefined, 2026)).toBe(2026);
+    expect(resolveStrategicReportingYear("not-a-year", 2024)).toBe(2025);
+    expect(resolveStrategicReportingYear(undefined, 2032)).toBe(2029);
+  });
+
   it("builds one clear selection list for the frequencies that are due", () => {
     const options = buildReportingCycleOptions(
       ["monthly", "quarterly", "annual", "flexible"],

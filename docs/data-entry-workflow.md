@@ -46,6 +46,11 @@ Current writes use only:
 - `POST`/`DELETE /api/strategy/component-entries`; and
 - `POST`/`DELETE /api/strategy/distributions`.
 
+Multi-input forms send one batch to `POST /api/strategy/observations`, which
+uses `submission_type: "multi_input"` to distinguish the strict batch schema,
+then commits every component and distribution input together or rolls the
+entire save back.
+
 The old `/api/entries` and `/api/breakdowns` routes are removed. Their tables
 and `entry_history` remain a read-only archive visible in Setup → Activity.
 

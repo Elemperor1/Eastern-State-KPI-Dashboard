@@ -1,4 +1,13 @@
-import { recordStrategicAuditEvent } from "@/features/strategy/server";
+import type {
+  ExplicitStrategyReportingFrequency,
+  MeasurementType,
+} from "@/features/strategy";
+import {
+  appendStrategicGoalMembership,
+  createMeasurementConfiguration,
+  getStrategicGoalRecord,
+  recordStrategicAuditEvent,
+} from "@/features/strategy/server";
 import { getDb, transaction } from "@/lib/db";
 import type {
   Category,
@@ -384,6 +393,144 @@ export function createKPI(
     const row = rawKpiWithContext(Number(result.lastInsertRowid));
     recordLegacyKpiEvent(null, row, "create", actorId);
     return asKpi(row);
+  });
+}
+
+export interface CreateStrategicMeasureInput {
+  goal_id: number;
+  reporting_year: number;
+  slug: string;
+  name: string;
+  unit: string;
+  measurement_type: MeasurementType;
+  reporting_frequency: ExplicitStrategyReportingFrequency;
+  direction: Direction;
+  description?: string | null;
+}
+
+function legacyUnitTypeForMeasurement(
+  measurementType: MeasurementType,
+): UnitType {
+  if (measurementType === "currency") return "currency";
+  if (
+    measurementType === "percentage" ||
+    measurementType === "average" ||
+    measurementType === "ratio"
+  ) {
+    return "percent";
+  }
+  if (measurementType === "distribution") return "breakdown";
+  if (
+    measurementType === "binary" ||
+    measurementType === "milestone" ||
+    measurementType === "multi_component"
+  ) {
+    return "note";
+  }
+  return "count";
+}
+
+function legacyFrequencyForStrategy(
+  frequency: ExplicitStrategyReportingFrequency,
+): ReportingFrequency {
+  if (frequency === "monthly" || frequency === "annual") return frequency;
+  return "flexible";
+}
+
+/**
+ * Create every record a runtime strategic measure needs as one unit of work.
+ * The legacy KPI row remains the shared identity/catalog record, while the
+ * membership and configuration make the measure usable by Setup, Data Entry,
+ * and Reports. Any validation or persistence failure rolls back all three.
+ */
+export function createStrategicMeasure(
+  input: CreateStrategicMeasureInput,
+  actorId: number | null = null,
+) {
+  return transaction(() => {
+    const goal = getStrategicGoalRecord(input.goal_id);
+    if (!goal) {
+      throw new Error(`Strategic goal ${input.goal_id} was not found.`);
+    }
+    const priority = getCategory(goal.priority_id, { includeArchived: true });
+    if (
+      !priority ||
+      priority.archived_at !== null ||
+      goal.archived_at !== null ||
+      goal.configuration_status === "archived"
+    ) {
+      throw new Error(
+        "Restore the goal and Strategic Priority before adding a measure.",
+      );
+    }
+    if (
+      input.reporting_year < goal.plan_start_year ||
+      input.reporting_year > goal.plan_end_year
+    ) {
+      throw new Error(
+        `Reporting year must be between ${goal.plan_start_year} and ${goal.plan_end_year}.`,
+      );
+    }
+
+    const kpi = createKPI(
+      {
+        category_id: goal.priority_id,
+        slug: input.slug,
+        name: input.name,
+        unit: input.unit,
+        unit_type: legacyUnitTypeForMeasurement(input.measurement_type),
+        reporting_frequency: legacyFrequencyForStrategy(
+          input.reporting_frequency,
+        ),
+        direction: input.direction,
+        description: input.description ?? null,
+      },
+      actorId,
+    );
+    const membership = appendStrategicGoalMembership(
+      {
+        goal_id: goal.id,
+        role: "required",
+        weight: 1,
+        effective_start_year: input.reporting_year,
+        effective_end_year: goal.plan_end_year,
+      },
+      {
+        kpi_id: kpi.id,
+        priority_id: kpi.category_id,
+        kpi_archived_at: kpi.archived_at ?? null,
+        priority_archived_at: priority.archived_at,
+      },
+      actorId,
+    );
+    const configuration = createMeasurementConfiguration(
+      {
+        kpi_id: kpi.id,
+        measurement_type: input.measurement_type,
+        unit: input.unit,
+        numerator_label: null,
+        denominator_label: null,
+        fixed_denominator: null,
+        baseline_value: null,
+        reporting_frequency: input.reporting_frequency,
+        aggregation_method: "none",
+        board_level_status: "not_reported",
+        calculation_precision: 1,
+        allow_score_over_max: false,
+        effective_start_year: input.reporting_year,
+        effective_end_year: goal.plan_end_year,
+        configuration_status: "draft",
+        unresolved_question: null,
+        owner: null,
+        due_date: null,
+        resolution_notes: null,
+        source_reference: "Created in Setup",
+        last_reviewed_date: null,
+      },
+      actorId,
+    );
+
+    return { kpi, membership, configuration };
   });
 }
 

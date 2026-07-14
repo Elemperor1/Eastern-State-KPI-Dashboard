@@ -58,6 +58,26 @@ async function openChecklistItem(
   return `${selectedUrl.pathname}${selectedUrl.search}`;
 }
 
+async function setMeasureLifecycle(
+  page: Page,
+  id: number,
+  action: "archive" | "restore",
+) {
+  const token = (await page.context().cookies()).find(
+    (cookie) => cookie.name === "eastern_state_kpi_csrf",
+  )?.value;
+  expect(token).toBeTruthy();
+  const response = await page.request.patch("/api/kpis", {
+    headers: {
+      "content-type": "application/json",
+      origin: new URL(page.url()).origin,
+      "x-csrf-token": token!,
+    },
+    data: { id, action },
+  });
+  expect(response.ok(), await response.text()).toBe(true);
+}
+
 test.beforeAll(async ({}, testInfo) => {
   const run = e2eDatabaseRunFromMetadata(testInfo.config.metadata);
   const db = new DatabaseSync(run.databasePath);
@@ -275,6 +295,14 @@ test("shows four admin destinations and removes every superseded route", async (
 
 test("keeps Overview concise and reads saved strategic results", async ({ page }) => {
   const browserErrors = collectBrowserErrors(page);
+  await page.goto("/dashboard/overview");
+  const expectedDefaultYear = Math.max(
+    2025,
+    Math.min(new Date().getFullYear(), 2029),
+  );
+  await expect(page.getByLabel("Reporting year")).toHaveValue(
+    String(expectedDefaultYear),
+  );
   const response = await page.goto(`/dashboard/overview?year=${ENTRY_YEAR}`);
   expect(response?.status()).toBe(200);
   await expect(page.getByRole("heading", { name: "Overview" })).toBeVisible();
@@ -317,8 +345,30 @@ test("uses one flat Setup workspace on desktop and mobile", async ({ page }) => 
   await createMeasure.click();
   await expect(createMeasure).toBeDisabled();
   await expect(page.getByRole("status")).toContainText("Simulated create failure");
+  await expect(page.getByRole("textbox", { name: "Name" })).toHaveValue(
+    "Temporary acceptance measure",
+  );
   await page.unroute("**/api/kpis");
-  await page.getByRole("button", { name: "Cancel" }).click();
+  await createMeasure.click();
+  await expect(page).toHaveURL(/\/setup\?area=measures&item=\d+&year=2029/);
+  await expect(
+    page.getByRole("heading", { name: "Temporary acceptance measure" }),
+  ).toBeVisible();
+  const createdMeasureId = Number(new URL(page.url()).searchParams.get("item"));
+  expect(createdMeasureId).toBeGreaterThan(0);
+
+  await setMeasureLifecycle(page, createdMeasureId, "archive");
+  await page.goto("/setup?area=measures&year=2029");
+  const archivedMeasure = page
+    .getByRole("complementary", { name: "Measure list" })
+    .getByRole("link", { name: /Temporary acceptance measure/ });
+  await expect(archivedMeasure).toBeVisible();
+  await archivedMeasure.click();
+  await expect(
+    page.getByRole("heading", { name: "Temporary acceptance measure" }),
+  ).toBeVisible();
+  await setMeasureLifecycle(page, createdMeasureId, "restore");
+  await page.goto("/setup?area=measures&year=2029");
 
   const needsAttention = page.getByRole("link", { name: /Needs attention \(\d+\)/ });
   const attentionCount = Number((await needsAttention.textContent())?.match(/\d+/)?.[0]);
@@ -337,10 +387,38 @@ test("uses one flat Setup workspace on desktop and mobile", async ({ page }) => 
   await goalList.locator("ul a").first().click();
   await expect(page).toHaveURL(/area=goals&year=2029&goal=\d+/);
   await expect(page.getByRole("heading", { name: "When this goal is complete" })).toBeVisible();
+  const selectedGoalHeading = page.locator("#strategic-goal-settings-title");
+  const firstGoalName = await selectedGoalHeading.textContent();
+  const secondGoalLink = goalList.locator("ul a").nth(1);
+  const secondGoalHref = await secondGoalLink.getAttribute("href");
+  const secondGoalId = new URL(secondGoalHref!, page.url()).searchParams.get("goal");
+  await page.route("**/*", async (route) => {
+    const url = new URL(route.request().url());
+    if (
+      url.pathname === "/setup" &&
+      url.searchParams.get("area") === "goals" &&
+      url.searchParams.get("goal") === secondGoalId
+    ) {
+      await new Promise((resolve) => setTimeout(resolve, 750));
+    }
+    await route.continue();
+  });
+  await secondGoalLink.click({ noWaitAfter: true });
+  await expect(selectedGoalHeading).toHaveText(firstGoalName!, { timeout: 300 });
+  await expect(page).toHaveURL(new RegExp(`goal=${secondGoalId}`));
+  await expect(selectedGoalHeading).not.toHaveText(firstGoalName!);
+  await page.unroute("**/*");
+  await page.goBack();
+  await expect(page).toHaveURL(/area=goals&year=2029&goal=\d+/);
   await page.goBack();
   await expect(page).toHaveURL(/area=goals&year=2029$/);
   await expect(page.getByText("Choose a goal", { exact: true })).toBeVisible();
-  await goalList.locator("ul a").first().click();
+  await page
+    .getByRole("complementary", { name: "Goal list" })
+    .locator("ul a")
+    .first()
+    .click();
+  await expect(page).toHaveURL(/area=goals&year=2029&goal=\d+/);
   await page.locator("#strategic-goal-reporting-year").selectOption("2028");
   await expect(page).toHaveURL(/area=goals&year=2028&goal=\d+/);
   await expect(page.getByRole("spinbutton", { name: "Reporting year" }).first()).toHaveValue("2028");

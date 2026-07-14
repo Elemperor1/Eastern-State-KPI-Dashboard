@@ -17,9 +17,7 @@ import {
 } from "@/features/audit/server";
 import { getCurrentUserReadOnly } from "@/features/auth/session";
 import { getKPI, listCategories, listKPIs } from "@/features/catalog/server";
-import {
-  STRATEGIC_PLAN_REPORTING_YEARS,
-} from "@/features/strategy";
+import { resolveStrategicReportingYear } from "@/features/strategy";
 import {
   listComponentsForConfiguration,
   listConfigurationGaps,
@@ -38,12 +36,6 @@ export const dynamic = "force-dynamic";
 
 type SetupArea = "measures" | "goals" | "people" | "activity";
 type Params = Record<string, string | string[] | undefined>;
-
-function selectedYear(value: string | undefined) {
-  const requested = Number(value);
-  const fallback = Math.max(2025, Math.min(new Date().getFullYear(), 2029));
-  return STRATEGIC_PLAN_REPORTING_YEARS.find((year) => year === requested) ?? fallback;
-}
 
 function setupArea(value: string | undefined): SetupArea {
   return value === "goals" || value === "people" || value === "activity"
@@ -66,7 +58,7 @@ export default async function SetupPage({ searchParams }: { searchParams: Promis
 
   const params = await searchParams;
   const area = setupArea(firstSearchParam(params.area));
-  const year = selectedYear(firstSearchParam(params.year));
+  const year = resolveStrategicReportingYear(firstSearchParam(params.year));
 
   return (
     <AppShell user={user}>
@@ -115,6 +107,11 @@ function MeasuresArea({ params, year }: { params: Params; year: number }) {
   const visibleKpis = attentionOnly
     ? allKpis.filter((kpi) => attentionIds.has(kpi.id))
     : allKpis;
+  const goalOptions = listStrategicGoals({ year }).map((goal) => ({
+    id: goal.id,
+    name: goal.name,
+    priorityName: goal.priority_name,
+  }));
 
   return (
     <div className="grid min-w-0 grid-cols-1 items-start gap-8 lg:grid-cols-[20rem_minmax(0,1fr)]">
@@ -137,7 +134,7 @@ function MeasuresArea({ params, year }: { params: Params; year: number }) {
         </div>
         <KPIManagerClient
           kpis={visibleKpis}
-          categories={listCategories({ includeArchived: true })}
+          goals={goalOptions}
           selectedKpiId={editorData?.kpi.id ?? null}
           focusKpiId={Number.isInteger(focusId) && focusId > 0 ? focusId : null}
           reportingYear={year}
@@ -230,7 +227,7 @@ function ActivityArea({ params }: { params: Params }) {
 }
 
 function loadKpiEditorData(kpiId: number, reportingYear: number): StrategicKpiEditorData | null {
-  const catalogKpi = getKPI(kpiId);
+  const catalogKpi = getKPI(kpiId, { includeArchived: true });
   if (!catalogKpi) return null;
   const goals = listStrategicGoals({ year: reportingYear, includeArchived: true });
   const memberships = goals.flatMap((goal) =>

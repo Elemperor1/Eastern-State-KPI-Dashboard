@@ -26,8 +26,10 @@ Admin and the two reads above require any valid session.
 `/api/entries`, `/api/breakdowns`, and `/api/goals` are removed. No redirect or
 compatibility mutation adapter remains. Their SQLite rows and immutable
 `entry_history` records are retained as a read-only historical archive.
-Current values use strategic observations, component entries, and distributions;
-current target/configuration changes use strategic configuration routes.
+Current values use strategic observations, component entries, and
+distributions. Multi-input forms send one atomic batch payload through the
+existing observations boundary. Current target/configuration changes use
+strategic configuration routes.
 
 The former internal read adapters (`GET /api/users`, catalog reads, legacy value
 reads, years, and history) remain removed. Server pages use feature-owned read

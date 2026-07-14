@@ -6,6 +6,7 @@ export {
   COMPONENT_AGGREGATION_ROLES,
   CONFIGURATION_STATUSES,
   DISTRIBUTION_DERIVED_GROUPS,
+  EXPLICIT_STRATEGY_REPORTING_FREQUENCIES,
   GOAL_COMPLETION_RULES,
   GOAL_MANUAL_STATUSES,
   GOAL_MEMBERSHIP_ROLES,
@@ -31,6 +32,7 @@ export {
   type DistributionDerivedGroup,
   type DistributionInput,
   type DistributionRecord,
+  type ExplicitStrategyReportingFrequency,
   type EffectiveYearRange,
   type GoalCompletionRule as GoalCompletionRuleName,
   type GoalManualStatus,
@@ -135,6 +137,7 @@ export {
   reportingCycleForSelection,
   reportingCycleMatchesFrequency,
   reportingRecordMatchesCycle,
+  resolveStrategicReportingYear,
   type ReportingCycleOption,
   type ReportingCyclePeriodType,
 } from "./reporting-cycle";

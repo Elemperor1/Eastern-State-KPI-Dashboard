@@ -2,8 +2,8 @@ import { describe, expect, it } from "vitest";
 import {
   buildCreateKpiPayload,
   CATALOG_DIRECTIONS,
-  CATALOG_REPORTING_FREQUENCIES,
-  CATALOG_UNIT_TYPES,
+  STRATEGIC_MEASURE_FREQUENCIES,
+  STRATEGIC_MEASURE_TYPES,
   filterCatalogKpis,
   formatCatalogDirection,
 } from "./admin-catalog";
@@ -37,8 +37,15 @@ describe("admin catalog view helpers", () => {
   ];
 
   it("exposes the approved catalog form options in display order", () => {
-    expect(CATALOG_UNIT_TYPES).toEqual(["count", "percent", "currency", "attendance", "note", "breakdown"]);
-    expect(CATALOG_REPORTING_FREQUENCIES).toEqual(["monthly", "annual", "flexible"]);
+    expect(STRATEGIC_MEASURE_TYPES).toContain("multi_component");
+    expect(STRATEGIC_MEASURE_TYPES).toContain("distribution");
+    expect(STRATEGIC_MEASURE_FREQUENCIES).toEqual([
+      "monthly",
+      "quarterly",
+      "annual",
+      "cumulative",
+      "one_time",
+    ]);
     expect(CATALOG_DIRECTIONS).toEqual(["higher", "lower", "neutral"]);
     expect(CATALOG_DIRECTIONS.map(formatCatalogDirection)).toEqual([
       "higher is better",
@@ -54,20 +61,22 @@ describe("admin catalog view helpers", () => {
     expect(filterCatalogKpis(kpis, { query: "fund", categoryId: null })).toEqual([]);
   });
 
-  it("builds create-KPI payloads with the existing defaults", () => {
+  it("builds a strategic measure payload with a goal and reporting year", () => {
     const form = new FormData();
-    form.set("category_id", "1");
+    form.set("goal_id", "14");
+    form.set("reporting_year", "2026");
     form.set("slug", "virtual-attendees");
     form.set("name", "Virtual attendees");
     form.set("unit", "people");
     form.set("description", "");
 
     expect(buildCreateKpiPayload(form)).toEqual({
-      category_id: 1,
+      goal_id: 14,
+      reporting_year: 2026,
       slug: "virtual-attendees",
       name: "Virtual attendees",
       unit: "people",
-      unit_type: "count",
+      measurement_type: "count",
       reporting_frequency: "monthly",
       direction: "higher",
       description: null,
@@ -76,7 +85,8 @@ describe("admin catalog view helpers", () => {
 
   it("creates the internal link name from the measure name", () => {
     const form = new FormData();
-    form.set("category_id", "1");
+    form.set("goal_id", "14");
+    form.set("reporting_year", "2026");
     form.set("name", "Café attendance & tours");
     form.set("unit", "people");
 

@@ -1,6 +1,6 @@
 "use client";
 
-import type { FormEvent } from "react";
+import type { FormEvent, SetStateAction } from "react";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Archive, RotateCcw, Save } from "lucide-react";
 import Link from "next/link";
@@ -129,26 +129,45 @@ export function StrategicGoalsEditorClient({
   reportingYear: number;
   targetData?: StrategicKpiEditorData[];
 }) {
-  const [goals, setGoals] = useState(initialGoals);
+  const [goalState, setGoalState] = useState({
+    source: initialGoals,
+    values: initialGoals,
+  });
   const [priorityId, setPriorityId] = useState<number | null>(null);
   const [includeArchived, setIncludeArchived] = useState(false);
   const [attentionOnly, setAttentionOnly] = useState(false);
-  const [selectedGoalId, setSelectedGoalId] = useState<number | null>(
+  const routeSelectedGoalId =
     initialSelectedGoalId === null
       ? null
-      : resolveStrategicGoalSelection(initialGoals, initialSelectedGoalId),
-  );
+      : resolveStrategicGoalSelection(initialGoals, initialSelectedGoalId);
+  const [selectionOverride, setSelectionOverride] = useState<{
+    source: StrategicGoalEditorRecord[];
+    routeSelectedGoalId: number | null;
+    selectedGoalId: null;
+  } | null>(null);
+  const goals = goalState.source === initialGoals ? goalState.values : initialGoals;
+  const selectedGoalId =
+    selectionOverride?.source === initialGoals &&
+    selectionOverride.routeSelectedGoalId === routeSelectedGoalId
+      ? selectionOverride.selectedGoalId
+      : routeSelectedGoalId;
   const router = useRouter();
   const returnFocusGoalId = useRef<number | null>(null);
 
   useEffect(() => {
-    setGoals(initialGoals);
-    setSelectedGoalId(
-      initialSelectedGoalId === null
-        ? null
-        : resolveStrategicGoalSelection(initialGoals, initialSelectedGoalId),
-    );
-  }, [initialGoals, initialSelectedGoalId]);
+    setGoalState({ source: initialGoals, values: initialGoals });
+  }, [initialGoals]);
+
+  function updateGoals(update: SetStateAction<StrategicGoalEditorRecord[]>) {
+    setGoalState((current) => {
+      const currentGoals =
+        current.source === initialGoals ? current.values : initialGoals;
+      return {
+        source: initialGoals,
+        values: typeof update === "function" ? update(currentGoals) : update,
+      };
+    });
+  }
 
   useEffect(() => {
     if (selectedGoalId !== null || returnFocusGoalId.current === null) return;
@@ -173,7 +192,13 @@ export function StrategicGoalsEditorClient({
     visibleGoals.find((goal) => goal.id === selectedGoalId) ?? null;
 
   function selectGoal(goalId: number | null) {
-    setSelectedGoalId(goalId);
+    if (goalId === null) {
+      setSelectionOverride({
+        source: initialGoals,
+        routeSelectedGoalId,
+        selectedGoalId: null,
+      });
+    }
     router.replace(
       goalId === null
         ? `/setup?area=goals&year=${reportingYear}`
@@ -209,7 +234,7 @@ export function StrategicGoalsEditorClient({
         };
       }
       if (body.goal) {
-        setGoals((current) =>
+        updateGoals((current) =>
           current.map((goal) =>
             goal.id === body.goal?.id ? { ...goal, ...body.goal } : goal,
           ),
@@ -225,7 +250,17 @@ export function StrategicGoalsEditorClient({
               goal.archived_at === null &&
               (priorityId === null || goal.priority_id === priorityId),
           );
-          setSelectedGoalId(nextGoal?.id ?? null);
+          setSelectionOverride({
+            source: initialGoals,
+            routeSelectedGoalId,
+            selectedGoalId: null,
+          });
+          router.replace(
+            nextGoal
+              ? `/setup?area=goals&year=${reportingYear}&goal=${nextGoal.id}`
+              : `/setup?area=goals&year=${reportingYear}`,
+            { scroll: false },
+          );
         }
       }
       if (body.successor) {
@@ -271,7 +306,7 @@ export function StrategicGoalsEditorClient({
       }
       if (body.membership) {
         const saved = body.membership;
-        setGoals((current) =>
+        updateGoals((current) =>
           current.map((goal) => ({
             ...goal,
             members: goal.members
@@ -405,7 +440,6 @@ export function StrategicGoalsEditorClient({
                   <Link
                     id={`goal-list-item-${goal.id}`}
                     href={`/setup?area=goals&year=${reportingYear}&goal=${goal.id}`}
-                    onClick={() => setSelectedGoalId(goal.id)}
                     aria-current={selectedGoalId === goal.id ? "page" : undefined}
                     className={`block px-1 py-4 text-left transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--color-focus)] ${selectedGoalId === goal.id ? "bg-brand-50" : "hover:bg-ink-50"}`}
                   >
