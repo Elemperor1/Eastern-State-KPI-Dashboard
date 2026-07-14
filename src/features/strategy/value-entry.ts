@@ -221,6 +221,36 @@ export const StrategyDistributionWriteSchema = z
   })
   .strict();
 
+export const StrategyMultiComponentBatchWriteSchema = z
+  .object({
+    submission_type: z.literal("multi_input"),
+    writes: z
+      .array(
+        z.discriminatedUnion("kind", [
+          z
+            .object({
+              kind: z.literal("component_entry"),
+              input: StrategyComponentEntryWriteSchema,
+            })
+            .strict(),
+          z
+            .object({
+              kind: z.literal("distribution"),
+              input: StrategyDistributionWriteSchema,
+            })
+            .strict(),
+        ]),
+      )
+      .min(1)
+      .max(100),
+  })
+  .strict();
+
+export const StrategyObservationSubmissionSchema = z.union([
+  StrategyObservationWriteSchema,
+  StrategyMultiComponentBatchWriteSchema,
+]);
+
 const DistributionBandDefinitionShape = {
   kpi_id: z.number().int().positive(),
   component_id: z.number().int().positive().nullable().optional().default(null),
@@ -1199,75 +1229,103 @@ export function getStrategyComponentEntry(
   return asComponentEntry(row, component, configuration);
 }
 
-export function upsertStrategyComponentEntry(
-  rawInput: unknown,
+function upsertStrategyComponentEntryInput(
+  input: ComponentEntryWrite,
   actorId: number | null,
 ): StrategyComponentEntryRecord {
-  const input = parsePayload(
-    StrategyComponentEntryWriteSchema,
-    rawInput,
-  ) as ComponentEntryWrite;
-  return transaction(() => {
-    const { component, configuration } = loadComponent(
-      input.component_id,
+  const { component, configuration } = loadComponent(
+    input.component_id,
+    input.reporting_year,
+  );
+  const prepared = validateObservation(
+    input,
+    configuration,
+    component.measurement_type,
+    component,
+  );
+  const db = getDb();
+  const existing = db
+    .prepare(
+      `SELECT * FROM kpi_component_entries
+       WHERE component_id = ? AND year = ? AND period_type = ? AND period_index = ?`,
+    )
+    .get(
+      component.id,
       input.reporting_year,
+      prepared.period_type,
+      prepared.period_index,
     );
-    const prepared = validateObservation(
-      input,
-      configuration,
-      component.measurement_type,
-      component,
+  const values = observationColumns(prepared.validated);
+  const proposed = {
+    ...(existing ?? {
+      id: 0,
+      component_id: component.id,
+      year: input.reporting_year,
+      period_type: prepared.period_type,
+      period_index: prepared.period_index,
+      created_at: "",
+      updated_at: "",
+    }),
+    ...values,
+    notes: input.notes,
+    source_reference: input.source_reference,
+    updated_by: actorId,
+  };
+  const before = existing
+    ? asComponentEntry(existing, component, configuration)
+    : null;
+  const proposedRecord = asComponentEntry(proposed, component, configuration);
+  if (
+    before &&
+    snapshotsEqual(observationSnapshot(before), observationSnapshot(proposedRecord))
+  ) {
+    return before;
+  }
+
+  let id: number;
+  if (existing) {
+    db.prepare(
+      `UPDATE kpi_component_entries SET
+         scalar_value = ?, numerator = ?, denominator = ?, respondent_count = ?,
+         total_score = ?, average_score = ?, max_score_per_respondent = ?,
+         total_possible_score = ?, positive_response_count = ?, total_response_count = ?,
+         boolean_value = ?, milestone_value = ?, notes = ?, source_reference = ?,
+         updated_by = ?, updated_at = datetime('now')
+       WHERE id = ?`,
+    ).run(
+      values.scalar_value,
+      values.numerator,
+      values.denominator,
+      values.respondent_count,
+      values.total_score,
+      values.average_score,
+      values.max_score_per_respondent,
+      values.total_possible_score,
+      values.positive_response_count,
+      values.total_response_count,
+      values.boolean_value,
+      values.milestone_value,
+      input.notes,
+      input.source_reference,
+      actorId,
+      Number(existing.id),
     );
-    const db = getDb();
-    const existing = db
-      .prepare(
-        `SELECT * FROM kpi_component_entries
-         WHERE component_id = ? AND year = ? AND period_type = ? AND period_index = ?`,
-      )
-      .get(
+    id = Number(existing.id);
+  } else {
+    id = Number(
+      db.prepare(
+        `INSERT INTO kpi_component_entries (
+           component_id, year, period_type, period_index, scalar_value,
+           numerator, denominator, respondent_count, total_score, average_score,
+           max_score_per_respondent, total_possible_score, positive_response_count,
+           total_response_count, boolean_value, milestone_value, notes,
+           source_reference, updated_by
+         ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      ).run(
         component.id,
         input.reporting_year,
         prepared.period_type,
         prepared.period_index,
-      );
-    const values = observationColumns(prepared.validated);
-    const proposed = {
-      ...(existing ?? {
-        id: 0,
-        component_id: component.id,
-        year: input.reporting_year,
-        period_type: prepared.period_type,
-        period_index: prepared.period_index,
-        created_at: "",
-        updated_at: "",
-      }),
-      ...values,
-      notes: input.notes,
-      source_reference: input.source_reference,
-      updated_by: actorId,
-    };
-    const before = existing
-      ? asComponentEntry(existing, component, configuration)
-      : null;
-    const proposedRecord = asComponentEntry(proposed, component, configuration);
-    if (
-      before &&
-      snapshotsEqual(observationSnapshot(before), observationSnapshot(proposedRecord))
-    ) {
-      return before;
-    }
-
-    let id: number;
-    if (existing) {
-      db.prepare(
-        `UPDATE kpi_component_entries SET
-           scalar_value = ?, numerator = ?, denominator = ?, respondent_count = ?,
-           total_score = ?, average_score = ?, max_score_per_respondent = ?,
-           total_possible_score = ?, positive_response_count = ?, total_response_count = ?,
-           boolean_value = ?, milestone_value = ?, notes = ?, source_reference = ?,
-           updated_by = ?, updated_at = datetime('now')
-         WHERE id = ?`,
-      ).run(
         values.scalar_value,
         values.numerator,
         values.denominator,
@@ -1283,57 +1341,34 @@ export function upsertStrategyComponentEntry(
         input.notes,
         input.source_reference,
         actorId,
-        Number(existing.id),
-      );
-      id = Number(existing.id);
-    } else {
-      id = Number(
-        db.prepare(
-          `INSERT INTO kpi_component_entries (
-             component_id, year, period_type, period_index, scalar_value,
-             numerator, denominator, respondent_count, total_score, average_score,
-             max_score_per_respondent, total_possible_score, positive_response_count,
-             total_response_count, boolean_value, milestone_value, notes,
-             source_reference, updated_by
-           ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-        ).run(
-          component.id,
-          input.reporting_year,
-          prepared.period_type,
-          prepared.period_index,
-          values.scalar_value,
-          values.numerator,
-          values.denominator,
-          values.respondent_count,
-          values.total_score,
-          values.average_score,
-          values.max_score_per_respondent,
-          values.total_possible_score,
-          values.positive_response_count,
-          values.total_response_count,
-          values.boolean_value,
-          values.milestone_value,
-          input.notes,
-          input.source_reference,
-          actorId,
-        ).lastInsertRowid,
-      );
-    }
-    const after = readComponentEntry(id, component, configuration);
-    recordStrategicAuditEvent({
-      entity_type: "kpi_component_entry",
-      entity_id: id,
-      event_type: before ? "update" : "create",
-      entity_display_name: component.label,
-      parent_priority_name: configuration.priority_name,
-      parent_goal_name: configuration.goal_name,
-      previous_value: before ? observationSnapshot(before) : null,
-      new_value: observationSnapshot(after),
-      actor_id: actorId,
-      source_reference: input.source_reference,
-    });
-    return after;
+      ).lastInsertRowid,
+    );
+  }
+  const after = readComponentEntry(id, component, configuration);
+  recordStrategicAuditEvent({
+    entity_type: "kpi_component_entry",
+    entity_id: id,
+    event_type: before ? "update" : "create",
+    entity_display_name: component.label,
+    parent_priority_name: configuration.priority_name,
+    parent_goal_name: configuration.goal_name,
+    previous_value: before ? observationSnapshot(before) : null,
+    new_value: observationSnapshot(after),
+    actor_id: actorId,
+    source_reference: input.source_reference,
   });
+  return after;
+}
+
+export function upsertStrategyComponentEntry(
+  rawInput: unknown,
+  actorId: number | null,
+): StrategyComponentEntryRecord {
+  const input = parsePayload(
+    StrategyComponentEntryWriteSchema,
+    rawInput,
+  ) as ComponentEntryWrite;
+  return transaction(() => upsertStrategyComponentEntryInput(input, actorId));
 }
 
 export function deleteStrategyComponentEntry(
@@ -1854,6 +1889,28 @@ export function upsertStrategyDistribution(
     }
     return after;
   });
+}
+
+export function upsertStrategyMultiComponentBatch(
+  rawInput: unknown,
+  actorId: number | null,
+): Array<StrategyComponentEntryRecord | StrategyDistributionRecord> {
+  const batch = parsePayload(
+    StrategyMultiComponentBatchWriteSchema,
+    rawInput,
+  ) as {
+    writes: Array<
+      | { kind: "component_entry"; input: ComponentEntryWrite }
+      | { kind: "distribution"; input: DistributionWrite }
+    >;
+  };
+  return transaction(() =>
+    batch.writes.map((write) =>
+      write.kind === "component_entry"
+        ? upsertStrategyComponentEntryInput(write.input, actorId)
+        : upsertStrategyDistribution(write.input, actorId),
+    ),
+  );
 }
 
 export function deleteStrategyDistribution(

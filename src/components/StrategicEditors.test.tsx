@@ -17,7 +17,7 @@ const runMutation: StrategyEditorMutationRunner = async () => ({
 });
 
 describe("strategic definition editors", () => {
-  it("renders independently editable component definitions and component targets", () => {
+  it("renders every input together without duplicating target editing", () => {
     const html = renderToStaticMarkup(
       <StrategicKpiComponentsEditor
         configuration={configuration()}
@@ -27,19 +27,16 @@ describe("strategic definition editors", () => {
       />,
     );
 
-    expect(html).toContain("Active component definitions");
+    expect(html).toContain("Inputs");
     expect(html).toContain("Participant satisfaction");
-    expect(html).toContain("Participant satisfaction annual target");
-    expect(html).toContain("Participant satisfaction full-plan target");
-    expect(html).toContain("Structured target (JSON)");
+    expect(html).toContain("Add input");
+    expect(html).toContain("What will people enter?");
     expect(html).toContain("Move Participant satisfaction up");
-    expect(html).toContain("Aggregation role");
-    expect(html).toContain("Numerator");
-    expect(html).toContain("Denominator");
-    expect(html).toContain(
-      "Use the page-level reporting-year selector to edit another annual target.",
-    );
-    expect(html).toContain("Annual pacing is stored independently for 2026.");
+    expect(html).toContain("Used as");
+    expect(html).toContain("Top number");
+    expect(html).toContain("Total number");
+    expect(html).not.toContain("annual target");
+    expect(html).not.toContain("Structured target (JSON)");
   });
 
   it("isolates demographic bands by their parent or component owner", () => {
@@ -55,11 +52,10 @@ describe("strategic definition editors", () => {
         measurementType="distribution"
         bands={bands}
         runMutation={runMutation}
-        ownerLabel="Audience age"
       />,
     );
 
-    expect(html).toContain("Audience age");
+    expect(html).toContain("Reporting groups");
     expect(html).toContain("Age 18–24");
     expect(html).not.toContain("All visitors");
     expect(html).toContain("component-20-active-distribution-bands-title");

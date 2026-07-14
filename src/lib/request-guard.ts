@@ -92,7 +92,11 @@ export function canonicalOrigins(req: NextRequest): string[] {
   // honors x-forwarded-for — and only when TRUST_PROXY=true, because
   // these headers are attacker-controllable on a bare origin.
   let proto = req.nextUrl.protocol.replace(":", ""); // 'http' | 'https'
-  let host = req.nextUrl.host;
+  // Next's development adapter can construct nextUrl with an internal
+  // localhost origin even when the incoming request used 127.0.0.1 and a
+  // different port. The Host header is the request's actual authority and is
+  // therefore the correct zero-config same-origin fallback.
+  let host = req.headers.get("host")?.trim() || req.nextUrl.host;
   if (process.env.TRUST_PROXY === "true") {
     const xfProto = req.headers.get("x-forwarded-proto")?.trim();
     const xfHost = req.headers.get("x-forwarded-host")?.trim();

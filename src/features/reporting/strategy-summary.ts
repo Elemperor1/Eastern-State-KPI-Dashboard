@@ -8,7 +8,6 @@ import type {
 } from "@/features/strategy";
 import {
   calculateAnnualAndPlanProgress,
-  calculateMeasurement,
   calculateStrategicGoalCompletion,
   calculateProgress,
   calculateStrategyRollups,
@@ -16,7 +15,7 @@ import {
   roundFinite,
 } from "@/features/strategy";
 import { STRATEGIC_PLAN_START_YEAR } from "@/features/strategy";
-import type { KPIWithCategory, MonthlyEntryWithMeta } from "@/lib/types";
+import type { KPIWithCategory } from "@/lib/types";
 import type { StrategicCalculatedActual } from "./strategy-actuals";
 
 export type StrategicActualValue = StrategicCalculatedActual;
@@ -80,26 +79,20 @@ export interface StrategicDashboardSummary {
 export interface BuildStrategicDashboardSummaryInput {
   goals: StrategicGoalReadModel[];
   kpis: KPIWithCategory[];
-  entries: MonthlyEntryWithMeta[];
   selectedYear: number;
   throughMonth?: number;
-  /** First-class observations override legacy scalar entries when present. */
   actuals?: StrategicActualValue[];
 }
 
 /**
  * Build the board-facing strategic summary used by dashboard views and exports.
  *
- * Existing `monthly_entries` rows remain a compatibility source. First-class
- * observations win whenever they exist. Legacy annual rows use `month = 0`;
- * additive monthly values are summed while snapshot-style measures use the
- * latest reported value. This compatibility rule is intentionally centralized
- * here so UI and export code never invent their own formulas.
+ * Strategic observations are the only live reporting source. Legacy rows stay
+ * available through Activity and archive tooling, never through this summary.
  */
 export function buildStrategicDashboardSummary({
   goals,
   kpis,
-  entries,
   selectedYear,
   throughMonth = 12,
   actuals = [],
@@ -111,31 +104,22 @@ export function buildStrategicDashboardSummary({
       const config = member.configuration;
       const measurementType = config?.measurement_type ?? null;
       const precision = config?.calculation_precision ?? 1;
-      const unit = config?.unit ?? member.kpi.unit ?? null;
       const currentActual = resolveActual({
         kpiId: member.kpi_id,
         measurementType,
         reportingFrequency: config?.reporting_frequency ?? null,
-        fixedDenominator: config?.fixed_denominator ?? null,
-        unit,
-        precision,
         selectedYear,
         throughMonth,
         firstClassActuals: actuals,
-        legacyEntries: entries,
       });
       const currentValue = currentActual.value;
       const cumulativeActual = resolveCumulativeActual({
         kpiId: member.kpi_id,
         measurementType,
         reportingFrequency: config?.reporting_frequency ?? null,
-        fixedDenominator: config?.fixed_denominator ?? null,
-        unit,
-        precision,
         selectedYear,
         throughMonth,
         firstClassActuals: actuals,
-        legacyEntries: entries,
       });
       const currentCalculation = currentActual.calculation;
       const targetPolicy = resolveEffectiveTargetPolicy({
@@ -465,246 +449,56 @@ interface ResolvedActual {
   calculation: MeasurementResult | null;
 }
 
-interface LegacyActualContract {
-  measurementType: MeasurementType | null;
-  fixedDenominator: number | null;
-  unit: string | null;
-  precision: number;
-}
-
 function resolveActual({
   kpiId,
   measurementType,
   reportingFrequency,
-  fixedDenominator,
-  unit,
-  precision,
   selectedYear,
   throughMonth,
   firstClassActuals,
-  legacyEntries,
 }: {
   kpiId: number;
   measurementType: MeasurementType | null;
   reportingFrequency: string | null;
-  fixedDenominator: number | null;
-  unit: string | null;
-  precision: number;
   selectedYear: number;
   throughMonth: number;
   firstClassActuals: StrategicActualValue[];
-  legacyEntries: MonthlyEntryWithMeta[];
 }): ResolvedActual {
   const direct = firstClassActuals.filter(
     (actual) => actual.kpiId === kpiId && actual.year === selectedYear,
   );
-  if (direct.length > 0) {
-    return {
-      value: combinePeriodValues(
-        direct.map((actual) => ({
-          periodType: actual.periodType,
-          periodIndex: actual.periodIndex,
-          value: actual.value,
-        })),
-        measurementType,
-        reportingFrequency,
-        throughMonth,
-      ),
-      calculation: direct
-        .filter((actual) => periodIncluded(actual, throughMonth))
-        .sort((a, b) => periodSortKey(a) - periodSortKey(b))
-        .at(-1)?.calculation ?? null,
-    };
-  }
-
-  const legacyRows = legacyEntries.filter(
-    (entry) => entry.kpi_id === kpiId && entry.year === selectedYear,
-  );
-  const legacy = legacyRows
-    .map((entry) => ({ periodIndex: entry.month, value: entry.value }));
-  const legacyValue = combinePeriodValues(
-    legacy,
-    measurementType,
-    reportingFrequency,
-    throughMonth,
-  );
-  const adapted = adaptLegacyScalarActual({
-    measurementType,
-    fixedDenominator,
-    unit,
-    precision,
-    value: legacyValue,
-    previousValue: previousLegacyPeriodValue({
-      kpiId,
-      selectedYear,
-      throughMonth,
-      currentRows: legacyRows,
-      legacyEntries,
-    }),
-  });
-  return adapted
-    ? { value: adapted.value, calculation: adapted }
-    : { value: legacyValue, calculation: null };
-}
-
-/**
- * Convert a legacy scalar only when the strategic contract proves what the
- * scalar represents. A fixed-denominator ratio is safe because legacy values
- * are the numerator and the configured denominator and unit fully determine
- * the result. A non-percentage year-over-year contract is also safe when the
- * same legacy reporting period exists in the prior year. Generic percentages,
- * denominator-free ratios, and derived percentage YOY values remain opaque
- * compatibility values rather than being guessed into a new formula.
- */
-function adaptLegacyScalarActual({
-  measurementType,
-  fixedDenominator,
-  unit,
-  precision,
-  value,
-  previousValue,
-}: LegacyActualContract & {
-  value: number | null;
-  previousValue: number | null;
-}): MeasurementResult | null {
-  if (value === null || !Number.isFinite(value)) {
-    return null;
-  }
-  if (
-    measurementType === "ratio" &&
-    fixedDenominator !== null &&
-    Number.isFinite(fixedDenominator)
-  ) {
-    return calculateMeasurement({
-      measurementType: "ratio",
-      numerator: value,
-      fixedDenominator,
-      scale: unit === "%" ? 100 : 1,
-      precision,
-    });
-  }
-  if (measurementType === "year_over_year" && unit?.trim() === "%") {
-    return retainedLegacyResult({
-      measurementType,
-      value,
-      unit,
-      precision,
-      calculationProvenance: "legacy_direct_percentage",
-    });
-  }
-  if (
-    measurementType === "year_over_year" &&
-    unit !== null &&
-    unit.trim() !== "" &&
-    unit.trim() !== "%"
-  ) {
-    return calculateMeasurement({
-      measurementType: "year_over_year",
-      currentValue: value,
-      previousPeriodValue: previousValue,
-      precision,
-    });
-  }
-  if (
-    measurementType === "percentage" ||
-    measurementType === "average" ||
-    measurementType === "ratio"
-  ) {
-    return retainedLegacyResult({
-      measurementType,
-      value,
-      unit,
-      precision,
-      calculationProvenance: "legacy_direct_value",
-    });
-  }
-  return null;
-}
-
-function retainedLegacyResult({
-  measurementType,
-  value,
-  unit,
-  precision,
-  calculationProvenance,
-}: {
-  measurementType: MeasurementType;
-  value: number;
-  unit: string | null;
-  precision: number;
-  calculationProvenance: NonNullable<
-    MeasurementResult["calculationProvenance"]
-  >;
-}): MeasurementResult {
   return {
-    state: "ok",
-    measurementType,
-    value,
-    normalizedPercentage:
-      measurementType === "percentage" ||
-      measurementType === "average" ||
-      (measurementType === "year_over_year" && unit?.trim() === "%") ||
-      (measurementType === "ratio" && unit?.trim() === "%")
-        ? value
-        : null,
-    numerator: null,
-    denominator: null,
-    respondentCount: null,
-    precision,
-    issues: [],
-    calculationProvenance,
+    value: combinePeriodValues(
+      direct.map((actual) => ({
+        periodType: actual.periodType,
+        periodIndex: actual.periodIndex,
+        value: actual.value,
+      })),
+      measurementType,
+      reportingFrequency,
+      throughMonth,
+    ),
+    calculation: direct
+      .filter((actual) => periodIncluded(actual, throughMonth))
+      .sort((a, b) => periodSortKey(a) - periodSortKey(b))
+      .at(-1)?.calculation ?? null,
   };
-}
-
-function previousLegacyPeriodValue({
-  kpiId,
-  selectedYear,
-  throughMonth,
-  currentRows,
-  legacyEntries,
-}: {
-  kpiId: number;
-  selectedYear: number;
-  throughMonth: number;
-  currentRows: MonthlyEntryWithMeta[];
-  legacyEntries: MonthlyEntryWithMeta[];
-}): number | null {
-  const included = currentRows.filter((entry) =>
-    periodIncluded({ periodIndex: entry.month }, throughMonth)
-  );
-  const currentPeriod = included.findLast((entry) => entry.month === 0) ??
-    included.sort((a, b) => a.month - b.month).at(-1);
-  if (!currentPeriod) return null;
-  return legacyEntries.findLast(
-    (entry) =>
-      entry.kpi_id === kpiId &&
-      entry.year === selectedYear - 1 &&
-      entry.month === currentPeriod.month,
-  )?.value ?? null;
 }
 
 function resolveCumulativeActual({
   kpiId,
   measurementType,
   reportingFrequency,
-  fixedDenominator,
-  unit,
-  precision,
   selectedYear,
   throughMonth,
   firstClassActuals,
-  legacyEntries,
 }: {
   kpiId: number;
   measurementType: MeasurementType | null;
   reportingFrequency: string | null;
-  fixedDenominator: number | null;
-  unit: string | null;
-  precision: number;
   selectedYear: number;
   throughMonth: number;
   firstClassActuals: StrategicActualValue[];
-  legacyEntries: MonthlyEntryWithMeta[];
 }): number | null {
   if (reportingFrequency === "cumulative" || reportingFrequency === "one_time") {
     for (let year = selectedYear; year >= STRATEGIC_PLAN_START_YEAR; year -= 1) {
@@ -712,13 +506,9 @@ function resolveCumulativeActual({
         kpiId,
         measurementType,
         reportingFrequency,
-        fixedDenominator,
-        unit,
-        precision,
         selectedYear: year,
         throughMonth: year === selectedYear ? throughMonth : 12,
         firstClassActuals,
-        legacyEntries,
       }).value;
       if (value !== null) return value;
     }
@@ -732,13 +522,9 @@ function resolveCumulativeActual({
         kpiId,
         measurementType,
         reportingFrequency,
-        fixedDenominator,
-        unit,
-        precision,
         selectedYear: year,
         throughMonth: 12,
         firstClassActuals,
-        legacyEntries,
       }).value;
       if (value !== null) values.push(value);
     }
@@ -751,13 +537,9 @@ function resolveCumulativeActual({
     kpiId,
     measurementType,
     reportingFrequency,
-    fixedDenominator,
-    unit,
-    precision,
     selectedYear,
     throughMonth,
     firstClassActuals,
-    legacyEntries,
   }).value;
 }
 

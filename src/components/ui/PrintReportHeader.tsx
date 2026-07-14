@@ -47,7 +47,7 @@ export function PrintReportHeader({
       <div className="print-report-brand-bar">
         <div className="print-report-brand-text">
           <span className="print-report-brand-name">Eastern State Penitentiary</span>
-          <span className="print-report-brand-sub">KPI Intelligence Dashboard</span>
+          <span className="print-report-brand-sub">Strategic Plan</span>
         </div>
         <span className="print-report-date" suppressHydrationWarning>
           Generated {generated}

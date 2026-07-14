@@ -48,8 +48,8 @@ without leaking detail to attackers (req 8).
 ### 1. Origin / Referer (req 1, 2, 3)
 
 - The allowed origin set is `APP_CANONICAL_ORIGIN` (comma-separated) if
-  set; otherwise the guard derives the request's own origin from
-  `req.nextUrl`, honoring `x-forwarded-proto` / `x-forwarded-host` only
+  set; otherwise the guard derives the request's own origin from the incoming
+  `Host` header and request protocol, honoring `x-forwarded-proto` / `x-forwarded-host` only
   when `TRUST_PROXY=true` (the same trust boundary the login throttle
   uses for `x-forwarded-for`). This zero-config default is secure: a
   forged request from any other origin — cross-site **or** same-site
@@ -111,11 +111,17 @@ In scope (the guard runs on every state-changing handler):
 | `/api/users` | POST, PATCH, DELETE |
 | `/api/users/account` | PATCH |
 | `/api/auth/change-password` | POST |
-| `/api/entries` | POST, DELETE |
-| `/api/breakdowns` | POST, DELETE |
 | `/api/kpis` | POST, PATCH, DELETE |
 | `/api/categories` | POST, PATCH, DELETE |
-| `/api/goals` | POST, PATCH, DELETE |
+| `/api/strategy/observations` | POST, DELETE |
+| `/api/strategy/component-entries` | POST, DELETE |
+| `/api/strategy/distributions` | POST, DELETE |
+| `/api/strategy/distribution-bands` | POST, PATCH |
+| `/api/strategy/configurations` | POST, PATCH |
+| `/api/strategy/components` | POST, PATCH |
+| `/api/strategy/targets` | POST, PATCH |
+| `/api/strategy/goals` | PATCH |
+| `/api/strategy/memberships` | PATCH |
 
 Out of scope (deliberate, documented exclusions):
 

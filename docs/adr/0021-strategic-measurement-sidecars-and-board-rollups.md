@@ -2,6 +2,10 @@
 
 Status: accepted
 
+Superseded in part by ADR 0022: legacy tables remain for historical
+compatibility, but their production entry and goal mutation workflows are no
+longer active peers of the strategic model.
+
 ## Context
 
 The schema-9 application stores one legacy KPI definition, scalar or breakdown

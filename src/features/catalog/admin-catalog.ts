@@ -1,77 +1,42 @@
-import type { Category, Direction, KPIWithCategory, ReportingFrequency, UnitType } from "@/lib/types";
+import {
+  EXPLICIT_STRATEGY_REPORTING_FREQUENCIES,
+  MEASUREMENT_TYPES,
+  type ExplicitStrategyReportingFrequency,
+  type MeasurementType,
+} from "@/features/strategy";
+import type { Direction, KPIWithCategory } from "@/lib/types";
+import { slugFromLabel } from "@/lib/slug";
 
-export const CATALOG_UNIT_TYPES: UnitType[] = [
-  "count",
-  "percent",
-  "currency",
-  "attendance",
-  "note",
-  "breakdown",
-];
+export const STRATEGIC_MEASURE_TYPES: MeasurementType[] = [...MEASUREMENT_TYPES];
 
-export const CATALOG_REPORTING_FREQUENCIES: ReportingFrequency[] = [
-  "monthly",
-  "annual",
-  "flexible",
-];
+export const STRATEGIC_MEASURE_FREQUENCIES:
+  ExplicitStrategyReportingFrequency[] = [
+    ...EXPLICIT_STRATEGY_REPORTING_FREQUENCIES,
+  ];
 
 export const CATALOG_DIRECTIONS: Direction[] = ["higher", "lower", "neutral"];
-export const CATALOG_SLUG_PATTERN = "[a-z0-9\\-]+";
-
-export interface CatalogCategorySummary {
-  id: number;
-  name: string;
-  kpiCount: number;
-}
 
 export interface CatalogFilters {
   query: string;
   categoryId: number | null;
 }
 
-export interface CatalogDeleteTarget {
-  kind: "kpi" | "category";
+export interface StrategicMeasureGoalOption {
   id: number;
   name: string;
-}
-
-export interface CatalogDeleteConfirmation {
-  title: string;
-  description: string;
-  confirmLabel: string;
+  priorityName: string;
 }
 
 export interface CreateKpiPayload extends Record<string, unknown> {
-  category_id: number;
+  goal_id: number;
+  reporting_year: number;
   slug: string;
   name: string;
   unit: string;
-  unit_type: string;
+  measurement_type: string;
   reporting_frequency: string;
   direction: string;
   description: string | null;
-}
-
-export interface CreateCategoryPayload extends Record<string, unknown> {
-  slug: string;
-  name: string;
-  description: string | null;
-}
-
-export function buildCatalogCategorySummaries(
-  categories: Category[],
-  kpis: KPIWithCategory[],
-): CatalogCategorySummary[] {
-  const counts = new Map<number, number>();
-  for (const kpi of kpis) {
-    counts.set(kpi.category_id, (counts.get(kpi.category_id) ?? 0) + 1);
-  }
-
-  return categories.map((category) => ({
-    id: category.id,
-    name: category.name,
-    kpiCount: counts.get(category.id) ?? 0,
-  }));
 }
 
 export function filterCatalogKpis(
@@ -97,43 +62,17 @@ export function formatCatalogDirection(direction: Direction): string {
   return "neutral";
 }
 
-export function buildCatalogDeleteConfirmation(
-  target: CatalogDeleteTarget,
-): CatalogDeleteConfirmation {
-  if (target.kind === "kpi") {
-    return {
-      title: `Archive or delete “${target.name}”?`,
-      description:
-        "Configured strategic KPIs are archived so their configuration and history remain restorable. Unconfigured legacy KPIs are deleted only after their monthly and breakdown entries are cleared.",
-      confirmLabel: "Continue",
-    };
-  }
-
-  return {
-    title: `Archive or delete “${target.name}”?`,
-    description:
-      "Configured strategic priorities are archived with their goals, KPIs, and history preserved. Unconfigured legacy categories are deleted only after dependent entries are cleared.",
-    confirmLabel: "Continue",
-  };
-}
-
 export function buildCreateKpiPayload(form: FormData): CreateKpiPayload {
+  const name = String(form.get("name") || "");
   return {
-    category_id: Number(form.get("category_id")),
-    slug: String(form.get("slug") || ""),
-    name: String(form.get("name") || ""),
+    goal_id: Number(form.get("goal_id")),
+    reporting_year: Number(form.get("reporting_year")),
+    slug: String(form.get("slug") || "") || slugFromLabel(name),
+    name,
     unit: String(form.get("unit") || ""),
-    unit_type: String(form.get("unit_type") || "count"),
+    measurement_type: String(form.get("measurement_type") || "count"),
     reporting_frequency: String(form.get("reporting_frequency") || "monthly"),
     direction: String(form.get("direction") || "higher"),
-    description: String(form.get("description") || "") || null,
-  };
-}
-
-export function buildCreateCategoryPayload(form: FormData): CreateCategoryPayload {
-  return {
-    slug: String(form.get("slug") || ""),
-    name: String(form.get("name") || ""),
     description: String(form.get("description") || "") || null,
   };
 }

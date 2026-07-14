@@ -4,13 +4,18 @@ import path from "node:path";
 import { renderToStaticMarkup } from "react-dom/server";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { StrategicAuditTable } from "@/components/StrategicAuditTable";
-import { listStrategicAuditEvents, listStrategicGoals } from "@/features/strategy/server";
+import {
+  getMeasurementConfigRecord,
+  listStrategicAuditEvents,
+  listStrategicGoals,
+} from "@/features/strategy/server";
 import { getDb, resetDb } from "@/lib/db";
 import {
   archiveKPI,
   countCategoryDependents,
   createCategory,
   createKPI,
+  createStrategicMeasure,
   DependentEntriesError,
   getCategory,
   getCategoryBySlug,
@@ -110,6 +115,103 @@ describe("schema-10 strategic catalog lifecycle", () => {
     if (originalDatabasePath === undefined) delete process.env.DATABASE_PATH;
     else process.env.DATABASE_PATH = originalDatabasePath;
     fs.rmSync(tmpDir, { recursive: true, force: true });
+  });
+
+  it("creates a runtime measure with its goal membership and configuration atomically", () => {
+    const db = getDb();
+    const actorId = createCatalogActor();
+    const category = createCategory(
+      { slug: "learning", name: "Learning", sort_order: 1 },
+      actorId,
+    );
+    const goalId = Number(
+      db.prepare(
+        `INSERT INTO strategic_goals (
+           priority_id, slug, name, plan_start_year, plan_end_year,
+           configuration_status, created_by, updated_by
+         ) VALUES (?, 'learning-goal', 'Learning goal', 2025, 2029,
+                   'active', ?, ?)`,
+      ).run(category.id, actorId, actorId).lastInsertRowid,
+    );
+
+    const created = createStrategicMeasure(
+      {
+        goal_id: goalId,
+        reporting_year: 2026,
+        slug: "new-learning-measure",
+        name: "New learning measure",
+        unit: "people",
+        measurement_type: "count",
+        reporting_frequency: "annual",
+        direction: "higher",
+        description: null,
+      },
+      actorId,
+    );
+
+    expect(created.kpi.category_id).toBe(category.id);
+    expect(created.membership).toMatchObject({
+      goal_id: goalId,
+      kpi_id: created.kpi.id,
+      effective_from_year: 2026,
+      effective_to_year: 2029,
+    });
+    expect(getMeasurementConfigRecord(created.configuration.id)).toMatchObject({
+      kpi_id: created.kpi.id,
+      measurement_type: "count",
+      reporting_frequency: "annual",
+      configuration_status: "draft",
+    });
+    expect(listStrategicGoals({ year: 2026 })[0]?.members[0]).toMatchObject({
+      kpi_id: created.kpi.id,
+      configuration: { id: created.configuration.id },
+    });
+    expect(
+      listStrategicAuditEvents().filter(
+        (event) => event.entity_display_name.includes("New learning measure"),
+      ).map((event) => event.entity_type),
+    ).toEqual(expect.arrayContaining(["kpi", "goal_membership", "measurement_config"]));
+  });
+
+  it("rolls back the catalog row when strategic setup validation fails", () => {
+    const db = getDb();
+    const actorId = createCatalogActor();
+    const category = createCategory(
+      { slug: "rollback", name: "Rollback", sort_order: 1 },
+      actorId,
+    );
+    const goalId = Number(
+      db.prepare(
+        `INSERT INTO strategic_goals (
+           priority_id, slug, name, plan_start_year, plan_end_year,
+           configuration_status, created_by, updated_by
+         ) VALUES (?, 'rollback-goal', 'Rollback goal', 2025, 2029,
+                   'active', ?, ?)`,
+      ).run(category.id, actorId, actorId).lastInsertRowid,
+    );
+
+    expect(() =>
+      createStrategicMeasure(
+        {
+          goal_id: goalId,
+          reporting_year: 2026,
+          slug: "invalid-strategic-measure",
+          name: "Invalid strategic measure",
+          unit: "",
+          measurement_type: "count",
+          reporting_frequency: "annual",
+          direction: "higher",
+          description: null,
+        },
+        actorId,
+      ),
+    ).toThrowError(/invalid measurement configuration/i);
+    expect(
+      db.prepare("SELECT id FROM kpis WHERE slug = 'invalid-strategic-measure'").get(),
+    ).toBeUndefined();
+    expect(
+      db.prepare("SELECT id FROM goal_kpis WHERE goal_id = ?").get(goalId),
+    ).toBeUndefined();
   });
 
   it("archives and restores configured KPIs and priorities with audit snapshots", () => {

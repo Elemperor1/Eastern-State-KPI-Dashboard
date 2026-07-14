@@ -55,7 +55,7 @@ export default function LoginPage() {
           <BrandMark size="md" />
           <div>
             <p className="text-sm font-semibold">Eastern State</p>
-            <p className="text-[10px] uppercase tracking-[0.12em] text-white/55">KPI Intelligence</p>
+            <p className="text-[10px] uppercase tracking-[0.12em] text-white/55">Strategic Plan</p>
           </div>
         </div>
 
@@ -82,7 +82,7 @@ export default function LoginPage() {
             <BrandMark size="md" />
             <div>
               <p className="text-sm font-semibold text-ink-900">Eastern State</p>
-              <p className="text-[10px] uppercase tracking-[0.12em] text-ink-500">KPI Intelligence</p>
+              <p className="text-[10px] uppercase tracking-[0.12em] text-ink-500">Strategic Plan</p>
             </div>
           </div>
 

@@ -12,9 +12,9 @@ export default defineConfig({
     coverage: {
       provider: "v8",
       reporter: ["text", "json", "html"],
-      include: ["src/lib/analytics.ts"],
+      include: ["src/features/strategy/reporting-cycle.ts"],
       thresholds: {
-        // §3.2 from the product roadmap mandates ≥ 90% line coverage.
+        // Reporting-period selection is shared by Data Entry and Reports.
         lines: 90,
         statements: 90,
         functions: 90,

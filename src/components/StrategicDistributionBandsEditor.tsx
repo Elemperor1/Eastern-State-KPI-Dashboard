@@ -46,7 +46,6 @@ export function StrategicDistributionBandsEditor({
   measurementType,
   bands: initialBands,
   runMutation,
-  ownerLabel,
 }: {
   kpiId: number;
   componentId?: number | null;
@@ -54,7 +53,6 @@ export function StrategicDistributionBandsEditor({
   measurementType: MeasurementType | null;
   bands: StrategicDistributionBandEditorRecord[];
   runMutation: StrategyEditorMutationRunner;
-  ownerLabel?: string;
 }) {
   const ownerBands = useMemo(
     () => initialBands.filter((band) => band.componentId === componentId),
@@ -84,7 +82,7 @@ export function StrategicDistributionBandsEditor({
     return (
       <Card className="p-6">
         <StatusBanner variant="neutral">
-          Distribution-band controls become available after the KPI measurement type is set to Distribution and saved.
+          Choose “Reporting groups” above before adding groups here.
         </StatusBanner>
       </Card>
     );
@@ -103,12 +101,12 @@ export function StrategicDistributionBandsEditor({
             variant: "success",
             message:
               action === "archive"
-                ? "Distribution band archived. Historical labels remain intact."
-                : "Distribution band restored.",
+                ? "Group archived."
+                : "Group restored.",
           }
         : {
             variant: "error",
-            message: result.error ?? `Could not ${action} distribution band.`,
+            message: result.error ?? `Could not ${action} this group.`,
           },
     );
   }
@@ -137,24 +135,21 @@ export function StrategicDistributionBandsEditor({
       setBands(before);
       setFeedback({
         variant: "error",
-        message: result.error ?? "Could not reorder distribution bands.",
+        message: result.error ?? "Could not reorder groups.",
       });
       return;
     }
-    setFeedback({ variant: "success", message: "Distribution-band order saved." });
+    setFeedback({ variant: "success", message: "Group order saved." });
   }
 
   return (
     <div className="space-y-6">
-      <StatusBanner variant="neutral">
-        These are reusable band definitions for {ownerLabel ?? "this measurement"}, not respondent counts. Observation values are entered separately and historical label snapshots are preserved.
-      </StatusBanner>
       {feedback ? <StatusBanner variant={feedback.variant}>{feedback.message}</StatusBanner> : null}
 
       <DistributionBandFormCard
         key={`${ownerKey}-new-band-${active.length}`}
-        title="Add demographic band"
-        description="Create a stable band key and label for distribution observations."
+        title="Add group"
+        description=""
         initialDraft={distributionBandDraftFromData(
           null,
           reportingYear,
@@ -171,11 +166,8 @@ export function StrategicDistributionBandsEditor({
         <div className="flex flex-wrap items-end justify-between gap-3">
           <div>
             <h3 id={`${ownerKey}-active-distribution-bands-title`} className="text-xl font-semibold text-ink-900">
-              Effective demographic bands
+              Reporting groups
             </h3>
-            <p className="mt-1 text-sm text-ink-500">
-              Reporting year {reportingYear}; move controls save the complete active order.
-            </p>
           </div>
           <Badge variant="info">{active.length} active</Badge>
         </div>
@@ -183,7 +175,7 @@ export function StrategicDistributionBandsEditor({
         {active.length === 0 ? (
           <Card className="p-6">
             <StatusBanner variant="neutral">
-              No effective demographic bands are configured for this reporting year.
+              No groups have been added for {reportingYear}.
             </StatusBanner>
           </Card>
         ) : (
@@ -191,7 +183,7 @@ export function StrategicDistributionBandsEditor({
             <DistributionBandFormCard
               key={`${band.id}-${band.displayOrder}`}
               title={band.label}
-              description={`Band #${band.id} · ${band.slug}`}
+              description=""
               initialDraft={distributionBandDraftFromData(
                 band,
                 reportingYear,
@@ -238,7 +230,7 @@ export function StrategicDistributionBandsEditor({
         <section aria-labelledby={`${ownerKey}-archived-distribution-bands-title`} className="space-y-3">
           <div className="flex items-center justify-between gap-3">
             <h3 id={`${ownerKey}-archived-distribution-bands-title`} className="text-xl font-semibold text-ink-900">
-              Archived demographic bands
+              Archived groups
             </h3>
             <Badge variant="default">{archived.length} archived</Badge>
           </div>
@@ -247,7 +239,7 @@ export function StrategicDistributionBandsEditor({
               <div className="min-w-0">
                 <p className="break-words font-semibold text-ink-900">{band.label}</p>
                 <p className="mt-1 text-xs text-ink-500">
-                  {band.slug} · Effective {band.effectiveFromYear}
+                  Used from {band.effectiveFromYear}
                   {band.effectiveToYear ? `–${band.effectiveToYear}` : " onward"}
                 </p>
               </div>
@@ -260,7 +252,7 @@ export function StrategicDistributionBandsEditor({
                 disabled={busyId !== null && busyId !== band.id}
                 onClick={() => lifecycle(band.id, "restore")}
               >
-                Restore band
+                Restore group
               </Button>
             </Card>
           ))}
@@ -313,7 +305,7 @@ function DistributionBandFormCard({
       setErrors(built.errors);
       setFeedback({
         variant: "error",
-        message: firstFormError(built.errors) ?? "Review the demographic-band fields.",
+        message: firstFormError(built.errors) ?? "Review the highlighted fields.",
       });
       return;
     }
@@ -327,11 +319,11 @@ function DistributionBandFormCard({
       result.ok
         ? {
             variant: "success",
-            message: isCreate ? "Distribution band created." : "Distribution band saved.",
+            message: isCreate ? "Group created." : "Group saved.",
           }
         : {
             variant: "error",
-            message: result.error ?? "Could not save distribution band.",
+            message: result.error ?? "Could not save this group.",
           },
     );
     if (result.ok && isCreate) {
@@ -357,23 +349,15 @@ function DistributionBandFormCard({
       {feedback ? <StatusBanner variant={feedback.variant}>{feedback.message}</StatusBanner> : null}
       <form onSubmit={submit} className="space-y-5">
         <fieldset disabled={busy} className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-3">
-          <FormField label="Stable slug" htmlFor={`${prefix}-slug`} hint={<ErrorHint error={errors.slug} fallback="Lowercase kebab-case. Historical observation labels remain snapshotted." />}>
-            <Input
-              id={`${prefix}-slug`}
-              value={draft.slug}
-              aria-invalid={Boolean(errors.slug)}
-              onChange={(event) => update("slug", event.target.value)}
-            />
-          </FormField>
-          <FormField label="Display label" htmlFor={`${prefix}-label`} hint={<ErrorHint error={errors.label} />}>
+          <FormField label="Group name" htmlFor={`${prefix}-label`} hint={<ErrorHint error={errors.label ?? errors.slug} />}>
             <Input
               id={`${prefix}-label`}
               value={draft.label}
-              aria-invalid={Boolean(errors.label)}
+              aria-invalid={Boolean(errors.label ?? errors.slug)}
               onChange={(event) => update("label", event.target.value)}
             />
           </FormField>
-          <FormField label="Derived group" htmlFor={`${prefix}-group`} hint="Optional white/non-white rollup; leave blank when the band should not contribute.">
+          <FormField label="Include in summary" htmlFor={`${prefix}-group`}>
             <Select
               id={`${prefix}-group`}
               value={draft.derivedGroup}
@@ -384,12 +368,12 @@ function DistributionBandFormCard({
                 )
               }
             >
-              <option value="">No derived group</option>
+              <option value="">Do not include</option>
               <option value="white">White</option>
               <option value="non_white">Non-white</option>
             </Select>
           </FormField>
-          <FormField label="Effective start year" htmlFor={`${prefix}-start`} hint={<ErrorHint error={errors.effective_from_year} />}>
+          <FormField label="First reporting year" htmlFor={`${prefix}-start`} hint={<ErrorHint error={errors.effective_from_year} />}>
             <Input
               id={`${prefix}-start`}
               type="number"
@@ -400,7 +384,7 @@ function DistributionBandFormCard({
               onChange={(event) => update("effectiveFromYear", event.target.value)}
             />
           </FormField>
-          <FormField label="Effective end year" htmlFor={`${prefix}-end`} hint={<ErrorHint error={errors.effective_to_year} fallback="Leave blank for no end year." />}>
+          <FormField label="Last reporting year" htmlFor={`${prefix}-end`} hint={<ErrorHint error={errors.effective_to_year} fallback="Leave blank to keep using it." />}>
             <Input
               id={`${prefix}-end`}
               type="number"
@@ -411,7 +395,7 @@ function DistributionBandFormCard({
               onChange={(event) => update("effectiveToYear", event.target.value)}
             />
           </FormField>
-          <FormField label="Display order" htmlFor={`${prefix}-order`} hint={<ErrorHint error={errors.display_order} fallback={isCreate ? "New bands append at this position." : "Use the arrow controls to reorder."} />}>
+          <FormField label="List order" htmlFor={`${prefix}-order`} hint={<ErrorHint error={errors.display_order} />}>
             <Input
               id={`${prefix}-order`}
               type="number"
@@ -428,16 +412,15 @@ function DistributionBandFormCard({
               id={`${prefix}-unknown`}
               checked={draft.isUnknown}
               onChange={(event) => update("isUnknown", event.target.checked)}
-              label="Unknown category"
-              description="Marks this band as an unknown response."
+              label="Unknown"
             />
             <Checkbox
               id={`${prefix}-declined`}
               checked={draft.isDeclined}
               aria-invalid={Boolean(errors.isDeclined)}
               onChange={(event) => update("isDeclined", event.target.checked)}
-              label="Declined category"
-              description={errors.isDeclined ?? "Marks this band as declined to answer."}
+              label="Declined to answer"
+              description={errors.isDeclined}
             />
           </div>
         </fieldset>
@@ -449,7 +432,7 @@ function DistributionBandFormCard({
             icon={isCreate ? Plus : Save}
             isLoading={busy}
           >
-            {isCreate ? "Create band" : "Save band"}
+            {isCreate ? "Create group" : "Save group"}
           </Button>
         </div>
       </form>

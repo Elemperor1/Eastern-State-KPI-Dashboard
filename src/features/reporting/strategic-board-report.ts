@@ -170,6 +170,7 @@ export interface StrategicBoardPriorityInput {
 export interface StrategicBoardReportInput {
   organizationName?: string | null;
   selectedYear?: number | null;
+  reportingPeriod?: string | null;
   organizationGoalCompletion?: GoalCompletionSummaryInput | null;
   priorities?: StrategicBoardPriorityInput[] | null;
 }
@@ -289,6 +290,7 @@ export interface StrategicBoardPriorityViewModel {
 export interface StrategicBoardReportViewModel {
   organizationName: string;
   selectedYear: number | null;
+  reportingPeriod: string;
   organizationGoalCompletion: GoalCompletionSummaryViewModel;
   priorities: StrategicBoardPriorityViewModel[];
   unresolvedReasons: string[];
@@ -601,7 +603,7 @@ function sanitizeKpis(value: unknown): StrategicBoardKpiViewModel[] {
     const config = configurationStatus(input.configurationStatus);
     return {
       id: requiredText(input.id, `kpi-${index + 1}`),
-      name: requiredText(input.name, `KPI ${index + 1}`),
+      name: requiredText(input.name, `Measure ${index + 1}`),
       measurementType: measurementType(input.measurementType),
       reportingFrequency: reportingFrequency(input.reportingFrequency),
       unit: optionalText(input.unit),
@@ -678,6 +680,7 @@ export function buildStrategicBoardReport(
   return {
     organizationName: requiredText(input?.organizationName, "Eastern State"),
     selectedYear: year(input?.selectedYear),
+    reportingPeriod: requiredText(input?.reportingPeriod, "Full year"),
     organizationGoalCompletion,
     priorities,
     unresolvedReasons: Array.from(unresolvedReasons),
@@ -686,38 +689,39 @@ export function buildStrategicBoardReport(
 
 export const STRATEGIC_BOARD_CSV_COLUMNS = [
   "Selected Year",
+  "Reporting Period",
   "Organization",
   "Organization Completed Goals",
-  "Organization Eligible Goals",
+  "Organization Included Goals",
   "Organization Completion Percentage",
-  "Organization Excluded Goals",
-  "Organization Excluded Reasons",
+  "Organization Goals Not Counted",
+  "Organization Reasons",
   "Priority",
   "Priority Completed Goals",
-  "Priority Eligible Goals",
+  "Priority Included Goals",
   "Priority Completion Percentage",
-  "Priority Excluded Goals",
-  "Priority Excluded Reasons",
+  "Priority Goals Not Counted",
+  "Priority Reasons",
   "Goal",
   "Goal Status",
   "Goal Actual Completion Percentage",
   "Goal Display Completion Percentage",
-  "Goal Completed KPIs",
-  "Goal Eligible KPIs",
-  "Goal Excluded KPIs",
-  "Goal Excluded Reasons",
-  "KPI ID",
-  "KPI",
+  "Goal Completed Measures",
+  "Goal Included Measures",
+  "Goal Measures Not Counted",
+  "Goal Reasons",
+  "Measure ID",
+  "Measure",
   "Measurement Type",
   "Reporting Frequency",
   "Unit",
   "Result State",
   "Calculated Result",
   "Calculated Numeric Value",
-  "Numerator",
-  "Denominator",
+  "Amount Measured",
+  "Total Amount",
   "Respondent Count",
-  "Formula Explanation",
+  "How Calculated",
   "Annual Actual",
   "Annual Target",
   "Annual Has Target",
@@ -739,8 +743,8 @@ export const STRATEGIC_BOARD_CSV_COLUMNS = [
   "Full Plan Target Description",
   "Full Plan Target Display Text",
   "Board Status",
-  "Configuration Status",
-  "KPI Unresolved Reasons",
+  "Setup Status",
+  "Measure Needs Attention",
   "Detail Type",
   "Detail Name",
   "Detail Measurement Type",
@@ -751,8 +755,8 @@ export const STRATEGIC_BOARD_CSV_COLUMNS = [
   "Detail Target",
   "Detail Actual Progress Percentage",
   "Detail Display Progress Percentage",
-  "Detail Configuration Status",
-  "Detail Unresolved Reasons",
+  "Detail Setup Status",
+  "Detail Needs Attention",
   "Demographic Respondent Total",
   "Derived Non-White Percentage",
   "Demographic Population Caveat",
@@ -831,44 +835,45 @@ export function buildStrategicBoardCsvRows(
           const revenue = detail.kind === "revenue_stream" ? detail.revenue : null;
           rows.push({
             "Selected Year": report.selectedYear,
+            "Reporting Period": report.reportingPeriod,
             Organization: report.organizationName,
             "Organization Completed Goals":
               report.organizationGoalCompletion.completedGoalsCount,
-            "Organization Eligible Goals":
+            "Organization Included Goals":
               report.organizationGoalCompletion.totalEligibleGoalsCount,
             "Organization Completion Percentage":
               report.organizationGoalCompletion.completionPercentage,
-            "Organization Excluded Goals":
+            "Organization Goals Not Counted":
               report.organizationGoalCompletion.excludedGoalsCount,
-            "Organization Excluded Reasons":
+            "Organization Reasons":
               report.organizationGoalCompletion.excludedGoalReasons.join("; "),
             Priority: priority.name,
             "Priority Completed Goals": priority.goalCompletion.completedGoalsCount,
-            "Priority Eligible Goals": priority.goalCompletion.totalEligibleGoalsCount,
+            "Priority Included Goals": priority.goalCompletion.totalEligibleGoalsCount,
             "Priority Completion Percentage": priority.goalCompletion.completionPercentage,
-            "Priority Excluded Goals": priority.goalCompletion.excludedGoalsCount,
-            "Priority Excluded Reasons":
+            "Priority Goals Not Counted": priority.goalCompletion.excludedGoalsCount,
+            "Priority Reasons":
               priority.goalCompletion.excludedGoalReasons.join("; "),
             Goal: goal.name,
             "Goal Status": goal.completionStatus,
             "Goal Actual Completion Percentage": goal.actualCompletionPercentage,
             "Goal Display Completion Percentage": goal.displayCompletionPercentage,
-            "Goal Completed KPIs": goal.completedKpisCount,
-            "Goal Eligible KPIs": goal.totalEligibleKpisCount,
-            "Goal Excluded KPIs": goal.excludedKpisCount,
-            "Goal Excluded Reasons": goal.excludedReasons.join("; "),
-            "KPI ID": kpi.id,
-            KPI: kpi.name,
+            "Goal Completed Measures": goal.completedKpisCount,
+            "Goal Included Measures": goal.totalEligibleKpisCount,
+            "Goal Measures Not Counted": goal.excludedKpisCount,
+            "Goal Reasons": goal.excludedReasons.join("; "),
+            "Measure ID": kpi.id,
+            Measure: kpi.name,
             "Measurement Type": kpi.measurementType,
             "Reporting Frequency": kpi.reportingFrequency,
             Unit: kpi.unit,
             "Result State": kpi.result.state,
             "Calculated Result": kpi.result.displayValue,
             "Calculated Numeric Value": kpi.result.value,
-            Numerator: kpi.result.numerator,
-            Denominator: kpi.result.denominator,
+            "Amount Measured": kpi.result.numerator,
+            "Total Amount": kpi.result.denominator,
             "Respondent Count": kpi.result.respondentCount,
-            "Formula Explanation": kpi.result.formulaExplanation,
+            "How Calculated": kpi.result.formulaExplanation,
             "Annual Actual": progressValue(kpi.annualProgress, "actualValue"),
             "Annual Target": progressValue(kpi.annualProgress, "targetValue"),
             "Annual Has Target": progressValue(kpi.annualProgress, "hasTarget"),
@@ -920,8 +925,8 @@ export function buildStrategicBoardCsvRows(
               "targetDisplayText",
             ),
             "Board Status": kpi.boardStatus,
-            "Configuration Status": kpi.configurationStatus,
-            "KPI Unresolved Reasons": kpi.unresolvedReasons.join("; "),
+            "Setup Status": kpi.configurationStatus,
+            "Measure Needs Attention": kpi.unresolvedReasons.join("; "),
             "Detail Type": detail.kind,
             "Detail Name": component?.label ?? band?.label ?? stream?.label ?? kpi.name,
             "Detail Measurement Type": component?.measurementType ?? null,
@@ -934,8 +939,8 @@ export function buildStrategicBoardCsvRows(
               component?.progress?.actualProgressPercentage ?? null,
             "Detail Display Progress Percentage":
               component?.progress?.displayProgressPercentage ?? null,
-            "Detail Configuration Status": component?.configurationStatus ?? null,
-            "Detail Unresolved Reasons": component?.unresolvedReasons.join("; ") ?? "",
+            "Detail Setup Status": component?.configurationStatus ?? null,
+            "Detail Needs Attention": component?.unresolvedReasons.join("; ") ?? "",
             "Demographic Respondent Total": demographics?.respondentTotal ?? null,
             "Derived Non-White Percentage": demographics?.derivedNonWhitePercentage ?? null,
             "Demographic Population Caveat": demographics?.populationCaveat ?? null,

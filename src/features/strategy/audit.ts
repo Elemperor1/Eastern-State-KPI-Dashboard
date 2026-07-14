@@ -119,6 +119,7 @@ export interface StrategicAuditFilter {
   actor_id?: number;
   event_type?: StrategicAuditEventType;
   limit?: number;
+  offset?: number;
 }
 
 export function listStrategicAuditEvents(
@@ -156,12 +157,15 @@ export function listStrategicAuditEvents(
     where.push(`(${related.join(" OR ")})`);
   }
   const limit = Math.min(Math.max(filter.limit ?? 200, 1), 1_000);
+  const offset = Number.isSafeInteger(filter.offset)
+    ? Math.max(filter.offset ?? 0, 0)
+    : 0;
   const rows = getDb()
     .prepare(
       `SELECT * FROM strategic_audit_events
        ${where.length ? `WHERE ${where.join(" AND ")}` : ""}
        ORDER BY occurred_at DESC, id DESC
-       LIMIT ${limit}`,
+       LIMIT ${limit} OFFSET ${offset}`,
     )
     .all(...params) as Record<string, unknown>[];
   return rows.map(asStrategicAuditEvent);

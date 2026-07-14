@@ -14,7 +14,8 @@ vi.mock("@/features/auth/session", () => ({
   authErrorResponse: () => new Response(null, { status: 401 }),
 }));
 
-const { deleteMock, upsertMock } = vi.hoisted(() => ({
+const { batchUpsertMock, deleteMock, upsertMock } = vi.hoisted(() => ({
+  batchUpsertMock: vi.fn(),
   deleteMock: vi.fn(),
   upsertMock: vi.fn(),
 }));
@@ -26,6 +27,7 @@ vi.mock("@/features/strategy/server", async () => {
   return {
     ...actual,
     deleteStrategyObservation: deleteMock,
+    upsertStrategyMultiComponentBatch: batchUpsertMock,
     upsertStrategyObservation: upsertMock,
   };
 });
@@ -56,6 +58,10 @@ function request(method: "POST" | "DELETE", body: unknown): NextRequest {
 beforeEach(() => {
   vi.clearAllMocks();
   upsertMock.mockReturnValue({ id: 11, kpi_id: 4, period_type: "annual" });
+  batchUpsertMock.mockReturnValue([
+    { id: 21, component_id: 8, scalar_value: 35 },
+    { id: 22, component_id: 9, scalar_value: 12 },
+  ]);
 });
 
 describe("/api/strategy/observations", () => {
@@ -67,6 +73,46 @@ describe("/api/strategy/observations", () => {
     expect(upsertMock).toHaveBeenCalledWith(body, ADMIN.id);
     await expect(response.json()).resolves.toEqual({
       observation: { id: 11, kpi_id: 4, period_type: "annual" },
+    });
+  });
+
+  it("commits a multi-input observation batch through one atomic feature operation", async () => {
+    const body = {
+      submission_type: "multi_input",
+      writes: [
+        {
+          kind: "component_entry",
+          input: { component_id: 8, reporting_year: 2026, value: 35 },
+        },
+        {
+          kind: "component_entry",
+          input: { component_id: 9, reporting_year: 2026, value: 12 },
+        },
+      ],
+    };
+    const response = await POST(request("POST", body));
+
+    expect(response.status).toBe(201);
+    expect(batchUpsertMock).toHaveBeenCalledWith(body, ADMIN.id);
+    expect(upsertMock).not.toHaveBeenCalled();
+    await expect(response.json()).resolves.toEqual({
+      results: [
+        { id: 21, component_id: 8, scalar_value: 35 },
+        { id: 22, component_id: 9, scalar_value: 12 },
+      ],
+    });
+  });
+
+  it("returns structured validation failures for a multi-input batch", async () => {
+    const response = await POST(
+      request("POST", { submission_type: "multi_input", writes: [] }),
+    );
+
+    expect(response.status).toBe(400);
+    expect(batchUpsertMock).not.toHaveBeenCalled();
+    await expect(response.json()).resolves.toMatchObject({
+      error: "Invalid observation submission.",
+      issues: [{ path: "writes" }],
     });
   });
 
@@ -82,7 +128,9 @@ describe("/api/strategy/observations", () => {
         { path: "reporting_month", message: "Choose a calendar month." },
       ]);
     });
-    const response = await POST(request("POST", { kpi_id: 4 }));
+    const response = await POST(
+      request("POST", { kpi_id: 4, reporting_year: 2026 }),
+    );
     expect(response.status).toBe(400);
     await expect(response.json()).resolves.toMatchObject({
       error: "Invalid reporting period.",

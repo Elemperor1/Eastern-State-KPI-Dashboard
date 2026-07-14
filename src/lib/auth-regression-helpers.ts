@@ -21,16 +21,9 @@
  * returns null for a revoked cookie. A valid viewer session yields
  * 403 `{error:"Forbidden"}` on the admin-gated routes.
  *
- *   POST   /api/breakdowns        requireAdmin     (breakdowns write)
- *   DELETE /api/breakdowns        requireAdmin     (breakdowns write)
  *   POST   /api/categories        requireAdmin     (categories write)
  *   PATCH  /api/categories        requireAdmin     (categories write)
  *   DELETE /api/categories        requireAdmin     (categories write)
- *   POST   /api/entries           requireAdmin     (entries write)
- *   DELETE /api/entries           requireAdmin     (entries write)
- *   POST   /api/goals             requireAdmin     (goals write)
- *   PATCH  /api/goals             requireAdmin     (goals write)
- *   DELETE /api/goals             requireAdmin     (goals write)
  *   POST   /api/kpis              requireAdmin     (KPI definitions write)
  *   PATCH  /api/kpis              requireAdmin     (KPI definitions write)
  *   DELETE /api/kpis              requireAdmin     (KPI definitions write)
@@ -96,10 +89,7 @@ import { NextRequest } from "next/server";
 import { createUser } from "@/features/users/server";
 import type { User } from "./types";
 
-import * as breakdowns from "@/app/api/breakdowns/route";
 import * as categories from "@/app/api/categories/route";
-import * as entries from "@/app/api/entries/route";
-import * as goals from "@/app/api/goals/route";
 import * as kpis from "@/app/api/kpis/route";
 import * as users from "@/app/api/users/route";
 import * as usersAccount from "@/app/api/users/account/route";
@@ -126,9 +116,6 @@ export interface ProtectedRoute {
     | "writes"
     | "kpis"
     | "categories"
-    | "entries"
-    | "breakdowns"
-    | "goals"
     | "users"
     | "exports"
     | "strategy_values"
@@ -161,16 +148,9 @@ export const PROTECTED_API_ROUTES: ProtectedRoute[] = [
   { method: "PATCH", path: "/api/strategy/targets", gate: "requireAdmin", group: "strategy_configuration", takesReq: true },
   { method: "PATCH", path: "/api/strategy/goals", gate: "requireAdmin", group: "strategy_configuration", takesReq: true },
   { method: "PATCH", path: "/api/strategy/memberships", gate: "requireAdmin", group: "strategy_configuration", takesReq: true },
-  { method: "POST", path: "/api/breakdowns", gate: "requireAdmin", group: "breakdowns", takesReq: true },
-  { method: "DELETE", path: "/api/breakdowns", gate: "requireAdmin", group: "breakdowns", takesReq: true },
   { method: "POST", path: "/api/categories", gate: "requireAdmin", group: "categories", takesReq: true },
   { method: "PATCH", path: "/api/categories", gate: "requireAdmin", group: "categories", takesReq: true },
   { method: "DELETE", path: "/api/categories", gate: "requireAdmin", group: "categories", takesReq: true },
-  { method: "POST", path: "/api/entries", gate: "requireAdmin", group: "entries", takesReq: true },
-  { method: "DELETE", path: "/api/entries", gate: "requireAdmin", group: "entries", takesReq: true },
-  { method: "POST", path: "/api/goals", gate: "requireAdmin", group: "goals", takesReq: true },
-  { method: "PATCH", path: "/api/goals", gate: "requireAdmin", group: "goals", takesReq: true },
-  { method: "DELETE", path: "/api/goals", gate: "requireAdmin", group: "goals", takesReq: true },
   { method: "POST", path: "/api/kpis", gate: "requireAdmin", group: "kpis", takesReq: true },
   { method: "PATCH", path: "/api/kpis", gate: "requireAdmin", group: "kpis", takesReq: true },
   { method: "DELETE", path: "/api/kpis", gate: "requireAdmin", group: "kpis", takesReq: true },
@@ -201,16 +181,9 @@ const HANDLERS: Record<string, Handler> = {
   "PATCH /api/strategy/targets": strategyTargets.PATCH as Handler,
   "PATCH /api/strategy/goals": strategyGoals.PATCH as Handler,
   "PATCH /api/strategy/memberships": strategyMemberships.PATCH as Handler,
-  "POST /api/breakdowns": breakdowns.POST as Handler,
-  "DELETE /api/breakdowns": breakdowns.DELETE as Handler,
   "POST /api/categories": categories.POST as Handler,
   "PATCH /api/categories": categories.PATCH as Handler,
   "DELETE /api/categories": categories.DELETE as Handler,
-  "POST /api/entries": entries.POST as Handler,
-  "DELETE /api/entries": entries.DELETE as Handler,
-  "POST /api/goals": goals.POST as Handler,
-  "PATCH /api/goals": goals.PATCH as Handler,
-  "DELETE /api/goals": goals.DELETE as Handler,
   "POST /api/kpis": kpis.POST as Handler,
   "PATCH /api/kpis": kpis.PATCH as Handler,
   "DELETE /api/kpis": kpis.DELETE as Handler,

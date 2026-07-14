@@ -39,7 +39,7 @@ describe("StrategicBoardReport render contract", () => {
     expect(source).toContain("<Table");
     expect(source).toContain("<Progress");
     expect(source).toContain("<caption");
-    expect(source).toContain('className={cn("export-only');
+    expect(source).toContain("data-raster-export-text");
     expect(source).not.toMatch(/<(button|input|select|table)\b/);
   });
 

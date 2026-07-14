@@ -80,9 +80,9 @@ describe("admin history helpers", () => {
 
   it("builds the deep-link href for composed filters", () => {
     const state = { categoryId: "2", kpiId: "5", year: "2026" };
-    expect(buildAdminHistoryHref(state)).toBe("/admin/history?category_id=2&kpi_id=5&year=2026");
-    expect(buildAdminHistoryHref(state, { categoryId: "3", kpiId: "" })).toBe("/admin/history?category_id=3&year=2026");
-    expect(buildAdminHistoryHref({ categoryId: "", kpiId: "", year: "" })).toBe("/admin/history");
+    expect(buildAdminHistoryHref(state)).toBe("/setup?area=activity&category_id=2&kpi_id=5&year=2026");
+    expect(buildAdminHistoryHref(state, { categoryId: "3", kpiId: "" })).toBe("/setup?area=activity&category_id=3&year=2026");
+    expect(buildAdminHistoryHref({ categoryId: "", kpiId: "", year: "" })).toBe("/setup?area=activity");
   });
 
   it("filters KPI options by selected category and lists history years descending", () => {

@@ -184,7 +184,6 @@ fi
 calculation_dependency_hits="$(
   find src/features src/lib -type f \( \
       -name '*calculation*.ts' -o \
-      -name 'analytics.ts' -o \
       -name 'period-rules.ts' \
     \) \
     ! -name '*.test.ts' \

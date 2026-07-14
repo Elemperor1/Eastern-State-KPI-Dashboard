@@ -26,7 +26,8 @@ _Avoid_: Link, mapping, assignment
 
 **KPI**:
 A stable performance indicator whose identity persists across measurement definitions, observations, targets, and reports.
-_Avoid_: Metric, measure, field
+_Production label_: Measure, when the screen does not need the formal domain term.
+_Avoid in domain code and audit contracts_: Metric, field
 
 **Legacy KPI Goal**:
 A historical per-KPI target anchored to a fixed baseline and target year. It is not a named outcome in the Strategic Plan.
@@ -60,7 +61,8 @@ _Avoid_: Reporting Frequency, date range
 
 **KPI Component**:
 An independently defined and measured part of a multi-component KPI, with its own raw inputs, unit, target, status, weight, and order.
-_Avoid_: Child KPI, field, submetric
+_Production label_: Input, when the screen does not need the formal domain term.
+_Avoid in domain code and audit contracts_: Child KPI, field, submetric
 
 **Aggregation Method**:
 The approved rule for combining compatible KPI Component results, or for deliberately leaving them uncombined.

@@ -1,631 +1,85 @@
-# Eastern State KPI — Manual QA Checklist
+# QA manual
 
-This checklist lets a new engineer validate the dashboard end-to-end against a
-running build without consulting the codebase. It mirrors the automated smoke
-harness in `scripts/smoke.sh` but is intended for **human eyes** — every step
-has a precondition, an action, an expected outcome, and a screenshot placeholder.
-
-> **Screenshot placeholders.** Each step has an `[Insert screenshot: ...]`
-> marker. When you run the checklist against a real build, paste a screenshot
-> into the matching numbered slot in `output/playwright/manual-qa/` (create
-> that directory; `output/playwright/` is intentionally gitignored) and link
-> it next to the marker.
-
-## 0. Preparation
-
-Before starting, complete these one-time steps:
-
-1. **Install + seed.**
-
-   ```bash
-   npm install
-   npm run db:seed
-   ```
-
-   This resets the KPI tables and re-populates 2024–2026 sample data. The seed
-   sets `meta.sample_data = true`, which surfaces the "Sample data" badge in
-   the UI throughout the run.
-
-2. **Build for production.**
-
-   ```bash
-   AUTH_DISABLED= npm run build
-   ```
-
-3. **Run the server.** Two modes are documented. Bypass mode is development-only:
-   `next start` runs with `NODE_ENV=production` and cannot serve app routes with
-   `AUTH_DISABLED=true`.
-
-   ```bash
-   # Bypass mode (current default, dev server only — loopback-bound):
-   AUTH_DISABLED=true PORT=3290 npm run dev &
-
-   # Normal-auth mode (login form appears)
-   AUTH_DISABLED=false PORT=3290 node_modules/.bin/next start -p 3290 &
-   ```
-
-   `npm run dev` (`scripts/dev.sh`) binds `next dev` to `127.0.0.1`
-   automatically when `AUTH_DISABLED` is set, and `src/lib/auth-flag.ts`
-   refuses startup if the bypass is enabled on a non-loopback bind. Do
-   not run `next dev` directly with `AUTH_DISABLED=true` on `0.0.0.0`.
-
-   In bypass mode, `getSession()` returns the real `auth-disabled@local` admin
-   row from `users` so `/` redirects straight to
-   `/dashboard/overview` and the `AccountBlock` is hidden. Every step below
-   assumes bypass mode unless explicitly tagged **#auth-wall**.
-
-4. **Confirm CI gate is green.** The QA run is meaningless if the project
-   itself fails the design-system + type + build gate.
-
-   ```bash
-   npm run design-system:test
-   ```
-
-   Expect the design-token, design-system, auth-bypass, architecture, and
-   shell-injection guards to pass, followed by a clean `tsc --noEmit` and
-   production `next build`.
-
-5. **Run the automated browser acceptance layer.**
-
-   ```bash
-   npm run test:e2e
-   ```
-
-   Playwright starts its own loopback-only dev server and uses the installed
-   Google Chrome channel. The five serial workflows cover goal CRUD, an
-   annual-entry failure/retry/restore cycle, desktop/mobile navigation, and
-   representative PNG, legacy PDF, and native print-PDF output. It seeds a
-   private, owned temporary SQLite run directory rather than `data/kpi.db`;
-   the DB/WAL/SHM files and temporary application records are removed during
-   identity-checked teardown. An optional `E2E_DATABASE_PATH` must be a new,
-   nonexistent `.db` under the OS temp root with the
-   `eastern-state-kpi-playwright-` prefix; existing files, links, directories,
-   and parent escapes are rejected before the seed command runs.
-
-> **Conventions.** "Year" means the dropdown year (default `2026` when the
-> current year is available). A
-> through-month applies only to monthly KPIs; the canonical strategic set is
-> annual-only. The metric pages and admin data-entry grid use the same period
-> rules.
-
----
-
-## Step 1 — Auth bypass / login round-trip
-
-**Precondition.** Server is running (see §0). Browser is pointed at
-`http://localhost:3290/`.
-
-**Action.**
-
-1. Visit `/`.
-2. If `AUTH_DISABLED=true`: observe the redirect.
-3. If `AUTH_DISABLED=false`: because preparation already seeded the database,
-   provision a known admin credential with
-   `SETUP_ADMIN_PASSWORD=... npm run setup:admin` (bootstrap environment
-   secrets work only when supplied before the first database access — see
-   `docs/operator-provisioning.md`), then visit `/login` and enter those
-   credentials. **Do not look for a password in the server's stdout** —
-   `ensureSeedAdmin()` no longer prints any plaintext (D8AD-CAN-001). On a
-   fresh bootstrap account the login will redirect to `/setup-password` to
-   force a rotation before reaching the dashboard.
-
-**Expected outcome.**
-
-- Bypass mode: `/` 302-redirects to `/dashboard/overview`; the dashboard renders
-  without a login prompt. The `AccountBlock` in the left nav is **not**
-  rendered (no Logout button).
-- Normal-auth mode (bootstrap account still flagged `must_change_password`):
-  the login succeeds but redirects to `/setup-password`, not the dashboard,
-  until the temporary credential is replaced.
-- Normal-auth mode (credential already rotated): the form returns the user to
-  `/dashboard/overview` on success; `/api/auth/me` then returns
-  `{ id, email, name, role: "admin" }`.
-- A wrong password (normal-auth mode) renders the in-form error: "Invalid
-  email or password." (Or whatever the API message is — verify it is
-  identical for unknown email vs wrong password, to avoid leaking which
-  one matched.)
-- **Secrecy check:** scan the server stdout/stderr from the seed and login
-  for the known credential — it must never appear. (`src/lib/auth-secrecy.test.ts`
-  automates this for `db:seed` and `setup:admin`.)
-
-**Screenshot placeholder.** `[Insert screenshot: dashboard after redirect / login form]`
-
----
-
-## Step 2 — Annual percentage entry round-trip
-
-**Precondition.** Logged in as admin (step 1). Dashboard is on
-`/dashboard/overview`.
-
-**Action.**
-
-1. Navigate to `/admin/data`.
-2. Pick **Reimagine Visitor Experience → Interpretive Site Plan — Milestones completed on schedule**.
-3. Set the year to `2029` (an allowed, unseeded plan year, so the annual field is empty).
-4. Type `42` into the **Annual** cell. Click **Save**.
-5. Open a new tab → `/dashboard/metric/interpretive-plan-milestones-on-schedule?currentYear=2029&compareYear=2028`.
-6. Confirm the current value renders as `42%`.
-7. Return to `/admin/data`. Click **Clear** on the annual cell. Confirm the
-   inline confirmation dialog, then verify the cell empties and the metric
-   page now shows a "No data" badge for 2029.
-
-**Expected outcome.**
-
-- `POST /api/entries` returns `201`.
-- The metric page reads `42%` in the annual values table and "Current" card.
-- The API rejects the same KPI with `month = 1` as a `400` frequency/month
-  mismatch; annual/flexible KPIs may only use `month = 0`.
-- `DELETE /api/entries` returns `200` and the row disappears.
-- An audit row appears at `/admin/history` for both the upsert and the delete,
-  with `kpi=Interpretive Site Plan — Milestones completed on schedule`,
-  `month=0`, `year=2029`, `changed_by=admin`.
-
-**Screenshot placeholder.** `[Insert screenshot: admin data grid + metric page + history row]`
-
----
-
-## Step 3 — Annual entry round-trip
-
-**Precondition.** Logged in as admin.
-
-**Action.**
-
-1. `/admin/data`. Pick **Advance Historic Preservation → Conservation
-   Management Plan — Total funds utilized for conservation**.
-2. Set year to `2029`. Type `700000` into the single "Annual" cell. Save.
-3. Visit `/dashboard/metric/conservation-funds-utilized?currentYear=2029&compareYear=2028`.
-4. Verify the page shows the current value `$700,000`.
-5. Return to `/admin/data`, clear the cell, confirm.
-
-**Expected outcome.**
-
-- Save returns `201`. The metric detail page shows `$700,000` as the current-year
-  total. The "Through month" / YTD controls are hidden (annual metric — only
-  the annual comparison is meaningful).
-- Clear returns `200`; metric page shows the "No data" badge.
-- `/admin/history` shows two audit rows for the upsert and delete.
-
-**Screenshot placeholder.** `[Insert screenshot: annual cell + metric page annual view]`
-
----
-
-## Step 4 — Breakdown entry round-trip
-
-**Precondition.** Logged in as admin.
-
-**Action.**
-
-1. `/admin/data`. Pick **Enhance Organizational Capacity → Revenue
-   Diversification — % of revenue from each major stream**
-   (`unit_type: breakdown`).
-2. Set year to `2029`. The grid switches to label/value rows.
-3. Click **Add row**. Enter label `Test row`, value `99`. Save.
-4. Visit `/dashboard/metric/revenue-by-stream?currentYear=2029`.
-5. Verify the breakdown chart shows a `Test row` bar with value `99`.
-6. Return to `/admin/data`. Delete the `Test row` via the row's trash icon.
-   Confirm the inline dialog.
-
-**Expected outcome.**
-
-- The breakdown chart renders the new label alongside the seeded revenue streams.
-  The values table on the metric page lists `Test row: 99`.
-- Deleting the row removes it from both the chart and the values table on
-  reload.
-- Two audit rows in `/admin/history` (one for the breakdown POST, one for the
-  DELETE). The audit row references `entry_history.breakdown_id`; the
-  `entry_id` column is `NULL` for breakdown entries.
-
-**Screenshot placeholder.** `[Insert screenshot: breakdown add row + chart + history]`
-
----
-
-## Step 5 — Breakdown row add/delete (UI only — no reorder)
-
-**Precondition.** Logged in as admin. On
-`/dashboard/metric/revenue-by-stream?currentYear=2029`.
-
-**Action.**
-
-1. Go to `/admin/data`. Filter to **Enhance Organizational Capacity → Revenue
-   Diversification — % of revenue from each major stream**, year `2029`.
-2. Add three rows: `Alpha=10`, `Bravo=20`, `Charlie=30`. Save each.
-3. Delete the middle row (`Bravo`). Confirm.
-4. Add `Delta=40`.
-5. Verify the rows remaining are `Alpha`, `Charlie`, `Delta` (the order in
-   which they were created — **the breakdown UI does not currently expose
-   reorder controls**; this step documents the absence intentionally).
-
-**Expected outcome.**
-
-- Rows render in the order they were added (insertion order).
-- Delete prompts an inline confirmation ("This removes the breakdown row
-  from {year}. The action cannot be undone.") and removes the row on
-  confirm.
-- A status banner confirms each save/delete.
-- If a future change introduces reorder, add a step here covering drag-handle
-  up/down and persistence across reload.
-
-**Screenshot placeholder.** `[Insert screenshot: breakdown rows before and after delete]`
-
----
-
-## Step 6 — KPI add (admin) and verify it propagates everywhere
-
-**Precondition.** Logged in as admin.
-
-**Action.**
-
-1. `/admin/kpis`. On the **KPIs** tab, fill in the "Add a new KPI" form:
-   - Category: **Reimagine Visitor Experience**
-   - Slug: `qa-test-metric-{timestamp}` (must match `^[a-z0-9-]+$`)
-   - Name: `QA test metric`
-   - Unit: `visits`
-   - Unit type: `count`
-   - Frequency: `monthly`
-   - Direction: `higher`
-2. Submit. Verify a green status banner: "KPI created."
-3. Reload `/dashboard/category/visitor-experience`. Confirm `QA test metric` appears in
-   the category's metric grid.
-4. Reload `/dashboard/metric/qa-test-metric-{timestamp}`. Confirm the page
-   renders (no 404) and shows "No data" badges because no entries exist yet.
-
-**Expected outcome.**
-
-- A new row in the `kpis` table with the chosen fields; the slug is unique
-  and lower-case.
-- The metric is visible on the category page immediately (server components
-  re-fetch on navigation).
-- The dedicated metric page renders, even though it has zero entries — the
-  page must not crash on empty data; the values table shows all 12 months as
-  blank with "No data" badges.
-
-**Screenshot placeholder.** `[Insert screenshot: KPI form + category page + metric page empty state]`
-
----
-
-## Step 7 — KPI delete (admin)
-
-**Precondition.** Logged in as admin. The KPI from step 6 still exists.
-
-**Action.**
-
-1. `/admin/kpis`. On the **KPIs** tab, find `QA test metric` in the existing
-   list. Click its trash icon. Confirm.
-2. Reload `/dashboard/category/visitor-experience`. Confirm `QA test metric` no longer
-   appears.
-3. Visit `/dashboard/metric/qa-test-metric-{timestamp}`. Confirm the page
-   either 404s or redirects back to the category (verify the chosen
-   behavior matches the current code).
-
-**Expected outcome.**
-
-- A green status banner: "KPI deleted."
-- The metric disappears from every category-level surface.
-- An audit row in `/admin/history` referencing the deleted KPI slug.
-
-**Screenshot placeholder.** `[Insert screenshot: delete confirmation + post-delete category page]`
-
----
-
-## Step 8 — Category cascade delete
-
-**Precondition.** Logged in as admin. A throwaway test category exists
-(create one at `/admin/kpis` → **Categories** tab: slug `qa-test-cat-{timestamp}`,
-name `QA test category`).
-
-**Action.**
-
-1. `/admin/kpis`. On the **Categories** tab, delete `QA test category`.
-   Confirm.
-2. If the category has KPIs with live monthly/breakdown entries, confirm the
-   delete is blocked with a conflict. Delete those entries first so audit
-   tombstones are recorded, then retry the category delete.
-3. Reload `/dashboard/overview`. Verify the deleted category is gone from the
-   executive summary grid.
-4. `/admin/kpis` should not include the deleted category, and
-   `/dashboard/overview` should not render it in the executive summary grid.
-
-**Expected outcome.**
-
-- After deletion, `/admin/kpis` and `/dashboard/overview` exclude
-  `qa-test-cat-{timestamp}`.
-- The catalog deletion guard blocks categories with live metric entries.
-  Once those dependents are gone, deleting the category removes its child
-  KPIs through the schema cascade; no orphaned KPIs remain.
-- `/admin/history` shows a delete audit row.
-
-**Screenshot placeholder.** `[Insert screenshot: category delete + overview after]`
-
----
-
-## Step 9 — User invite + password reset
-
-**Precondition.** Logged in as admin (Kerry).
-
-**Action.**
-
-1. `/admin/users`. In the **Invite a team member** form, enter:
-   - Name: `QA Viewer`
-   - Email: `qa-viewer-{timestamp}@easternstate.org`
-   - Password: `TempPass!2026` (8+ characters)
-   - Role: `viewer`
-2. Submit. Verify a green "User created." banner and the new row appears in
-   the table.
-3. Click the new user's **Reset password** icon. In the dialog, enter
-   `NewPass!2026`. Confirm.
-4. Open an incognito window. With `AUTH_DISABLED=false`, visit `/login`. Log
-   in as `qa-viewer-{timestamp}@easternstate.org` with the temporary
-   `NewPass!2026`; verify the reset correctly forces `/setup-password`.
-5. On `/setup-password`, replace it with `ViewerFinal!2026`, then continue to
-   the dashboard.
-6. Verify the viewer cannot see the admin nav group (Data entry, KPIs,
-   History, Team). Do not repeat this in bypass mode: the bypass deliberately
-   represents its dedicated local admin row, never the viewer.
-
-**Expected outcome.**
-
-- The invite creates a row in the `users` table with a bcrypt hash.
-- The password reset succeeds, forces rotation, and the rotated password works.
-- The viewer's nav reflects their role — `Manage` group is filtered out.
-
-**Screenshot placeholder.** `[Insert screenshot: invite form + user table + reset dialog + viewer nav]`
-
----
-
-## Step 10 — Forced password rotation and session revocation
-
-**Precondition.** Auth is enabled and an admin has issued a temporary password
-through the reset action in step 9. The current `AccountBlock` exposes Logout,
-not a routine change-password button; this step validates the implemented
-forced-rotation page and its API/session contract.
-
-**Action.**
-
-1. Log in with the admin-issued temporary password and confirm the browser is
-   sent to `/setup-password`, even if a protected dashboard URL was requested.
-2. Enter the temporary password and a new password (8+ characters), then
-   submit.
-3. Confirm the dashboard becomes reachable and the old session/cookie cannot
-   be replayed after the password change.
-4. Log out, then log back in with the rotated password. Confirm success.
-
-**Expected outcome.**
-
-- **Forced rotation (`/setup-password`):** on a `must_change_password`
-  account, login and every protected page redirect to `/setup-password`;
-  `requireSession`/`requireAdmin` return HTTP 403 until a new password is
-  set. After a successful change, `must_change_password` clears and the
-  dashboard is reachable.
-- The previous cookie and temporary password are rejected; the rotated
-  password creates a fresh valid session.
-
-**Screenshot placeholder.** `[Insert screenshot: setup-password rotation + dashboard after rotation]`
-
----
-
-## Step 11 — PNG + PDF + CSV export
-
-**Precondition.** Logged in. Start on
-`/dashboard/overview?currentYear=2026&compareYear=2025&currentMonth=6`.
-
-**Action.**
-
-1. Click **Export PNG**, then **Export PDF**. Open both overview files.
-2. Confirm the PDF is landscape Letter, remains below 50 MB, has no blank
-   pages, and keeps report cards readable. Page count varies with the data and
-   viewport; it is not a fixed acceptance value.
-3. Visit the annual percentage metric
-   `/dashboard/metric/interpretive-plan-milestones-on-schedule?currentYear=2026&compareYear=2025`.
-   Export PNG and CSV.
-4. Repeat PNG/CSV for annual currency:
-   `/dashboard/metric/conservation-funds-utilized?currentYear=2026&compareYear=2025`.
-5. Repeat for the breakdown metric
-   (`/dashboard/metric/revenue-by-stream`).
-6. On metric/category pages, use **Print / PDF** for the supported native PDF
-   path. To exercise the legacy raster fallback, append `legacy=1` to the
-   query string; this intentionally reveals **Export PDF** on those pages.
-7. Confirm the print preview is clean: no navigation, filters, or export
-   buttons, and only one branded report header.
-
-**Expected outcome.**
-
-- PNG/PDF contain one branded report header, the active filter context, and a
-  complete confidentiality footer. Long headings and labels wrap without
-  clipping or colliding with values.
-- Overview raster PDF has no blank pages and keeps each board-report section
-  intact. Render every page to images when validating a code change; a
-  successful download alone is not sufficient.
-- Annual PNGs include visible KPI values, charts, legends, and values tables.
-  Annual output has no through-month control; percentages use
-  percentage-point deltas.
-- CSV has a header row + one row for the year (annual metric) or one row per
-  label (breakdown metric). Open in
-  a spreadsheet — values should sort numerically and not have stray commas
-  inside quoted fields.
-- Print preview hides the side nav and the action buttons via the print
-  stylesheet; only the metric content is visible.
-
-**Screenshot placeholder.** `[Insert screenshot: overview PNG/PDF pages + representative metric PNG/CSV + print preview]`
-
----
-
-## Step 12 — Mobile rendering at 390 px
-
-**Precondition.** Logged in. Chrome DevTools device toolbar set to
-**iPhone 14 Pro** (390 × 844 px logical, 3x DPR) — or any viewport at
-exactly 390 px wide.
-
-**Action.**
-
-1. Visit `/dashboard/overview`. Verify:
-   - Top header collapses to a hamburger menu.
-   - Category cards stack vertically.
-   - No horizontal scroll bar at the page level.
-2. Tap the hamburger. Side drawer opens from the left. Close it.
-3. Visit `/dashboard/category/visitor-experience`. Verify cards stack and toolbar
-   controls wrap (year / month / compare-year dropdowns become full-width
-   or wrap cleanly).
-4. Visit `/dashboard/metric/interpretive-plan-milestones-on-schedule`. Verify the three stat cards
-   stack, the chart resizes, and the values table scrolls horizontally
-   inside its card (not the page).
-5. Visit `/admin/data`. Verify the category/KPI/year filters become a
-   vertical stack; the data entry grid scrolls inside its card.
-6. Visit `/login` (in normal-auth mode). Verify the marketing panel is
-   hidden on mobile; only the form panel renders.
-
-**Expected outcome.**
-
-- No element overflows the viewport at 390 px.
-- The mobile drawer toggles open/closed without trapping focus on the
-  hamburger (focus moves into the close button inside the drawer).
-- All tap targets are ≥ 44 px tall (the design system enforces `min-h-11`
-  on icon buttons and `min-h-10` on standard buttons).
-- Chart tooltips remain visible and not clipped when shown on small
-  screens.
-
-**Screenshot placeholder.** `[Insert screenshot: 390px overview + drawer + category + metric + admin]`
-
----
-
-## Step 13 — Strategic goal, configuration, and board-report acceptance
-
-**Precondition.** Seeded schema-11 database. Run as an admin, then repeat the
-read-only checks as a viewer with auth enabled.
-
-**Action.**
-
-1. Open `/dashboard/overview?currentYear=2026&compareYear=2025`. Confirm the
-   first summary says “X of Y goals completed,” includes a percentage, and
-   shows the number of goals pending setup. The denominator must be named
-   goals, not KPIs.
-2. Inspect all five performance-area cards. Confirm each card shows one
-   strategic-goal result. Movement counts must include only legacy-compatible
-   comparisons and explicit strategic `year_over_year` results; when no KPI is
-   eligible, the card says comparison is unavailable instead of showing a
-   misleading 0/0/0. The landing page must not expand priority cards, all 22
-   named-goal cards, or configuration-reason lists.
-3. Switch to 2025, 2027, and 2029. Confirm selected-year configurations and
-   targets change deliberately; missing future actuals render “Not started,”
-   never `NaN`, `Infinity`, or zero-as-missing.
-4. Open representative KPI details for binary, cumulative, percentage,
-   average, multi-component, distribution, revenue, unresolved, and
-   year-over-year measures. Confirm measurement type, formula, current result,
-   prominent target description, annual/full-plan progress, and raw inputs are
-   semantically correct. Only the year-over-year KPI may use that label as its
-   measurement. Confirm a raw-count YoY history row is calculated from its
-   displayed current/prior bases, an already-derived percent row is labeled as
-   a retained compatibility value, and cumulative plus one-time legacy rows
-   remain visible with cadence-correct labels. If first-class history exists,
-   compatibility rows must not be mixed into the same series.
-5. Open the Organizational Capacity category. Confirm the revenue-by-stream
-   strategic card and composition chart coexist, and that the card does not
-   fabricate a legacy YoY comparison.
-6. Open `/admin/configuration-gaps`. Exercise every filter. Confirm each row
-   identifies the priority, named goal, missing fields, unresolved question,
-   owner/due/review fields, and links to the correct KPI editor.
-7. In the strategic KPI editor, update a qualitative target description
-   without changing its numeric value, save a zero target, add/reorder/archive/
-   restore a component, and add/reorder/archive/restore a distribution band.
-   Reload after every operation.
-8. Enter one monthly, quarterly, annual, cumulative, one-time, percentage,
-   average, component, and distribution observation. Confirm the UI never
-   exposes month `0` and retains numerator/denominator/respondent/score inputs.
-9. Open `/admin/history`; verify the strategic tab shows immutable snapshots
-   for the edits. Archive and restore a strategic entity and confirm its prior
-   display name remains readable.
-10. From the overview, download the board CSV plus the detailed **Export PNG**
-   and **Export PDF** board-report artifacts. Then use **Print / PDF** to save
-   the same detailed board book through browser-native printing. All outputs
-   must include
-   organization/priority/goal completion, KPI results, target descriptions,
-   both target scopes, components, demographic labels/respondent totals,
-   revenue streams, and unresolved reasons. Render the raster overview PDF's
-   first, middle, and final pages, and spot-check each detailed-report section.
-11. With auth enabled, request
-    `/api/strategy/export?year=2026&format=csv` as an anonymous user, viewer,
-    and admin. Expect 401, 200, and 200 respectively; the response must be
-    `private, no-store`.
-
-**Expected outcome.**
-
-- Goal completion and export values agree because both consume the shared
-  calculated report model.
-- Missing target and numeric zero remain visibly distinct.
-- Over-target text retains the actual percentage while visual fill caps at
-  100%.
-- Undefined KPIs/goals are surfaced in the gap workflow and excluded from
-  completion denominators.
-- No user-facing `month 0`, `NaN`, `undefined`, or `Infinity` appears.
-- Viewer reads work, viewer/admin boundaries hold, and every KPI/strategic data
-  or configuration mutation is both CSRF-protected and audit logged.
-
-**Recorded Browser coverage.** Live in-app Browser review at 1280 px covers the
-goal summary, excluded-reason disclosure, configuration-gap workflow,
-government-support ratio editor, strategic-goal year boundaries, cumulative KPI
-detail, and both audit feeds. The Browser console is warning/error free. The
-acceptance suite separately covers 390 px responsive navigation and validates
-the downloaded PNG/PDF signatures and dimensions.
-
----
-
-## Recorded schema-11 verification — July 13, 2026
-
-- `npm test`: **91 files / 1,504 tests** passed, including calculation,
-  integration, lifecycle/audit, auth-replay, CSRF, and migration coverage.
-- `npm run design-system:test`: design/security/architecture guards, typecheck,
-  and the Next.js production build passed.
-- Development smoke: **66/66** checks passed against a loopback auth-bypass
-  server.
-- Playwright acceptance: **5/5** serial workflows passed, including the
-  overview PNG/PDF checks plus configuration-gap filter/link and strategic
-  metadata save/reload/restore coverage.
-- Clean schema-11 migration completed with zero application rows and zero
-  foreign-key violations. A canonical seeded-copy rehearsal preserved 3
-  users, 5 priorities, 59 KPIs, 174 scalar entries, 24 breakdown rows, 198
-  legacy history rows, 25 legacy KPI goals, 22 named strategic goals, 59
-  memberships, 59 configurations, 46 components, 21 strategic targets, and
-  296 strategic audit events. Two public migration runs were no-ops; the
-  logical dump remained exactly
-  `8bb9beeb7e59ac1e3b913ae616dc34e755d516b705667fe50e761f95fb6191b2`, and
-  `PRAGMA foreign_key_check` stayed empty. Focused fixtures separately prove
-  prior-canonical repair and operator-owned customization preservation.
-- The public migration-entrypoint regression deliberately starts with the old
-  government-support mapping, runs `scripts/migrate.ts`, and proves the ratio
-  mapping, stable IDs/data, and foreign-key integrity.
-- Live in-app Browser review covered the 1280 px overview, excluded-reason
-  disclosure, filtered gap dashboard, ratio editor, selected strategic-goal
-  years, cumulative detail, and value/strategic history tabs. No console
-  warnings or errors remained. Playwright separately proved 390 px responsive
-  navigation.
-- Auth proof is the exhaustive **35-route** replay matrix: 33 admin-gated
-  combinations and two session-gated reads. A credentialed production smoke
-  remains an operator release step because no production credential is stored
-  in the repository.
-
----
-
-## After the run
-
-When every step has been exercised, run the automated gates one more time
-to confirm the build is still green:
+Run automated gates first:
 
 ```bash
+npm test
 npm run design-system:test
+npm run test:e2e
+```
+
+Then start a loopback development server and run the smoke harness:
+
+```bash
+AUTH_DISABLED=true PORT=3290 npm run dev
 AUTH_DISABLED=true PORT=3290 BASE=http://127.0.0.1:3290 bash ./scripts/smoke.sh
 ```
 
-If any step's expected outcome diverged from what you observed, file an
-issue with:
+## Overview
 
-- the step number
-- what you observed vs. what was expected
-- a screenshot
-- browser + viewport
-- `node --version` and the SHA of the build
+- Open `/dashboard/overview?year=2026` at 1280 px and 390 px.
+- Confirm one title, organization progress, five Strategic Priorities, and a
+  bounded Needs attention list.
+- Confirm there is no Board Report heading or report/export root in the DOM.
+- Record a production Chrome trace: response time, LCP, decoded document size,
+  DOM count, and route JavaScript. Overview must be usable within two seconds
+  under the recorded profile and remain below the issue-42 structural baseline.
 
-This checklist should be re-run end-to-end whenever:
+## Data Entry
 
-- a new KPI / category ships (steps 6–8 cover the lifecycle)
-- the auth flow changes (step 1)
-- the export pipeline changes (step 11)
-- a new layout breakpoint ships (step 12)
+- Open `/data-entry?year=2029` as an Admin.
+- Exercise one atomic, one multi-component, and one distribution measure.
+- Force one strategic mutation to return 500. Confirm the input remains,
+  Couldn't save is announced, and the checklist is not Complete. For a
+  multi-component measure, confirm no component from the failed batch was saved.
+- Retry. Confirm Saved appears only after the response, Save and continue opens
+  the next unfinished item, reload preserves the value, and Activity records
+  the Actor and time.
+- Try to leave a dirty form and confirm the warning.
+- Confirm no user-facing month zero appears.
+
+## Reports
+
+- Open `/reports?view=board&year=2026`; verify the visible Board Report and its
+  CSV, PNG, PDF, year, totals, and calculated results.
+- Change Report to Trends. Confirm the Board Report root is removed and the
+  trend uses first-class strategic results.
+- Return to Overview and confirm neither report is present or loaded there.
+
+## Setup
+
+- Confirm the persistent selector contains exactly Measures, Goals, People,
+  and Activity.
+- In Measures, apply Needs attention and open a measure detail without leaving
+  Setup. At 390 px, verify Back to Measures restores the list and focus order is
+  understandable.
+- In Goals, exercise selection, completion rules, membership, annual targets,
+  and full-plan targets.
+- In People, verify role/status/password-recovery controls and self-lockout
+  prevention.
+- In Activity, verify Entry History and Strategic Audit Events retain immutable
+  labels after rename/delete, expose tombstones, and allow Older/Newer paging.
+
+## Deletion and security
+
+- Confirm removed UI routes and `/api/entries`, `/api/breakdowns`, `/api/goals`
+  return 404.
+- Confirm a Viewer sees only Overview and Reports and receives 403 from every
+  Admin mutation in the auth regression matrix.
+- Confirm revoked sessions receive uniform 401 responses, CSRF failures remain
+  generic, and `AUTH_DISABLED` cannot run outside loopback development.
+
+## Release
+
+- Back up the production SQLite volume and verify the backup opens.
+- Run `DATABASE_PATH=/absolute/path/to/kpi.db npm run db:migrate`; never use
+  `db:seed` as a migration.
+- Run the credentialed production/auth-enabled smoke.
+- Record before/after traces for Overview, Data Entry, Reports, and Setup on
+  desktop and representative mobile widths.
+- Run `npm run perf:profile` with `BASE`, `PERF_EMAIL`, and `PERF_PASSWORD`.
+  Confirm both performance JSON files and all sixteen trace files (eight
+  current, eight controlled baseline) are fresh, authenticated, and readable
+  with `gzip -t`.
+- Rollback follows ADR 0022: application rollback, plus backup restoration when
+  post-deploy strategic writes must also be removed.

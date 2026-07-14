@@ -295,6 +295,7 @@ function representativeInput(): StrategicBoardReportInput {
   return {
     organizationName: " Eastern State Penitentiary Historic Site ",
     selectedYear: 2027,
+    reportingPeriod: "Quarter 2",
     organizationGoalCompletion: {
       completedGoalsCount: 1,
       totalEligibleGoalsCount: 1,
@@ -526,6 +527,7 @@ describe("strategic board report contract", () => {
     expect(report).toEqual({
       organizationName: "Eastern State",
       selectedYear: null,
+      reportingPeriod: "Full year",
       organizationGoalCompletion: {
         completedGoalsCount: 0,
         totalEligibleGoalsCount: 0,
@@ -561,7 +563,7 @@ describe("strategic board report contract", () => {
       )?.fullPlanProgress;
       if (rawProgress) rawProgress.actualProgressPercentage = 9_999;
       const cumulativeRow = csv.rows.find(
-        (row) => row.KPI === "Visitor amenity upgrades",
+        (row) => row.Measure === "Visitor amenity upgrades",
       );
       expect(cumulativeRow?.["Full Plan Actual Progress Percentage"]).toBe(120);
     });
@@ -573,27 +575,28 @@ describe("strategic board report contract", () => {
       for (const priority of report.priorities) {
         for (const goal of priority.goals) {
           for (const item of goal.kpis) {
-            const row = rows.find((candidate) => candidate["KPI ID"] === item.id);
+            const row = rows.find((candidate) => candidate["Measure ID"] === item.id);
             expect(row, `Missing CSV row for ${item.name}`).toBeDefined();
             expect(row).toMatchObject({
               "Selected Year": report.selectedYear,
+              "Reporting Period": report.reportingPeriod,
               Organization: report.organizationName,
               Priority: priority.name,
               Goal: goal.name,
-              "KPI ID": item.id,
-              KPI: item.name,
+              "Measure ID": item.id,
+              Measure: item.name,
               "Measurement Type": item.measurementType,
               "Reporting Frequency": item.reportingFrequency,
               Unit: item.unit,
               "Result State": item.result.state,
               "Calculated Result": item.result.displayValue,
               "Calculated Numeric Value": item.result.value,
-              Numerator: item.result.numerator,
-              Denominator: item.result.denominator,
+              "Amount Measured": item.result.numerator,
+              "Total Amount": item.result.denominator,
               "Respondent Count": item.result.respondentCount,
-              "Formula Explanation": item.result.formulaExplanation,
+              "How Calculated": item.result.formulaExplanation,
               "Board Status": item.boardStatus,
-              "Configuration Status": item.configurationStatus,
+              "Setup Status": item.configurationStatus,
               "Full Plan Actual": item.fullPlanProgress?.actualValue ?? null,
               "Full Plan Target": item.fullPlanProgress?.targetValue ?? null,
               "Full Plan Has Target": item.fullPlanProgress?.hasTarget ?? null,
@@ -676,9 +679,9 @@ describe("strategic board report contract", () => {
       const rows = buildStrategicBoardCsvRows(
         buildStrategicBoardReport(representativeInput()),
       );
-      const zero = rows.find((row) => row.KPI === "Interpretive plan adopted");
+      const zero = rows.find((row) => row.Measure === "Interpretive plan adopted");
       const missing = rows.find(
-        (row) => row.KPI === "Average visitor dwell time",
+        (row) => row.Measure === "Average visitor dwell time",
       );
       expect(zero).toMatchObject({
         "Full Plan Target": 0,

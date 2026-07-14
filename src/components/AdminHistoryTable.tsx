@@ -1,7 +1,7 @@
 "use client";
 
 import { History } from "lucide-react";
-import { Badge, Card, Chip, EmptyState, Table } from "@/components/ui";
+import { Badge, Chip, EmptyState, Table } from "@/components/ui";
 import {
   describeAdminHistoryPeriod,
   formatAdminHistoryChangedAt,
@@ -20,23 +20,19 @@ interface AdminHistoryTableProps {
 
 export function AdminHistoryTable({ history }: AdminHistoryTableProps) {
   return (
-    <Card className="overflow-hidden">
-      <div className="border-b border-ink-100 p-5">
-        <h2 className="text-xl font-semibold text-ink-900">Activity</h2>
-        <p className="mt-1 text-sm text-ink-500">Most recent first.</p>
-      </div>
+    <div className="overflow-hidden border-y border-ink-200">
       {history.length === 0 ? (
         <EmptyState
           icon={History}
           title="No history yet"
-          description="Once someone edits a KPI entry, every before/after change will appear here."
+            description="Changes to reported values will appear here."
         />
       ) : (
         <Table minWidth="900px">
           <thead>
             <tr>
               <th scope="col" className="text-left">When</th>
-              <th scope="col" className="text-left">KPI</th>
+              <th scope="col" className="text-left">Measure</th>
               <th scope="col" className="text-left">Period</th>
               <th scope="col" className="text-left">Change</th>
               <th scope="col" className="text-left">By</th>
@@ -55,12 +51,12 @@ export function AdminHistoryTable({ history }: AdminHistoryTableProps) {
                     )}
                   </div>
                   <div className="mt-1 flex flex-wrap items-center gap-2">
-                    <Badge variant="default">{getAdminHistoryEntryTypeLabel(row)}</Badge>
+                    <Chip>{getAdminHistoryEntryTypeLabel(row)}</Chip>
                     <Chip>{getAdminHistoryCategoryLabel(row)}</Chip>
                     {row.metadata_deleted ? (
                       <Badge variant="error">Metadata deleted</Badge>
                     ) : row.metadata_renamed ? (
-                      <Badge variant="warning" title="The KPI has been renamed since this change. The label shown is the historical one.">
+                      <Badge variant="warning" title="The measure has been renamed since this change. The label shown is the historical one.">
                         Renamed
                         {row.kpi_current_name ? ` → ${row.kpi_current_name}` : ""}
                       </Badge>
@@ -89,7 +85,7 @@ export function AdminHistoryTable({ history }: AdminHistoryTableProps) {
           </tbody>
         </Table>
       )}
-    </Card>
+    </div>
   );
 }
 

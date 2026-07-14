@@ -52,9 +52,9 @@ export function AdminHistoryFilters({
           </Select>
         </label>
         <label className="block">
-          <span className="mb-1 block text-xs font-medium text-ink-700">KPI</span>
+          <span className="mb-1 block text-xs font-medium text-ink-700">Measure</span>
           <Select value={kpiId} onChange={(event) => onKpiChange(event.target.value)}>
-            <option value="">All KPIs</option>
+            <option value="">All measures</option>
             {kpis.map((kpi) => (
               <option key={kpi.id} value={kpi.id}>
                 {kpi.name}

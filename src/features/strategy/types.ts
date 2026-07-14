@@ -25,12 +25,18 @@ export const MEASUREMENT_TYPES = [
 ] as const;
 export type MeasurementType = (typeof MEASUREMENT_TYPES)[number];
 
-export const STRATEGY_REPORTING_FREQUENCIES = [
+export const EXPLICIT_STRATEGY_REPORTING_FREQUENCIES = [
   "monthly",
   "quarterly",
   "annual",
   "cumulative",
   "one_time",
+] as const;
+export type ExplicitStrategyReportingFrequency =
+  (typeof EXPLICIT_STRATEGY_REPORTING_FREQUENCIES)[number];
+
+export const STRATEGY_REPORTING_FREQUENCIES = [
+  ...EXPLICIT_STRATEGY_REPORTING_FREQUENCIES,
   // Compatibility value for legacy KPIs. New configurations should select an
   // explicit frequency before moving to ready/active.
   "flexible",

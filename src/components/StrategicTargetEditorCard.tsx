@@ -1,7 +1,7 @@
 "use client";
 
 import type { FormEvent } from "react";
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import {
   CONFIGURATION_STATUSES,
   type ConfigurationStatus,
@@ -52,6 +52,9 @@ export function StrategicTargetEditorCard({
   idPrefix: string;
   lockedTargetYear?: number;
 }) {
+  const initialDraftSignature = JSON.stringify(initialDraft);
+  const latestInitialDraft = useRef(initialDraft);
+  latestInitialDraft.current = initialDraft;
   const [draft, setDraft] = useState(initialDraft);
   const [errors, setErrors] = useState<StrategyEditorFormErrors>({});
   const [feedback, setFeedback] = useState<{
@@ -59,6 +62,12 @@ export function StrategicTargetEditorCard({
     message: string;
   } | null>(null);
   const [busy, setBusy] = useState(false);
+
+  useEffect(() => {
+    setDraft(latestInitialDraft.current);
+    setErrors({});
+    setFeedback(null);
+  }, [initialDraftSignature]);
 
   function update<K extends keyof TargetFormDraft>(
     key: K,
@@ -111,7 +120,7 @@ export function StrategicTargetEditorCard({
           <p className="mt-1 text-sm leading-6 text-ink-500">{description}</p>
         </div>
         <Badge variant={draft.id === null ? "warning" : "info"}>
-          {draft.id === null ? "Not configured" : `Target #${draft.id}`}
+          {draft.id === null ? "Needs attention" : "Saved"}
         </Badge>
       </div>
       {feedback ? (
@@ -125,8 +134,8 @@ export function StrategicTargetEditorCard({
             hint={
               errors.target_year ??
               (lockedTargetYear === undefined
-                ? "Strategic-plan years are 2025–2029."
-                : "Use the page-level reporting-year selector to edit another annual target.")
+                ? "Choose a year from 2025 through 2029."
+                : "Change the reporting year above to edit another target.")
             }
           >
             <Input
@@ -148,13 +157,13 @@ export function StrategicTargetEditorCard({
                 onChange={(event) =>
                   update("externalTargetYear", event.target.checked)
                 }
-                label="External target year"
-                description="Allow a target outside the 2025–2029 strategic-plan window."
+                label="Use a year outside the plan"
+                description="Turn this on only when the approved target is outside 2025–2029."
               />
             </div>
           ) : (
             <div className="flex items-end pb-2 text-sm leading-6 text-ink-600">
-              Annual pacing is stored independently for {lockedTargetYear}.
+              This target applies to {lockedTargetYear}.
             </div>
           )}
           <FormField
@@ -175,7 +184,7 @@ export function StrategicTargetEditorCard({
             />
           </FormField>
           <FormField
-            label="Configuration status"
+            label="Setup status"
             htmlFor={fieldId("status")}
             hint={errors.configuration_status}
           >
@@ -209,30 +218,12 @@ export function StrategicTargetEditorCard({
             />
           </FormField>
           <FormField
-            label="Structured target (JSON)"
-            htmlFor={fieldId("structured")}
-            className="md:col-span-2"
-            hint={
-              errors.structured_target ??
-              'Optional. Use an object such as {"value": 5} or {"completed": true}.'
-            }
-          >
-            <Textarea
-              id={fieldId("structured")}
-              value={draft.structuredTarget}
-              aria-invalid={Boolean(errors.structured_target)}
-              onChange={(event) =>
-                update("structuredTarget", event.target.value)
-              }
-            />
-          </FormField>
-          <FormField
-            label="Target description"
+            label="What does success look like?"
             htmlFor={fieldId("description")}
             className="md:col-span-2"
             hint={
               errors.target_description ??
-              "State the board-facing outcome and timeframe."
+              "Describe the outcome and when it should happen."
             }
           >
             <Textarea
@@ -245,7 +236,7 @@ export function StrategicTargetEditorCard({
             />
           </FormField>
           <FormField
-            label="Source reference"
+            label="Source"
             htmlFor={fieldId("source")}
             className="md:col-span-2"
             hint={errors.source_reference}

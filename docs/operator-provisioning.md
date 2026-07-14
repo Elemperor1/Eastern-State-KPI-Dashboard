@@ -89,7 +89,7 @@ SETUP_ADMIN_PASSWORD="<choose-a-strong-password>" \
 - The command sets the password and **clears** `must_change_password`
   (the operator chose this password, so it is treated as permanent, not
   temporary). If you instead want the user to rotate it at next login, use
-  the admin "Reset password" UI at `/admin/users`, which sets a temporary
+  Setup → People, which sets a temporary
   password and keeps `must_change_password = 1`.
 - Output is non-sensitive only:
 
@@ -139,7 +139,7 @@ If you previously relied on it:
 2. Existing seeded accounts are unaffected — the migration only changes
    how *new* first-run accounts are provisioned. To force rotation on an
    existing account, an admin can use the "Reset password" UI at
-   `/admin/users`, which issues a temporary password and re-arms
+   Setup → People, which issues a temporary password and re-arms
    `must_change_password`.
 
 ## AUTH_DISABLED — exact safe-use conditions (D8AD-CAN-002)

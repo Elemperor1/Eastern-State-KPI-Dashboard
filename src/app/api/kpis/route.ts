@@ -1,11 +1,17 @@
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 import { authErrorResponse, requireAdmin } from "@/features/auth/session";
+import {
+  EXPLICIT_STRATEGY_REPORTING_FREQUENCIES,
+  MEASUREMENT_TYPES,
+  STRATEGIC_PLAN_END_YEAR,
+  STRATEGIC_PLAN_START_YEAR,
+} from "@/features/strategy";
 import { assertMutationRequest } from "@/lib/request-guard";
 import {
   archiveKPI,
   CatalogEntityNotFoundError,
-  createKPI,
+  createStrategicMeasure,
   DependentEntriesError,
   listCategories,
   listKPIs,
@@ -26,17 +32,20 @@ function refreshedCatalogPayload() {
 }
 
 const CreateSchema = z.object({
-  category_id: z.number().int().positive(),
-  parent_id: z.number().int().positive().nullable().optional(),
+  goal_id: z.number().int().positive(),
+  reporting_year: z
+    .number()
+    .int()
+    .min(STRATEGIC_PLAN_START_YEAR)
+    .max(STRATEGIC_PLAN_END_YEAR),
   slug: z.string().min(1).regex(/^[a-z0-9-]+$/),
   name: z.string().min(1),
-  unit: z.string().optional(),
-  unit_type: UnitTypeEnum.optional(),
-  reporting_frequency: FrequencyEnum.optional(),
-  direction: DirectionEnum.optional(),
+  unit: z.string().trim().min(1),
+  measurement_type: z.enum(MEASUREMENT_TYPES),
+  reporting_frequency: z.enum(EXPLICIT_STRATEGY_REPORTING_FREQUENCIES),
+  direction: DirectionEnum,
   description: z.string().nullable().optional(),
-  sort_order: z.number().int().optional(),
-});
+}).strict();
 
 export async function POST(req: NextRequest) {
   let user;
@@ -52,8 +61,8 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "Invalid input", issues: parsed.error.flatten() }, { status: 400 });
   }
   try {
-    const kpi = createKPI(parsed.data, user.id);
-    return NextResponse.json({ kpi, ...refreshedCatalogPayload() }, { status: 201 });
+    const created = createStrategicMeasure(parsed.data, user.id);
+    return NextResponse.json({ ...created, ...refreshedCatalogPayload() }, { status: 201 });
   } catch (err) {
     const message = err instanceof Error ? err.message : "Could not create KPI";
     return NextResponse.json({ error: message }, { status: 400 });

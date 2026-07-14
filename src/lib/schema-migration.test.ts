@@ -2,7 +2,6 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { listGoals } from "@/features/goals";
 import { getDb, resetDb, SCHEMA_VERSION } from "@/lib/db";
 
 const STRATEGIC_TABLES = [
@@ -469,7 +468,13 @@ describe("schema 11 migration", () => {
 
     resetDb();
     const migrated = getDb();
-    const goal = listGoals({ asOfYear: 2026 })[0];
+    const goal = migrated
+      .prepare(
+        `SELECT kpi_id, target_year, baseline_year, goal_type, target_value
+         FROM kpi_goals
+         WHERE kpi_id = ?`,
+      )
+      .get(kpiId);
 
     expect(SCHEMA_VERSION).toBe(11);
     expect(schemaVersion(migrated)).toBe(11);
@@ -477,10 +482,8 @@ describe("schema 11 migration", () => {
       kpi_id: kpiId,
       target_year: 2029,
       baseline_year: 2026,
-      progress_year: 2026,
-      full_year_target: 23,
-      full_year_value: 20,
-      full_year_progress_pct: 87,
+      goal_type: "number",
+      target_value: 3,
     });
     expect(
       (

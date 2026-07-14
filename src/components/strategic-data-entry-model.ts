@@ -1,115 +1,28 @@
 import {
   strategyPeriods,
   type AverageInputMethod,
-  type ConfigurationStatus,
-  type DistributionDerivedGroup,
   type MeasurementType,
   type StrategyReportingFrequency,
 } from "@/features/strategy";
+import type {
+  StrategicDataEntryBandOption,
+  StrategicDataEntryComponentOption,
+  StrategicDataEntryRecord,
+  StrategicDataEntrySelectedKpi,
+} from "@/features/strategy/data-entry-model";
+import type { ReportingCycleOption } from "@/features/strategy";
 
-export const STRATEGIC_DATA_ENTRY_YEARS = [2025, 2026, 2027, 2028, 2029] as const;
-
-export interface StrategicDataEntryKpiOption {
-  id: number;
-  name: string;
-  priorityName: string;
-  goalName: string;
-  measurementType: MeasurementType | null;
-  reportingFrequency: StrategyReportingFrequency | null;
-  configurationStatus: ConfigurationStatus | null;
-}
-
-export interface StrategicDataEntryComponentOption {
-  id: number;
-  label: string;
-  measurementType: MeasurementType;
-  unit: string | null;
-  fixedDenominator: number | null;
-}
-
-export interface StrategicDataEntryBandOption {
-  id: number;
-  componentId: number | null;
-  slug: string;
-  label: string;
-  displayOrder: number;
-  isUnknown: boolean;
-  isDeclined: boolean;
-  derivedGroup: DistributionDerivedGroup | null;
-}
-
-export interface StrategicDataEntrySelectedKpi {
-  id: number;
-  slug: string;
-  name: string;
-  priorityName: string;
-  goalName: string;
-  unit: string | null;
-  measurementType: MeasurementType;
-  reportingFrequency: StrategyReportingFrequency;
-  configurationStatus: ConfigurationStatus;
-  calculationPrecision: number;
-  fixedDenominator: number | null;
-  components: StrategicDataEntryComponentOption[];
-  bands: StrategicDataEntryBandOption[];
-}
-
-export interface StrategicDataEntryBandValue {
-  bandId: number;
-  slug: string;
-  currentLabel: string;
-  labelSnapshot: string;
-  count: number;
-  displayOrder: number;
-  isUnknown: boolean;
-  isDeclined: boolean;
-  derivedGroup: DistributionDerivedGroup | null;
-}
-
-export type StrategicDataEntryRecordKind =
-  | "observation"
-  | "component_entry"
-  | "distribution";
-
-export interface StrategicDataEntryRecord {
-  id: number;
-  kind: StrategicDataEntryRecordKind;
-  kpiId: number;
-  componentId: number | null;
-  componentLabel: string | null;
-  measurementType: MeasurementType;
-  reportingFrequency: StrategyReportingFrequency;
-  year: number;
-  periodType: Exclude<StrategyReportingFrequency, "flexible">;
-  periodIndex: number;
-  scalarValue: number | null;
-  numerator: number | null;
-  denominator: number | null;
-  respondentCount: number | null;
-  averageMethod: AverageInputMethod | null;
-  totalScore: number | null;
-  averageScore: number | null;
-  maxScorePerRespondent: number | null;
-  totalPossibleScore: number | null;
-  positiveResponseCount: number | null;
-  totalResponseCount: number | null;
-  booleanValue: boolean | null;
-  milestoneValue: number | null;
-  mutuallyExclusive: boolean | null;
-  notes: string | null;
-  sourceReference: string | null;
-  bands: StrategicDataEntryBandValue[];
-}
-
-export interface StrategicDataEntryPageData {
-  reportingYear: number;
-  years: number[];
-  kpis: StrategicDataEntryKpiOption[];
-  selectedKpiId: number | null;
-  selectedKpi: StrategicDataEntrySelectedKpi | null;
-  records: StrategicDataEntryRecord[];
-  loadError: string | null;
-}
+export {
+  STRATEGIC_DATA_ENTRY_YEARS,
+  type StrategicDataEntryBandOption,
+  type StrategicDataEntryBandValue,
+  type StrategicDataEntryComponentOption,
+  type StrategicDataEntryKpiOption,
+  type StrategicDataEntryPageData,
+  type StrategicDataEntryRecord,
+  type StrategicDataEntryRecordKind,
+  type StrategicDataEntrySelectedKpi,
+} from "@/features/strategy/data-entry-model";
 
 export interface StrategicDataEntryDraft {
   componentId: string;
@@ -133,6 +46,10 @@ export interface StrategicDataEntryDraft {
   sourceReference: string;
 }
 
+export type StrategicDataEntryDrafts = Record<string, StrategicDataEntryDraft>;
+
+export const PRIMARY_DATA_ENTRY_DRAFT = "primary";
+
 export type StrategicDataEntryErrors = Record<string, string>;
 
 export interface StrategicDataEntryMutation {
@@ -143,6 +60,11 @@ export interface StrategicDataEntryMutation {
   body: Record<string, unknown>;
 }
 
+export interface StrategicDataEntryRequest {
+  endpoint: StrategicDataEntryMutation["endpoint"];
+  body: Record<string, unknown>;
+}
+
 export type StrategicDataEntryBuildResult =
   | {
       ok: true;
@@ -150,6 +72,40 @@ export type StrategicDataEntryBuildResult =
       errors: Record<string, never>;
     }
   | { ok: false; mutation: null; errors: StrategicDataEntryErrors };
+
+/**
+ * Multi-component measures must cross the HTTP boundary as one request so the
+ * server can commit every related input in a single transaction.
+ */
+export function buildStrategicDataEntryRequests(
+  mutations: StrategicDataEntryMutation[],
+): StrategicDataEntryRequest[] {
+  if (
+    mutations.length > 1 &&
+    mutations.every(
+      (mutation) =>
+        mutation.endpoint === "/api/strategy/component-entries" ||
+        mutation.endpoint === "/api/strategy/distributions",
+    )
+  ) {
+    return [
+      {
+        endpoint: "/api/strategy/observations",
+        body: {
+          submission_type: "multi_input",
+          writes: mutations.map((mutation) => ({
+            kind:
+              mutation.endpoint === "/api/strategy/distributions"
+                ? "distribution"
+                : "component_entry",
+            input: mutation.body,
+          })),
+        },
+      },
+    ];
+  }
+  return mutations;
+}
 
 export function displayStrategyLabel(value: string): string {
   return value
@@ -258,6 +214,64 @@ export function emptyStrategicDataEntryDraft(
     notes: "",
     sourceReference: "",
   };
+}
+
+function draftForReportingCycle(
+  selectedKpi: StrategicDataEntrySelectedKpi,
+  reportingYear: number,
+  reportingPeriod: ReportingCycleOption,
+  componentId: number | null,
+  record?: StrategicDataEntryRecord,
+): StrategicDataEntryDraft {
+  const draft = record
+    ? draftFromStrategicDataEntryRecord(selectedKpi, record)
+    : emptyStrategicDataEntryDraft(selectedKpi, reportingYear);
+  return {
+    ...draft,
+    componentId: componentId === null ? "" : String(componentId),
+    flexibleMode:
+      selectedKpi.reportingFrequency === "flexible" &&
+      reportingPeriod.periodType === "annual"
+        ? "annual"
+        : "monthly",
+    periodIndex: String(reportingPeriod.periodIndex),
+  };
+}
+
+/** Build the complete editable draft set for one checklist item and period. */
+export function initialStrategicDataEntryDrafts(
+  selectedKpi: StrategicDataEntrySelectedKpi,
+  reportingYear: number,
+  reportingPeriod: ReportingCycleOption,
+  records: StrategicDataEntryRecord[],
+): StrategicDataEntryDrafts {
+  if (selectedKpi.measurementType !== "multi_component") {
+    return {
+      [PRIMARY_DATA_ENTRY_DRAFT]: draftForReportingCycle(
+        selectedKpi,
+        reportingYear,
+        reportingPeriod,
+        null,
+        records.find((record) => record.componentId === null),
+      ),
+    };
+  }
+
+  return Object.fromEntries(
+    selectedKpi.components.map((component) => {
+      const key = String(component.id);
+      return [
+        key,
+        draftForReportingCycle(
+          selectedKpi,
+          reportingYear,
+          reportingPeriod,
+          component.id,
+          records.find((record) => record.componentId === component.id),
+        ),
+      ];
+    }),
+  );
 }
 
 function readNumber(

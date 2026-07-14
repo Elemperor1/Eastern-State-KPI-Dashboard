@@ -1,8 +1,10 @@
 # Eastern State KPI — Product Roadmap
 
-> Single source of truth for everything that still needs to be done to take the dashboard from "redesigned-but-fragile" to "internal-tool-of-record." This document is **the answer to the active goal**: "figure out what needs to be improved" with explicit `/goal` prompts at the bottom that an agent can pick up one at a time.
->
-> Audit cut-off: 2026-06-25. This roadmap is historical; completed security and architecture items were reconciled during the modular refactor. Current behavior source of truth is `DESIGN.md`, `src/features/*`, `src/lib/*`, and `scripts/*`.
+> Historical roadmap, audited 2026-06-25. It is not the source of current
+> routes or product behavior. Issue 42 and ADR 0022 replaced the legacy
+> dashboard/admin workflows on 2026-07-14. Use `README.md`, `DESIGN.md`,
+> `docs/issue-42-replacement-inventory.md`, and the live source for current
+> behavior; the items below remain only as decision history.
 
 ## 0. State of the product (today)
 

@@ -3,20 +3,19 @@ import type {
   MeasurementResult,
   StrategicGoalReadModel,
 } from "@/features/strategy";
-import type { KPIWithCategory, MonthlyEntryWithMeta } from "@/lib/types";
-import { buildStrategicBoardReportFromSummary } from "./strategic-board-adapter";
+import type { KPIWithCategory } from "@/lib/types";
 import { buildStrategicDashboardSummary } from "./strategy-summary";
 
 const kpis: KPIWithCategory[] = [
-  legacyKpi(1, "completed", "Completed projects"),
-  legacyKpi(2, "future", "Future projects"),
-  legacyKpi(3, "undefined", "Undefined measure"),
+  catalogKpi(1, "completed", "Completed projects"),
+  catalogKpi(2, "future", "Future projects"),
+  catalogKpi(3, "undefined", "Undefined measure"),
 ];
 
-const entries: MonthlyEntryWithMeta[] = [
-  legacyEntry(1, 2026, 0, 5),
-  legacyEntry(2, 2026, 1, 2),
-  legacyEntry(2, 2026, 2, 3),
+const actuals = [
+  scalarActual(1, 2026, "annual", 0, 5),
+  scalarActual(2, 2026, "monthly", 1, 2),
+  scalarActual(2, 2026, "monthly", 2, 3),
 ];
 
 describe("strategic dashboard summary", () => {
@@ -47,9 +46,9 @@ describe("strategic dashboard summary", () => {
     const summary = buildStrategicDashboardSummary({
       goals,
       kpis,
-      entries,
       selectedYear: 2026,
       throughMonth: 2,
+      actuals,
     });
 
     expect(summary.organization).toMatchObject({
@@ -77,7 +76,6 @@ describe("strategic dashboard summary", () => {
     const summary = buildStrategicDashboardSummary({
       goals: [goal({ members: [member(2, target(10, 2029))] })],
       kpis,
-      entries: [],
       selectedYear: 2026,
     });
 
@@ -90,13 +88,12 @@ describe("strategic dashboard summary", () => {
     const zero = buildStrategicDashboardSummary({
       goals: [goal({ members: [member(1, target(0, 2029))] })],
       kpis,
-      entries: [legacyEntry(1, 2026, 0, 0)],
       selectedYear: 2026,
+      actuals: [scalarActual(1, 2026, "annual", 0, 0)],
     });
     const missing = buildStrategicDashboardSummary({
       goals: [goal({ members: [member(1, null, "ready")] })],
       kpis,
-      entries,
       selectedYear: 2026,
     });
 
@@ -105,11 +102,10 @@ describe("strategic dashboard summary", () => {
     expect(missing.goals[0]?.result.exclusionReasons).toContain("needs_target");
   });
 
-  it("prefers first-class observations to compatibility entries", () => {
+  it("uses first-class strategic observations for progress", () => {
     const summary = buildStrategicDashboardSummary({
       goals: [goal({ members: [member(1, target(10, 2029))] })],
       kpis,
-      entries,
       selectedYear: 2026,
       actuals: [{
         kpiId: 1,
@@ -125,202 +121,17 @@ describe("strategic dashboard summary", () => {
     expect(summary.goals[0]?.kpis[0]?.fullPlanProgress.actualProgressPercentage).toBe(80);
   });
 
-  it("adapts an explicit fixed-denominator legacy ratio before board reporting", () => {
-    const ratioMember = member(1, target(100, 2029));
-    ratioMember.configuration!.measurement_type = "ratio";
-    ratioMember.configuration!.unit = "%";
-    ratioMember.configuration!.fixed_denominator = 50;
-    const goals = [goal({ members: [ratioMember] })];
-    const summary = buildStrategicDashboardSummary({
-      goals,
-      kpis,
-      entries: [legacyEntry(1, 2026, 0, 30)],
-      selectedYear: 2026,
-    });
-    const report = buildStrategicBoardReportFromSummary({ summary, goals });
-
-    expect(summary.goals[0]?.kpis[0]).toMatchObject({
-      currentValue: 60,
-      annualActual: 60,
-      cumulativeActual: 60,
-      currentCalculation: {
-        state: "ok",
-        measurementType: "ratio",
-        value: 60,
-        normalizedPercentage: 60,
-        numerator: 30,
-        denominator: 50,
-      },
-    });
-    expect(report.priorities[0]?.goals[0]?.kpis[0]?.result).toMatchObject({
-      value: 60,
-      displayValue: "60%",
-      numerator: 30,
-      denominator: 50,
-    });
-  });
-
-  it("does not guess a denominator for a generic legacy ratio", () => {
-    const ratioMember = member(1, target(100, 2029));
-    ratioMember.configuration!.measurement_type = "ratio";
-    ratioMember.configuration!.unit = "%";
-    ratioMember.configuration!.fixed_denominator = null;
-    const goals = [goal({ members: [ratioMember] })];
-    const summary = buildStrategicDashboardSummary({
-      goals,
-      kpis,
-      entries: [legacyEntry(1, 2026, 0, 30)],
-      selectedYear: 2026,
-    });
-    const report = buildStrategicBoardReportFromSummary({ summary, goals });
-
-    expect(summary.goals[0]?.kpis[0]).toMatchObject({
-      currentValue: 30,
-      currentCalculation: {
-        state: "ok",
-        value: 30,
-        numerator: null,
-        denominator: null,
-        calculationProvenance: "legacy_direct_value",
-      },
-    });
-    expect(report.priorities[0]?.goals[0]?.kpis[0]?.result).toMatchObject({
-      value: 30,
-      displayValue: "30%",
-      formulaExplanation:
-        "Retained direct legacy ratio; raw numerator and denominator are unavailable, so this result was not recalculated.",
-    });
-  });
-
-  it("labels retained legacy percentage and average values without inventing raw inputs", () => {
-    const cases = [
-      {
-        measurementType: "percentage" as const,
-        unit: "%",
-        formula:
-          "Retained direct legacy percentage; raw numerator and denominator are unavailable, so this result was not recalculated.",
-      },
-      {
-        measurementType: "average" as const,
-        unit: "% normalized",
-        formula:
-          "Retained direct legacy normalized value; raw score inputs and formula method are unavailable, so this result was not recalculated.",
-      },
-    ];
-
-    for (const { measurementType, unit, formula } of cases) {
-      const retainedMember = member(1, target(80, 2029));
-      retainedMember.configuration!.measurement_type = measurementType;
-      retainedMember.configuration!.unit = unit;
-      const goals = [goal({ members: [retainedMember] })];
-      const summary = buildStrategicDashboardSummary({
-        goals,
-        kpis,
-        entries: [legacyEntry(1, 2026, 0, 62.55)],
-        selectedYear: 2026,
-      });
-      const report = buildStrategicBoardReportFromSummary({ summary, goals });
-
-      expect(summary.goals[0]?.kpis[0]).toMatchObject({
-        currentValue: 62.55,
-        currentCalculation: {
-          state: "ok",
-          measurementType,
-          value: 62.55,
-          numerator: null,
-          denominator: null,
-          calculationProvenance: "legacy_direct_value",
-        },
-      });
-      expect(
-        report.priorities[0]?.goals[0]?.kpis[0]?.result.formulaExplanation,
-      ).toBe(formula);
-    }
-  });
-
-  it("calculates legacy raw-count YOY while preserving derived percentage rows", () => {
-    const rawCountMember = member(1, target(25, 2029));
-    rawCountMember.configuration!.measurement_type = "year_over_year";
-    rawCountMember.configuration!.unit = null;
-    rawCountMember.kpi.unit = "partnerships";
-    const rawGoals = [goal({ members: [rawCountMember] })];
-    const rawSummary = buildStrategicDashboardSummary({
-      goals: rawGoals,
-      kpis,
-      entries: [
-        legacyEntry(1, 2025, 0, 14),
-        legacyEntry(1, 2026, 0, 17),
-      ],
-      selectedYear: 2026,
-    });
-    const rawReport = buildStrategicBoardReportFromSummary({
-      summary: rawSummary,
-      goals: rawGoals,
-    });
-
-    expect(rawSummary.goals[0]?.kpis[0]).toMatchObject({
-      currentValue: 21.4,
-      currentCalculation: {
-        state: "ok",
-        measurementType: "year_over_year",
-        value: 21.4,
-        numerator: 3,
-        denominator: 14,
-      },
-    });
-    expect(rawReport.priorities[0]?.goals[0]?.kpis[0]?.result.displayValue).toBe(
-      "+21.4%",
-    );
-
-    const derivedMember = member(1, target(10, 2029));
-    derivedMember.configuration!.measurement_type = "year_over_year";
-    derivedMember.configuration!.unit = "%";
-    const derivedGoals = [goal({ members: [derivedMember] })];
-    const derivedSummary = buildStrategicDashboardSummary({
-      goals: derivedGoals,
-      kpis,
-      entries: [
-        legacyEntry(1, 2025, 0, 3),
-        legacyEntry(1, 2026, 0, 4),
-      ],
-      selectedYear: 2026,
-    });
-    const derivedReport = buildStrategicBoardReportFromSummary({
-      summary: derivedSummary,
-      goals: derivedGoals,
-    });
-
-    expect(derivedSummary.goals[0]?.kpis[0]).toMatchObject({
-      currentValue: 4,
-      currentCalculation: {
-        state: "ok",
-        measurementType: "year_over_year",
-        value: 4,
-        normalizedPercentage: 4,
-        numerator: null,
-        denominator: null,
-        calculationProvenance: "legacy_direct_percentage",
-      },
-    });
-    expect(derivedReport.priorities[0]?.goals[0]?.kpis[0]?.result).toMatchObject({
-      value: 4,
-      displayValue: "+4%",
-      formulaExplanation:
-        "Retained direct legacy percentage; underlying current and prior raw values are unavailable, so this result was not recalculated.",
-    });
-  });
-
   it("keeps selected-year actual separate from cumulative full-plan actual", () => {
     const cumulativeMember = member(1, target(5, 2029));
     cumulativeMember.configuration!.measurement_type = "cumulative";
     const summary = buildStrategicDashboardSummary({
       goals: [goal({ members: [cumulativeMember] })],
       kpis,
-      entries: [
-        legacyEntry(1, 2025, 0, 1),
-        legacyEntry(1, 2026, 0, 2),
-      ],
       selectedYear: 2026,
+      actuals: [
+        scalarActual(1, 2025, "annual", 0, 1),
+        scalarActual(1, 2026, "annual", 0, 2),
+      ],
     });
 
     expect(summary.goals[0]?.kpis[0]).toMatchObject({
@@ -340,7 +151,6 @@ describe("strategic dashboard summary", () => {
     const summary = buildStrategicDashboardSummary({
       goals: [goal({ members: [pacedMember] })],
       kpis,
-      entries: [],
       selectedYear: 2026,
       throughMonth: 6,
       actuals: [{
@@ -387,7 +197,6 @@ describe("strategic dashboard summary", () => {
     const summary = buildStrategicDashboardSummary({
       goals: [goal({ members: [binaryMember] })],
       kpis,
-      entries: [],
       selectedYear: 2026,
       actuals: [{
         kpiId: 1,
@@ -415,7 +224,6 @@ describe("strategic dashboard summary", () => {
     const summary = buildStrategicDashboardSummary({
       goals: [goal({ members: [member(1, draftTarget)] })],
       kpis,
-      entries: [legacyEntry(1, 2026, 0, 5)],
       selectedYear: 2026,
     });
 
@@ -475,7 +283,6 @@ describe("strategic dashboard summary", () => {
     const summary = buildStrategicDashboardSummary({
       goals: [goal({ members: [configuredMember] })],
       kpis,
-      entries: [],
       selectedYear: 2026,
       actuals: [{
         kpiId: 1,
@@ -526,7 +333,6 @@ describe("strategic dashboard summary", () => {
     const summary = buildStrategicDashboardSummary({
       goals: [goal({ members: [configuredMember] })],
       kpis,
-      entries: [],
       selectedYear: 2026,
       actuals: [multiComponentActual({
         member: configuredMember,
@@ -555,7 +361,6 @@ describe("strategic dashboard summary", () => {
     const summary = buildStrategicDashboardSummary({
       goals: [goal({ members: [configuredMember] })],
       kpis,
-      entries: [],
       selectedYear: 2026,
       actuals: [multiComponentActual({
         member: configuredMember,
@@ -584,7 +389,6 @@ describe("strategic dashboard summary", () => {
     const summary = buildStrategicDashboardSummary({
       goals: [goal({ members: [configuredMember] })],
       kpis,
-      entries: [],
       selectedYear: 2026,
       actuals: [multiComponentActual({
         member: configuredMember,
@@ -612,7 +416,6 @@ describe("strategic dashboard summary", () => {
     const summary = buildStrategicDashboardSummary({
       goals: [goal({ members: [configuredMember] })],
       kpis,
-      entries: [],
       selectedYear: 2026,
       actuals: [multiComponentActual({
         member: configuredMember,
@@ -639,7 +442,6 @@ describe("strategic dashboard summary", () => {
     const summary = buildStrategicDashboardSummary({
       goals: [goal({ members: [configuredMember] })],
       kpis,
-      entries: [],
       selectedYear: 2026,
       actuals: [multiComponentActual({
         member: configuredMember,
@@ -674,7 +476,6 @@ describe("strategic dashboard summary", () => {
       const summary = buildStrategicDashboardSummary({
         goals: [goal({ members: [configuredMember] })],
         kpis,
-        entries: [],
         selectedYear: 2026,
       });
 
@@ -686,7 +487,7 @@ describe("strategic dashboard summary", () => {
   });
 });
 
-function legacyKpi(id: number, slug: string, name: string): KPIWithCategory {
+function catalogKpi(id: number, slug: string, name: string): KPIWithCategory {
   return {
     id,
     category_id: 1,
@@ -706,28 +507,20 @@ function legacyKpi(id: number, slug: string, name: string): KPIWithCategory {
   };
 }
 
-function legacyEntry(
+function scalarActual(
   kpiId: number,
   year: number,
-  month: number,
+  periodType: "monthly" | "quarterly" | "annual" | "cumulative" | "one_time",
+  periodIndex: number,
   value: number,
-): MonthlyEntryWithMeta {
-  const kpi = kpis.find((item) => item.id === kpiId) ?? legacyKpi(kpiId, "kpi", "KPI");
+) {
   return {
-    id: kpiId * 100 + month,
-    kpi_id: kpiId,
+    kpiId,
     year,
-    month,
+    periodType,
+    periodIndex,
     value,
-    notes: null,
-    updated_by: null,
-    updated_at: "2026-01-01",
-    kpi_name: kpi.name,
-    kpi_unit: kpi.unit,
-    kpi_unit_type: kpi.unit_type,
-    category_id: 1,
-    category_name: "Priority One",
-    category_slug: "priority-one",
+    calculation: scalarCalculation(value),
   };
 }
 
@@ -775,7 +568,7 @@ function member(
   configurationStatus: "active" | "ready" | "needs_definition" = "active",
   reportingFrequency: "annual" | "monthly" = "annual",
 ): StrategicGoalReadModel["members"][number] {
-  const kpi = kpis.find((item) => item.id === kpiId) ?? legacyKpi(kpiId, "kpi", "KPI");
+  const kpi = kpis.find((item) => item.id === kpiId) ?? catalogKpi(kpiId, "kpi", "KPI");
   return {
     id: kpiId,
     goal_id: 1,

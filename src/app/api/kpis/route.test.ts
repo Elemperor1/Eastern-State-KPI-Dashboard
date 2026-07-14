@@ -23,7 +23,7 @@ vi.mock("@/features/auth/session", () => ({
 
 const {
   archiveKPIMock,
-  createKPIMock,
+  createStrategicMeasureMock,
   listCategoriesMock,
   listKPIsMock,
   restoreKPIMock,
@@ -31,7 +31,7 @@ const {
   updateKPIMock,
 } = vi.hoisted(() => ({
   archiveKPIMock: vi.fn(),
-  createKPIMock: vi.fn(),
+  createStrategicMeasureMock: vi.fn(),
   listCategoriesMock: vi.fn(),
   listKPIsMock: vi.fn(),
   restoreKPIMock: vi.fn(),
@@ -46,7 +46,7 @@ vi.mock("@/features/catalog/server", async () => {
   return {
     ...actual,
     archiveKPI: archiveKPIMock,
-    createKPI: createKPIMock,
+    createStrategicMeasure: createStrategicMeasureMock,
     listCategories: listCategoriesMock,
     listKPIs: listKPIsMock,
     restoreKPI: restoreKPIMock,
@@ -95,18 +95,22 @@ function mutationReq(method: "POST" | "PATCH" | "DELETE", body: object): NextReq
 
 beforeEach(() => {
   archiveKPIMock.mockReset();
-  createKPIMock.mockReset();
+  createStrategicMeasureMock.mockReset();
   listCategoriesMock.mockReset();
   listKPIsMock.mockReset();
   restoreKPIMock.mockReset();
   retireOrDeleteKPIMock.mockReset();
   updateKPIMock.mockReset();
 
-  createKPIMock.mockReturnValue({
-    id: 22,
-    slug: "new-tours",
-    name: "New tours",
-    category_id: 3,
+  createStrategicMeasureMock.mockReturnValue({
+    kpi: {
+      id: 22,
+      slug: "new-tours",
+      name: "New tours",
+      category_id: 3,
+    },
+    configuration: { id: 31, kpi_id: 22, configuration_status: "draft" },
+    membership: { id: 41, goal_id: 9, kpi_id: 22 },
   });
   listCategoriesMock.mockReturnValue(REFRESHED_CATEGORIES);
   listKPIsMock.mockReturnValue(REFRESHED_KPIS);
@@ -117,25 +121,27 @@ describe("/api/kpis refreshed mutation payloads", () => {
   it("POST returns the created KPI and refreshed catalog data", async () => {
     const res = await POST(
       mutationReq("POST", {
-        category_id: 3,
+        goal_id: 9,
+        reporting_year: 2026,
         slug: "new-tours",
         name: "New tours",
         unit: "people",
-        unit_type: "count",
-        reporting_frequency: "monthly",
+        measurement_type: "count",
+        reporting_frequency: "annual",
         direction: "higher",
       }),
     );
 
     expect(res.status).toBe(201);
-    expect(createKPIMock).toHaveBeenCalledWith(
+    expect(createStrategicMeasureMock).toHaveBeenCalledWith(
       {
-        category_id: 3,
+        goal_id: 9,
+        reporting_year: 2026,
         slug: "new-tours",
         name: "New tours",
         unit: "people",
-        unit_type: "count",
-        reporting_frequency: "monthly",
+        measurement_type: "count",
+        reporting_frequency: "annual",
         direction: "higher",
       },
       ADMIN.id,
@@ -144,6 +150,8 @@ describe("/api/kpis refreshed mutation payloads", () => {
     expect(listCategoriesMock).toHaveBeenCalledTimes(1);
     await expect(res.json()).resolves.toMatchObject({
       kpi: { id: 22, slug: "new-tours" },
+      configuration: { id: 31, configuration_status: "draft" },
+      membership: { id: 41, goal_id: 9 },
       kpis: REFRESHED_KPIS,
       categories: REFRESHED_CATEGORIES,
     });

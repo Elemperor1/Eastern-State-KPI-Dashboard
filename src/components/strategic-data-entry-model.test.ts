@@ -5,10 +5,12 @@ import type {
 } from "@/features/strategy";
 import {
   activeBandsForDraft,
+  buildStrategicDataEntryRequests,
   buildStrategicDataEntryMutation,
   deleteEndpointForRecord,
   draftFromStrategicDataEntryRecord,
   emptyStrategicDataEntryDraft,
+  initialStrategicDataEntryDrafts,
   entryPeriodOptions,
   strategicDataEntryPeriodLabel,
   strategicDataEntryRawValueLabel,
@@ -21,21 +23,28 @@ function selected(
   measurementType: MeasurementType,
   overrides: Partial<StrategicDataEntrySelectedKpi> = {},
 ): StrategicDataEntrySelectedKpi {
-  return {
+  const result = {
     id: 12,
     slug: "visitor-participation",
     name: "Visitor participation",
     priorityName: "Reimagine Visitor Experience",
     goalName: "Build a primary interpretive plan",
     unit: "people",
+    numeratorLabel: null,
+    denominatorLabel: null,
     measurementType,
-    reportingFrequency: "annual",
-    configurationStatus: "active",
+    reportingFrequency: "annual" as const,
+    configurationStatus: "active" as const,
     calculationPrecision: 1,
     fixedDenominator: null,
     components: [],
     bands: [],
     ...overrides,
+  };
+  return {
+    ...result,
+    numeratorLabel: result.numeratorLabel ?? null,
+    denominatorLabel: result.denominatorLabel ?? null,
   };
 }
 
@@ -89,6 +98,131 @@ function record(
 }
 
 describe("strategic data-entry model", () => {
+  it("creates one period-scoped draft for every component in a focused form", () => {
+    const kpi = selected("multi_component", {
+      reportingFrequency: "annual",
+      components: [
+        {
+          id: 11,
+          label: "Admissions",
+          measurementType: "count",
+          unit: "visits",
+          numeratorLabel: null,
+          denominatorLabel: null,
+          fixedDenominator: null,
+        },
+        {
+          id: 12,
+          label: "Members",
+          measurementType: "count",
+          unit: "visits",
+          numeratorLabel: null,
+          denominatorLabel: null,
+          fixedDenominator: null,
+        },
+      ],
+    });
+    const drafts = initialStrategicDataEntryDrafts(
+      kpi,
+      2027,
+      {
+        value: "annual:0",
+        label: "Full year",
+        periodType: "annual",
+        periodIndex: 0,
+      },
+      [record({ componentId: 11, scalarValue: 42 })],
+    );
+
+    expect(Object.keys(drafts)).toEqual(["11", "12"]);
+    expect(drafts["11"]).toMatchObject({
+      componentId: "11",
+      periodIndex: "0",
+      value: "42",
+    });
+    expect(drafts["12"]).toMatchObject({
+      componentId: "12",
+      periodIndex: "0",
+      value: "",
+    });
+  });
+
+  it("batches every component mutation into one atomic request", () => {
+    const requests = buildStrategicDataEntryRequests([
+      {
+        endpoint: "/api/strategy/component-entries",
+        body: { component_id: 11, reporting_year: 2027, value: 42 },
+      },
+      {
+        endpoint: "/api/strategy/component-entries",
+        body: { component_id: 12, reporting_year: 2027, value: 18 },
+      },
+    ]);
+
+    expect(requests).toEqual([
+      {
+        endpoint: "/api/strategy/observations",
+        body: {
+          submission_type: "multi_input",
+          writes: [
+            {
+              kind: "component_entry",
+              input: { component_id: 11, reporting_year: 2027, value: 42 },
+            },
+            {
+              kind: "component_entry",
+              input: { component_id: 12, reporting_year: 2027, value: 18 },
+            },
+          ],
+        },
+      },
+    ]);
+  });
+
+  it("includes distribution components in the same atomic request", () => {
+    const requests = buildStrategicDataEntryRequests([
+      {
+        endpoint: "/api/strategy/component-entries",
+        body: { component_id: 11, reporting_year: 2027, value: 42 },
+      },
+      {
+        endpoint: "/api/strategy/distributions",
+        body: {
+          kpi_id: 12,
+          component_id: 13,
+          reporting_year: 2027,
+          respondent_count: 42,
+          bands: [],
+        },
+      },
+    ]);
+
+    expect(requests).toEqual([
+      {
+        endpoint: "/api/strategy/observations",
+        body: {
+          submission_type: "multi_input",
+          writes: [
+            {
+              kind: "component_entry",
+              input: { component_id: 11, reporting_year: 2027, value: 42 },
+            },
+            {
+              kind: "distribution",
+              input: {
+                kpi_id: 12,
+                component_id: 13,
+                reporting_year: 2027,
+                respondent_count: 42,
+                bands: [],
+              },
+            },
+          ],
+        },
+      },
+    ]);
+  });
+
   it("uses real calendar months and never presents storage month zero", () => {
     const kpi = selected("count", { reportingFrequency: "monthly" });
     const draft = draftFor(kpi);
@@ -298,6 +432,8 @@ describe("strategic data-entry model", () => {
           label: "Participants enrolled",
           measurementType: "count",
           unit: "people",
+          numeratorLabel: null,
+          denominatorLabel: null,
           fixedDenominator: null,
         },
       ],
@@ -370,6 +506,8 @@ describe("strategic data-entry model", () => {
           label: "Audience mix",
           measurementType: "distribution",
           unit: "respondents",
+          numeratorLabel: null,
+          denominatorLabel: null,
           fixedDenominator: null,
         },
       ],

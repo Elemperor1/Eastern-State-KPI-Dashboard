@@ -15,6 +15,7 @@ import { cn } from "@/lib/utils";
 import {
   Badge,
   Card,
+  Chip,
   EmptyState,
   PrintReportFooter,
   PrintReportHeader,
@@ -138,7 +139,7 @@ function CompletionSummary({
         <div className="text-right">
           <p className="text-sm font-semibold text-ink-900">{summary.countLabel}</p>
           <p className="mt-1 text-xs text-ink-500">
-            {summary.excludedGoalsCount} excluded
+            {summary.excludedGoalsCount} not counted
           </p>
         </div>
       </div>
@@ -161,12 +162,12 @@ function CompletionSummary({
       {summary.excludedGoalsCount > 0 ? (
         <div className="mt-4 rounded-lg bg-accent-50 p-3">
           <p className="mb-2 text-xs font-semibold uppercase tracking-[0.06em] text-ink-700">
-            Excluded goal reasons
+            Goals not counted
           </p>
           <ReasonList
             reasons={summary.excludedGoalReasons}
             emptyLabel="Detailed exclusion reasons were not supplied."
-            ariaLabel={`${label} excluded goal reasons`}
+            ariaLabel={`${label} goals not counted`}
           />
         </div>
       ) : null}
@@ -188,7 +189,7 @@ export function StrategicBoardReport({
       data-strategic-board-report
     >
       <article
-        className={cn("export-only space-y-8 bg-white", className)}
+        className={cn("space-y-8 bg-white", className)}
         aria-label={`${report.organizationName} strategic board report`}
         data-raster-export-text
       >
@@ -196,12 +197,13 @@ export function StrategicBoardReport({
           className="!block"
           eyebrow="Strategic plan · Board report"
           title={report.organizationName}
-          subtitle="Strategic KPI results, target progress, configuration status, and unresolved reporting items."
+          subtitle="Results, targets, progress, and items that need attention."
           filters={[
             { label: "Reporting year", value: selectedYear },
+            { label: "Reporting period", value: report.reportingPeriod },
             { label: "Priorities", value: String(counts.priorities) },
             { label: "Goals", value: String(counts.goals) },
-            { label: "KPIs", value: String(counts.kpis) },
+            { label: "Measures", value: String(counts.kpis) },
           ]}
         />
 
@@ -222,22 +224,23 @@ export function StrategicBoardReport({
               Executive summary
             </h2>
             <p className="mt-2 text-sm leading-6 text-ink-600">
-              Eligible goals use the configured completion rules. Excluded goals
-              remain visible and are not presented as failed goals.
+              Goal progress follows the rules set in Setup. Goals without enough
+              information remain visible and are not counted as failed.
             </p>
           </div>
           <Badge variant={report.unresolvedReasons.length > 0 ? "warning" : "success"}>
             {report.unresolvedReasons.length > 0
-              ? `${report.unresolvedReasons.length} unresolved`
-              : "No unresolved items"}
+              ? `${report.unresolvedReasons.length} need attention`
+              : "Nothing needs attention"}
           </Badge>
         </div>
 
-        <dl className="mt-6 grid grid-cols-2 gap-5 sm:grid-cols-4">
+        <dl className="mt-6 grid grid-cols-2 gap-5 sm:grid-cols-5">
           <SummaryMetric label="Strategic priorities" value={counts.priorities} />
           <SummaryMetric label="Strategic goals" value={counts.goals} />
-          <SummaryMetric label="KPIs" value={counts.kpis} />
+          <SummaryMetric label="Measures" value={counts.kpis} />
           <SummaryMetric label="Reporting year" value={selectedYear} />
+          <SummaryMetric label="Reporting period" value={report.reportingPeriod} />
         </dl>
         <CompletionSummary
           summary={report.organizationGoalCompletion}
@@ -246,13 +249,13 @@ export function StrategicBoardReport({
 
         <div className="mt-5 border-t border-ink-100 pt-5">
           <h3 className="text-base font-semibold text-ink-900">
-            Report-wide unresolved reasons
+            What needs attention
           </h3>
           <div className="mt-2">
             <ReasonList
               reasons={report.unresolvedReasons}
-              emptyLabel="No unresolved reasons were supplied in this report."
-              ariaLabel="Report-wide unresolved reasons"
+              emptyLabel="Nothing needs attention in this report."
+              ariaLabel="Items that need attention across the report"
             />
           </div>
         </div>
@@ -262,7 +265,7 @@ export function StrategicBoardReport({
         <Card className="break-inside-avoid p-10" data-pdf-keep-together>
           <EmptyState
             title="No strategic priorities available"
-            description="The report contains no strategic priority records for the selected year."
+            description="No priorities are available for the selected year."
           />
         </Card>
       ) : (
@@ -306,9 +309,9 @@ function PrioritySection({
               {priority.name}
             </h2>
           </div>
-          <Badge variant="info">
+          <span className="text-sm font-medium tabular-nums text-ink-600">
             {priority.goals.length} goal{priority.goals.length === 1 ? "" : "s"}
-          </Badge>
+          </span>
         </div>
         <CompletionSummary summary={priority.goalCompletion} label={priority.name} />
       </Card>
@@ -317,7 +320,7 @@ function PrioritySection({
         <Card className="break-inside-avoid p-8" data-pdf-keep-together>
           <EmptyState
             title="No goals in this priority"
-            description="No strategic goals were supplied for this priority."
+            description="No goals are available for this priority."
           />
         </Card>
       ) : (
@@ -369,19 +372,19 @@ function GoalSection({
             label="Actual completion"
             value={formatBoardReportPercentage(goal.actualCompletionPercentage)}
           />
-          <SummaryMetric label="Completed KPIs" value={goal.completedKpisCount} />
-          <SummaryMetric label="Eligible KPIs" value={goal.totalEligibleKpisCount} />
-          <SummaryMetric label="Excluded KPIs" value={goal.excludedKpisCount} />
+          <SummaryMetric label="Completed measures" value={goal.completedKpisCount} />
+          <SummaryMetric label="Included measures" value={goal.totalEligibleKpisCount} />
+          <SummaryMetric label="Measures not counted" value={goal.excludedKpisCount} />
         </dl>
         {goal.excludedKpisCount > 0 || goal.excludedReasons.length > 0 ? (
           <div className="mt-5 border-t border-ink-100 pt-4">
             <p className="mb-2 text-xs font-semibold uppercase tracking-[0.06em] text-ink-700">
-              Goal exclusions
+              Measures not counted
             </p>
             <ReasonList
               reasons={goal.excludedReasons}
-              emptyLabel="Detailed KPI exclusion reasons were not supplied."
-              ariaLabel={`${goal.name} excluded KPI reasons`}
+              emptyLabel="No reason was supplied."
+              ariaLabel={`${goal.name} measures not counted`}
             />
           </div>
         ) : null}
@@ -390,8 +393,8 @@ function GoalSection({
       {goal.kpis.length === 0 ? (
         <Card className="break-inside-avoid p-8" data-pdf-keep-together>
           <EmptyState
-            title="No KPIs in this goal"
-            description="No KPI result records were supplied for this goal."
+            title="No measures in this goal"
+            description="This goal has no saved measure results for the selected period."
           />
         </Card>
       ) : (
@@ -419,7 +422,7 @@ function KpiSection({
 }) {
   const headingId = `${goalId}-kpi-${kpiIndex}`;
   return (
-    <section className="space-y-3" aria-labelledby={headingId}>
+    <section className="space-y-3" aria-labelledby={headingId} data-board-kpi={kpi.id}>
       <Card
         as="article"
         className="break-inside-avoid overflow-hidden p-5 lg:p-6"
@@ -427,7 +430,7 @@ function KpiSection({
       >
         <div className="flex flex-wrap items-start justify-between gap-4">
           <div className="min-w-0 max-w-3xl">
-            <p className="section-eyebrow">KPI {kpiIndex + 1}</p>
+            <p className="section-eyebrow">Measure {kpiIndex + 1}</p>
             <h4 id={headingId} className="break-words text-xl font-semibold text-ink-900">
               {kpi.name}
             </h4>
@@ -435,7 +438,7 @@ function KpiSection({
           <div className="flex flex-wrap gap-2">
             <StatusBadge label="Board status" value={kpi.boardStatus} />
             <StatusBadge
-              label="Configuration status"
+              label="Setup status"
               value={kpi.configurationStatus}
             />
             <StatusBadge label="Result state" value={kpi.result.state} />
@@ -453,7 +456,7 @@ function KpiSection({
             {kpi.result.formulaExplanation ? (
               <div className="mt-4 rounded-lg bg-ink-50 p-3">
                 <p className="text-[10px] font-semibold uppercase tracking-[0.08em] text-ink-500">
-                  Formula explanation
+                  How this was calculated
                 </p>
                 <p className="mt-1 break-words text-sm leading-6 text-ink-700">
                   {kpi.result.formulaExplanation}
@@ -479,12 +482,12 @@ function KpiSection({
               compact
             />
             <SummaryMetric
-              label="Numerator"
+              label="Amount measured"
               value={formatBoardReportNumber(kpi.result.numerator)}
               compact
             />
             <SummaryMetric
-              label="Denominator"
+              label="Total amount"
               value={formatBoardReportNumber(kpi.result.denominator)}
               compact
             />
@@ -494,12 +497,12 @@ function KpiSection({
         {kpi.unresolvedReasons.length > 0 ? (
           <div className="mt-5 rounded-lg bg-accent-50 p-3">
             <p className="mb-2 text-xs font-semibold uppercase tracking-[0.06em] text-ink-700">
-              KPI unresolved reasons
+              What needs attention
             </p>
             <ReasonList
               reasons={kpi.unresolvedReasons}
-              emptyLabel="No KPI-level reasons supplied."
-              ariaLabel={`${kpi.name} unresolved reasons`}
+              emptyLabel="Nothing needs attention for this measure."
+              ariaLabel={`${kpi.name} items that need attention`}
             />
           </div>
         ) : null}
@@ -647,7 +650,7 @@ function ComponentTable({
             <th scope="col" className="w-[14%] text-left">Measurement</th>
             <th scope="col" className="w-[20%] text-left">Target</th>
             <th scope="col" className="w-[12%] text-left">Status</th>
-            <th scope="col" className="w-[18%] text-left">Unresolved</th>
+            <th scope="col" className="w-[18%] text-left">Needs attention</th>
           </tr>
         </thead>
         <tbody>
@@ -702,7 +705,7 @@ function ComponentTable({
               </td>
               <td>
                 <StatusBadge
-                  label={`${component.label} configuration status`}
+                        label={`${component.label} setup status`}
                   value={component.configurationStatus}
                 />
               </td>
@@ -741,11 +744,11 @@ function DemographicTable({
               </p>
             ) : null}
           </div>
-          <Badge variant="info">
+          <Chip>
             {demographics.mutuallyExclusive
               ? "Mutually exclusive bands"
               : "Overlapping bands"}
-          </Badge>
+          </Chip>
         </div>
         <div className="mt-3 rounded-lg bg-accent-50 p-3">
           <p className="text-xs font-semibold uppercase tracking-[0.06em] text-ink-700">
@@ -813,9 +816,9 @@ function DemographicTable({
                 <td className="tabular-nums">{formatBoardReportPercentage(band.percentage)}</td>
                 <td>
                   <div className="flex flex-wrap gap-1">
-                    {band.isUnknown ? <Badge variant="default">Unknown</Badge> : null}
-                    {band.isDeclined ? <Badge variant="default">Declined</Badge> : null}
-                    {band.derivedGroup ? <Badge variant="info">{formatBoardReportToken(band.derivedGroup)}</Badge> : null}
+                    {band.isUnknown ? <Chip>Unknown</Chip> : null}
+                    {band.isDeclined ? <Chip>Declined</Chip> : null}
+                    {band.derivedGroup ? <Chip>{formatBoardReportToken(band.derivedGroup)}</Chip> : null}
                     {!band.isUnknown && !band.isDeclined && !band.derivedGroup ? (
                       <span className="text-xs text-ink-400">—</span>
                     ) : null}

@@ -6,6 +6,7 @@ export interface EntryHistoryFilter {
   category_id?: number;
   year?: number;
   limit?: number;
+  offset?: number;
 }
 
 export function listEntryHistory(filter?: EntryHistoryFilter): EntryHistoryWithMeta[] {
@@ -27,6 +28,9 @@ export function listEntryHistory(filter?: EntryHistoryFilter): EntryHistoryWithM
     params.push(filter.year);
   }
   const limit = Math.min(Math.max(filter?.limit ?? 200, 1), 1000);
+  const offset = Number.isSafeInteger(filter?.offset)
+    ? Math.max(filter?.offset ?? 0, 0)
+    : 0;
   const sql = `
     SELECT h.*,
            h.kpi_name as kpi_name,
@@ -53,7 +57,7 @@ export function listEntryHistory(filter?: EntryHistoryFilter): EntryHistoryWithM
     LEFT JOIN users u ON u.id = h.changed_by
     ${where.length ? `WHERE ${where.join(" AND ")}` : ""}
     ORDER BY h.changed_at DESC, h.id DESC
-    LIMIT ${limit}
+    LIMIT ${limit} OFFSET ${offset}
   `;
   const rows = db.prepare(sql).all(...params) as Record<string, unknown>[];
   return rows.map((row) => ({
@@ -83,6 +87,13 @@ export function listEntryHistory(filter?: EntryHistoryFilter): EntryHistoryWithM
     metadata_deleted: Number(row.metadata_deleted) === 1,
     metadata_renamed: Number(row.metadata_renamed) === 1,
   }));
+}
+
+export function listEntryHistoryYears(): number[] {
+  const rows = getDb()
+    .prepare("SELECT DISTINCT year FROM entry_history ORDER BY year DESC")
+    .all() as Array<{ year: number }>;
+  return rows.map((row) => Number(row.year));
 }
 
 export function listDeletedHistoryCategories(): Category[] {

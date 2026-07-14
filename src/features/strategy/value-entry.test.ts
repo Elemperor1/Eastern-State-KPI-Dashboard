@@ -23,6 +23,7 @@ import {
   restoreStrategyDistributionBand,
   StrategyValueEntryValidationError,
   upsertStrategyComponentEntry,
+  upsertStrategyMultiComponentBatch,
   upsertStrategyDistribution,
   upsertStrategyObservation,
   updateStrategyDistributionBand,
@@ -91,11 +92,12 @@ function seedComponent(
         `INSERT INTO kpi_components (
            kpi_id, configuration_id, slug, label, measurement_type, unit,
            display_order, configuration_status
-         ) VALUES (?, ?, 'participants-enrolled', ?, ?, 'people', 0, 'active')`,
+         ) VALUES (?, ?, ?, ?, ?, 'people', 0, 'active')`,
       )
       .run(
         configuration.kpiId,
         configuration.configurationId,
+        label.toLowerCase().replaceAll(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, ""),
         label,
         measurementType,
       ).lastInsertRowid,
@@ -256,6 +258,129 @@ describe("strategy value-entry persistence", () => {
       }),
     ).toEqual([updated]);
     expect(listStrategicAuditEvents({ entity_type: "kpi_component_entry" })).toHaveLength(2);
+  });
+
+  it("rolls back every component and audit event when one batch entry is invalid", () => {
+    const config = seedKpi("atomic-component-save", "multi_component", "annual");
+    const countComponentId = seedComponent(config, "count", "Participants");
+    const percentageComponentId = seedComponent(config, "percentage", "Completion rate");
+
+    expect(() =>
+      upsertStrategyMultiComponentBatch(
+        {
+          submission_type: "multi_input",
+          writes: [
+            {
+              kind: "component_entry",
+              input: {
+                component_id: countComponentId,
+                reporting_year: 2026,
+                value: 35,
+              },
+            },
+            {
+              kind: "component_entry",
+              input: {
+                component_id: percentageComponentId,
+                reporting_year: 2026,
+                value: 50,
+              },
+            },
+          ],
+        },
+        null,
+      ),
+    ).toThrowError(/invalid observation values/i);
+
+    expect(
+      listStrategyComponentEntries({
+        component_id: countComponentId,
+        reporting_year: 2026,
+      }),
+    ).toEqual([]);
+    expect(
+      listStrategicAuditEvents({ entity_type: "kpi_component_entry" }),
+    ).toEqual([]);
+  });
+
+  it("rolls back simple and distribution components together", () => {
+    const config = seedKpi("atomic-mixed-save", "multi_component", "annual");
+    const countComponentId = seedComponent(config, "count", "Participants");
+    const distributionComponentId = seedComponent(
+      config,
+      "distribution",
+      "Audience mix",
+    );
+    const band = createStrategyDistributionBand(
+      {
+        kpi_id: config.kpiId,
+        component_id: distributionComponentId,
+        effective_from_year: 2025,
+        effective_to_year: 2029,
+        slug: "known",
+        label: "Known",
+        display_order: 0,
+      },
+      null,
+    );
+
+    expect(() =>
+      upsertStrategyMultiComponentBatch(
+        {
+          submission_type: "multi_input",
+          writes: [
+            {
+              kind: "component_entry",
+              input: {
+                component_id: countComponentId,
+                reporting_year: 2026,
+                value: 35,
+              },
+            },
+            {
+              kind: "distribution",
+              input: {
+                kpi_id: config.kpiId,
+                component_id: distributionComponentId,
+                reporting_year: 2026,
+                respondent_count: 10,
+                mutually_exclusive: true,
+                bands: [
+                  {
+                    band_id: band.id,
+                    slug: band.slug,
+                    label: band.label,
+                    count: 9,
+                    display_order: band.display_order,
+                  },
+                ],
+              },
+            },
+          ],
+        },
+        null,
+      ),
+    ).toThrowError(/invalid distribution values/i);
+
+    expect(
+      listStrategyComponentEntries({
+        component_id: countComponentId,
+        reporting_year: 2026,
+      }),
+    ).toEqual([]);
+    expect(
+      listStrategyDistributions({
+        kpi_id: config.kpiId,
+        component_id: distributionComponentId,
+        reporting_year: 2026,
+      }),
+    ).toEqual([]);
+    expect(
+      listStrategicAuditEvents({ entity_type: "kpi_component_entry" }),
+    ).toEqual([]);
+    expect(
+      listStrategicAuditEvents({ entity_type: "distribution_observation" }),
+    ).toEqual([]);
   });
 
   it("keeps archived component entries and their labels readable without active-report leakage", () => {

@@ -7,7 +7,6 @@ import type {
   StrategyComponentEntryRecord,
   StrategyObservationRecord,
 } from "@/features/strategy/server";
-import type { MonthlyEntryWithMeta } from "@/lib/types";
 
 const {
   listComponentsForConfigurationMock,
@@ -200,45 +199,7 @@ describe("strategy actual server adapter", () => {
     ]);
   });
 
-  it("seeds the first raw-count YOY observation from the same prior legacy period", () => {
-    listEffectiveMeasurementConfigsMock.mockImplementation((year: number) =>
-      year === 2027
-        ? [configuration({
-            measurement_type: "year_over_year",
-            unit: null,
-            reporting_frequency: "annual",
-          })]
-        : [],
-    );
-    listStrategyObservationsMock.mockReturnValue([
-      observation({
-        year: 2027,
-        measurement_type: "year_over_year",
-        scalar_value: 20,
-      }),
-    ]);
-
-    const actuals = listCalculatedStrategyActuals({
-      kpiIds: [1],
-      throughYear: 2027,
-      legacyEntries: [legacyEntry({ year: 2026, value: 17 })],
-    });
-
-    expect(actuals).toHaveLength(1);
-    expect(actuals[0]).toMatchObject({
-      year: 2027,
-      value: 17.6,
-      calculation: {
-        state: "ok",
-        measurementType: "year_over_year",
-        value: 17.6,
-        numerator: 3,
-        denominator: 17,
-      },
-    });
-  });
-
-  it("does not use derived percentage legacy rows as raw YOY bases", () => {
+  it("does not invent a year-over-year base when no strategic prior exists", () => {
     listEffectiveMeasurementConfigsMock.mockImplementation((year: number) =>
       year === 2027
         ? [configuration({
@@ -259,7 +220,6 @@ describe("strategy actual server adapter", () => {
     const actuals = listCalculatedStrategyActuals({
       kpiIds: [1],
       throughYear: 2027,
-      legacyEntries: [legacyEntry({ year: 2026, value: 4, kpi_unit: "%" })],
     });
 
     expect(actuals[0]).toMatchObject({
@@ -440,28 +400,6 @@ function componentEntry(
     }),
     component_id: 11,
     component_label: "Component 11",
-    ...overrides,
-  };
-}
-
-function legacyEntry(
-  overrides: Partial<MonthlyEntryWithMeta> = {},
-): MonthlyEntryWithMeta {
-  return {
-    id: 1,
-    kpi_id: 1,
-    year: 2026,
-    month: 0,
-    value: 17,
-    notes: null,
-    updated_by: null,
-    updated_at: "2026-01-01T00:00:00.000Z",
-    kpi_name: "Employer partnerships",
-    kpi_unit: "partnerships",
-    kpi_unit_type: "count",
-    category_id: 1,
-    category_name: "Workforce Development",
-    category_slug: "workforce-development",
     ...overrides,
   };
 }

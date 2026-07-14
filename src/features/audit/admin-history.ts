@@ -53,7 +53,8 @@ export function buildAdminHistoryHref(
   if (next.kpiId) params.set("kpi_id", next.kpiId);
   if (next.year) params.set("year", next.year);
   const query = params.toString();
-  return query ? `/admin/history?${query}` : "/admin/history";
+  const suffix = query ? `&${query}` : "";
+  return `/setup?area=activity${suffix}`;
 }
 
 export function formatAdminHistoryChangedAt(changedAt: string): string {
