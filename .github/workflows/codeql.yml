@@ -20,12 +20,18 @@ concurrency:
 
 jobs:
   analyze:
-    name: CodeQL
+    name: CodeQL (${{ matrix.language }})
     runs-on: ubuntu-latest
     timeout-minutes: 20
     permissions:
       contents: read
       security-events: write
+    strategy:
+      fail-fast: false
+      matrix:
+        language:
+          - javascript-typescript
+          - python
 
     steps:
       - name: Check out repository
@@ -34,11 +40,11 @@ jobs:
       - name: Initialize CodeQL
         uses: github/codeql-action/init@v4
         with:
-          languages: javascript-typescript
+          languages: ${{ matrix.language }}
           build-mode: none
           queries: security-extended
 
-      - name: Analyze JavaScript and TypeScript
+      - name: Analyze
         uses: github/codeql-action/analyze@v4
         with:
-          category: /language:javascript-typescript
+          category: /language:${{ matrix.language }}
