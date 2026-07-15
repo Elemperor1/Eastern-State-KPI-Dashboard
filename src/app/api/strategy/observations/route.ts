@@ -1,4 +1,4 @@
-import { NextRequest, NextResponse } from "next/server";
+import { type NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 import { authErrorResponse, requireAdmin } from "@/features/auth/session";
 import {
@@ -36,7 +36,7 @@ export async function POST(req: NextRequest) {
   const guard = assertMutationRequest(req);
   if (guard) return guard;
   try {
-    const input = await req.json().catch(() => ({}));
+    const input: unknown = await req.json().catch(() => ({}));
     const parsed = StrategyObservationSubmissionSchema.safeParse(input);
     if (!parsed.success) {
       return NextResponse.json(

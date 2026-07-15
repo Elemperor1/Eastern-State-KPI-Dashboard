@@ -1,5 +1,6 @@
 "use client";
 
+import { useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { FormField, Select } from "@/components/ui";
 import type { ReportingCycleOption } from "@/features/strategy";
@@ -18,6 +19,7 @@ export function ReportFilters({
   periods: ReportingCycleOption[];
 }) {
   const router = useRouter();
+  const [isPending, startTransition] = useTransition();
 
   function navigate(
     nextView: "board" | "trends",
@@ -29,15 +31,19 @@ export function ReportFilters({
       year: String(nextYear),
       period: nextPeriod,
     });
-    router.replace(`/reports?${params.toString()}`);
+    startTransition(() => router.replace(`/reports?${params.toString()}`));
   }
 
   return (
-    <div className="mb-8 flex flex-wrap gap-4 border-b border-ink-200 pb-6">
+    <div
+      className="mb-8 flex flex-wrap gap-4 border-b border-ink-200 pb-6"
+      aria-busy={isPending}
+    >
       <FormField label="Report" htmlFor="report-view" className="w-full sm:w-56">
         <Select
           id="report-view"
           value={view}
+          disabled={isPending}
           onChange={(event) => navigate(
             event.target.value as "board" | "trends",
             year,
@@ -52,6 +58,7 @@ export function ReportFilters({
         <Select
           id="report-year"
           value={year}
+          disabled={isPending}
           onChange={(event) => navigate(
             view,
             Number(event.target.value),
@@ -67,6 +74,7 @@ export function ReportFilters({
         <Select
           id="report-period"
           value={period.value}
+          disabled={isPending}
           onChange={(event) => navigate(view, year, event.target.value)}
         >
           {periods.map((option) => (
@@ -74,6 +82,9 @@ export function ReportFilters({
           ))}
         </Select>
       </FormField>
+      <span className="sr-only" role="status" aria-live="polite" aria-atomic="true">
+        {isPending ? "Loading the selected report." : ""}
+      </span>
     </div>
   );
 }

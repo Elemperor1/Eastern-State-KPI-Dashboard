@@ -6,7 +6,7 @@ import { Badge } from "@/components/ui";
 export function SampleDataBadge({ sample }: { sample?: boolean }) {
   if (!sample) return null;
   return (
-    <Badge variant="warning" icon={AlertCircle}>
+    <Badge variant="accent" icon={AlertCircle}>
       Sample data
     </Badge>
   );

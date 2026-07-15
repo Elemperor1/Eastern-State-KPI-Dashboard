@@ -65,7 +65,7 @@ export function AdminKpisTable({
             >
               <span className="flex items-start justify-between gap-3">
                 <span className="font-medium text-ink-950">{kpi.name}</span>
-                {kpi.archived_at ? <Badge variant="warning">Archived</Badge> : null}
+                {kpi.archived_at ? <Badge variant="incomplete" label="Measure status">Archived</Badge> : null}
               </span>
               <span className="mt-1 block text-sm text-ink-600">{kpi.category_name}</span>
             </Link>

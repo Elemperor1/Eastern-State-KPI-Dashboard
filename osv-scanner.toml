@@ -1,0 +1,8 @@
+# OSV-Scanner fails for every active vulnerability in package-lock.json.
+# There are intentionally no ignored advisories.
+#
+# A future exception must be narrowly versioned and include all of:
+#   id = "OSV-ADVISORY-ID"
+#   reason = "Why it is not exploitable; owner: team-or-person"
+#   ignoreUntil = "YYYY-MM-DD" # expiration/review date
+# Never ignore a withdrawn advisory here; OSV handles withdrawal metadata.

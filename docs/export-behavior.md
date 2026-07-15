@@ -6,35 +6,37 @@ Every export consumes the same calculated reporting models used on screen.
 Adapters may select, paginate, or style those values; they may not recalculate
 them.
 
-The overview exposes three representations of the same detailed board report:
+Reports exposes four representations of the same visible Board Report:
 
-- **Export PNG** captures the complete off-screen strategic board report as a
+- **Board Report** renders the complete report on demand at `/reports`;
+- **Export PNG** captures that visible strategic Board Report as a
   reviewable image;
-- **Export PDF** captures that same report as bounded raster pages and refuses
+- **Export PDF** captures the same visible report as bounded raster pages and refuses
   unsafe canvas dimensions instead of producing a blank artifact; and
-- **Print / PDF** reveals the same detailed report to browser-native printing,
-  including every priority, goal, KPI, target scope, component, demographic
-  distribution, revenue breakdown, and unresolved reason.
+- **Print / PDF** sends the same detailed report to browser-native printing,
+  including every Strategic Priority, Strategic Goal, Measure, Target scope,
+  Measure Input, Reporting Group, revenue breakdown, and unresolved reason.
 
-The compact visible dashboard remains the interactive executive summary; it is
-not substituted for the detailed board-report export target.
+Overview remains a compact interactive summary. It does not construct, render,
+hide, or export the Board Report.
 
-The board CSV uses the complete `StrategicBoardReportViewModel`. Metric and
-category PNG/CSV exports use their matching screen models and retain the same
-calculated values.
+The board CSV uses the complete `StrategicBoardReportViewModel`. Measure and
+Strategic Priority drill-downs are review surfaces rather than export
+destinations in the current four-destination product. Trends exports the
+selected Measure as CSV.
 
 ## Required content
 
-Across the detailed board CSV/Print-PDF and representative metric/category
+Across the detailed Board CSV/Print-PDF and representative Measure/Priority
 exports, the export set includes:
 
 - organization-wide and priority-level `X of Y goals completed` summaries;
-- priority, strategic goal, KPI, selected reporting year;
+- Strategic Priority, Strategic Goal, Measure, selected Reporting Year;
 - current result and raw count/value;
 - annual target/pacing and full-plan target/progress when applicable;
 - target year and prominent target description;
 - board and configuration status;
-- stable KPI id alongside the display name, so metric-detail exports never
+- stable Measure id alongside the display name, so report exports never
   select rows by a mutable or duplicate name;
 - component results and explicit aggregation method;
 - demographic labels, percentages, respondent total, and the explicit derived
@@ -76,8 +78,8 @@ the matching screen model, then validate PNG/PDF signatures, dimensions, text
 wrapping, and page layout. Final PDF pages are rendered to images and visually
 inspected for clipping, overlap, unreadable labels, and broken page transitions.
 
-The July 13, 2026 Chrome acceptance fixture produced a 768×29,950 full-detail
-overview PNG at 4.32 MiB. Its top, middle, and bottom were visually inspected;
+The July 14, 2026 Chrome acceptance fixture exercised the visible Reports
+surface and produced a full-detail Board Report PNG. Its top, middle, and bottom were visually inspected;
 the branded hierarchy, target cards, component tables, demographics, revenue,
 and footer remained intact. The same workflow validated the raster PDF
 signature and bounded size plus the browser-native print rendering. Page count

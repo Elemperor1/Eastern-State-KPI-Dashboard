@@ -1,0 +1,18 @@
+rules:
+  - id: eastern-state-no-dynamic-code-evaluation
+    languages:
+      - javascript
+      - typescript
+    message: Dynamic code evaluation creates a direct code-injection boundary.
+    severity: ERROR
+    pattern-either:
+      - pattern: eval(...)
+      - pattern: new Function(...)
+
+  - id: eastern-state-no-dangerously-set-inner-html
+    languages:
+      - typescript
+    message: Render structured React content instead of injecting an HTML string.
+    severity: ERROR
+    pattern: |
+      <$ELEMENT dangerouslySetInnerHTML={{__html: $VALUE}} />

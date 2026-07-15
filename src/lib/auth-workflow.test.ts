@@ -81,8 +81,10 @@ import { POST as loginPost } from "@/app/api/auth/login/route";
 import { POST as changePasswordPost } from "@/app/api/auth/change-password/route";
 import { GET as meGet } from "@/app/api/auth/me/route";
 import { POST as logoutPost } from "@/app/api/auth/logout/route";
-import { POST as usersPost } from "@/app/api/users/route";
-import { PATCH as usersPatch } from "@/app/api/users/route";
+import {
+  PATCH as usersPatch,
+  POST as usersPost,
+} from "@/app/api/users/route";
 
 const ADMIN_EMAIL = "kerry@easternstate.org";
 const TEMP_PASSWORD = "TempAdmin!2026-rotate";

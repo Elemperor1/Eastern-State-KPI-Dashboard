@@ -2,6 +2,11 @@
   "name": "eastern-state-kpi",
   "version": "0.1.0",
   "private": true,
+  "packageManager": "npm@11.17.0",
+  "engines": {
+    "node": ">=24",
+    "npm": ">=11 <12"
+  },
   "scripts": {
     "dev": "bash ./scripts/dev.sh",
     "dev:stable": "WATCHPACK_POLLING=true WATCHPACK_POLLING_INTERVAL=1000 bash ./scripts/dev.sh",
@@ -9,18 +14,29 @@
     "start": "next start -p 3000",
     "start:deploy": "bash ./scripts/start-production.sh",
     "db:migrate": "tsx scripts/migrate.ts",
-    "lint": "next lint",
+    "typecheck": "tsc --noEmit",
+    "lint": "eslint . --max-warnings=0",
+    "lint:fix": "eslint . --fix",
     "db:seed": "tsx scripts/seed.ts",
     "setup:admin": "tsx scripts/setup-admin.ts",
     "d8ad-can-008:test": "bash ./scripts/d8ad-can-008-ci-gate.sh",
     "architecture:guard": "bash ./scripts/architecture-boundary-guard.sh",
     "design-system:guard": "bash ./scripts/design-tokens-guard.sh && bash ./scripts/design-system-guard.sh && bash ./scripts/auth-bypass-guard.sh && bash ./scripts/architecture-boundary-guard.sh",
-    "design-system:test": "bash ./scripts/design-tokens-guard.sh && bash ./scripts/design-system-guard.sh && bash ./scripts/auth-bypass-guard.sh && bash ./scripts/architecture-boundary-guard.sh && bash ./scripts/d8ad-can-008-ci-gate.sh && npx tsc --noEmit && AUTH_DISABLED= npx next build",
+    "quality:guards": "npm run design-system:guard && bash ./scripts/d8ad-can-008-ci-gate.sh",
+    "design-system:test": "bash ./scripts/design-tokens-guard.sh && bash ./scripts/design-system-guard.sh && bash ./scripts/auth-bypass-guard.sh && bash ./scripts/architecture-boundary-guard.sh && bash ./scripts/d8ad-can-008-ci-gate.sh && npm run typecheck && AUTH_DISABLED= npm run build",
     "test": "vitest run",
+    "test:unit": "vitest run",
+    "test:ci": "vitest run --reporter=default",
     "test:e2e": "playwright test",
+    "security:dependencies": "node scripts/run-osv-scanner.mjs",
+    "security:secrets": "node scripts/run-gitleaks.mjs",
+    "security:semgrep": "node scripts/run-semgrep.mjs",
+    "security:scan": "npm run security:dependencies && npm run security:secrets && npm run security:semgrep",
+    "check": "npm run typecheck && npm run lint && npm run test:ci",
+    "check:all": "npm run check && npm run build && npm run test:e2e",
     "perf:profile": "node scripts/performance-profile.mjs",
     "test:coverage": "vitest run --coverage",
-    "prelint": "npm run design-system:guard"
+    "prelint": "npm run quality:guards"
   },
   "dependencies": {
     "bcryptjs": "^2.4.3",
@@ -47,10 +63,12 @@
     "autoprefixer": "^10.4.20",
     "eslint": "^9.39.4",
     "eslint-config-next": "^15.5.19",
+    "globals": "^17.7.0",
     "postcss": "^8.5.10",
     "tailwindcss": "^3.4.13",
     "tsx": "^4.19.1",
     "typescript": "^5.6.3",
+    "typescript-eslint": "^8.64.0",
     "vitest": "^4.1.9"
   },
   "allowScripts": {

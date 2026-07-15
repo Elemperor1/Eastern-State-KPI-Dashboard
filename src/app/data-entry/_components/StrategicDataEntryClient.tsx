@@ -1,7 +1,13 @@
 "use client";
 
-import type { FormEvent } from "react";
-import { useEffect, useMemo, useRef, useState, useTransition } from "react";
+import {
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  useTransition,
+  type FormEvent,
+} from "react";
 import { useRouter } from "next/navigation";
 import { ArrowLeft, Save } from "lucide-react";
 import {
@@ -36,12 +42,14 @@ import {
 } from "@/components/ui";
 import type { AverageInputMethod } from "@/features/strategy";
 import { apiFetch } from "@/lib/api-client";
+import { runEventHandler } from "@/lib/async-event";
 import { useUnsavedChanges } from "@/components/UnsavedChangesContext";
 
 type Feedback = {
   variant: "success" | "error";
   message: string;
   retry?: boolean;
+  kind?: "offline" | "conflict";
 } | null;
 
 type PendingSelection = {
@@ -78,8 +86,8 @@ function ErrorHint({ error, fallback }: { error?: string; fallback?: string }) {
 
 function statusVariant(status: string | null | undefined) {
   if (status === "active" || status === "ready") return "success" as const;
-  if (status === "needs_definition") return "error" as const;
-  if (status === "needs_target" || status === "draft") return "warning" as const;
+  if (status === "needs_definition") return "warning" as const;
+  if (status === "needs_target" || status === "draft") return "incomplete" as const;
   return "default" as const;
 }
 
@@ -109,6 +117,7 @@ export function StrategicDataEntryClient({
   const [errors, setErrors] = useState<Record<string, StrategicDataEntryErrors>>({});
   const [feedback, setFeedback] = useState<Feedback>(null);
   const [busy, setBusy] = useState(false);
+  const [isOnline, setIsOnline] = useState(true);
   const [pendingSelection, setPendingSelection] = useState<PendingSelection | null>(null);
   const formRef = useRef<HTMLFormElement>(null);
   const returnFocusKpiId = useRef<number | null>(null);
@@ -133,6 +142,23 @@ export function StrategicDataEntryClient({
       setFeedback({ variant: "success", message: "Saved." });
     }
   }, [saved]);
+
+  useEffect(() => {
+    function updateConnectionState() {
+      setIsOnline(window.navigator.onLine);
+    }
+    updateConnectionState();
+    window.addEventListener("online", updateConnectionState);
+    window.addEventListener("offline", updateConnectionState);
+    return () => {
+      window.removeEventListener("online", updateConnectionState);
+      window.removeEventListener("offline", updateConnectionState);
+    };
+  }, []);
+
+  useEffect(() => {
+    if (isOnline && feedback?.kind === "offline") setFeedback(null);
+  }, [feedback?.kind, isOnline]);
 
   useEffect(() => {
     if (data.showSelectedKpi || returnFocusKpiId.current === null) return;
@@ -185,6 +211,14 @@ export function StrategicDataEntryClient({
   async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     if (!data.selectedKpi) return;
+    if (!window.navigator.onLine) {
+      setFeedback({
+        variant: "error",
+        kind: "offline",
+        message: "You're offline. Your unsaved changes are still here. Reconnect before trying again.",
+      });
+      return;
+    }
     setFeedback(null);
     const built = Object.entries(drafts).map(([draftKey, draft]) => ({
       draftKey,
@@ -207,6 +241,11 @@ export function StrategicDataEntryClient({
         message: firstError ?? "Review the highlighted fields.",
         retry: true,
       });
+      window.requestAnimationFrame(() => {
+        formRef.current
+          ?.querySelector<HTMLElement>('[aria-invalid="true"]')
+          ?.focus();
+      });
       return;
     }
     setErrors({});
@@ -228,6 +267,14 @@ export function StrategicDataEntryClient({
         };
         if (response.ok) continue;
         const detail = issueMessage(body.issues);
+        if (response.status === 409) {
+          setFeedback({
+            variant: "error",
+            kind: "conflict",
+            message: "Couldn't save because this entry conflicts with the current setup. Your entries are still here. Reload to review the latest saved state before trying again.",
+          });
+          return;
+        }
         setFeedback({
           variant: "error",
           message: detail
@@ -252,10 +299,14 @@ export function StrategicDataEntryClient({
       }
       else router.refresh();
     } catch {
+      const offline = !window.navigator.onLine;
       setFeedback({
         variant: "error",
-        message: "Couldn't save. Check the connection and try again. Your entries are still here.",
-        retry: true,
+        kind: offline ? "offline" : undefined,
+        message: offline
+          ? "You're offline. Your unsaved changes are still here. Reconnect before trying again."
+          : "Couldn't save. Check the connection and try again. Your entries are still here.",
+        retry: !offline,
       });
     } finally {
       setBusy(false);
@@ -273,8 +324,8 @@ export function StrategicDataEntryClient({
       <PageHeader
         title="Data Entry"
         actions={
-          data.selectedKpi ? (
-            <Badge variant={statusVariant(data.selectedKpi.configurationStatus)}>
+          data.selectedKpi && data.showSelectedKpi ? (
+            <Badge variant={statusVariant(data.selectedKpi.configurationStatus)} label="Setup status">
               {data.selectedKpi.configurationStatus === "active" ||
               data.selectedKpi.configurationStatus === "ready"
                 ? "Ready"
@@ -284,14 +335,18 @@ export function StrategicDataEntryClient({
         }
       />
 
-      {feedback ? (
+      {!isOnline ? (
+        <StatusBanner variant="error">
+          You&apos;re offline. Keep editing if needed; saving is available after you reconnect.
+        </StatusBanner>
+      ) : feedback ? (
         <StatusBanner
           variant={feedback.variant}
           onDismiss={() => setFeedback(null)}
         >
           <span className="inline-flex flex-wrap items-center gap-3">
             <span>{feedback.message}</span>
-            {feedback.retry ? (
+            {feedback.retry && isOnline ? (
               <Button
                 type="button"
                 size="sm"
@@ -370,7 +425,7 @@ export function StrategicDataEntryClient({
       </section>
 
       {selectedData && Object.keys(drafts).length > 0 ? (
-          <div className="grid grid-cols-1 items-start gap-6 md:grid-cols-[18rem_minmax(0,1fr)]">
+          <div className="grid grid-cols-1 items-start gap-6 md:grid-cols-[22rem_minmax(0,1fr)]">
             <div className={data.showSelectedKpi ? "hidden md:block" : "block"}>
               <Checklist
                 data={data}
@@ -405,6 +460,7 @@ export function StrategicDataEntryClient({
                 drafts={drafts}
                 errors={errors}
                 busy={busy}
+                offline={!isOnline}
                 updateDraft={updateDraft}
                 submit={submit}
                 formRef={formRef}
@@ -469,12 +525,19 @@ function Checklist({
               id={`data-entry-checklist-${kpi.id}`}
               type="button"
               variant="ghost"
-              className="h-auto min-h-14 w-full justify-between rounded-none px-4 py-3 text-left active:scale-100"
+              className={`h-auto min-h-14 w-full flex-col items-start justify-start gap-2 rounded-none border-l-4 px-4 py-3 text-left font-medium normal-case tracking-normal active:scale-100 ${
+                data.selectedKpiId === kpi.id
+                  ? "border-brand-500 bg-brand-50 text-ink-950"
+                  : "border-transparent"
+              }`}
               onClick={() => onSelect(kpi.id)}
               aria-current={data.selectedKpiId === kpi.id ? "step" : undefined}
             >
-              <span className="min-w-0 flex-1 truncate">{kpi.name}</span>
+              <span className="w-full min-w-0 whitespace-normal break-words text-left leading-5">
+                {kpi.name}
+              </span>
               <Badge
+                className="shrink-0"
                 variant={
                   kpi.checklistStatus === "complete"
                     ? "success"
@@ -522,6 +585,7 @@ function EntryForm({
   drafts,
   errors,
   busy,
+  offline,
   updateDraft,
   submit,
   formRef,
@@ -532,12 +596,13 @@ function EntryForm({
   drafts: StrategicDataEntryDrafts;
   errors: Record<string, StrategicDataEntryErrors>;
   busy: boolean;
+  offline: boolean;
   updateDraft: <K extends keyof StrategicDataEntryDraft>(
     draftKey: string,
     key: K,
     value: StrategicDataEntryDraft[K],
   ) => void;
-  submit: (event: FormEvent<HTMLFormElement>) => void;
+  submit: (event: FormEvent<HTMLFormElement>) => void | Promise<void>;
   formRef: React.RefObject<HTMLFormElement | null>;
 }) {
   const kpi = data.selectedKpi;
@@ -569,7 +634,11 @@ function EntryForm({
         </span>
       </div>
 
-      <form ref={formRef} onSubmit={submit} className="space-y-6">
+      <form
+        ref={formRef}
+        onSubmit={(event) => runEventHandler(submit, event)}
+        className="space-y-6"
+      >
         <fieldset disabled={busy} className="divide-y divide-ink-200">
           {entries.map((entry, index) => {
             if (!entry.draft) return null;
@@ -633,8 +702,14 @@ function EntryForm({
         </fieldset>
 
         <div className="flex flex-wrap items-center gap-3 border-t border-ink-200 pt-5">
-          <Button type="submit" variant="primary" icon={Save} isLoading={busy}>
-            Save and continue
+          <Button
+            type="submit"
+            variant="primary"
+            icon={Save}
+            isLoading={busy}
+            disabled={offline}
+          >
+            {offline ? "Save unavailable offline" : "Save and continue"}
           </Button>
         </div>
       </form>

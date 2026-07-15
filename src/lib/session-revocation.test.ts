@@ -83,9 +83,11 @@ import { getDb, resetDb } from "@/lib/db";
 import { _resetForTests as resetThrottle } from "@/lib/login-throttle";
 import { POST as loginPost } from "@/app/api/auth/login/route";
 import { POST as changePasswordPost } from "@/app/api/auth/change-password/route";
-import { POST as usersPost } from "@/app/api/users/route";
-import { PATCH as usersPatch } from "@/app/api/users/route";
-import { DELETE as usersDelete } from "@/app/api/users/route";
+import {
+  DELETE as usersDelete,
+  PATCH as usersPatch,
+  POST as usersPost,
+} from "@/app/api/users/route";
 import { PATCH as accountPatch } from "@/app/api/users/account/route";
 
 let tmpDir: string;

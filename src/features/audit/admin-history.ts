@@ -1,6 +1,5 @@
-import { MONTH_LABELS } from "@/features/metrics";
+import { isAnnualEntryMonth, MONTH_LABELS } from "@/features/metrics";
 import type { EntryHistoryWithMeta, KPIWithCategory } from "@/lib/types";
-import { isAnnualEntryMonth } from "@/features/metrics";
 
 export interface AdminHistoryFilterState {
   categoryId: string;

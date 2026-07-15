@@ -1,0 +1,38 @@
+# Generated, third-party, cache, and test-output paths.
+.next/
+.git/
+node_modules/
+coverage/
+out/
+build/
+dist/
+.turbo/
+.vercel/
+data/
+playwright-report/
+test-results/
+blob-report/
+output/
+.agents/
+.codex/
+.ok/
+.pi/
+.claude/
+.cursor/
+.opencode/
+.idea/
+
+# Local credentials and environment-specific files are never scan inputs.
+.env
+.env.*
+*.pem
+
+# Prior scanner/UBS reports are evidence artifacts, not application source.
+full_report.md
+report.md
+bug-report.txt
+ultimate-bug-scan-report.txt
+docs/ultimate-bug-scan-report.txt
+
+# This security regression fixture intentionally contains attack payloads.
+security-audit/D8AD-CAN-004/fixtures/

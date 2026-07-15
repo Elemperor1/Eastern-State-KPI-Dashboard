@@ -18,12 +18,22 @@ import {
   X,
 } from "lucide-react";
 import { Avatar, BrandMark, Button, ConfirmDialog } from "@/components/ui";
+import { useModalFocus } from "@/components/ui/useModalInteraction";
 import { LogoutButton } from "./LogoutButton";
 import {
   UnsavedChangesContext,
   type UnsavedChangesState,
 } from "./UnsavedChangesContext";
 import type { SessionUser } from "@/lib/types";
+import { ROUTE_RECOVERY_FOCUS_KEY } from "@/lib/route-recovery-focus";
+
+function hasUnsavedHistoryMarker(state: unknown): boolean {
+  return (
+    typeof state === "object" &&
+    state !== null &&
+    (state as Record<string, unknown>).easternStateUnsavedGuard === true
+  );
+}
 
 const NAV = [
   {
@@ -143,6 +153,10 @@ export function AppShell({ user, children }: { user: SessionUser; children: Reac
   const pathname = usePathname();
   const router = useRouter();
   const [mobileOpen, setMobileOpen] = useState(false);
+  const mobileDrawerRef = useRef<HTMLElement>(null);
+  const mainRef = useRef<HTMLElement>(null);
+  const mobileOpenRef = useRef<HTMLButtonElement>(null);
+  const mobileCloseRef = useRef<HTMLButtonElement>(null);
   const [unsaved, setUnsaved] = useState<UnsavedChangesState>({
     dirty: false,
     busy: false,
@@ -153,6 +167,20 @@ export function AppShell({ user, children }: { user: SessionUser; children: Reac
   const historyGuardArmed = useRef(false);
   const setUnsavedState = useCallback((state: UnsavedChangesState) => {
     setUnsaved(state);
+  }, []);
+
+  useModalFocus({
+    open: mobileOpen,
+    containerRef: mobileDrawerRef,
+    initialFocusRef: mobileCloseRef,
+    onClose: () => setMobileOpen(false),
+    inertBackground: false,
+  });
+
+  useEffect(() => {
+    if (window.sessionStorage.getItem(ROUTE_RECOVERY_FOCUS_KEY) !== "main") return;
+    window.sessionStorage.removeItem(ROUTE_RECOVERY_FOCUS_KEY);
+    window.requestAnimationFrame(() => mainRef.current?.focus());
   }, []);
 
   useEffect(() => {
@@ -178,7 +206,7 @@ export function AppShell({ user, children }: { user: SessionUser; children: Reac
     if (!unsaved.dirty) {
       if (
         historyGuardArmed.current &&
-        window.history.state?.easternStateUnsavedGuard
+        hasUnsavedHistoryMarker(window.history.state)
       ) {
         historyGuardArmed.current = false;
         window.history.back();
@@ -221,15 +249,23 @@ export function AppShell({ user, children }: { user: SessionUser; children: Reac
     <UnsavedChangesContext.Provider
       value={{ state: unsaved, setState: setUnsavedState }}
     >
-    <div className="min-h-screen bg-ink-50" onClickCapture={guardLinkNavigation}>
+    <div
+      className="min-h-screen bg-ink-50"
+      data-app-shell-content
+      onClickCapture={guardLinkNavigation}
+    >
       <a
         href="#main-content"
+        inert={mobileOpen}
         className="fixed left-4 top-4 z-[80] -translate-y-24 rounded-lg bg-white px-4 py-3 text-sm font-semibold text-ink-950 shadow-floating transition-transform focus:translate-y-0"
       >
         Skip to content
       </a>
 
-      <header className="fixed inset-x-0 top-0 z-40 flex h-16 items-center justify-between bg-ink-900 px-4 text-white lg:hidden">
+      <header
+        className="fixed inset-x-0 top-0 z-40 flex h-16 items-center justify-between bg-ink-900 px-4 text-white lg:hidden"
+        inert={mobileOpen}
+      >
         <Link href="/dashboard/overview" className="flex min-h-11 items-center gap-3" aria-label="Eastern State home">
           <BrandMark size="sm" />
           <div>
@@ -238,6 +274,7 @@ export function AppShell({ user, children }: { user: SessionUser; children: Reac
           </div>
         </Link>
         <Button
+          ref={mobileOpenRef}
           variant="darkGhost"
           size="sm"
           onClick={() => setMobileOpen(true)}
@@ -263,16 +300,24 @@ export function AppShell({ user, children }: { user: SessionUser; children: Reac
         <AccountBlock user={user} />
       </aside>
 
-      {mobileOpen ? (
-        <div className="fixed inset-0 z-50 lg:hidden">
+      <div
+        className="mobile-drawer-layer fixed inset-0 z-50 lg:hidden"
+        data-state={mobileOpen ? "open" : "closed"}
+        aria-hidden={!mobileOpen}
+        inert={!mobileOpen}
+      >
           <Button
             type="button"
             variant="ghost"
-            className="absolute inset-0 min-h-0 w-full rounded-none bg-ink-950/65 p-0 backdrop-blur-[2px] hover:bg-ink-950/65 active:scale-100"
+            className="mobile-drawer-scrim absolute inset-0 min-h-0 w-full rounded-none bg-ink-950/65 p-0 backdrop-blur-[2px] hover:bg-ink-950/65 active:scale-100"
             onClick={() => setMobileOpen(false)}
             aria-label="Close navigation"
           />
-          <aside className="page-enter relative flex h-full w-[min(19rem,86vw)] flex-col bg-ink-900 text-white shadow-floating">
+          <aside
+            ref={mobileDrawerRef}
+            className="mobile-drawer-panel relative flex h-full w-[min(19rem,86vw)] flex-col bg-ink-900 text-white shadow-floating focus:outline-none"
+            tabIndex={-1}
+          >
             <div className="mb-8 flex items-center justify-between px-4 pt-5">
               <Link
                 href="/dashboard/overview"
@@ -286,6 +331,7 @@ export function AppShell({ user, children }: { user: SessionUser; children: Reac
                 </div>
               </Link>
               <Button
+                ref={mobileCloseRef}
                 variant="darkGhost"
                 size="sm"
                 onClick={() => setMobileOpen(false)}
@@ -298,10 +344,15 @@ export function AppShell({ user, children }: { user: SessionUser; children: Reac
             <ShellNavigation user={user} pathname={pathname} onNavigate={() => setMobileOpen(false)} />
             <AccountBlock user={user} />
           </aside>
-        </div>
-      ) : null}
+      </div>
 
-      <main id="main-content" className="min-w-0 pt-16 lg:ml-60 lg:pt-0">
+      <main
+        ref={mainRef}
+        id="main-content"
+        tabIndex={-1}
+        inert={mobileOpen}
+        className="min-w-0 pt-16 focus:outline-none lg:ml-60 lg:pt-0"
+      >
         {children}
       </main>
       <ConfirmDialog

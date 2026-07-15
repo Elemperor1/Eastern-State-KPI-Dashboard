@@ -1,6 +1,18 @@
 # Eastern State Strategic Plan
 
-A production-quality internal KPI Intelligence Dashboard for **Eastern State Penitentiary Historic Site**. Built for executive leadership and board reporting to understand completion of the 2025–2029 strategic plan, annual pacing, full-plan progress, unresolved measurement definitions, and supporting year comparisons.
+A production-quality strategic-performance decision-support product for
+**Eastern State Penitentiary Historic Site**. It helps executive leadership and
+Board reviewers understand completion of the 2025–2029 Strategic Plan, annual
+pacing, full-plan progress, unresolved Measurement Definitions, and supporting
+year comparisons.
+
+The canonical cross-layer product specification is
+[`docs/product-foundation.md`](docs/product-foundation.md). It defines the
+evidence boundary, user needs, product outcome, conceptual model, vocabulary,
+navigation, flows, states, and constraints that future visual work must
+preserve. ADR 0022 remains the four-destination and legacy-archive authority;
+`CONTEXT.md` remains the detailed domain glossary; `DESIGN.md` remains the
+visual-system authority.
 
 ## Quick start
 
@@ -160,9 +172,9 @@ as a "Sample data" badge throughout the UI.
 | Path                           | Purpose                                     | Auth                |
 | ------------------------------ | ------------------------------------------- | ------------------- |
 | `/login`                       | Sign in                                     | public              |
-| `/dashboard/overview`          | Category overview (executive summary)       | viewer + admin      |
-| `/dashboard/category/[slug]`   | Individual category page                    | viewer + admin      |
-| `/dashboard/metric/[slug]`     | Individual metric detail view               | viewer + admin      |
+| `/dashboard/overview`          | Strategic Plan overview                     | viewer + admin      |
+| `/dashboard/category/[slug]`   | Strategic Priority drill-down               | viewer + admin      |
+| `/dashboard/metric/[slug]`     | Measure drill-down                          | viewer + admin      |
 | `/reports`                     | Board Report and strategic Trends           | viewer + admin      |
 | `/data-entry`                  | Reporting checklist and strategic values    | admin only          |
 | `/setup`                       | Measures, Goals, People, and Activity        | admin only          |
@@ -193,6 +205,23 @@ The exhaustive auth regression matrix currently contains 28 protected
 route/method combinations: 26 admin-gated mutations and two session-gated
 reads (`strategy/export` and `strategy/distribution-bands`). Every mutation is
 also enrolled in the shared same-origin, JSON content-type, and CSRF checks.
+
+## Quality checks
+
+Run the fast compiler, repository guards, type-aware lint, and unit/integration
+suite before each commit:
+
+```bash
+npm run check
+```
+
+Use `npm run check:all` for release-level validation and
+`npm run security:scan` for the pinned OSV-Scanner, Gitleaks, and Semgrep gates.
+GitHub Actions runs those gates independently alongside CodeQL so each can be a
+stable required check. See
+[`docs/quality-and-security-gates.md`](docs/quality-and-security-gates.md) for
+commands, policies, exceptions, failure triage, and the GitHub settings an
+administrator must enable.
 
 ## Verification
 
@@ -250,10 +279,12 @@ database. Docker builds point
 final image copy, so build-time SQLite files and one-time seed passwords are not
 baked into the runtime image.
 
-### CI gate
+### Existing guard and build aggregate
 
-`npm run design-system:test` is the **CI gate** and must pass on every PR.
-It chains seven checks in order; any failure aborts:
+`npm run design-system:test` is the existing combined guard/build aggregate.
+The primary GitHub `Quality` workflow also exposes typecheck, lint, tests,
+build, E2E, OSV-Scanner, Gitleaks, and Semgrep as separate required checks.
+This aggregate chains seven checks in order; any failure aborts:
 
 1. `scripts/design-tokens-guard.sh` — fails if any literal hex color, raw `transition: all`, or inline `style={{ ... color: "#…" }}` bypass is introduced in `src/app/**` or `src/components/**` outside the design-system library (`src/components/ui/`) and the source-of-truth `src/app/globals.css`.
 2. `scripts/design-system-guard.sh` — fails if any raw `<button>` / `<input>` / `<select>` / `<table>` element or shared primitive class (`surface`, `btn-*`, `input`, `pill`, `data-table`, …) is used outside `src/components/ui/`.
@@ -276,8 +307,8 @@ covers — plus mobile rendering at 390 px, exports, forced password rotation,
 and auth API regression coverage — lives at `docs/qa-manual.md`. New engineers should
 walk the checklist end-to-end after their first checkout.
 
-Current schema-11 verification recorded on July 14, 2026: `npm test` passed
-**69 files / 1,151 tests**; `npm run design-system:test` passed its security and
+Current schema-11 verification recorded on July 15, 2026: `npm test` passed
+**74 files / 1,170 tests**; `npm run design-system:test` passed its security and
 architecture guards, typecheck, and production build; the loopback development
 smoke passed **51/51** checks; the credentialed production smoke passed
 **52/52**; and `npm run test:e2e` passed **8/8** serial workflows through a

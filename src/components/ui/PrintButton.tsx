@@ -1,5 +1,6 @@
 "use client";
 
+import { useId, useState } from "react";
 import { Printer } from "lucide-react";
 import { Button } from "./Button";
 
@@ -27,17 +28,22 @@ export function PrintButton({
   className,
   onPrint,
 }: PrintButtonProps) {
+  const statusId = useId();
+  const [status, setStatus] = useState("");
   function handleClick() {
     if (onPrint) {
       onPrint();
+      setStatus("Print dialog requested.");
       return;
     }
     if (typeof window !== "undefined" && typeof window.print === "function") {
       window.print();
+      setStatus("Print dialog closed.");
     }
   }
 
   return (
+    <>
     <Button
       type="button"
       variant="secondary"
@@ -45,9 +51,14 @@ export function PrintButton({
       icon={Printer}
       onClick={handleClick}
       aria-label="Open browser print dialog"
+      aria-describedby={statusId}
       className={className}
     >
       {label}
     </Button>
+    <span id={statusId} className="sr-only" role="status" aria-live="polite" aria-atomic="true">
+      {status}
+    </span>
+    </>
   );
 }

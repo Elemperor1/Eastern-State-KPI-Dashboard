@@ -1,12 +1,12 @@
-import type {
-  BoardConfigurationStatus,
-  BoardMeasurementType,
-  BoardProgressStatus,
-  BoardReportingFrequency,
-  StrategicBoardReportViewModel,
-  TargetProgressInput,
+import {
+  buildStrategicBoardReport,
+  type BoardConfigurationStatus,
+  type BoardMeasurementType,
+  type BoardProgressStatus,
+  type BoardReportingFrequency,
+  type StrategicBoardReportViewModel,
+  type TargetProgressInput,
 } from "./strategic-board-report";
-import { buildStrategicBoardReport } from "./strategic-board-report";
 import {
   calculateMeasurement,
   resolveEffectiveTargetPolicy,

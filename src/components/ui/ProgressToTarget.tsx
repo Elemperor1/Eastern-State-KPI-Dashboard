@@ -33,8 +33,8 @@ const STATUS_PRESENTATION: Record<
   in_progress: { icon: Clock3, variant: "info" },
   complete: { icon: CheckCircle2, variant: "success" },
   exceeded: { icon: TrendingUp, variant: "success" },
-  target_not_finalized: { icon: AlertTriangle, variant: "warning" },
-  needs_definition: { icon: CircleDashed, variant: "default" },
+  target_not_finalized: { icon: AlertTriangle, variant: "incomplete" },
+  needs_definition: { icon: CircleDashed, variant: "warning" },
 };
 
 /**
@@ -72,6 +72,7 @@ export function ProgressToTarget({
         <Badge
           variant={statusPresentation.variant}
           icon={statusPresentation.icon}
+          label="Progress status"
           aria-label={`Progress status: ${normalized.stateLabel}`}
         >
           {normalized.stateLabel}

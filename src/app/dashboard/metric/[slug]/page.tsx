@@ -6,6 +6,7 @@ import {
   Badge,
   Breadcrumb,
   EmptyState,
+  LinkButton,
   PageHeader,
   Progress,
 } from "@/components/ui";
@@ -26,8 +27,9 @@ function firstValue(value: string | string[] | undefined): string | undefined {
 
 function statusVariant(status: string) {
   if (["complete", "exceeded", "on_track", "active"].includes(status)) return "success" as const;
-  if (["at_risk", "needs_target", "target_not_finalized"].includes(status)) return "warning" as const;
-  if (["off_track", "needs_definition", "invalid"].includes(status)) return "error" as const;
+  if (["needs_target", "target_not_finalized"].includes(status)) return "incomplete" as const;
+  if (["at_risk", "needs_definition"].includes(status)) return "warning" as const;
+  if (["off_track", "invalid"].includes(status)) return "error" as const;
   return "info" as const;
 }
 
@@ -72,7 +74,9 @@ function ProgressSummary({
           <span className="font-semibold tabular text-ink-950">
             {formatBoardReportPercentage(progress.actualProgressPercentage)}
           </span>
-          <Badge variant={statusVariant(progress.status)}>{formatBoardReportToken(progress.status)}</Badge>
+          <Badge variant={statusVariant(progress.status)} label={`${label} status`}>
+            {formatBoardReportToken(progress.status)}
+          </Badge>
         </div>
       </div>
       {progress.actualProgressPercentage !== null ? (
@@ -117,7 +121,19 @@ export default async function StrategicMeasurePage({
         />
         <PageHeader
           title={data.kpi.name}
-          actions={<SampleDataBadge sample={data.sampleData} />}
+          actions={(
+            <div className="flex flex-wrap items-center justify-end gap-3">
+              <SampleDataBadge sample={data.sampleData} />
+              {user.role === "admin" ? (
+                <LinkButton
+                  href={`/setup?area=goals&year=${data.selectedYear}&goal=${data.goalId}#goal-target-measure-${data.kpi.id}`}
+                  size="sm"
+                >
+                  Review target
+                </LinkButton>
+              ) : null}
+            </div>
+          )}
         />
 
         <div className="mb-8 flex justify-end">
@@ -136,7 +152,9 @@ export default async function StrategicMeasurePage({
                 {data.kpi.result.displayValue}
               </p>
             </div>
-            <Badge variant={statusVariant(data.kpi.boardStatus)}>{formatBoardReportToken(data.kpi.boardStatus)}</Badge>
+            <Badge variant={statusVariant(data.kpi.boardStatus)} label="Board status">
+              {formatBoardReportToken(data.kpi.boardStatus)}
+            </Badge>
           </div>
         </section>
 

@@ -58,27 +58,29 @@ export function ExecutiveOverview({ data }: { data: ExecutiveOverviewPageData })
             )?.prioritySlug;
             const content = (
               <>
-                <div className="min-w-0 flex-1">
+                <div className="min-w-0">
                   <p className="font-semibold text-ink-950">{priority.priorityName}</p>
                   <p className="mt-1 text-sm text-ink-600">{normalized.countLabel}</p>
                 </div>
-                <p className="text-2xl font-semibold text-ink-950 tabular">
-                  {normalized.completionPercentageLabel}
-                </p>
-                <Badge variant={status.variant}>{status.label}</Badge>
-                {slug ? <ArrowRight className="size-4 text-ink-400" aria-hidden /> : null}
+                <div className="flex flex-wrap items-center gap-3 sm:flex-nowrap sm:justify-end">
+                  <p className="text-2xl font-semibold text-ink-950 tabular">
+                    {normalized.completionPercentageLabel}
+                  </p>
+                  <Badge variant={status.variant} label="Priority status">{status.label}</Badge>
+                  {slug ? <ArrowRight className="size-4 shrink-0 text-ink-400" aria-hidden /> : null}
+                </div>
               </>
             );
             return slug ? (
               <Link
                 key={priority.priorityId}
                 href={`/dashboard/category/${slug}?year=${data.summary.selectedYear}`}
-                className="flex min-h-24 items-center gap-4 px-1 py-5 transition-colors hover:bg-ink-50 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--color-focus)]"
+                className="grid min-h-24 grid-cols-1 gap-3 px-1 py-5 transition-colors hover:bg-ink-50 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--color-focus)] sm:grid-cols-[minmax(0,1fr)_auto] sm:items-center sm:gap-5"
               >
                 {content}
               </Link>
             ) : (
-              <div key={priority.priorityId} className="flex min-h-24 items-center gap-4 px-1 py-5">
+              <div key={priority.priorityId} className="grid min-h-24 grid-cols-1 gap-3 px-1 py-5 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-center sm:gap-5">
                 {content}
               </div>
             );

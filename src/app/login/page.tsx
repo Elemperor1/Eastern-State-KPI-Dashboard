@@ -4,6 +4,8 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { ArrowRight } from "lucide-react";
 import { Alert, BrandMark, Button, FormField, Input } from "@/components/ui";
+import { readJsonObject } from "@/lib/api-client";
+import { runEventHandler } from "@/lib/async-event";
 
 export default function LoginPage() {
   const router = useRouter();
@@ -23,16 +25,16 @@ export default function LoginPage() {
         body: JSON.stringify({ email, password }),
       });
       if (!response.ok) {
-        const data = await response.json().catch(() => ({}));
-        setError(data.error ?? "Login failed.");
+        const data = await readJsonObject(response);
+        setError(typeof data.error === "string" ? data.error : "Login failed.");
         setLoading(false);
         return;
       }
-      const data = await response.json().catch(() => ({}));
+      const data = await readJsonObject(response);
       // A bootstrap / admin-issued temp credential must be rotated
       // before the user reaches the dashboard. Route them to the
       // forced change-password page instead.
-      if (data.mustChangePassword) {
+      if (data.mustChangePassword === true) {
         router.push("/setup-password");
       } else {
         router.push("/dashboard");
@@ -96,7 +98,10 @@ export default function LoginPage() {
             </p>
           </div>
 
-          <form onSubmit={handleSubmit} className="space-y-5">
+          <form
+            onSubmit={(event) => runEventHandler(handleSubmit, event)}
+            className="space-y-5"
+          >
             <FormField htmlFor="email" label="Email">
               <Input
                 id="email"

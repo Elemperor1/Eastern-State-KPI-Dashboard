@@ -29,12 +29,14 @@ export function ExportPNGButton({
 }: Props) {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [status, setStatus] = useState("");
 
   async function handleExport() {
     const target = document.getElementById(targetId);
     if (!target) return;
     setBusy(true);
     setError(null);
+    setStatus("Preparing PNG export.");
     try {
       const html2canvas = (await import("html2canvas")).default;
       const restoreTarget = prepareRasterExportTarget(target);
@@ -77,12 +79,14 @@ export function ExportPNGButton({
         a.click();
         document.body.removeChild(a);
         window.setTimeout(() => URL.revokeObjectURL(objectUrl), 0);
+        setStatus("PNG export ready. Download started.");
       } finally {
         restoreTarget();
       }
     } catch (err) {
       console.error("PNG export failed", err);
       setError("PNG export failed. Try Print → Save as PDF.");
+      setStatus("");
     } finally {
       setBusy(false);
     }
@@ -108,6 +112,9 @@ export function ExportPNGButton({
           {error}
         </div>
       ) : null}
+      <span className="sr-only" role="status" aria-live="polite" aria-atomic="true">
+        {status}
+      </span>
     </div>
   );
 }

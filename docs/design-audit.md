@@ -4,6 +4,10 @@
 > Authority: `DESIGN.md` is the single source of truth. Accessibility and usability take precedence only where a literal design treatment would create an inaccessible or unusable result.
 >
 > **Status note (post-audit, updated 2026-06-30):** This document captures the *first* redesign (slate-blue → violet/lime/pink + Rubik, completed 2026-06-25). A second redesign has since shipped: the palette is now **teal/navy/yellow** and the font is **Galano Grotesque** (licensed for use by Eastern State Penitentiary Historic Site). The historical text below is preserved as evidence of the migration plan and the typography table is still a useful size/weight reference, but for the live design system always defer to the current `DESIGN.md` and `docs/design-system.md`. The "violet/lime/pink" color tokens and the `Rubik` family have been retired from the codebase.
+>
+> Issue 42 and ADR 0022 later replaced the route, card-grid, and admin-flow
+> examples below. Use `docs/product-foundation.md` for the current product
+> structure and interaction contract; the old screen inventory is historical.
 
 ## Executive assessment
 
@@ -375,3 +379,93 @@ The current product is a solid functional baseline, not a finished premium inter
 ### Final verdict
 
 The application now conforms consistently to `DESIGN.md` across public, dashboard, detail, trend, and admin surfaces. The design system is enforceable, the critical workflows are materially calmer and more legible, and the final product no longer reads as a generic AI-generated SaaS dashboard.
+
+## 2026-07-15 interaction and motion audit
+
+This audit follows the completed Layers and Taste passes. It does not reopen
+the product model or visual language. Source inspection covered shared controls,
+the shell, all four destinations, Priority and Measure drill-downs, target
+navigation, Data Entry, Setup editors, dialogs, route errors, and every export
+control. A live Chrome walk covered desktop Overview plus the 390 px Overview,
+mobile navigation, Priority, Measure, and exact Measure-to-target route.
+
+| Before | After | Why |
+| --- | --- | --- |
+| One `360ms` keyframed blur/translate entrance on routes, Setup panes, login, and the mobile drawer | Frequent route and pane changes are immediate; temporary layers use their own short, interruptible transitions | The shared effect fires too often, exceeds the dashboard budget, restarts on interruption, and gives the left drawer the wrong spatial origin |
+| Mobile navigation opens with page motion, leaves background controls reachable, retains focus on the opener, and loses focus on close | Left-origin drawer with inert background, focus trap, Escape, explicit initial focus, and opener restoration | Spatial continuity and keyboard safety are functional requirements, not decoration |
+| Dialog and confirmation focus traps are duplicated and re-run when inline callbacks change | One shared, stable modal-focus contract with centered origin, rapid reopen support, and honest async confirmation state | Prevents focus jumps, duplicate logic, and destructive double submission |
+| Data Entry validation reports errors without moving to the first invalid field; connection failure is generic | Focus the first invalid field and distinguish offline/unavailable state while retaining the editable draft | Makes recovery direct without promising offline persistence or synchronization |
+| Report filters navigate with no pending feedback; CSV has no status; PNG/PDF announce only failures | Disable only the pending report controls and announce preparation, confirmed readiness, download start, or an actionable failure | Reports should feel immediate while remaining honest about progress the browser cannot measure |
+| Route retry has no pending state or focus-restoration contract | Announce retry, suppress repeated retry, and focus the restored main content | Repeated recovery should be predictable and should not strand keyboard focus |
+| Measure-to-target navigation scrolls to the right target but leaves focus on the body | Focus the exact target heading after navigation | Preserves orientation for keyboard and assistive-technology users without adding motion |
+| Progress animates `width` for `500ms` | Left-anchored `scaleX` for `180ms`, removed entirely in reduced motion | Avoids layout work and delayed comprehension while retaining useful state continuity |
+
+The highest-leverage defects are the global page keyframe, mobile drawer focus,
+and shared dialog behavior. Export and save feedback follow because they affect
+frequent, consequential work. Decorative chart, row, number, warning, and
+dashboard entrance animation remains explicitly out of scope.
+
+## 2026-07-15 strict animation review
+
+The final `review-animations` pass covered every changed interaction against
+purpose, feel, continuity, origin, interruption, accessibility, reduced motion,
+and rendering cost. Browser verification also exercised rapid reopen, server
+failure recovery, and the full responsive matrix.
+
+| Before | After | Why |
+| --- | --- | --- |
+| The mobile drawer moved through the global page keyframe and left focusable page controls behind it | A left-origin `transform`/opacity drawer uses a 220 ms enter and 180 ms exit, traps focus, makes every background control inert, supports Escape and rapid reopen, and restores the opener | The transition now explains spatial origin without blocking input or leaking keyboard focus |
+| Dialog focus was duplicated and could run before a newly present portal mounted | Shared presence and focus behavior activates only after the portal is rendered; initial focus, Tab containment, Escape, background inertness, busy confirmation, and opener restoration are deterministic | Fixes the mount-order race while retaining an interruptible centered 180 ms transition |
+| Route retry called the error boundary reset alone and attempted focus restoration from the unmounting error component | Retry now combines boundary reset with a fresh route request; a one-shot marker lets the newly mounted app shell focus its own main content | Server-rendered failures recover predictably, repeated clicks are suppressed, and the restored page owns focus at the correct time |
+| Data Entry connection, conflict, validation, and save failures shared generic recovery behavior | Offline state keeps the draft editable but disables save, conflicts explain the stale setup boundary, validation focuses the first invalid field, and all success remains server-confirmed | Immediate feedback stays honest without inventing offline persistence or optimistic success |
+| Report changes and export controls lacked complete accessible feedback | Report controls expose real pending navigation; CSV, PNG, PDF, and print announce preparation or the confirmed browser action, with explicit failures | Users receive useful feedback without fake percentages or unverifiable download-completion claims |
+| Progress animated layout width for 500 ms; route and pane entrances animated blur/translation for 360 ms | Progress uses left-anchored `scaleX` for 180 ms; frequent route and pane changes are static | Changed motion stays on compositor-friendly properties and no longer delays reading or triggers layout work |
+| Reduced motion inherited the same spatial movement or a blanket removal risked hiding state feedback | Translation and scale are removed, progress is immediate, and a brief opacity/color response plus all semantic states remain | Respects motion preference without reducing usability or concealing open, saving, success, or error states |
+
+### Review verdict
+
+Approved with no remaining blocking or major findings. Motion is limited to
+temporary layers, press feedback, and progress continuity; all other frequent
+navigation is immediate. Durations and easings match `DESIGN.md`, transform
+origins match spatial relationships, animations are interruptible, and changed
+motion uses opacity/transform rather than layout properties. Chrome showed no
+horizontal overflow, obvious layout shift, sluggish input, keyboard trap, or
+unexpected console error at 360, 390, 768, 1440, or 1920 px. Reduced-motion
+emulation removed drawer/dialog spatial movement while preserving state.
+
+## 2026-07-15 Taste implementation checklist
+
+This targeted pass preserves the four-destination product foundation and
+addresses the highest-value evidence, navigation, and recovery gaps found in a
+live desktop audit.
+
+### Shared system
+
+- [x] Reserve bright yellow for the Sample data disclosure; repeated attention
+  states use the semantic soft-warning token.
+- [x] Add an incomplete status variant for missing targets and unfinished setup.
+- [x] Require visible status badges to name their subject.
+- [x] Add a shared link-style button so contextual navigation stays inside the
+  design-system boundary.
+- [x] Add an accessible route-recovery surface with focused error heading,
+  retry, and safe Overview/Reports navigation.
+
+### Route and subordinate-view refinements
+
+- [x] Recompose Overview priority rows so title, value, status, and affordance
+  retain distinct layout regions instead of competing for one flex row.
+- [x] Make the Data Entry checklist wide enough for real Measure names and
+  replace truncation with readable wrapping.
+- [x] Reduce duplicated warning detail in the Board Report executive summary;
+  keep the complete evidence with the affected goals and Measures below.
+- [x] Add direct `Review target` navigation from both the Measure detail page
+  and Setup → Measures to the owning Setup → Goals target section.
+- [x] Add route-level recovery for Overview, Data Entry, Reports, and Setup.
+- [x] Verify unit, CI-gate, browser acceptance, and desktop route checks.
+
+Verification evidence: `npm test` passed 71 files / 1,156 tests;
+`npm run design-system:test` passed every guard, TypeScript, and the production
+build; `npm run test:e2e` passed 8/8 Chrome workflows including PNG/PDF/CSV
+exports. Live desktop checks covered all four destinations plus Priority and
+Measure detail, and the Measure `Review target` action landed on the exact
+owning target section.

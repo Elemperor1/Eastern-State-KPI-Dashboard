@@ -1,7 +1,13 @@
 "use client";
 
-import type { FormEvent, SetStateAction } from "react";
-import { useEffect, useMemo, useRef, useState } from "react";
+import {
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type FormEvent,
+  type SetStateAction,
+} from "react";
 import { Archive, RotateCcw, Save } from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
@@ -18,6 +24,7 @@ import {
   type GoalManualStatus,
 } from "@/features/strategy";
 import { apiFetch } from "@/lib/api-client";
+import { runEventHandler } from "@/lib/async-event";
 import {
   buildStrategicGoalLifecycleMutation,
   buildStrategicGoalMembershipMutation,
@@ -177,6 +184,15 @@ export function StrategicGoalsEditorClient({
       document.getElementById(`goal-list-item-${goalId}`)?.focus();
     });
   }, [selectedGoalId]);
+
+  useEffect(() => {
+    const targetId = window.location.hash.slice(1);
+    if (!targetId.startsWith("goal-target-measure-")) return;
+    const frame = window.requestAnimationFrame(() => {
+      document.getElementById(targetId)?.focus({ preventScroll: true });
+    });
+    return () => window.cancelAnimationFrame(frame);
+  }, [reportingYear, selectedGoalId]);
 
   const priorityOptions = useMemo(
     () => strategicGoalPriorityOptions(goals),
@@ -446,7 +462,10 @@ export function StrategicGoalsEditorClient({
                     <span className="block font-medium text-ink-950">{goal.name}</span>
                     <span className="mt-1 flex items-center justify-between gap-3 text-sm text-ink-600">
                       <span>{goal.priority_name}</span>
-                      <Badge variant={goal.archived_at ? "default" : ready ? "success" : "warning"}>
+                      <Badge
+                        variant={goal.archived_at ? "default" : ready ? "success" : "warning"}
+                        label="Goal status"
+                      >
                         {goal.archived_at ? "Archived" : ready ? "Ready" : "Needs attention"}
                       </Badge>
                     </span>
@@ -641,7 +660,7 @@ export function StrategicGoalSettingsForm({
               </p>
             ) : null}
           </div>
-          <Badge variant={statusVariant(goal.configuration_status)}>
+          <Badge variant={statusVariant(goal.configuration_status)} label="Goal status">
             {setupStatusLabel(goal.configuration_status)}
           </Badge>
         </div>
@@ -660,7 +679,7 @@ export function StrategicGoalSettingsForm({
           </StatusBanner>
         ) : null}
 
-        <form onSubmit={submit} noValidate>
+        <form onSubmit={(event) => runEventHandler(submit, event)} noValidate>
           <fieldset disabled={busy || archived} className="space-y-8">
             {successorMode ? (
               <FormField
@@ -1053,7 +1072,13 @@ function GoalTargets({
           const components = measure.components.filter((component) => component.archived_at === null);
           return (
             <section key={measure.kpi.id} className="py-8" aria-labelledby={`goal-target-measure-${measure.kpi.id}`}>
-              <h3 id={`goal-target-measure-${measure.kpi.id}`} className="mb-5 text-lg font-semibold text-ink-950">{measure.kpi.name}</h3>
+              <h3
+                id={`goal-target-measure-${measure.kpi.id}`}
+                tabIndex={-1}
+                className="mb-5 text-lg font-semibold text-ink-950 focus:outline-none"
+              >
+                {measure.kpi.name}
+              </h3>
               <div className="grid grid-cols-1 gap-5 xl:grid-cols-2">
                 <StrategicTargetEditorCard
                   title={`${reportingYear} target`}
@@ -1198,7 +1223,10 @@ function StrategicGoalMembershipForm({
   }
 
   return (
-    <form onSubmit={submit} className="space-y-3">
+    <form
+      onSubmit={(event) => runEventHandler(submit, event)}
+      className="space-y-3"
+    >
       <div className="flex flex-wrap items-start justify-between gap-2">
         <div className="min-w-0">
           <p className="break-words text-sm font-semibold leading-5 text-ink-900">
@@ -1212,11 +1240,11 @@ function StrategicGoalMembershipForm({
           </p>
         </div>
         {member.configurationStatus ? (
-          <Badge variant={statusVariant(member.configurationStatus)}>
+          <Badge variant={statusVariant(member.configurationStatus)} label="Setup status">
             {setupStatusLabel(member.configurationStatus)}
           </Badge>
         ) : (
-          <Badge variant="warning">Not configured</Badge>
+          <Badge variant="incomplete" label="Setup status">Not configured</Badge>
         )}
       </div>
       {feedback ? (

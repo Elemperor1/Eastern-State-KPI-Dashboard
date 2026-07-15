@@ -3,11 +3,12 @@ import {
   STRATEGY_QUARTER_LABELS,
   type ConcreteStrategyReportingFrequency,
 } from "./periods";
-import type { MeasurementType, StrategyReportingFrequency } from "./types";
 import {
   STRATEGIC_PLAN_END_YEAR,
   STRATEGIC_PLAN_REPORTING_YEARS,
   STRATEGIC_PLAN_START_YEAR,
+  type MeasurementType,
+  type StrategyReportingFrequency,
 } from "./types";
 
 export type ReportingCyclePeriodType = ConcreteStrategyReportingFrequency;

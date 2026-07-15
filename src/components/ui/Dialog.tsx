@@ -1,9 +1,10 @@
 "use client";
 
-import { useEffect, useRef } from "react";
+import { useId, useRef } from "react";
 import { createPortal } from "react-dom";
 import { X } from "lucide-react";
 import { IconButton } from "./IconButton";
+import { useModalFocus, usePresence } from "./useModalInteraction";
 
 interface DialogProps {
   open: boolean;
@@ -16,47 +17,23 @@ interface DialogProps {
 
 export function Dialog({ open, title, description, children, footer, onClose }: DialogProps) {
   const dialogRef = useRef<HTMLDivElement>(null);
+  const titleId = useId();
+  const descriptionId = useId();
+  const presence = usePresence(open);
+  useModalFocus({ open: open && presence.rendered, containerRef: dialogRef, onClose });
 
-  useEffect(() => {
-    if (!open) return;
-    const previous = document.activeElement as HTMLElement | null;
-    const firstField = dialogRef.current?.querySelector<HTMLElement>("input, select, textarea, button");
-    firstField?.focus();
-
-    function onKeyDown(event: KeyboardEvent) {
-      if (event.key === "Escape") onClose();
-      if (event.key !== "Tab" || !dialogRef.current) return;
-      const focusable = Array.from(
-        dialogRef.current.querySelectorAll<HTMLElement>(
-          'button:not([disabled]), [href], input:not([disabled]), select:not([disabled]), [tabindex]:not([tabindex="-1"])',
-        ),
-      );
-      if (focusable.length === 0) return;
-      const first = focusable[0];
-      const last = focusable[focusable.length - 1];
-      if (event.shiftKey && document.activeElement === first) {
-        event.preventDefault();
-        last.focus();
-      } else if (!event.shiftKey && document.activeElement === last) {
-        event.preventDefault();
-        first.focus();
-      }
-    }
-
-    document.addEventListener("keydown", onKeyDown);
-    return () => {
-      document.removeEventListener("keydown", onKeyDown);
-      previous?.focus();
-    };
-  }, [open, onClose]);
-
-  if (!open || typeof document === "undefined") return null;
+  if (!presence.rendered || typeof document === "undefined") return null;
 
   return createPortal(
-    <div className="fixed inset-0 z-[70] grid place-items-center px-4">
+    <div
+      className="modal-layer fixed inset-0 z-[70] grid place-items-center px-4"
+      data-state={presence.visible ? "open" : "closed"}
+      aria-hidden={!open}
+      inert={!open}
+    >
       <button
         type="button"
-        className="absolute inset-0 bg-ink-950/65 backdrop-blur-[2px]"
+        className="modal-scrim absolute inset-0 bg-ink-950/65 backdrop-blur-[2px]"
         aria-label="Close dialog"
         onClick={onClose}
       />
@@ -64,15 +41,16 @@ export function Dialog({ open, title, description, children, footer, onClose }: 
         ref={dialogRef}
         role="dialog"
         aria-modal="true"
-        aria-labelledby="dialog-title"
-        aria-describedby={description ? "dialog-description" : undefined}
-        className="surface-elevated relative w-full max-w-lg overflow-hidden"
+        aria-labelledby={titleId}
+        aria-describedby={description ? descriptionId : undefined}
+        tabIndex={-1}
+        className="modal-panel surface-elevated relative w-full max-w-lg overflow-hidden focus:outline-none"
       >
         <div className="flex items-start justify-between gap-4 border-b border-ink-100 px-6 py-5">
           <div>
-            <h2 id="dialog-title" className="text-xl font-semibold text-ink-900">{title}</h2>
+            <h2 id={titleId} className="text-xl font-semibold text-ink-900">{title}</h2>
             {description ? (
-              <p id="dialog-description" className="mt-2 text-sm leading-6 text-ink-600 text-pretty">
+              <p id={descriptionId} className="mt-2 text-sm leading-6 text-ink-600 text-pretty">
                 {description}
               </p>
             ) : null}
