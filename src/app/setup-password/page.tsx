@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { ArrowRight } from "lucide-react";
+import { AuthPageSkeleton } from "@/components/AuthPageSkeleton";
 import { Alert, BrandMark, Button, FormField, Input } from "@/components/ui";
 import { apiFetch, readJsonObject } from "@/lib/api-client";
 import { runEventHandler } from "@/lib/async-event";
@@ -85,7 +86,7 @@ export default function SetupPasswordPage() {
     }
   }
 
-  if (!ready) return null;
+  if (!ready) return <AuthPageSkeleton fieldCount={3} />;
 
   return (
     <main className="grid min-h-[100dvh] bg-white lg:grid-cols-[minmax(0,1.08fr)_minmax(28rem,0.92fr)]">
@@ -104,9 +105,9 @@ export default function SetupPasswordPage() {
           <p className="mb-5 text-sm font-medium uppercase tracking-[0.12em] text-white/60">
             Account security
           </p>
-          <h1 className="max-w-xl text-[clamp(2.75rem,4.5vw,4.5rem)] font-semibold leading-[1] tracking-[-0.04em]">
+          <p className="max-w-xl text-[clamp(2.75rem,4.5vw,4.5rem)] font-semibold leading-[1] tracking-[-0.04em]">
             Replace your temporary password.
-          </h1>
+          </p>
           <p className="mt-8 max-w-lg text-base leading-8 text-white/70 text-pretty">
             You signed in with a temporary credential. Choose a new password to finish securing your account before continuing to the dashboard.
           </p>
@@ -128,9 +129,9 @@ export default function SetupPasswordPage() {
 
           <div className="mb-8">
             <p className="section-eyebrow">Required before continuing</p>
-            <h2 className="text-[30px] font-medium leading-[1.2] tracking-[-0.02em] text-ink-900">
+            <h1 className="text-[30px] font-medium leading-[1.2] tracking-[-0.02em] text-ink-900">
               Set a new password
-            </h2>
+            </h1>
             <p className="mt-3 text-base leading-6 text-ink-600 text-pretty">
               Your current password is temporary. Replace it with one only you know to unlock the dashboard.
             </p>

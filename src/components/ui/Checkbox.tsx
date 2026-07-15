@@ -14,7 +14,7 @@ export function Checkbox({ label, description, className, id, ...props }: Checkb
       htmlFor={id}
       className={cn(
         "group flex min-h-10 cursor-pointer items-start gap-3 rounded-lg px-2 py-2 text-sm text-ink-700",
-        "transition-[background-color,color] duration-150 ease-out hover:bg-ink-100/70",
+        "transition-[background-color,color] duration-[var(--motion-fast)] ease-[var(--ease-out)] hover:bg-ink-100/70",
         className,
       )}
     >

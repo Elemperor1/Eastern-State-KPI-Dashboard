@@ -29,16 +29,22 @@ export function PrintButton({
   onPrint,
 }: PrintButtonProps) {
   const statusId = useId();
-  const [status, setStatus] = useState("");
+  const [announcement, setAnnouncement] = useState({ message: "", sequence: 0 });
+  function announce(message: string) {
+    setAnnouncement((current) => ({
+      message,
+      sequence: current.sequence + 1,
+    }));
+  }
   function handleClick() {
     if (onPrint) {
       onPrint();
-      setStatus("Print dialog requested.");
+      announce("Print dialog requested.");
       return;
     }
     if (typeof window !== "undefined" && typeof window.print === "function") {
       window.print();
-      setStatus("Print dialog closed.");
+      announce("Print dialog closed.");
     }
   }
 
@@ -57,7 +63,14 @@ export function PrintButton({
       {label}
     </Button>
     <span id={statusId} className="sr-only" role="status" aria-live="polite" aria-atomic="true">
-      {status}
+      {announcement.sequence > 0 ? (
+        <span
+          key={announcement.sequence}
+          data-announcement-sequence={announcement.sequence}
+        >
+          {announcement.message}
+        </span>
+      ) : null}
     </span>
     </>
   );

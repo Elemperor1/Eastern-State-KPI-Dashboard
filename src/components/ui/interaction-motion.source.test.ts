@@ -8,6 +8,7 @@ function source(path: string): string {
 describe("interaction and motion contracts", () => {
   it("keeps frequent route navigation immediate and temporary layers interruptible", () => {
     const css = source("../../app/globals.css");
+    expect(css).toContain("--motion-fast: 120ms");
     expect(css).toContain("--motion-standard: 180ms");
     expect(css).toContain("--ease-drawer: cubic-bezier(0.32, 0.72, 0, 1)");
     expect(css).toContain(".page-enter {\n  animation: none;");
@@ -15,6 +16,23 @@ describe("interaction and motion contracts", () => {
     expect(css).toContain('transform: translateX(-100%)');
     expect(css).toContain("transform: scale(0.97)");
     expect(css).toContain("@media (prefers-reduced-motion: reduce)");
+  });
+
+  it("keeps shared interaction timing on the fast motion token", () => {
+    const css = source("../../app/globals.css");
+    const primitives = [
+      source("./Tabs.tsx"),
+      source("./CardAction.tsx"),
+      source("./Checkbox.tsx"),
+      source("./IconButton.tsx"),
+      source("./Breadcrumb.tsx"),
+    ].join("\n");
+
+    expect(css).not.toContain("duration-150");
+    expect(css).toContain("transition-duration: var(--motion-fast)");
+    expect(primitives).not.toContain("duration-150");
+    expect(primitives).toContain("duration-[var(--motion-fast)]");
+    expect(primitives).toContain("ease-[var(--ease-out)]");
   });
 
   it("shares focus trapping, Escape, presence, and restoration across temporary layers", () => {

@@ -1,0 +1,329 @@
+{
+  "schemaVersion": 2,
+  "generatedAt": "2026-07-15T18:07:56Z",
+  "title": "Design System: Eastern State Strategic Plan",
+  "extensions": {
+    "colorMeta": {
+      "brand-primary": {
+        "role": "primary",
+        "displayName": "Evidence Teal",
+        "canonical": "#209ba5",
+        "tonalRamp": ["#001f29", "#003649", "#005f6f", "#0e818b", "#209ba5", "#5fbfc7", "#9cd9de", "#eaf7f8"]
+      },
+      "brand-secondary": {
+        "role": "secondary",
+        "displayName": "Review Teal",
+        "canonical": "#005f6f",
+        "tonalRamp": ["#001f29", "#003649", "#005f6f", "#0e818b", "#209ba5", "#5fbfc7", "#9cd9de", "#eaf7f8"]
+      },
+      "ink": {
+        "role": "primary",
+        "displayName": "Authority Navy",
+        "canonical": "#003649",
+        "tonalRamp": ["#001f29", "#003649", "#113e4a", "#234954", "#557883", "#7a9aa3", "#cfe0e3", "#f5f7f8"]
+      },
+      "ink-press": {
+        "role": "primary",
+        "displayName": "Pressed Navy",
+        "canonical": "#001f29",
+        "tonalRamp": ["#001219", "#001f29", "#003649", "#113e4a", "#3a5e69", "#7a9aa3", "#cfe0e3", "#f5f7f8"]
+      },
+      "canvas": {
+        "role": "neutral",
+        "displayName": "Evidence Canvas",
+        "canonical": "#ffffff",
+        "tonalRamp": ["#001f29", "#234954", "#557883", "#7a9aa3", "#a9c2c8", "#cfe0e3", "#f5f7f8", "#ffffff"]
+      },
+      "page": {
+        "role": "neutral",
+        "displayName": "Page Ground",
+        "canonical": "#f5f7f8",
+        "tonalRamp": ["#001f29", "#234954", "#557883", "#7a9aa3", "#a9c2c8", "#cfe0e3", "#e7eef0", "#f5f7f8"]
+      },
+      "surface-muted": {
+        "role": "neutral",
+        "displayName": "Muted Surface",
+        "canonical": "#e7eef0",
+        "tonalRamp": ["#001f29", "#234954", "#557883", "#7a9aa3", "#a9c2c8", "#cfe0e3", "#e7eef0", "#f5f7f8"]
+      },
+      "surface-pressed": {
+        "role": "neutral",
+        "displayName": "Pressed Surface",
+        "canonical": "#cfdadd",
+        "tonalRamp": ["#001f29", "#234954", "#557883", "#7a9aa3", "#a9c2c8", "#cfdadd", "#e7eef0", "#f5f7f8"]
+      },
+      "sample-accent": {
+        "role": "tertiary",
+        "displayName": "Sample Signal Yellow",
+        "canonical": "#f7f242",
+        "tonalRamp": ["#3d3b05", "#6e6c10", "#a8a51b", "#d9d62b", "#f7f242", "#f8ee88", "#fbf6c2", "#fdfbe7"]
+      },
+      "border-cool": {
+        "role": "neutral",
+        "displayName": "Cool Border",
+        "canonical": "#cfe0e3",
+        "tonalRamp": ["#001f29", "#234954", "#557883", "#7a9aa3", "#a9c2c8", "#cfe0e3", "#e7eef0", "#f5f7f8"]
+      },
+      "border-dark": {
+        "role": "neutral",
+        "displayName": "Dark Border",
+        "canonical": "#113e4a",
+        "tonalRamp": ["#001f29", "#003649", "#113e4a", "#234954", "#557883", "#7a9aa3", "#cfe0e3", "#f5f7f8"]
+      },
+      "text-secondary": {
+        "role": "neutral",
+        "displayName": "Secondary Ink",
+        "canonical": "#234954",
+        "tonalRamp": ["#001f29", "#003649", "#113e4a", "#234954", "#557883", "#7a9aa3", "#cfe0e3", "#f5f7f8"]
+      },
+      "text-tertiary": {
+        "role": "neutral",
+        "displayName": "Tertiary Ink",
+        "canonical": "#557883",
+        "tonalRamp": ["#001f29", "#003649", "#113e4a", "#234954", "#557883", "#7a9aa3", "#cfe0e3", "#f5f7f8"]
+      },
+      "text-muted": {
+        "role": "neutral",
+        "displayName": "Muted Ink",
+        "canonical": "#7a9aa3",
+        "tonalRamp": ["#001f29", "#003649", "#113e4a", "#234954", "#557883", "#7a9aa3", "#cfe0e3", "#f5f7f8"]
+      },
+      "on-dark-muted": {
+        "role": "neutral",
+        "displayName": "Muted Ink on Dark",
+        "canonical": "#ffffffb8",
+        "tonalRamp": ["#ffffff26", "#ffffff40", "#ffffff59", "#ffffff73", "#ffffff8c", "#ffffffa6", "#ffffffb8", "#ffffff"]
+      },
+      "on-dark-faint": {
+        "role": "neutral",
+        "displayName": "Faint Surface on Dark",
+        "canonical": "#ffffff1f",
+        "tonalRamp": ["#ffffff0d", "#ffffff1f", "#ffffff33", "#ffffff4d", "#ffffff66", "#ffffff80", "#ffffffb8", "#ffffff"]
+      },
+      "success-bg": {
+        "role": "semantic",
+        "displayName": "Success Surface",
+        "canonical": "#e6f4ee",
+        "tonalRamp": ["#06291e", "#0a4f3a", "#157657", "#3d9a79", "#77bea3", "#a9d8c7", "#d2ebe2", "#f2faf7"]
+      },
+      "success-text": {
+        "role": "semantic",
+        "displayName": "Success Ink",
+        "canonical": "#0a4f3a",
+        "tonalRamp": ["#06291e", "#0a4f3a", "#157657", "#3d9a79", "#77bea3", "#a9d8c7", "#d2ebe2", "#f2faf7"]
+      },
+      "danger-bg": {
+        "role": "semantic",
+        "displayName": "Danger Surface",
+        "canonical": "#fdecec",
+        "tonalRamp": ["#3d0d0d", "#671717", "#8a1f1f", "#b43b3b", "#d66f6f", "#eda8a8", "#fbdede", "#fff5f5"]
+      },
+      "danger-hover": {
+        "role": "semantic",
+        "displayName": "Danger Hover Surface",
+        "canonical": "#fbdede",
+        "tonalRamp": ["#3d0d0d", "#671717", "#8a1f1f", "#b43b3b", "#d66f6f", "#eda8a8", "#fbdede", "#fff5f5"]
+      },
+      "danger-text": {
+        "role": "semantic",
+        "displayName": "Danger Ink",
+        "canonical": "#8a1f1f",
+        "tonalRamp": ["#3d0d0d", "#671717", "#8a1f1f", "#b43b3b", "#d66f6f", "#eda8a8", "#fbdede", "#fff5f5"]
+      },
+      "info-bg": {
+        "role": "semantic",
+        "displayName": "Information Surface",
+        "canonical": "#eaf7f8",
+        "tonalRamp": ["#001f29", "#003649", "#005f6f", "#0e818b", "#209ba5", "#5fbfc7", "#9cd9de", "#eaf7f8"]
+      },
+      "info-text": {
+        "role": "semantic",
+        "displayName": "Information Ink",
+        "canonical": "#005f6f",
+        "tonalRamp": ["#001f29", "#003649", "#005f6f", "#0e818b", "#209ba5", "#5fbfc7", "#9cd9de", "#eaf7f8"]
+      },
+      "warning-bg": {
+        "role": "semantic",
+        "displayName": "Warning Surface",
+        "canonical": "#fdfbe7",
+        "tonalRamp": ["#3d3b05", "#6e6c10", "#a8a51b", "#d9d62b", "#f7f242", "#f8ee88", "#fbf6c2", "#fdfbe7"]
+      },
+      "warning-text": {
+        "role": "semantic",
+        "displayName": "Warning Ink",
+        "canonical": "#6e6c10",
+        "tonalRamp": ["#3d3b05", "#6e6c10", "#a8a51b", "#d9d62b", "#f7f242", "#f8ee88", "#fbf6c2", "#fdfbe7"]
+      },
+      "focus": {
+        "role": "semantic",
+        "displayName": "Keyboard Focus Teal",
+        "canonical": "#209ba5",
+        "tonalRamp": ["#001f29", "#003649", "#005f6f", "#0e818b", "#209ba5", "#5fbfc7", "#9cd9de", "#eaf7f8"]
+      }
+    },
+    "typographyMeta": {
+      "auth-display": { "displayName": "Authentication Display", "purpose": "Identity-panel statement only; never authenticated product UI." },
+      "page-title": { "displayName": "Page Title", "purpose": "One primary heading per route." },
+      "section-title": { "displayName": "Section Title", "purpose": "Bounded analytical or workflow groups." },
+      "body": { "displayName": "Product Body", "purpose": "Default interface copy and descriptions." },
+      "body-strong": { "displayName": "Product Body Strong", "purpose": "Meaningful emphasis and row titles." },
+      "control": { "displayName": "Action Label", "purpose": "Tracked uppercase primary control labels." },
+      "caption": { "displayName": "Caption", "purpose": "Hints, context, and supporting metadata." },
+      "label": { "displayName": "Compact Label", "purpose": "Field and compact section labels." },
+      "micro": { "displayName": "Qualified State", "purpose": "Badges and terse qualified states only." },
+      "report-caption": { "displayName": "Board Report Caption", "purpose": "Print and export context only; never interactive controls." },
+      "report-title": { "displayName": "Board Report Title", "purpose": "The printed Board Report title only." },
+      "mono": { "displayName": "Code-like Data", "purpose": "Literal or aligned data values only." }
+    },
+    "shadows": [
+      {
+        "name": "surface",
+        "value": "0 0 0 1px rgba(0,54,73,0.07), 0 1px 2px -1px rgba(0,54,73,0.08), 0 4px 14px rgba(0,54,73,0.035)",
+        "purpose": "Bounded cards and workflow objects."
+      },
+      {
+        "name": "surface-hover",
+        "value": "0 0 0 1px rgba(0,54,73,0.11), 0 2px 4px -1px rgba(0,54,73,0.09), 0 8px 24px rgba(0,54,73,0.06)",
+        "purpose": "Interactive card response only."
+      },
+      {
+        "name": "elevated",
+        "value": "0 0 0 1px rgba(0,54,73,0.08), 0 10px 15px -3px rgba(0,54,73,0.1), 0 4px 6px -4px rgba(0,54,73,0.1)",
+        "purpose": "Dialogs and temporary floating layers."
+      },
+      {
+        "name": "floating",
+        "value": "0 0.5rem 1.5rem rgba(0,33,48,0.18)",
+        "purpose": "Skip-link and exceptional shell chrome."
+      }
+    ],
+    "motion": [
+      { "name": "fast", "value": "120ms", "purpose": "Pointer press and compact feedback." },
+      { "name": "standard", "value": "180ms", "purpose": "Dialog and progress-state continuity." },
+      { "name": "drawer", "value": "220ms", "purpose": "Mobile navigation drawer enter." },
+      { "name": "ease-out", "value": "cubic-bezier(0.23, 1, 0.32, 1)", "purpose": "Entering, exiting, and system response." },
+      { "name": "ease-in-out", "value": "cubic-bezier(0.77, 0, 0.175, 1)", "purpose": "Visible elements moving between states." },
+      { "name": "ease-drawer", "value": "cubic-bezier(0.32, 0.72, 0, 1)", "purpose": "Left-origin mobile drawer enter." }
+    ],
+    "breakpoints": [
+      { "name": "small-mobile", "value": "320px" },
+      { "name": "mobile", "value": "576px" },
+      { "name": "mobile-large", "value": "640px" },
+      { "name": "tablet", "value": "768px" },
+      { "name": "laptop", "value": "992px" },
+      { "name": "desktop", "value": "1152px" },
+      { "name": "wide", "value": "1440px" },
+      { "name": "verification-wide", "value": "1920px" }
+    ]
+  },
+  "components": [
+    {
+      "name": "Primary Button",
+      "kind": "button",
+      "refersTo": "button-primary",
+      "description": "The single dominant action in a light workflow region.",
+      "html": "<button class=\"ds-btn-primary\">SAVE AND CONTINUE</button>",
+      "css": ".ds-btn-primary{min-height:44px;padding:12px 16px;border:0;border-radius:8px;background:var(--color-tertiary);color:#fff;font:700 14px/1.14 'Galano Grotesque',system-ui,sans-serif;letter-spacing:.02em;text-transform:uppercase;transition:scale var(--motion-fast) var(--ease-out),background-color var(--motion-fast) var(--ease-out),box-shadow var(--motion-fast) var(--ease-out)}.ds-btn-primary:hover{background:var(--color-ink);box-shadow:0 0 8px 3px rgba(0,33,48,.14)}.ds-btn-primary:focus-visible{outline:3px solid var(--color-focus);outline-offset:2px}.ds-btn-primary:active{scale:.96}.ds-btn-primary:disabled{cursor:not-allowed;opacity:.45}@media(prefers-reduced-motion:reduce){.ds-btn-primary{scale:1;transition-duration:var(--motion-fast)}}"
+    },
+    {
+      "name": "Secondary Button",
+      "kind": "button",
+      "refersTo": "button-secondary",
+      "description": "A neutral alternative that never competes with the primary action.",
+      "html": "<button class=\"ds-btn-secondary\">CANCEL</button>",
+      "css": ".ds-btn-secondary{min-height:44px;padding:12px 16px;border:0;border-radius:8px;background:#fff;color:var(--color-ink);box-shadow:0 0 0 1px rgba(0,54,73,.14);font:700 14px/1.14 'Galano Grotesque',system-ui,sans-serif;letter-spacing:.02em;text-transform:uppercase;transition:scale var(--motion-fast) var(--ease-out),background-color var(--motion-fast) var(--ease-out),box-shadow var(--motion-fast) var(--ease-out)}.ds-btn-secondary:hover{background:#eef3f4;box-shadow:0 0 0 1px rgba(0,54,73,.22)}.ds-btn-secondary:focus-visible{outline:3px solid var(--color-focus);outline-offset:2px}.ds-btn-secondary:active{scale:.96}@media(prefers-reduced-motion:reduce){.ds-btn-secondary{scale:1;transition-duration:var(--motion-fast)}}"
+    },
+    {
+      "name": "Danger Button",
+      "kind": "button",
+      "refersTo": "button-danger",
+      "description": "A separated destructive action used with explicit confirmation.",
+      "html": "<button class=\"ds-btn-danger\">DELETE</button>",
+      "css": ".ds-btn-danger{min-height:44px;padding:12px 16px;border:0;border-radius:8px;background:var(--color-danger-bg);color:var(--color-danger-text);box-shadow:inset 0 0 0 1px rgba(138,31,31,.15);font:700 14px/1.14 'Galano Grotesque',system-ui,sans-serif;letter-spacing:.02em;text-transform:uppercase;transition:scale var(--motion-fast) var(--ease-out),background-color var(--motion-fast) var(--ease-out)}.ds-btn-danger:hover{background:var(--color-danger-hover)}.ds-btn-danger:focus-visible{outline:3px solid var(--color-focus);outline-offset:2px}.ds-btn-danger:active{scale:.96}@media(prefers-reduced-motion:reduce){.ds-btn-danger{scale:1;transition-duration:var(--motion-fast)}}"
+    },
+    {
+      "name": "Text Input",
+      "kind": "input",
+      "refersTo": "input",
+      "description": "A labeled, 44-pixel field with visible hover, focus, disabled, and invalid states.",
+      "html": "<label class=\"ds-field\"><span>MEASURE SOURCE</span><input aria-invalid=\"false\" placeholder=\"Enter the source\"></label>",
+      "css": ".ds-field{display:grid;gap:6px;color:var(--color-text-secondary);font:600 11px/1.4 'Galano Grotesque',system-ui,sans-serif;letter-spacing:.08em}.ds-field input{min-height:44px;padding:8px 12px;border:0;border-radius:6px;background:#fff;color:var(--color-ink);box-shadow:inset 0 0 0 1px var(--color-hairline-cool);font:400 16px/1.5 'Galano Grotesque',system-ui,sans-serif;transition:box-shadow var(--motion-fast) var(--ease-out),background-color var(--motion-fast) var(--ease-out)}.ds-field input:hover{box-shadow:inset 0 0 0 1px #a9c2c8}.ds-field input:focus-visible{outline:3px solid var(--color-focus);outline-offset:2px;box-shadow:inset 0 2px 10px rgba(0,0,0,.1),inset 0 0 0 1px var(--color-primary)}.ds-field input[aria-invalid=true]{box-shadow:inset 0 0 0 1px var(--color-danger-text)}"
+    },
+    {
+      "name": "Active Navigation Link",
+      "kind": "nav",
+      "refersTo": "nav-link",
+      "description": "The selected destination reverses the dark shell polarity without adding an accent color.",
+      "html": "<nav class=\"ds-nav\"><a class=\"ds-nav-link\" aria-current=\"page\" href=\"#\">Overview</a><a class=\"ds-nav-link ds-nav-link-muted\" href=\"#\">Reports</a></nav>",
+      "css": ".ds-nav{display:grid;gap:4px;padding:12px;border-radius:12px;background:var(--color-canvas-dark);font:500 14px/1.43 'Galano Grotesque',system-ui,sans-serif}.ds-nav-link{display:flex;min-height:44px;align-items:center;padding:10px 12px;border-radius:8px;background:#fff;color:var(--color-ink);text-decoration:none;box-shadow:0 2px 8px rgba(0,0,0,.08)}.ds-nav-link-muted{background:transparent;color:var(--color-on-dark-muted);box-shadow:none}.ds-nav-link-muted:hover{background:rgba(255,255,255,.08);color:#fff}.ds-nav-link:focus-visible{outline:3px solid var(--color-focus);outline-offset:2px}"
+    },
+    {
+      "name": "Bounded Card",
+      "kind": "card",
+      "refersTo": "card",
+      "description": "A card for one bounded object or workflow region, never a generic section wrapper.",
+      "html": "<section class=\"ds-card\"><h3>Reporting context</h3><p>Annual results for 2026.</p></section>",
+      "css": ".ds-card{padding:24px;border-radius:12px;background:#fff;color:var(--color-ink);box-shadow:var(--shadow-surface);font:400 16px/1.5 'Galano Grotesque',system-ui,sans-serif}.ds-card h3{margin:0;font-size:20px;line-height:1.25;font-weight:600}.ds-card p{margin:8px 0 0;max-width:65ch;color:var(--color-text-secondary)}"
+    },
+    {
+      "name": "Qualified Warning Badge",
+      "kind": "chip",
+      "refersTo": "qualified-warning",
+      "description": "A soft repeated state that names its subject and does not consume the Sample-data yellow.",
+      "html": "<span class=\"ds-badge-warning\"><span>SETUP STATUS:</span> NEEDS TARGET</span>",
+      "css": ".ds-badge-warning{display:inline-flex;min-height:28px;align-items:center;gap:6px;padding:4px 8px;border-radius:4px;background:var(--color-warning-bg);color:var(--color-warning-text);font:600 10px/1.8 'Galano Grotesque',system-ui,sans-serif;letter-spacing:.06em;text-transform:uppercase}.ds-badge-warning span{font-weight:700}"
+    },
+    {
+      "name": "Progress",
+      "kind": "custom",
+      "refersTo": "progress",
+      "description": "A left-anchored result whose accessible value updates immediately.",
+      "html": "<div class=\"ds-progress\" role=\"progressbar\" aria-valuemin=\"0\" aria-valuemax=\"100\" aria-valuenow=\"68\"><span style=\"transform:scaleX(.68)\"></span></div>",
+      "css": ".ds-progress{height:6px;overflow:hidden;border-radius:9999px;background:var(--color-surface-muted)}.ds-progress span{display:block;width:100%;height:100%;border-radius:9999px;background:var(--color-primary);transform-origin:left center;transition:transform var(--motion-standard) var(--ease-in-out)}@media(prefers-reduced-motion:reduce){.ds-progress span{transition:none}}"
+    }
+  ],
+  "narrative": {
+    "northStar": "The Evidence Instrument",
+    "overview": "This is an internal strategic-performance product, not a marketing site. Its design should disappear into review, reporting, data entry, and governance work while making the evidence behind every conclusion easy to inspect. Calm comes from predictable structure; confidence comes from qualified states, visible denominators, sources, Targets, and recovery—not decorative authority.",
+    "keyCharacteristics": [
+      "One light product canvas with a dark navy navigation shell.",
+      "A restrained navy/teal identity; color communicates role and state, not decoration.",
+      "Bright yellow appears only on the Sample data disclosure.",
+      "Flat sections and divided rows are the default; cards mark truly bounded objects or workflow regions.",
+      "One dominant action per workflow region, with destructive actions separated and quieter until required.",
+      "Immediate route and filter changes; motion is limited to temporary layers, press feedback, and progress continuity.",
+      "Evidence, missingness, and recovery remain visible at every viewport."
+    ],
+    "rules": [
+      { "name": "The Orientation Rule", "body": "Location is communicated by breadcrumbs, headings, selected controls, URL state, skeleton geometry, and focus—not page theater.", "section": "overview" },
+      { "name": "The Sample Data Rule", "body": "The sample-accent token is the only bright-yellow treatment and always names Sample data.", "section": "colors" },
+      { "name": "The Qualified State Rule", "body": "Color never carries meaning alone. Every visible state names its subject; the generic label Status is prohibited.", "section": "colors" },
+      { "name": "The Product Type Rule", "body": "Authenticated screens use a compact fixed scale; fluid display type is reserved for authentication identity panels.", "section": "typography" },
+      { "name": "The Bounded Object Rule", "body": "A card is justified only when content behaves as one object or workflow region. A card inside a card is a defect.", "section": "elevation" },
+      { "name": "The Single Depth Rule", "body": "Do not pair a decorative one-pixel border with a wide soft shadow.", "section": "elevation" }
+    ],
+    "dos": [
+      "Do preserve exactly four destinations and the supporting Priority and Measure drill-down hierarchy.",
+      "Do use Measure and Strategic Priority in product copy and qualify every state label.",
+      "Do keep Reporting Period, comparison basis, Targets, denominators, sources, completeness, and caveats visible where they support a decision.",
+      "Do keep Overview bounded and Reports the exclusive owner of Board Report, Trends, CSV, PNG, PDF, and print.",
+      "Do use strategic observations as the sole current reporting truth and keep saves atomic and server-confirmed.",
+      "Do reserve bright yellow for Sample data; use the softer semantic warning treatment everywhere else.",
+      "Do route new UI through src/components/ui/, semantic tokens, and the existing motion/focus contracts.",
+      "Do verify long content, 320–1920px viewports, 200%–400% zoom, keyboard operation, reduced motion, print, and browser console behavior.",
+      "Do keep missing, partial, stale, offline, unavailable, saving, failure, and conflict states explicit and recoverable."
+    ],
+    "donts": [
+      "Don't turn the product into a generic SaaS dashboard, marketing site, scorecard, or ornamental data visualization.",
+      "Don't add a fifth destination, a hidden Board Report surface, a second export owner, or a parallel reporting truth.",
+      "Don't add nested-card grids, redundant containers, decorative glass, arbitrary gradients, side-stripe alerts, gradient text, decorative grid or stripe backgrounds, excessive pills, or hero-metric templates.",
+      "Don't use generic Status, Category, Metric, KPI, entry, or Configuration Gap as unqualified product labels.",
+      "Don't introduce theatrical route entrances, staggered dashboard motion, blur reveals, bounce, elastic easing, or animation of layout properties.",
+      "Don't fake save, export, download, print, offline-sync, or conflict completion.",
+      "Don't hide Targets, definitions, Reporting Periods, comparison basis, sources, missingness, status qualification, report ownership, or conflict and offline truth in the name of simplicity.",
+      "Don't use yellow for warnings, buttons, charts, progress, or decoration; its scarcity as the Sample-data signal is the point.",
+      "Don't shrink touch targets, mute body text below contrast requirements, truncate meaningful long names, or rely on color alone.",
+      "Don't change the 120/180/220ms motion vocabulary without a measured, documented defect and focused verification."
+    ]
+  }
+}

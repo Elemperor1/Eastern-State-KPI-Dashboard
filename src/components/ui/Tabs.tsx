@@ -28,7 +28,7 @@ export function Tabs<T extends string>({ options, value, onChange, className }: 
             aria-selected={active}
             onClick={() => onChange(option.value)}
             className={cn(
-              "tab-button min-h-10 rounded-lg px-4 py-2 text-sm font-medium transition-[scale,background-color,color,box-shadow] duration-150 focus:outline-none active:scale-[0.96]",
+              "tab-button min-h-10 rounded-lg px-4 py-2 text-sm font-medium transition-[scale,background-color,color,box-shadow] duration-[var(--motion-fast)] ease-[var(--ease-out)] focus:outline-none active:scale-[0.96]",
               active ? "bg-white text-ink-950 shadow-sm" : "text-ink-600 hover:text-ink-950",
             )}
           >

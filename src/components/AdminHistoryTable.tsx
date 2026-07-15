@@ -47,7 +47,7 @@ export function AdminHistoryTable({ history }: AdminHistoryTableProps) {
                 <td>
                   <div className="font-medium text-ink-900">
                     {row.kpi_name ? getAdminHistoryKpiLabel(row) : (
-                      <span className="text-ink-400">{getAdminHistoryKpiLabel(row)}</span>
+                      <span className="text-ink-500">{getAdminHistoryKpiLabel(row)}</span>
                     )}
                   </div>
                   <div className="mt-1 flex flex-wrap items-center gap-2">
@@ -77,7 +77,7 @@ export function AdminHistoryTable({ history }: AdminHistoryTableProps) {
                 </td>
                 <td className="text-xs text-ink-700">
                   {row.changed_by_email ? getAdminHistoryActorLabel(row) : (
-                    <span className="text-ink-400">{getAdminHistoryActorLabel(row)}</span>
+                    <span className="text-ink-500">{getAdminHistoryActorLabel(row)}</span>
                   )}
                 </td>
               </tr>

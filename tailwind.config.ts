@@ -13,8 +13,9 @@ import type { Config } from "tailwindcss";
  *            700/800/900 steps step up into the secondary dark teal
  *            `#005f6f`. Used for buttons, chips, focus rings, the
  *            gradient endpoints, and chart strokes.
- * - `accent`: the yellow story. `accent-500` is `#f7f242`, used for
- *            highlight chips, "no data" badges, and the gradient start.
+ * - `accent`: the Sample-data signal. `accent-500` is `#f7f242`; the
+ *             application does not use this family for generic warnings,
+ *             charts, selection, or decoration.
  *
  * The chart palette and CSS variables in `globals.css` carry the same
  * three hexes through every other surface (gradients, recharts, design
@@ -61,9 +62,7 @@ const config: Config = {
         },
         accent: {
           // Yellow family. The bright #f7f242 sits at accent-500; the
-          // surrounding 50–800 steps give us readable warning fills
-          // (50/100), legible type on yellow (700/800), and a deep
-          // accent for hover/active states (600).
+          // surrounding steps support the single Sample-data treatment.
           50:  "#fdfbe7",
           100: "#fbf6c2",
           200: "#f8ee88",

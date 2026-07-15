@@ -3,17 +3,14 @@
    fallback stack is identical to the original Rubik chain so pages
    still render sanely before the web font is ready.
 
-   font-display is "block" (not "swap") so the browser holds text
-   invisible for up to 3s while the font loads, then falls back. This
-   prevents the FOUT (flash of unstyled/system-font text) that made
-   the dashboard look like it was using a system font on first paint.
-   The <link rel="preload"> in layout.tsx ensures the font arrives
-   before the 3s timeout in practice. */
+   font-display is "swap" so content is never held invisible while the
+   licensed face loads. Regular and medium are preloaded in layout.tsx;
+   the fallback stack keeps first paint readable on slow connections. */
 @font-face {
   font-family: "Galano Grotesque";
   font-style: normal;
   font-weight: 300;
-  font-display: block;
+  font-display: swap;
   src: url("/fonts/galano-grotesque-light.otf") format("opentype");
 }
 
@@ -21,7 +18,7 @@
   font-family: "Galano Grotesque";
   font-style: normal;
   font-weight: 400;
-  font-display: block;
+  font-display: swap;
   src: url("/fonts/galano-grotesque-regular.otf") format("opentype");
 }
 
@@ -29,7 +26,7 @@
   font-family: "Galano Grotesque";
   font-style: normal;
   font-weight: 500;
-  font-display: block;
+  font-display: swap;
   src: url("/fonts/galano-grotesque-medium.otf") format("opentype");
 }
 
@@ -42,7 +39,7 @@
   font-family: "Galano Grotesque";
   font-style: normal;
   font-weight: 600;
-  font-display: block;
+  font-display: swap;
   src: url("/fonts/galano-grotesque-medium.otf") format("opentype");
 }
 
@@ -50,7 +47,7 @@
   font-family: "Galano Grotesque";
   font-style: normal;
   font-weight: 700;
-  font-display: block;
+  font-display: swap;
   src: url("/fonts/galano-grotesque-bold.otf") format("opentype");
 }
 
@@ -78,10 +75,6 @@
   --color-surface-muted: #e7eef0;
   --color-surface-pressed: #cfdadd;
 
-  /* Accent — the bright yellow. Kept scarce per the "one accent per
-     viewport" rule. */
-  --color-accent: #f7f242;
-
   /* Brand gradient — tertiary → secondary → primary (navy → dark teal
      → medium teal). Use this for hero strips, top-of-page accents, and
      card top edges. */
@@ -101,16 +94,14 @@
   --color-text-primary: #003649;
   --color-text-secondary: #234954;
   --color-text-tertiary: #557883;
-  --color-text-muted: #7a9aa3;
-
   /* On-dark text — the sidebar / dark canvas */
   --color-on-dark: #ffffff;
   --color-on-dark-muted: rgba(255, 255, 255, 0.72);
   --color-on-dark-faint: rgba(255, 255, 255, 0.12);
 
-  /* Focus ring — primary teal at 50% alpha so the keyboard focus state
-     reads on both light and dark surfaces. */
-  --color-focus: rgba(32, 155, 165, 0.55);
+  /* Focus ring — opaque primary teal clears 3:1 against both the white
+     canvas and the navy shell. */
+  --color-focus: #209ba5;
 
   /* Semantic colors. Each pair keeps its meaning; the specific teal/
      yellow tint comes from the brand palette so the system stays
@@ -154,18 +145,15 @@
     0 4px 6px -4px rgba(0, 54, 73, 0.1);
   --shadow-floating: 0 0.5rem 1.5rem rgba(0, 33, 48, 0.18);
 
-  /* Chart palette — teal/navy family with a yellow accent.
-     The order matches the brand: tertiary (navy) → secondary (dark
-     teal) → primary (medium teal) → accent (yellow). Grey support
-     tokens cover gridlines, axis labels, and tooltips. */
+  /* Chart palette — teal/navy family. Bright yellow is reserved for
+     the Sample-data badge and never carries a chart series. Grey
+     support tokens cover gridlines, axis labels, and tooltips. */
   --chart-primary: #209ba5;        /* main stroke / current year */
   --chart-secondary: #005f6f;      /* compare year bar / secondary stroke */
   --chart-tertiary: #003649;       /* deep tertiary, used for the
                                       the current strategic trend line */
   --chart-brand-soft: #9cd9de;     /* fills at low emphasis */
   --chart-brand-mid: #36adb6;      /* mid-tone variant for stacked series */
-  --chart-accent: #f7f242;         /* yellow — used sparingly, never
-                                      stacked next to itself */
   --chart-ink-soft: #557883;       /* additional comparison series */
   --chart-muted: #a9c2c8;          /* disabled / null data */
   --chart-grid: #e7eef0;
@@ -194,7 +182,7 @@ body {
 }
 
 ::selection {
-  background: color-mix(in srgb, var(--color-accent) 65%, white);
+  background: var(--color-info-bg);
   color: var(--color-tertiary);
 }
 
@@ -329,7 +317,9 @@ blockquote,
     @apply inline-flex min-h-10 items-center justify-center gap-2 rounded-lg px-4 py-2
            text-sm font-bold uppercase tracking-[0.02em]
            disabled:cursor-not-allowed disabled:opacity-45
-           active:scale-[0.96] transition-[scale,background-color,color,box-shadow] duration-150 ease-out;
+           active:scale-[0.96] transition-[scale,background-color,color,box-shadow];
+    transition-duration: var(--motion-fast);
+    transition-timing-function: var(--ease-out);
   }
 
   .btn:focus-visible,
@@ -411,11 +401,13 @@ blockquote,
 
   .input {
     @apply w-full rounded-md bg-white px-3 py-2 text-sm
-           placeholder:text-[#7a9aa3] disabled:cursor-not-allowed disabled:bg-[#eef3f4] disabled:text-[#7a9aa3]
-           transition-[box-shadow,background-color] duration-150 ease-out;
+           placeholder:text-ink-500 disabled:cursor-not-allowed disabled:bg-[#eef3f4] disabled:text-[#7a9aa3]
+           transition-[box-shadow,background-color];
     min-height: 44px;
     color: var(--color-ink);
     box-shadow: inset 0 0 0 1px var(--color-hairline-cool);
+    transition-duration: var(--motion-fast);
+    transition-timing-function: var(--ease-out);
   }
 
   .input:hover:not(:disabled) {
@@ -441,7 +433,9 @@ blockquote,
   .chip {
     @apply inline-flex min-h-10 items-center justify-center gap-1.5 rounded-lg px-3 py-2
            text-sm font-medium active:scale-[0.96]
-           transition-[scale,background-color,color,box-shadow] duration-150 ease-out;
+           transition-[scale,background-color,color,box-shadow];
+    transition-duration: var(--motion-fast);
+    transition-timing-function: var(--ease-out);
   }
 
   .chip-active {
@@ -463,8 +457,10 @@ blockquote,
 
   .nav-link {
     @apply flex min-h-11 items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium
-           transition-[background-color,color,box-shadow] duration-150 ease-out;
+           transition-[background-color,color,box-shadow];
     color: var(--color-on-dark-muted);
+    transition-duration: var(--motion-fast);
+    transition-timing-function: var(--ease-out);
   }
 
   .nav-link:hover {
@@ -536,21 +532,6 @@ blockquote,
     background-attachment: local, local, scroll, scroll;
     background-repeat: no-repeat;
   }
-
-  .entry-row {
-    @apply grid items-center gap-3 px-4 py-3;
-    grid-template-columns: minmax(56px, 0.55fr) minmax(140px, 1fr) minmax(180px, 1.5fr) auto;
-    border-bottom: 1px solid #e1e9ec;
-  }
-
-  .entry-row:last-child {
-    border-bottom: 0;
-  }
-
-  .entry-row-dirty {
-    background: #eaf7f8;
-    box-shadow: inset 3px 0 0 var(--color-primary);
-  }
 }
 
 .recharts-cartesian-axis-tick-value,
@@ -591,33 +572,16 @@ blockquote,
   color: var(--color-text-secondary) !important;
 }
 
+@media screen {
+  .board-report-measure {
+    content-visibility: auto;
+    contain-intrinsic-block-size: auto 52rem;
+  }
+}
+
 @media (max-width: 767px) {
   .page-content {
     padding: 1.5rem;
-  }
-
-  .entry-row {
-    grid-template-columns: minmax(0, 1fr) auto;
-  }
-
-  .entry-row > :nth-child(1) {
-    grid-column: 1;
-    grid-row: 1;
-  }
-
-  .entry-row > :nth-child(2) {
-    grid-column: 1 / -1;
-    grid-row: 2;
-  }
-
-  .entry-row .entry-notes {
-    grid-column: 1 / -1;
-    grid-row: 3;
-  }
-
-  .entry-row > :nth-child(4) {
-    grid-column: 2;
-    grid-row: 1;
   }
 }
 
@@ -668,6 +632,11 @@ blockquote,
 }
 
 @media print {
+  .board-report-measure {
+    content-visibility: visible;
+    contain-intrinsic-block-size: none;
+  }
+
   .export-only {
     display: block !important;
   }
@@ -863,7 +832,7 @@ blockquote,
 .print-report-filter-label {
   color: #557883;
   font-weight: 600;
-  font-size: 0.65rem;
+  font-size: 0.75rem;
   letter-spacing: 0.04em;
   text-transform: uppercase;
 }
@@ -899,16 +868,16 @@ blockquote,
 }
 
 .print-report-footer-notice {
-  font-size: 0.65rem;
+  font-size: 0.75rem;
   font-weight: 600;
   letter-spacing: 0.03em;
-  color: #7a9aa3;
+  color: #557883;
   text-transform: uppercase;
 }
 
 .print-report-footer-timestamp {
-  font-size: 0.65rem;
+  font-size: 0.75rem;
   font-weight: 500;
-  color: #7a9aa3;
+  color: #557883;
   white-space: nowrap;
 }

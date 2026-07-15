@@ -469,3 +469,55 @@ build; `npm run test:e2e` passed 8/8 Chrome workflows including PNG/PDF/CSV
 exports. Live desktop checks covered all four destinations plus Priority and
 Measure detail, and the Measure `Review target` action landed on the exact
 owning target section.
+
+## 2026-07-15 final Impeccable system pass
+
+This final pass followed the canonical product foundation and ADR 0022 without
+reopening the four-destination model. The eight commands ran in order:
+`init`, `document`, `audit`, `critique`, `distill`, `harden`, `optimize`, and
+`polish`. The static/live audit scored 15/20 before remediation; two independent
+critique lenses scored the existing experience 28/40 and converged on the same
+confirmed defects.
+
+### Reconciled findings
+
+- Authentication no longer uses the Sample-data yellow as decoration, and the
+  form task is the sole page `h1` at every breakpoint.
+- Long Priority Measure names stack before evidence at narrow widths; Data
+  Entry selection uses a complete tonal state instead of a thick side stripe.
+- Focus, placeholder, audit metadata, and print context use contrast-protected
+  tokens. Setup-password loading is now visible, structured, and announced.
+- Shared controls use the documented 120 ms fast-motion token. Yellow remains
+  exclusive to the explicit Sample-data badge; softer semantic treatments own
+  warnings and incomplete states.
+- Board Report off-viewport Measure sections defer screen layout and paint but
+  remain semantic. Print and PNG/PDF preparation force every section visible
+  before capture and restore screen state afterward. Galano Grotesque uses
+  `font-display: swap`.
+
+The detector's four remaining notices are accepted shadow-alpha literals used
+by the documented Surface/Floating elevation vocabulary; they are not new
+palette colors or untracked effects. Proposed report subnavigation, Data Entry
+queue filters, and an export menu were rejected from this pass because they are
+product-scope decisions rather than release defects.
+
+### Final evidence
+
+- `npm test`: **78 files / 1,185 tests**.
+- `npm run design-system:test`: all design, auth, architecture, shell-injection,
+  TypeScript, and production-build gates passed; its smoke harness passed
+  **51/51** checks.
+- `npm run test:e2e`: **11/11** credentialed Chrome workflows, including all
+  four destinations, Priority and Measure detail, target navigation, Setup,
+  Board Report and Trends, route failure, login/password rotation, offline and
+  conflict recovery, dialogs, mobile navigation, print, and real CSV/PNG/PDF
+  downloads.
+- Reflow verification covered 320, 360, 390, 768, 1024, 1440, and 1920 px;
+  720/480/320 CSS-pixel viewports provide the rerunnable 200%/300%/400%
+  reflow equivalents. No document overflow or sub-40 px form controls remained.
+- `npm run lint` and `git diff --check` passed. The final live screenshot walk
+  covered login, mobile Priority and Data Entry, desktop Overview, and Board
+  Report with no unexpected console errors.
+
+Measured renderer evidence and the explicitly retained large-report limitation
+are recorded in [`docs/performance/impeccable-final-pass.md`](performance/impeccable-final-pass.md).

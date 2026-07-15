@@ -65,9 +65,9 @@ export default function LoginPage() {
           <p className="mb-5 text-sm font-medium uppercase tracking-[0.12em] text-white/60">
             Organizational performance
           </p>
-          <h1 className="max-w-xl text-[clamp(3.25rem,5vw,5.5rem)] font-semibold leading-[0.98] tracking-[-0.045em]">
-            See the work with more <span className="rounded bg-accent-300 px-2 text-ink-950">clarity.</span>
-          </h1>
+          <p className="max-w-xl text-[clamp(3.25rem,5vw,5.5rem)] font-semibold leading-[0.98] tracking-[-0.04em]">
+            See the work with more clarity.
+          </p>
           <p className="mt-8 max-w-lg text-base leading-8 text-white/70 text-pretty">
             A focused view of the measures that help Eastern State’s leadership understand reach, stewardship, and impact.
           </p>
@@ -90,9 +90,9 @@ export default function LoginPage() {
 
           <div className="mb-8">
             <p className="section-eyebrow">Secure access</p>
-            <h2 className="text-[30px] font-medium leading-[1.2] tracking-[-0.02em] text-ink-900">
+            <h1 className="text-[30px] font-medium leading-[1.2] tracking-[-0.02em] text-ink-900">
               Welcome back
-            </h2>
+            </h1>
             <p className="mt-3 text-base leading-6 text-ink-600 text-pretty">
               Sign in with your Eastern State account to continue.
             </p>

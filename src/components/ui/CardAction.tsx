@@ -17,7 +17,7 @@ export function CardAction({
   ...props
 }: CardActionProps) {
   const classes = cn(
-    "surface group w-full p-5 text-left active:scale-[0.96] transition-[scale,box-shadow] duration-150 ease-out hover:[box-shadow:var(--shadow-surface-hover)] focus:outline-none",
+    "surface group w-full p-5 text-left active:scale-[0.96] transition-[scale,box-shadow] duration-[var(--motion-fast)] ease-[var(--ease-out)] hover:[box-shadow:var(--shadow-surface-hover)] focus:outline-none",
     selected && "ring-2 ring-brand-500/45",
     className,
   );

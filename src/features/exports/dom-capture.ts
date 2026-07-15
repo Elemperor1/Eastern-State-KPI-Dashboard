@@ -10,6 +10,7 @@
 export const EXPORT_ONLY_SELECTOR = ".export-only";
 export const EXPORT_ACTIONS_SELECTOR = "[data-page-header-actions], .no-print";
 export const EXPORT_TEXT_SELECTOR = "[data-raster-export-text]";
+export const EXPORT_DEFERRED_SELECTOR = "[data-raster-export-deferred]";
 export const EXPORT_MIN_WIDTH_ATTRIBUTE = "data-raster-export-min-width";
 
 /** Conservative canvas limits with headroom below Chromium's 32,767px edge. */
@@ -162,14 +163,26 @@ export function relaxTextForExport(target: HTMLElement): () => void {
   );
 }
 
+export function revealDeferredForExport(target: HTMLElement): () => void {
+  return setTemporaryStyles(
+    target.querySelectorAll<HTMLElement>(EXPORT_DEFERRED_SELECTOR),
+    {
+      "content-visibility": "visible",
+      "contain-intrinsic-block-size": "none",
+    },
+  );
+}
+
 export function prepareRasterExportTarget(target: HTMLElement): () => void {
   const restoreExportOnly = showExportOnly(target);
   const restoreActions = hideActionsForExport(target);
   const restoreText = relaxTextForExport(target);
+  const restoreDeferred = revealDeferredForExport(target);
   const restoreWidth = widenConfiguredRasterTarget(target);
 
   return () => {
     restoreWidth();
+    restoreDeferred();
     restoreText();
     restoreActions();
     restoreExportOnly();

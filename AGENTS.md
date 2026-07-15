@@ -107,8 +107,8 @@ Tests the four product destinations, all five priorities, the 59-KPI Board
 Report, strategic Trends, Setup areas, canonical strategic mutation/export,
 immutable Activity, and removed-route 404s. The July 14, 2026 loopback run
 passed **51/51** checks and the credentialed production run passed **52/52**.
-Current unit evidence is **69 files / 1,151 tests**; the Chrome e2e suite passed
-**8/8** workflows through a real provisioned admin login. The authenticated production evidence includes eight
+Current unit evidence is **78 files / 1,185 tests**; the Chrome e2e suite passed
+**11/11** workflows through a real provisioned admin login. The authenticated production evidence includes eight
 current and eight controlled-baseline Chrome traces in `docs/performance/`.
 
 The shared Reporting Period contract is covered directly by

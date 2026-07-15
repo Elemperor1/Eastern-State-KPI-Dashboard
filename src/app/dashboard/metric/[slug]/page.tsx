@@ -187,7 +187,12 @@ export default async function StrategicMeasurePage({
         <section className="mb-10" aria-labelledby="history-heading">
           <h2 id="history-heading" className="section-title mb-5">Reported results</h2>
           {data.actuals.length === 0 ? (
-            <EmptyState title="No results reported" description="Use Data Entry to add the first result." />
+            <EmptyState
+              title="No results reported"
+              description={user.role === "admin"
+                ? "Use Data Entry to add the first result."
+                : "No results have been reported for this period."}
+            />
           ) : (
             <dl className="divide-y divide-ink-200 border-y border-ink-200">
               {data.actuals.map((actual) => (

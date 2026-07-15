@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   EXPORT_ACTIONS_SELECTOR,
+  EXPORT_DEFERRED_SELECTOR,
   EXPORT_MIN_WIDTH_ATTRIBUTE,
   EXPORT_ONLY_SELECTOR,
   EXPORT_TEXT_SELECTOR,
@@ -8,6 +9,7 @@ import {
   hideActionsForExport,
   prepareRasterExportTarget,
   relaxTextForExport,
+  revealDeferredForExport,
   resolveRasterCaptureScale,
   showExportOnly,
 } from "./dom-capture";
@@ -49,12 +51,14 @@ function target({
   exportOnly = [],
   actions = [],
   exportText = [],
+  deferred = [],
   rasterMinWidth,
   scrollWidth = 1_000,
 }: {
   exportOnly?: HTMLElement[];
   actions?: HTMLElement[];
   exportText?: HTMLElement[];
+  deferred?: HTMLElement[];
   rasterMinWidth?: string;
   scrollWidth?: number;
 }): HTMLElement {
@@ -68,6 +72,7 @@ function target({
       if (selector === EXPORT_ONLY_SELECTOR) return exportOnly;
       if (selector === EXPORT_ACTIONS_SELECTOR) return actions;
       if (selector === EXPORT_TEXT_SELECTOR) return exportText;
+      if (selector === EXPORT_DEFERRED_SELECTOR) return deferred;
       return [];
     },
   } as unknown as HTMLElement;
@@ -164,6 +169,24 @@ describe("export DOM capture helpers", () => {
     expect(exportOnly.style.getPropertyValue("display")).toBe("");
     expect(actions.style.getPropertyValue("display")).toBe("flex");
     expect(exportText.style.getPropertyValue("line-height")).toBe("");
+  });
+
+  it("reveals deferred report evidence for export and restores screen rendering", () => {
+    const measure = element();
+    measure.style.setProperty("content-visibility", "auto");
+    measure.style.setProperty("contain-intrinsic-block-size", "auto 52rem");
+    const root = target({ deferred: [measure] });
+
+    const restore = revealDeferredForExport(root);
+
+    expect(measure.style.getPropertyValue("content-visibility")).toBe("visible");
+    expect(measure.style.getPropertyPriority("content-visibility")).toBe("important");
+    expect(measure.style.getPropertyValue("contain-intrinsic-block-size")).toBe("none");
+
+    restore();
+
+    expect(measure.style.getPropertyValue("content-visibility")).toBe("auto");
+    expect(measure.style.getPropertyValue("contain-intrinsic-block-size")).toBe("auto 52rem");
   });
 
   it("temporarily gives a configured detailed report a readable export width", () => {

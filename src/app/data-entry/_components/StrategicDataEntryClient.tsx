@@ -49,7 +49,7 @@ type Feedback = {
   variant: "success" | "error";
   message: string;
   retry?: boolean;
-  kind?: "offline" | "conflict";
+  kind?: "offline";
 } | null;
 
 type PendingSelection = {
@@ -267,14 +267,6 @@ export function StrategicDataEntryClient({
         };
         if (response.ok) continue;
         const detail = issueMessage(body.issues);
-        if (response.status === 409) {
-          setFeedback({
-            variant: "error",
-            kind: "conflict",
-            message: "Couldn't save because this entry conflicts with the current setup. Your entries are still here. Reload to review the latest saved state before trying again.",
-          });
-          return;
-        }
         setFeedback({
           variant: "error",
           message: detail
@@ -525,10 +517,10 @@ function Checklist({
               id={`data-entry-checklist-${kpi.id}`}
               type="button"
               variant="ghost"
-              className={`h-auto min-h-14 w-full flex-col items-start justify-start gap-2 rounded-none border-l-4 px-4 py-3 text-left font-medium normal-case tracking-normal active:scale-100 ${
+              className={`h-auto min-h-14 w-full flex-col items-start justify-start gap-2 rounded-none px-4 py-3 text-left font-medium normal-case tracking-normal active:scale-100 ${
                 data.selectedKpiId === kpi.id
-                  ? "border-brand-500 bg-brand-50 text-ink-950"
-                  : "border-transparent"
+                  ? "bg-brand-50 font-semibold text-ink-950 ring-1 ring-inset ring-brand-200"
+                  : ""
               }`}
               onClick={() => onSelect(kpi.id)}
               aria-current={data.selectedKpiId === kpi.id ? "step" : undefined}

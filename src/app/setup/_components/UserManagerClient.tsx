@@ -90,19 +90,25 @@ export function UserManagerClient({
     }
   }
 
-  async function deleteUser(id: number) {
-    const res = await apiFetch("/api/users", {
-      method: "DELETE",
-      body: { id },
-    });
-    const data = await res.json().catch(() => ({})) as UserMutationPayload;
-    if (!res.ok) {
-      setFeedback({ message: `Could not delete user: ${data.error ?? res.status}`, variant: "error" });
-      return;
+  async function deleteUser(id: number): Promise<boolean> {
+    try {
+      const res = await apiFetch("/api/users", {
+        method: "DELETE",
+        body: { id },
+      });
+      const data = await res.json().catch(() => ({})) as UserMutationPayload;
+      if (!res.ok) {
+        setFeedback({ message: `Could not delete user: ${data.error ?? res.status}`, variant: "error" });
+        return false;
+      }
+      applyUsersPayload(data);
+      setFeedback({ message: "User deleted.", variant: "success" });
+      setSelection(null);
+      return true;
+    } catch {
+      setFeedback({ message: "Could not delete user. Check the connection and try again.", variant: "error" });
+      return false;
     }
-    applyUsersPayload(data);
-    setFeedback({ message: "User deleted.", variant: "success" });
-    setSelection(null);
   }
 
   /**
@@ -113,7 +119,11 @@ export function UserManagerClient({
    * a downgraded or disabled user is logged out on their next
    * request. Self-targeted changes are refused by the API.
    */
-  async function patchAccount(id: number, body: { role?: Role; disabled?: boolean }, successMessage: string) {
+  async function patchAccount(
+    id: number,
+    body: { role?: Role; disabled?: boolean },
+    successMessage: string,
+  ): Promise<boolean> {
     setAccountBusy(id);
     try {
       const res = await apiFetch("/api/users/account", {
@@ -123,10 +133,14 @@ export function UserManagerClient({
       const data = await res.json().catch(() => ({})) as UserMutationPayload;
       if (!res.ok) {
         setFeedback({ message: `Could not update account: ${data.error ?? res.status}`, variant: "error" });
-        return;
+        return false;
       }
       applyUsersPayload(data);
       setFeedback({ message: successMessage, variant: "success" });
+      return true;
+    } catch {
+      setFeedback({ message: "Could not update account. Check the connection and try again.", variant: "error" });
+      return false;
     } finally {
       setAccountBusy(null);
     }
@@ -136,9 +150,8 @@ export function UserManagerClient({
     await patchAccount(id, { role }, buildRoleChangeSuccessMessage(name, role));
   }
 
-  async function disableUser(id: number, name: string) {
-    setDisableTarget(null);
-    await patchAccount(id, { disabled: true }, buildDisableUserSuccessMessage(name));
+  async function disableUser(id: number, name: string): Promise<boolean> {
+    return patchAccount(id, { disabled: true }, buildDisableUserSuccessMessage(name));
   }
 
   async function enableUser(id: number, name: string) {
@@ -309,8 +322,7 @@ export function UserManagerClient({
         onClose={() => setDeleteTarget(null)}
         onConfirm={async () => {
           const target = deleteTarget;
-          setDeleteTarget(null);
-          if (target) await deleteUser(target.id);
+          if (target && await deleteUser(target.id)) setDeleteTarget(null);
         }}
       />
 
@@ -322,7 +334,9 @@ export function UserManagerClient({
         onClose={() => setDisableTarget(null)}
         onConfirm={async () => {
           const target = disableTarget;
-          if (target) await disableUser(target.id, target.name);
+          if (target && await disableUser(target.id, target.name)) {
+            setDisableTarget(null);
+          }
         }}
       />
     </div>

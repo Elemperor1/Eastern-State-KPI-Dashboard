@@ -1,4 +1,5 @@
 import { renderToStaticMarkup } from "react-dom/server";
+import { readFileSync } from "node:fs";
 import { describe, expect, it, vi } from "vitest";
 import type { StrategicDataEntryPageData } from "@/features/strategy";
 import { StrategicDataEntryClient } from "./StrategicDataEntryClient";
@@ -117,7 +118,18 @@ describe("Data Entry", () => {
     expect(html).toContain("break-words");
     expect(html).not.toContain("truncate");
     expect(html).toContain('aria-current="step"');
-    expect(html).toContain("border-brand-500");
+    expect(html).toContain("ring-brand-200");
+    expect(html).not.toContain("border-l-" + "4");
     expect(html).not.toContain("Measure status:");
+  });
+
+  it("does not claim an optimistic-concurrency contract the API does not provide", () => {
+    const source = readFileSync(
+      new URL("./StrategicDataEntryClient.tsx", import.meta.url),
+      "utf8",
+    );
+
+    expect(source).not.toContain("response.status === 409");
+    expect(source).not.toContain("conflicts with the current setup");
   });
 });

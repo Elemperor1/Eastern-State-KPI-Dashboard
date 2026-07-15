@@ -308,12 +308,13 @@ and auth API regression coverage — lives at `docs/qa-manual.md`. New engineers
 walk the checklist end-to-end after their first checkout.
 
 Current schema-11 verification recorded on July 15, 2026: `npm test` passed
-**74 files / 1,170 tests**; `npm run design-system:test` passed its security and
+**78 files / 1,185 tests**; `npm run design-system:test` passed its security and
 architecture guards, typecheck, and production build; the loopback development
 smoke passed **51/51** checks; the credentialed production smoke passed
-**52/52**; and `npm run test:e2e` passed **8/8** serial workflows through a
-real provisioned admin login, including 390 px navigation plus CSV/PNG/PDF
-validation. The authenticated production
+**52/52**; and `npm run test:e2e` passed **11/11** serial workflows through a
+real provisioned admin login, including password rotation, atomic save/error/
+offline recovery, the 320–1920 px and 200%–400% reflow matrix,
+keyboard/reduced-motion/print checks, and CSV/PNG/PDF validation. The authenticated production
 profile set saved sixteen raw Chrome traces: eight current and eight controlled
 baseline. The exact-route Overview comparison reduced decoded HTML by 94.2%
 and DOM elements by 96.7%, with no hidden Board Report. Auth behavior is

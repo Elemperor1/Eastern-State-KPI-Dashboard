@@ -52,6 +52,9 @@ describe("StrategicBoardReport render contract", () => {
     );
     expect(source).toContain("data-raster-export-text");
     expect(source).toContain("break-words");
+    expect(source).toContain("data-raster-export-deferred");
+    expect(source).toContain('data-raster-export-min-width="1600"');
+    expect(source).toContain("board-report-measure");
   });
 
   it("states respondent and revenue caveats explicitly", () => {
@@ -65,5 +68,16 @@ describe("StrategicBoardReport render contract", () => {
     expect(source).toContain(
       "Components remain separate; no unrelated values are averaged here.",
     );
+  });
+
+  it("qualifies every compact status badge with its subject", () => {
+    expect(source).toContain('label="Board status"');
+    expect(source).toContain('label="Setup status"');
+    expect(source).toContain('label="Result state"');
+    expect(source).toContain('label={`${component.label} result state`}');
+    expect(source).toContain('label="Target status"');
+    expect(source).not.toContain('<StatusBadge label="Board"');
+    expect(source).not.toContain('<StatusBadge label="Setup"');
+    expect(source).not.toContain('<StatusBadge label="Result"');
   });
 });

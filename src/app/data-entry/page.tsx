@@ -8,7 +8,6 @@ import {
   type StrategicDataEntryPageData,
 } from "@/features/strategy";
 import {
-  dataEntryLoadFailure,
   loadStrategicDataEntryPageData,
 } from "@/features/strategy/data-entry-server";
 
@@ -39,17 +38,11 @@ export default async function UnifiedDataEntryPage({
   const rawKpiId = Number(firstSearchParam(params.kpi));
   const requestedKpiId =
     Number.isInteger(rawKpiId) && rawKpiId > 0 ? rawKpiId : null;
-  let data: StrategicDataEntryPageData;
-  try {
-    data = loadStrategicDataEntryPageData({
-      reportingYear,
-      reportingPeriod,
-      requestedKpiId,
-    });
-  } catch (error) {
-    console.error("[data-entry] Failed to load the reporting checklist", error);
-    data = dataEntryLoadFailure(reportingYear, reportingPeriod);
-  }
+  const data: StrategicDataEntryPageData = loadStrategicDataEntryPageData({
+    reportingYear,
+    reportingPeriod,
+    requestedKpiId,
+  });
 
   return (
     <AppShell user={user}>

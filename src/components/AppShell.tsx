@@ -174,8 +174,22 @@ export function AppShell({ user, children }: { user: SessionUser; children: Reac
     containerRef: mobileDrawerRef,
     initialFocusRef: mobileCloseRef,
     onClose: () => setMobileOpen(false),
+    closeEnabled: pendingNavigation === null,
     inertBackground: false,
   });
+
+  useEffect(() => {
+    const desktopQuery = window.matchMedia("(min-width: 1024px)");
+    function closeDrawerAtDesktop(event: MediaQueryListEvent) {
+      if (event.matches) setMobileOpen(false);
+    }
+    desktopQuery.addEventListener("change", closeDrawerAtDesktop);
+    return () => desktopQuery.removeEventListener("change", closeDrawerAtDesktop);
+  }, []);
+
+  useEffect(() => {
+    setMobileOpen(false);
+  }, [pathname]);
 
   useEffect(() => {
     if (window.sessionStorage.getItem(ROUTE_RECOVERY_FOCUS_KEY) !== "main") return;

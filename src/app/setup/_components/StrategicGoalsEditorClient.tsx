@@ -620,13 +620,13 @@ export function StrategicGoalSettingsForm({
   }
 
   async function lifecycle(action: "archive" | "restore") {
-    setConfirmArchive(false);
     setFeedback(null);
     setBusy(true);
     const result = await runMutation(
       buildStrategicGoalLifecycleMutation(goal.id, action),
     );
     setBusy(false);
+    setConfirmArchive(false);
     setFeedback(
       result.ok
         ? {
@@ -1063,7 +1063,12 @@ function GoalTargets({
           const measurementType = measure.configuration?.measurement_type;
           if (!measurementType) {
             return (
-              <div key={measure.kpi.id} className="py-6">
+              <div
+                key={measure.kpi.id}
+                id={`goal-target-measure-${measure.kpi.id}`}
+                tabIndex={-1}
+                className="py-6 focus:outline-none"
+              >
                 <h3 className="font-semibold text-ink-950">{measure.kpi.name}</h3>
                 <p className="mt-1 text-sm text-ink-600">Finish setting up this measure before adding targets.</p>
               </div>

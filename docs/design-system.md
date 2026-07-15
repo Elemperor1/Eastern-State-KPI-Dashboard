@@ -19,7 +19,7 @@ Tokens live in `src/app/globals.css` and are exposed through Tailwind in `tailwi
 - Type: Galano Grotesque (licensed brand face, © 2014 René Bieder) for every product UI role; Monaco for code-like data values where the user reads a number the way they would read a log line.
 - Spacing: 4, 8, 12, 16, 24, 32, 48, 64, 96.
 - Radius: 4, 6, 8, 12, 18, full.
-- Motion: 150 ms controls, 220 ms navigation/dialogs.
+- Motion: 120 ms fast feedback, 180 ms standard transitions, and 220 ms drawer entry.
 - Elevation: flat light surfaces, restrained navy-tinted light-card and floating-dialog shadows. The navy tints root shadows in the brand instead of using off-the-shelf greyscale.
 
 ## Shared-library rule

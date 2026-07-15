@@ -1,5 +1,5 @@
 import { AuthPageSkeleton } from "@/components/AuthPageSkeleton";
 
 export default function Loading() {
-  return <AuthPageSkeleton />;
+  return <AuthPageSkeleton fieldCount={3} />;
 }

@@ -23,13 +23,9 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
   return (
     <html lang="en" data-scroll-behavior="smooth">
       <head>
-        {/* Preload the two most-used Galano Grotesque weights so they
-            arrive before the browser needs them. Combined with
-            font-display: block in globals.css, this eliminates the
-            flash of system-font text on first paint. Bold (700) and
-            Medium (500) are preloaded because they cover headings and
-            nav/labels; Regular (400) is covered by the CSS request
-            that follows immediately. */}
+        {/* Preload the two most-used Galano Grotesque weights so regular
+            body text and medium headings arrive early. font-display:
+            swap keeps content visible while either request is pending. */}
         <link
           rel="preload"
           href="/fonts/galano-grotesque-medium.otf"

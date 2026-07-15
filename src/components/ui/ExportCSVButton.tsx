@@ -39,7 +39,7 @@ export function ExportCSVButton({
   className,
 }: ExportCSVButtonProps) {
   const statusId = useId();
-  const [status, setStatus] = useState("");
+  const [announcement, setAnnouncement] = useState({ message: "", sequence: 0 });
   const handleClick = useCallback(() => {
     if (typeof document === "undefined") return;
     const cols = columns ?? inferColumns(rows);
@@ -58,7 +58,10 @@ export function ExportCSVButton({
     document.body.removeChild(a);
     // Revoke on next tick so the click has time to start the download.
     setTimeout(() => URL.revokeObjectURL(url), 0);
-    setStatus("CSV export ready. Download started.");
+    setAnnouncement((current) => ({
+      message: "CSV export ready. Download started.",
+      sequence: current.sequence + 1,
+    }));
   }, [rows, columns, filename]);
 
   return (
@@ -76,7 +79,14 @@ export function ExportCSVButton({
       {label}
     </Button>
     <span id={statusId} className="sr-only" role="status" aria-live="polite" aria-atomic="true">
-      {status}
+      {announcement.sequence > 0 ? (
+        <span
+          key={announcement.sequence}
+          data-announcement-sequence={announcement.sequence}
+        >
+          {announcement.message}
+        </span>
+      ) : null}
     </span>
     </>
   );

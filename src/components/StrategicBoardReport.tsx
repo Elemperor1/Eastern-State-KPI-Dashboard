@@ -159,7 +159,7 @@ function CompletionSummary({
         />
       )}
       {showExcludedReasons && summary.excludedGoalsCount > 0 ? (
-        <div className="mt-4 rounded-lg bg-accent-50 p-3">
+        <div className="mt-4 rounded-lg bg-[var(--color-warning-bg)] p-3">
           <p className="mb-2 text-xs font-semibold uppercase tracking-[0.06em] text-ink-700">
             Goals not counted
           </p>
@@ -186,6 +186,7 @@ export function StrategicBoardReport({
     <div
       id={id}
       data-strategic-board-report
+      data-raster-export-min-width="1600"
     >
       <article
         className={cn("space-y-8 bg-white", className)}
@@ -423,7 +424,12 @@ function KpiSection({
 }) {
   const headingId = `${goalId}-kpi-${kpiIndex}`;
   return (
-    <section className="space-y-3" aria-labelledby={headingId} data-board-kpi={kpi.id}>
+    <section
+      className="board-report-measure space-y-3"
+      aria-labelledby={headingId}
+      data-board-kpi={kpi.id}
+      data-raster-export-deferred
+    >
       <Card
         as="article"
         className="break-inside-avoid overflow-hidden p-5 lg:p-6"
@@ -437,12 +443,12 @@ function KpiSection({
             </h4>
           </div>
           <div className="flex flex-wrap gap-2">
-            <StatusBadge label="Board" value={kpi.boardStatus} />
+            <StatusBadge label="Board status" value={kpi.boardStatus} />
             <StatusBadge
-              label="Setup"
+              label="Setup status"
               value={kpi.configurationStatus}
             />
-            <StatusBadge label="Result" value={kpi.result.state} />
+            <StatusBadge label="Result state" value={kpi.result.state} />
           </div>
         </div>
 
@@ -496,7 +502,7 @@ function KpiSection({
         </div>
 
         {kpi.unresolvedReasons.length > 0 ? (
-          <div className="mt-5 rounded-lg bg-accent-50 p-3">
+          <div className="mt-5 rounded-lg bg-[var(--color-warning-bg)] p-3">
             <p className="mb-2 text-xs font-semibold uppercase tracking-[0.06em] text-ink-700">
               What needs attention
             </p>
@@ -661,7 +667,7 @@ function ComponentTable({
               <td className="break-words">
                 <p>{component.result.displayValue}</p>
                 <div className="mt-2">
-                  <StatusBadge label="Result" value={component.result.state} />
+                  <StatusBadge label={`${component.label} result state`} value={component.result.state} />
                 </div>
                 {component.result.formulaExplanation ? (
                   <p className="mt-1 text-xs leading-5 text-ink-500">
@@ -691,7 +697,7 @@ function ComponentTable({
                       )} progress · Target year {component.progress.targetYear ?? "not specified"}
                     </span>
                     <span className="mt-2 block">
-                      <StatusBadge label="Target" value={component.progress.status} />
+                      <StatusBadge label="Target status" value={component.progress.status} />
                     </span>
                   </>
                 ) : (
@@ -699,7 +705,7 @@ function ComponentTable({
                 )}
               </td>
               <td>
-                <StatusBadge label="Setup" value={component.configurationStatus} />
+                <StatusBadge label="Setup status" value={component.configurationStatus} />
               </td>
               <td className="break-words text-xs leading-5">
                 {component.unresolvedReasons.length > 0
@@ -742,7 +748,7 @@ function DemographicTable({
               : "Overlapping bands"}
           </Chip>
         </div>
-        <div className="mt-3 rounded-lg bg-accent-50 p-3">
+        <div className="mt-3 rounded-lg bg-[var(--color-info-bg)] p-3">
           <p className="text-xs font-semibold uppercase tracking-[0.06em] text-ink-700">
             Respondent population caveat
           </p>

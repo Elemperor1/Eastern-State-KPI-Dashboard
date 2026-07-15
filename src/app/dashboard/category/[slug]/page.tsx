@@ -106,14 +106,16 @@ export default async function StrategicPriorityPage({
                       <li key={kpi.id}>
                         <Link
                           href={`/dashboard/metric/${data.kpiSlugs[kpi.id]}?year=${data.selectedYear}`}
-                          className="flex min-h-20 items-center gap-4 py-4 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--color-focus)]"
+                          className="flex min-h-20 flex-col items-stretch gap-2 py-4 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--color-focus)] sm:flex-row sm:items-center sm:gap-4"
                         >
                           <span className="min-w-0 flex-1 font-medium text-ink-900">{kpi.name}</span>
-                          <span className="text-right font-semibold tabular text-ink-950">{kpi.result.displayValue}</span>
-                          <Badge variant={statusVariant(kpi.boardStatus)} label="Board status">
-                            {formatBoardReportToken(kpi.boardStatus)}
-                          </Badge>
-                          <ArrowRight className="size-4 shrink-0 text-ink-400" aria-hidden />
+                          <span className="flex w-full items-center justify-between gap-3 sm:w-auto sm:justify-end">
+                            <span className="text-right font-semibold tabular text-ink-950">{kpi.result.displayValue}</span>
+                            <Badge variant={statusVariant(kpi.boardStatus)} label="Board status">
+                              {formatBoardReportToken(kpi.boardStatus)}
+                            </Badge>
+                            <ArrowRight className="size-4 shrink-0 text-ink-400" aria-hidden />
+                          </span>
                         </Link>
                       </li>
                     ))}

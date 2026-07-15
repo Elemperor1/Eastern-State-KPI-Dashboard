@@ -176,7 +176,7 @@ and pull requests to `master`, plus manual dispatch:
 1. `Typecheck`
 2. `Lint`
 3. `Unit and Integration Tests`
-4. `Build`
+4. `Required CI Gate`
 5. `End-to-End Tests`
 6. `Dependency Vulnerabilities`
 7. `Secret Scan`
@@ -189,8 +189,9 @@ where dependencies are needed. Unit/build databases live under
 Only Playwright's dedicated temp output is uploaded, only on failure, for seven
 days. No workspace, environment file, database, or credential is uploaded.
 
-`.github/workflows/codeql.yml` runs the stable `CodeQL` check for JavaScript and
-TypeScript on pushes/pull requests to `master`, weekly, and on manual dispatch.
+`.github/workflows/codeql.yml` runs the stable `CodeQL (javascript-typescript)`
+and `CodeQL (python)` checks on pushes/pull requests to `master`, weekly, and on
+manual dispatch.
 It uses build mode `none`, the security-focused `security-extended` suite,
 read-only contents access, and only the `security-events: write` permission
 required to publish results. The extended suite is intentionally isolated from
@@ -223,17 +224,18 @@ build output, temp databases, or copied logs.
 ## Required checks and repository settings
 
 After these workflows run successfully on the default branch, an administrator
-should protect `master` and require all nine stable checks:
+should protect `master` and require all ten stable checks:
 
 - `Typecheck`
 - `Lint`
 - `Unit and Integration Tests`
-- `Build`
+- `Required CI Gate`
 - `End-to-End Tests`
 - `Dependency Vulnerabilities`
 - `Secret Scan`
 - `Semgrep`
-- `CodeQL`
+- `CodeQL (javascript-typescript)`
+- `CodeQL (python)`
 
 Repository files implement the workflows and Dependabot schedule. The following
 settings are **not** changed by this work and still require a GitHub
