@@ -1,5 +1,4 @@
-import type { IronSession, SessionOptions } from "iron-session";
-import { getIronSession } from "iron-session";
+import { getIronSession, type IronSession, type SessionOptions } from "iron-session";
 import { NextResponse } from "next/server";
 import { cookies } from "next/headers";
 import { AUTH_DISABLED } from "./auth-flag";
@@ -133,7 +132,7 @@ export async function getCurrentUser(): Promise<SessionUser | null> {
   if (!dbUser) {
     // Deleted user: row gone → no session can revalidate. Clear the
     // invalid cookie (req 8) and treat as logged out.
-    await session.destroy();
+    session.destroy();
     return null;
   }
   if (dbUser.disabled) {
@@ -142,7 +141,7 @@ export async function getCurrentUser(): Promise<SessionUser | null> {
     // explicit disabled flag is a second, belt-and-braces gate so a
     // session issued moments before disablement (issuedAt >= the
     // pre-disable watermark) is still rejected.
-    await session.destroy();
+    session.destroy();
     return null;
   }
   const issuedAt = session.issuedAt ?? 0;
@@ -150,7 +149,7 @@ export async function getCurrentUser(): Promise<SessionUser | null> {
     // A security-sensitive account change bumped the watermark past
     // this session's issuance time. Invalidate everywhere: destroy
     // the cookie and treat as logged out.
-    await session.destroy();
+    session.destroy();
     return null;
   }
   const synced: SessionUser = {

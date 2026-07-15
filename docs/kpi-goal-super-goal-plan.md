@@ -1,5 +1,11 @@
 # Strategic KPI and Goal Dashboard Upgrade Plan
 
+> Historical implementation record. This plan closed on July 13, 2026 and
+> predates the issue 42 product subtraction. ADR 0022 and
+> `docs/product-foundation.md` now own the live route, vocabulary, conceptual,
+> interaction, and surface boundaries; obsolete `/admin/*` examples below are
+> preserved only as delivery evidence.
+
 - Status: complete; every targeted integrity gap is closed and backed by fresh post-fix proof
 - Prepared: 2026-07-09; completion audit reconciled: 2026-07-13
 - Repository: `/Users/jacobcyber/Documents/Eastern State KPI`

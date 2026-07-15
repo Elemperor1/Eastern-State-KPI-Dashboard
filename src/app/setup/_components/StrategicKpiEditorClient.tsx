@@ -1,7 +1,6 @@
 "use client";
 
-import type { FormEvent } from "react";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useState, type FormEvent } from "react";
 import { useRouter } from "next/navigation";
 import {
   AGGREGATION_METHODS,
@@ -17,6 +16,7 @@ import {
   type StrategyReportingFrequency,
 } from "@/features/strategy";
 import { apiFetch } from "@/lib/api-client";
+import { runEventHandler } from "@/lib/async-event";
 import {
   Badge,
   Breadcrumb,
@@ -26,6 +26,7 @@ import {
   FormField,
   FilterToolbar,
   Input,
+  LinkButton,
   Select,
   StatusBanner,
   Textarea,
@@ -156,7 +157,11 @@ export function StrategicKpiEditorClient({ data }: { data: StrategicKpiEditorDat
   const goalLabel =
     data.goalContexts.length > 0
       ? data.goalContexts
-          .map((goal) => `${goal.priorityName} · ${goal.name}`)
+          .map((goal) =>
+            goal.priorityName === data.kpi.category_name
+              ? goal.name
+              : `${goal.priorityName} · ${goal.name}`,
+          )
           .join("; ")
       : "Not assigned to a strategic goal";
   const setupStatus = data.configuration?.configuration_status === "active" ||
@@ -168,6 +173,7 @@ export function StrategicKpiEditorClient({ data }: { data: StrategicKpiEditorDat
     data.components.some((component) =>
       component.archived_at === null && component.measurement_type === "distribution"
     );
+  const targetGoal = data.goalContexts[0] ?? null;
 
   return (
     <div className="min-w-0 page-enter">
@@ -183,7 +189,19 @@ export function StrategicKpiEditorClient({ data }: { data: StrategicKpiEditorDat
             <h2 className="text-2xl font-semibold tracking-[-0.02em] text-ink-950">{data.kpi.name}</h2>
             <p className="mt-1 text-sm text-ink-600">{data.kpi.category_name} · {goalLabel}</p>
           </div>
-          <Badge variant={setupStatus === "Ready" ? "success" : "warning"}>{setupStatus}</Badge>
+          <div className="flex flex-wrap items-center justify-end gap-3">
+            <Badge variant={setupStatus === "Ready" ? "success" : "warning"} label="Setup status">
+              {setupStatus}
+            </Badge>
+            {targetGoal ? (
+              <LinkButton
+                href={`/setup?area=goals&year=${data.reportingYear}&goal=${targetGoal.id}#goal-target-measure-${data.kpi.id}`}
+                size="sm"
+              >
+                Review target
+              </LinkButton>
+            ) : null}
+          </div>
         </div>
       </div>
 
@@ -393,7 +411,7 @@ function ConfigurationEditor({
             Measure details
           </h2>
         </div>
-        <Badge variant={data.configuration ? "info" : "warning"}>
+        <Badge variant={data.configuration ? "info" : "incomplete"} label="Definition status">
           {successorMode
             ? "Future change"
             : data.configuration ? "Current setup" : "Not set up"}
@@ -412,7 +430,10 @@ function ConfigurationEditor({
         </StatusBanner>
       ) : null}
 
-      <form onSubmit={submit} className="space-y-8">
+      <form
+        onSubmit={(event) => runEventHandler(submit, event)}
+        className="space-y-8"
+      >
         <fieldset disabled={busy || archived} className="space-y-8">
           <section aria-labelledby="measurement-fields-title">
             <h3 id="measurement-fields-title" className="mb-4 text-base font-semibold text-ink-900">
@@ -538,7 +559,7 @@ function ConfigurationEditor({
                   onChange={(event) => update("baselineValue", event.target.value)}
                 />
               </FormField>
-              <FormField label="Progress" htmlFor="strategy-board-status" hint={<ErrorHint error={errors.board_level_status} />}>
+              <FormField label="Board status" htmlFor="strategy-board-status" hint={<ErrorHint error={errors.board_level_status} />}>
                 <Select
                   id="strategy-board-status"
                   value={draft.boardStatus}

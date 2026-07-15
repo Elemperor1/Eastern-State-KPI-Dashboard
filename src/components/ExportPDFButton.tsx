@@ -20,18 +20,22 @@ interface Props {
 export function ExportPDFButton({ targetId, fileName = "eastern-state-kpi.pdf" }: Props) {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [status, setStatus] = useState("");
 
   async function handleExport() {
     const target = document.getElementById(targetId);
     if (!target) return;
     setBusy(true);
     setError(null);
+    setStatus("Preparing PDF export.");
     try {
       const mod = await import("@/features/exports/legacy-pdf-export");
       await mod.exportElementToPdf({ targetId, fileName });
+      setStatus("PDF export ready. Download started.");
     } catch (err) {
       console.error("PDF export failed", err);
       setError("Export failed. Use Print → Save as PDF.");
+      setStatus("");
     } finally {
       setBusy(false);
     }
@@ -57,6 +61,9 @@ export function ExportPDFButton({ targetId, fileName = "eastern-state-kpi.pdf" }
           {error}
         </div>
       ) : null}
+      <span className="sr-only" role="status" aria-live="polite" aria-atomic="true">
+        {status}
+      </span>
     </div>
   );
 }

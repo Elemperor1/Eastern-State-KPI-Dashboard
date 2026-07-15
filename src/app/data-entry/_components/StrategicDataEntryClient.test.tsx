@@ -92,4 +92,32 @@ describe("Data Entry", () => {
     expect(html).toContain("Save and continue");
     expect(html).toContain("Back to list");
   });
+
+  it("does not present a hidden default measure's status as the cycle status", () => {
+    const data = pageData();
+    data.showSelectedKpi = false;
+
+    const html = renderToStaticMarkup(
+      <StrategicDataEntryClient data={data} />,
+    );
+
+    expect(html).not.toContain(">Ready<");
+  });
+
+  it("keeps long checklist names readable and marks the selected measure", () => {
+    const data = pageData();
+    data.kpis[0].name =
+      "Amenities & Accessibility — Positive ratings on amenities & navigation";
+
+    const html = renderToStaticMarkup(
+      <StrategicDataEntryClient data={data} />,
+    );
+
+    expect(html).toContain("whitespace-normal");
+    expect(html).toContain("break-words");
+    expect(html).not.toContain("truncate");
+    expect(html).toContain('aria-current="step"');
+    expect(html).toContain("border-brand-500");
+    expect(html).not.toContain("Measure status:");
+  });
 });

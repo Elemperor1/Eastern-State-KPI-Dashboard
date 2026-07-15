@@ -1,9 +1,10 @@
 "use client";
 
-import { useEffect, useRef } from "react";
+import { useEffect, useId, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { AlertTriangle } from "lucide-react";
 import { Button } from "./Button";
+import { useModalFocus, usePresence } from "./useModalInteraction";
 
 interface ConfirmDialogProps {
   open: boolean;
@@ -28,82 +29,87 @@ export function ConfirmDialog({
 }: ConfirmDialogProps) {
   const dialogRef = useRef<HTMLDivElement>(null);
   const cancelRef = useRef<HTMLButtonElement>(null);
+  const titleId = useId();
+  const descriptionId = useId();
+  const [busy, setBusy] = useState(false);
+  const presence = usePresence(open);
 
   useEffect(() => {
-    if (!open) return;
-    const previous = document.activeElement as HTMLElement | null;
-    cancelRef.current?.focus();
+    if (open) setBusy(false);
+  }, [open]);
 
-    function onKeyDown(event: KeyboardEvent) {
-      if (event.key === "Escape") onClose();
-      if (event.key !== "Tab" || !dialogRef.current) return;
-      const focusable = Array.from(
-        dialogRef.current.querySelectorAll<HTMLElement>(
-          'button:not([disabled]), [href], input:not([disabled]), select:not([disabled]), [tabindex]:not([tabindex="-1"])',
-        ),
-      );
-      if (focusable.length === 0) return;
-      const first = focusable[0];
-      const last = focusable[focusable.length - 1];
-      if (event.shiftKey && document.activeElement === first) {
-        event.preventDefault();
-        last.focus();
-      } else if (!event.shiftKey && document.activeElement === last) {
-        event.preventDefault();
-        first.focus();
-      }
+  useModalFocus({
+    open: open && presence.rendered,
+    containerRef: dialogRef,
+    initialFocusRef: cancelRef,
+    onClose,
+    closeEnabled: !busy,
+  });
+
+  async function confirm() {
+    if (busy) return;
+    setBusy(true);
+    try {
+      await onConfirm();
+    } finally {
+      setBusy(false);
     }
+  }
 
-    document.addEventListener("keydown", onKeyDown);
-    return () => {
-      document.removeEventListener("keydown", onKeyDown);
-      previous?.focus();
-    };
-  }, [open, onClose]);
-
-  if (!open || typeof document === "undefined") return null;
+  if (!presence.rendered || typeof document === "undefined") return null;
 
   return createPortal(
-    <div className="fixed inset-0 z-[70] grid place-items-center px-4">
+    <div
+      className="modal-layer fixed inset-0 z-[70] grid place-items-center px-4"
+      data-state={presence.visible ? "open" : "closed"}
+      aria-hidden={!open}
+      inert={!open}
+    >
       <button
         type="button"
-        className="absolute inset-0 bg-ink-950/65 backdrop-blur-[2px]"
+        className="modal-scrim absolute inset-0 bg-ink-950/65 backdrop-blur-[2px]"
         aria-label="Close confirmation dialog"
-        onClick={onClose}
+        onClick={busy ? undefined : onClose}
+        disabled={busy}
       />
       <div
         ref={dialogRef}
         role="alertdialog"
         aria-modal="true"
-        aria-labelledby="confirm-dialog-title"
-        aria-describedby="confirm-dialog-description"
-        className="surface-elevated relative w-full max-w-md p-6"
+        aria-labelledby={titleId}
+        aria-describedby={descriptionId}
+        tabIndex={-1}
+        className="modal-panel surface-elevated relative w-full max-w-md p-6 focus:outline-none"
       >
         <div className="mb-5 flex items-start gap-4">
           <div className="grid size-10 shrink-0 place-items-center rounded-lg bg-[var(--color-danger-bg)] text-[var(--color-danger-text)]">
             <AlertTriangle className="size-5" aria-hidden />
           </div>
           <div>
-            <h2 id="confirm-dialog-title" className="text-xl font-semibold text-ink-900">
+            <h2 id={titleId} className="text-xl font-semibold text-ink-900">
               {title}
             </h2>
-            <p id="confirm-dialog-description" className="mt-2 text-sm leading-6 text-ink-600 text-pretty">
+            <p id={descriptionId} className="mt-2 text-sm leading-6 text-ink-600 text-pretty">
               {description}
             </p>
           </div>
         </div>
         <div className="flex justify-end gap-3">
-          <Button ref={cancelRef} type="button" variant="secondary" onClick={onClose}>
+          <Button ref={cancelRef} type="button" variant="secondary" onClick={onClose} disabled={busy}>
             {cancelLabel}
           </Button>
           <Button
             type="button"
             variant={tone === "danger" ? "danger" : "primary"}
-            onClick={onConfirm}
+            onClick={confirm}
+            isLoading={busy}
           >
             {confirmLabel}
           </Button>
         </div>
+        <span className="sr-only" role="status" aria-live="polite">
+          {busy ? `${confirmLabel} in progress.` : ""}
+        </span>
       </div>
     </div>,
     document.body,

@@ -527,7 +527,8 @@ function hasAggregationCompleteTarget(
       // Numerator/denominator component targets do not define a target for the
       // resulting ratio; the aggregated ratio needs a parent target.
       return parentTargetReady;
-    default:
+    case "none":
+    case null:
       return parentTargetReady;
   }
 }

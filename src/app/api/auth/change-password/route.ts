@@ -1,4 +1,4 @@
-import { NextRequest, NextResponse } from "next/server";
+import { type NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 import { verifyCredentials } from "@/features/auth/server";
 import { updateUserPassword } from "@/features/users/server";
@@ -97,7 +97,7 @@ export async function POST(req: NextRequest) {
   // issued "during" the replacement still valid, which the
   // requirement explicitly forbids.
   const session = await getSession();
-  await session.destroy();
+  session.destroy();
 
   return NextResponse.json({ ok: true });
 }

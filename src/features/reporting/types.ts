@@ -1,7 +1,7 @@
-import type { StrategicBoardReportViewModel } from "./strategic-board-report";
 import type {
   StrategicBoardKpiViewModel,
   StrategicBoardPriorityViewModel,
+  StrategicBoardReportViewModel,
 } from "./strategic-board-report";
 import type { StrategicAuditEvent } from "@/features/strategy";
 import type { StrategicCalculatedActual } from "./strategy-actuals";
@@ -27,6 +27,7 @@ export interface StrategicMetricPageData {
   selectedYear: number;
   priorityName: string;
   prioritySlug: string;
+  goalId: number;
   goalName: string;
   kpi: StrategicBoardKpiViewModel;
   actuals: StrategicCalculatedActual[];

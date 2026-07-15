@@ -4,6 +4,7 @@ import type { FormEvent } from "react";
 import { Plus } from "lucide-react";
 import { Button, Card, FormField, Input, Select } from "@/components/ui";
 import { ADMIN_USER_ROLE_OPTIONS } from "@/features/users/admin-users";
+import { runEventHandler } from "@/lib/async-event";
 
 interface AdminUserCreateFormProps {
   onSubmit: (event: FormEvent<HTMLFormElement>) => void | Promise<void>;
@@ -16,7 +17,10 @@ export function AdminUserCreateForm({
 }: AdminUserCreateFormProps) {
   return (
     <Card className="mb-6 p-5 lg:p-6">
-      <form id="create-user-form" onSubmit={onSubmit}>
+      <form
+        id="create-user-form"
+        onSubmit={(event) => runEventHandler(onSubmit, event)}
+      >
         <h2 className="mb-5 flex items-center gap-2 text-xl font-semibold text-ink-900">
           <Plus className="h-4 w-4" /> Invite a team member
         </h2>

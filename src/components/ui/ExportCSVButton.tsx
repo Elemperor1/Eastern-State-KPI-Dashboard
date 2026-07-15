@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback } from "react";
+import { useCallback, useId, useState } from "react";
 import { Download } from "lucide-react";
 import { Button } from "./Button";
 import { buildCSV, ensureCsvExt, inferColumns } from "./csv-helpers";
@@ -38,6 +38,8 @@ export function ExportCSVButton({
   size = "md",
   className,
 }: ExportCSVButtonProps) {
+  const statusId = useId();
+  const [status, setStatus] = useState("");
   const handleClick = useCallback(() => {
     if (typeof document === "undefined") return;
     const cols = columns ?? inferColumns(rows);
@@ -56,9 +58,11 @@ export function ExportCSVButton({
     document.body.removeChild(a);
     // Revoke on next tick so the click has time to start the download.
     setTimeout(() => URL.revokeObjectURL(url), 0);
+    setStatus("CSV export ready. Download started.");
   }, [rows, columns, filename]);
 
   return (
+    <>
     <Button
       type="button"
       variant="secondary"
@@ -66,9 +70,14 @@ export function ExportCSVButton({
       icon={Download}
       onClick={handleClick}
       aria-label={`Download ${ensureCsvExt(filename)}`}
+      aria-describedby={statusId}
       className={className}
     >
       {label}
     </Button>
+    <span id={statusId} className="sr-only" role="status" aria-live="polite" aria-atomic="true">
+      {status}
+    </span>
+    </>
   );
 }

@@ -1,0 +1,59 @@
+# Framework build output
+.next/
+out/
+dist/
+build/
+
+# Dependencies and package-manager caches
+node_modules/
+.pnpm-store/
+.yarn/
+.npm/
+
+# Test and coverage output
+coverage/
+playwright-report/
+test-results/
+.nyc_output/
+
+# Tool and framework caches
+.turbo/
+.vercel/
+.cache/
+.swc/
+
+# Python-generated files
+__pycache__/
+*.pyc
+.pytest_cache/
+.venv/
+venv/
+
+# Generated reports and temporary files
+ultimate-bug-scan-report.*
+*.log
+tmp/
+temp/
+
+# macOS and editor metadata
+.DS_Store
+.vscode/
+.idea/
+
+# Test files and test infrastructure
+**/*.test.ts
+**/*.test.tsx
+**/*.spec.ts
+**/*.spec.tsx
+e2e/
+test/
+tests/
+
+# Internal agent/tool configuration
+.pi/
+
+# Historical security audit fixtures
+security-audit/
+
+# Development scripts
+scripts/

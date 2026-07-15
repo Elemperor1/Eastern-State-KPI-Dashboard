@@ -1,4 +1,4 @@
-import { NextRequest, NextResponse } from "next/server";
+import { type NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 import { verifyCredentials } from "@/features/auth/server";
 import { getSession, AuthError } from "@/features/auth/session";
@@ -54,7 +54,7 @@ export async function POST(req: NextRequest) {
   pruneExpired();
 
   try {
-    const body = await req.json().catch(() => ({}));
+    const body: unknown = await req.json().catch(() => ({}));
     const parsed = LoginSchema.safeParse(body);
     if (!parsed.success) {
       return NextResponse.json(

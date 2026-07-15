@@ -47,14 +47,11 @@ function statusVariant(status: string): BadgeVariant {
     return "success";
   }
   if (["ready", "in_progress"].includes(status)) return "info";
-  if (
-    ["at_risk", "missing", "needs_target", "target_not_finalized"].includes(
-      status,
-    )
-  ) {
-    return "warning";
+  if (["missing", "needs_target", "target_not_finalized"].includes(status)) {
+    return "incomplete";
   }
-  if (["invalid", "needs_definition", "off_track"].includes(status)) {
+  if (["at_risk", "needs_definition"].includes(status)) return "warning";
+  if (["invalid", "off_track"].includes(status)) {
     return "error";
   }
   return "default";
@@ -63,7 +60,7 @@ function statusVariant(status: string): BadgeVariant {
 function StatusBadge({ label, value }: { label: string; value: string }) {
   const display = formatBoardReportToken(value);
   return (
-    <Badge variant={statusVariant(value)} aria-label={`${label}: ${display}`}>
+    <Badge variant={statusVariant(value)} label={label} aria-label={`${label}: ${display}`}>
       {display}
     </Badge>
   );
@@ -121,9 +118,11 @@ function ReasonList({
 function CompletionSummary({
   summary,
   label,
+  showExcludedReasons = true,
 }: {
   summary: GoalCompletionSummaryViewModel;
   label: string;
+  showExcludedReasons?: boolean;
 }) {
   return (
     <div className="mt-5 border-t border-ink-100 pt-5">
@@ -159,7 +158,7 @@ function CompletionSummary({
           aria-label={`${label} goal completion is not reported`}
         />
       )}
-      {summary.excludedGoalsCount > 0 ? (
+      {showExcludedReasons && summary.excludedGoalsCount > 0 ? (
         <div className="mt-4 rounded-lg bg-accent-50 p-3">
           <p className="mb-2 text-xs font-semibold uppercase tracking-[0.06em] text-ink-700">
             Goals not counted
@@ -228,7 +227,10 @@ export function StrategicBoardReport({
               information remain visible and are not counted as failed.
             </p>
           </div>
-          <Badge variant={report.unresolvedReasons.length > 0 ? "warning" : "success"}>
+          <Badge
+            variant={report.unresolvedReasons.length > 0 ? "warning" : "success"}
+            label="Reporting status"
+          >
             {report.unresolvedReasons.length > 0
               ? `${report.unresolvedReasons.length} need attention`
               : "Nothing needs attention"}
@@ -245,19 +247,18 @@ export function StrategicBoardReport({
         <CompletionSummary
           summary={report.organizationGoalCompletion}
           label={report.organizationName}
+          showExcludedReasons={false}
         />
 
         <div className="mt-5 border-t border-ink-100 pt-5">
           <h3 className="text-base font-semibold text-ink-900">
-            What needs attention
+            Reporting completeness
           </h3>
-          <div className="mt-2">
-            <ReasonList
-              reasons={report.unresolvedReasons}
-              emptyLabel="Nothing needs attention in this report."
-              ariaLabel="Items that need attention across the report"
-            />
-          </div>
+          <p className="mt-2 text-sm leading-6 text-ink-600">
+            {report.unresolvedReasons.length > 0
+              ? `${report.unresolvedReasons.length} items need attention. Detailed reasons are shown with each affected goal and measure below.`
+              : "All reporting requirements represented in this report are complete."}
+          </p>
         </div>
       </Card>
 
@@ -365,7 +366,7 @@ function GoalSection({
               {goal.name}
             </h3>
           </div>
-          <StatusBadge label="Goal completion status" value={goal.completionStatus} />
+          <StatusBadge label="Goal status" value={goal.completionStatus} />
         </div>
         <dl className="mt-5 grid grid-cols-2 gap-4 sm:grid-cols-4">
           <SummaryMetric
@@ -436,12 +437,12 @@ function KpiSection({
             </h4>
           </div>
           <div className="flex flex-wrap gap-2">
-            <StatusBadge label="Board status" value={kpi.boardStatus} />
+            <StatusBadge label="Board" value={kpi.boardStatus} />
             <StatusBadge
-              label="Setup status"
+              label="Setup"
               value={kpi.configurationStatus}
             />
-            <StatusBadge label="Result state" value={kpi.result.state} />
+            <StatusBadge label="Result" value={kpi.result.state} />
           </div>
         </div>
 
@@ -552,9 +553,9 @@ function TargetProgressCard({
       <div className="flex flex-wrap items-start justify-between gap-3">
         <h5 className="text-base font-semibold text-ink-900">{label}</h5>
         {progress ? (
-          <StatusBadge label={`${label} status`} value={progress.status} />
+          <StatusBadge label="Target status" value={progress.status} />
         ) : (
-          <Badge variant="default">No target record</Badge>
+          <Badge variant="incomplete" label="Target status">No target record</Badge>
         )}
       </div>
       {progress ? (
@@ -660,10 +661,7 @@ function ComponentTable({
               <td className="break-words">
                 <p>{component.result.displayValue}</p>
                 <div className="mt-2">
-                  <StatusBadge
-                    label={`${component.label} result state`}
-                    value={component.result.state}
-                  />
+                  <StatusBadge label="Result" value={component.result.state} />
                 </div>
                 {component.result.formulaExplanation ? (
                   <p className="mt-1 text-xs leading-5 text-ink-500">
@@ -693,10 +691,7 @@ function ComponentTable({
                       )} progress · Target year {component.progress.targetYear ?? "not specified"}
                     </span>
                     <span className="mt-2 block">
-                      <StatusBadge
-                        label={`${component.label} target status`}
-                        value={component.progress.status}
-                      />
+                      <StatusBadge label="Target" value={component.progress.status} />
                     </span>
                   </>
                 ) : (
@@ -704,10 +699,7 @@ function ComponentTable({
                 )}
               </td>
               <td>
-                <StatusBadge
-                        label={`${component.label} setup status`}
-                  value={component.configurationStatus}
-                />
+                <StatusBadge label="Setup" value={component.configurationStatus} />
               </td>
               <td className="break-words text-xs leading-5">
                 {component.unresolvedReasons.length > 0

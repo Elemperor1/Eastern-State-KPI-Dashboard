@@ -26,7 +26,9 @@ export function StatusBanner({ variant = "neutral", children, onDismiss, classNa
   const Icon = icons[variant];
   return (
     <div
-      role="status"
+      role={variant === "error" ? "alert" : "status"}
+      aria-live={variant === "error" ? "assertive" : "polite"}
+      aria-atomic="true"
       className={cn(
         "mb-6 flex items-start gap-3 rounded-lg px-4 py-3 text-sm leading-6 shadow-[inset_0_0_0_1px_rgba(31,22,51,0.08)]",
         styles[variant],

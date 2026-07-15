@@ -1,7 +1,6 @@
 "use client";
 
-import type { FormEvent } from "react";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState, type FormEvent } from "react";
 import { Archive, ArrowDown, ArrowUp, Plus, RotateCcw, Save } from "lucide-react";
 import {
   COMPONENT_AGGREGATION_ROLES,
@@ -13,6 +12,7 @@ import {
   type PersistedMeasurementConfig,
   type StrategyComponentWithTargets,
 } from "@/features/strategy";
+import { runEventHandler } from "@/lib/async-event";
 import {
   Badge,
   Button,
@@ -345,7 +345,10 @@ function ComponentFormCard({
         {reorderActions}
       </div>
       {feedback ? <StatusBanner variant={feedback.variant}>{feedback.message}</StatusBanner> : null}
-      <form onSubmit={submit} className="space-y-5">
+      <form
+        onSubmit={(event) => runEventHandler(submit, event)}
+        className="space-y-5"
+      >
         <fieldset disabled={busy} className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-3">
           <FormField label="Input name" htmlFor={`${prefix}-label`} hint={<ErrorHint error={errors.label ?? errors.slug} />}>
             <Input

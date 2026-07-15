@@ -21,8 +21,11 @@ export function Progress({ value, max = 100, color, className, ...props }: Progr
       {...props}
     >
       <div
-        className="h-full rounded-full bg-brand-500 transition-[width] duration-500"
-        style={{ width: `${normalized.percentage}%`, backgroundColor: color }}
+        className="progress-indicator h-full w-full rounded-full bg-brand-500"
+        style={{
+          transform: `scaleX(${normalized.percentage / 100})`,
+          backgroundColor: color,
+        }}
       />
     </div>
   );
