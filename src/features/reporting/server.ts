@@ -20,8 +20,10 @@ import type {
 } from "./types";
 import { listCalculatedStrategyActuals } from "./strategy-actuals-server";
 import type { StrategicCalculatedActual } from "./strategy-actuals";
-import { buildStrategicDashboardSummary } from "./strategy-summary";
-import type { StrategicDashboardSummary } from "./strategy-summary";
+import {
+  buildStrategicDashboardSummary,
+  type StrategicDashboardSummary,
+} from "./strategy-summary";
 
 export function listDashboardYears(): number[] {
   return [...STRATEGIC_PLAN_REPORTING_YEARS];
@@ -216,6 +218,7 @@ export function loadStrategicMetricPageData(
     selectedYear: year,
     priorityName: context.goal.priority_name,
     prioritySlug: context.goal.priority_slug,
+    goalId: context.goal.id,
     goalName: context.goal.name,
     kpi,
     actuals: actuals.filter((actual) => actual.kpiId === catalogKpi.id),

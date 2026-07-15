@@ -1,20 +1,18 @@
-import type {
-  GoalCompletionResult,
-  MeasurementType,
-  MeasurementResult,
-  ProgressResult,
-  StrategicGoalReadModel,
-  StrategyRollups,
-} from "@/features/strategy";
 import {
+  STRATEGIC_PLAN_START_YEAR,
   calculateAnnualAndPlanProgress,
-  calculateStrategicGoalCompletion,
   calculateProgress,
+  calculateStrategicGoalCompletion,
   calculateStrategyRollups,
   resolveEffectiveTargetPolicy,
   roundFinite,
+  type GoalCompletionResult,
+  type MeasurementType,
+  type MeasurementResult,
+  type ProgressResult,
+  type StrategicGoalReadModel,
+  type StrategyRollups,
 } from "@/features/strategy";
-import { STRATEGIC_PLAN_START_YEAR } from "@/features/strategy";
 import type { KPIWithCategory } from "@/lib/types";
 import type { StrategicCalculatedActual } from "./strategy-actuals";
 

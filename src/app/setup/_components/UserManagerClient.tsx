@@ -16,6 +16,7 @@ import {
 } from "@/features/users/admin-users";
 import type { Role, User } from "@/lib/types";
 import { apiFetch } from "@/lib/api-client";
+import { runEventHandler } from "@/lib/async-event";
 
 interface UserMutationPayload {
   user?: User | null;
@@ -185,7 +186,7 @@ export function UserManagerClient({
                 >
                   {user.name}
                 </Button>
-                {user.disabled ? <Badge variant="warning">Disabled</Badge> : null}
+                {user.disabled ? <Badge variant="warning" label="Account status">Disabled</Badge> : null}
               </li>
             ))}
           </ul>
@@ -233,7 +234,9 @@ export function UserManagerClient({
                 </div>
                 <div className="flex gap-2">
                   {isCurrentAdminUser(selectedUser, currentUserId) ? <Chip>You</Chip> : null}
-                  <Badge variant={selectedUser.disabled ? "warning" : "success"}>{formatAdminUserStatus(selectedUser)}</Badge>
+                  <Badge variant={selectedUser.disabled ? "warning" : "success"} label="Account status">
+                    {formatAdminUserStatus(selectedUser)}
+                  </Badge>
                 </div>
               </div>
 
@@ -243,7 +246,14 @@ export function UserManagerClient({
                     id={`person-role-${selectedUser.id}`}
                     value={selectedUser.role}
                     disabled={isCurrentAdminUser(selectedUser, currentUserId) || accountBusy === selectedUser.id}
-                    onChange={(event) => changeRole(selectedUser.id, event.target.value as Role, selectedUser.name)}
+                    onChange={(event) =>
+                      runEventHandler(
+                        changeRole,
+                        selectedUser.id,
+                        event.target.value as Role,
+                        selectedUser.name,
+                      )
+                    }
                   >
                     <option value="viewer">Can view</option>
                     <option value="admin">Can edit</option>
@@ -284,7 +294,11 @@ export function UserManagerClient({
         isResetting={resetting}
         onPasswordChange={setNewPassword}
         onClose={closeResetDialog}
-        onConfirm={() => resetTarget && resetPassword(resetTarget.id, newPassword)}
+        onConfirm={() => {
+          if (resetTarget) {
+            runEventHandler(resetPassword, resetTarget.id, newPassword);
+          }
+        }}
       />
 
       <ConfirmDialog

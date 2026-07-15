@@ -3,6 +3,7 @@
 import type { FormEvent } from "react";
 import { Plus } from "lucide-react";
 import { Button, Card, FormField, Input, Select } from "@/components/ui";
+import { runEventHandler } from "@/lib/async-event";
 import {
   CATALOG_DIRECTIONS,
   formatCatalogDirection,
@@ -24,7 +25,7 @@ export function AdminKpiCreateForm({
 }: AdminKpiCreateFormProps) {
   return (
     <Card className="p-5 lg:p-6">
-      <form onSubmit={onSubmit}>
+      <form onSubmit={(event) => runEventHandler(onSubmit, event)}>
         <h2 className="mb-5 flex items-center gap-2 text-xl font-semibold text-ink-900">
           <Plus className="h-4 w-4" /> Add measure
         </h2>

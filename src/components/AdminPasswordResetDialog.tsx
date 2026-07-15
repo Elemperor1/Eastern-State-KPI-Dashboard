@@ -9,7 +9,7 @@ interface AdminPasswordResetDialogProps {
   isResetting: boolean;
   onPasswordChange: (password: string) => void;
   onClose: () => void;
-  onConfirm: () => void;
+  onConfirm: () => void | Promise<void>;
 }
 
 export function AdminPasswordResetDialog({

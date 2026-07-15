@@ -1,5 +1,4 @@
 import { describe, expect, it } from "vitest";
-import type { StrategicGoalEditorRecord } from "./strategic-goal-editor-model";
 import {
   STRATEGIC_GOALS_ENDPOINT,
   STRATEGIC_GOAL_MEMBERSHIPS_ENDPOINT,
@@ -17,6 +16,7 @@ import {
   strategicGoalDraftFromData,
   strategicGoalMembershipDraftFromData,
   strategicGoalPriorityOptions,
+  type StrategicGoalEditorRecord,
 } from "./strategic-goal-editor-model";
 
 function goal(

@@ -1,11 +1,14 @@
 # Eastern State KPI — Product Design System
 
-`DESIGN.md` is the authority for the application’s visual language. This document translates it into implementation rules for the KPI product.
+`DESIGN.md` is the authority for the application’s visual language. This
+document translates it into implementation rules for the strategic-performance
+product. `docs/product-foundation.md` owns vocabulary, navigation, objects,
+flows, and states.
 
 ## Canvas model
 
 - Dark canvas: only the persistent sidebar, the mobile header, and code blocks. Reserved for chrome, never for content surfaces.
-- Light canvas: every dashboard, chart, table, data-entry form, and admin surface. The default for the entire product.
+- Light canvas: every Overview, report, table, data-entry form, and Setup surface. The default for the entire product.
 - Do not blend dark and light treatments inside a single content surface. Sidebar/header code blocks may sit on dark, but the page they live in is always light.
 
 ## Tokens
@@ -51,7 +54,13 @@ import {
 - Icon-only actions have an accessible label and a minimum 40 px hit area.
 - Cards exist only when a region must read as an independent surface.
 - Tables use whitespace and hairlines, not boxed cells.
-- Badges are squared status tokens, not generic pills.
+- Badges are squared status tokens, not generic pills. Visible status badges
+  qualify their subject (for example, `Board status: Not reported` or
+  `Setup status: Needs attention`).
+- Status color follows one semantic ladder: neutral/incomplete for missing or
+  unfinished work, soft warning for attention, danger for invalid or off-track
+  results, success for complete/active states, and the bright accent only for
+  the highest-priority disclosure such as `Sample data`.
 - Destructive actions require `ConfirmDialog`; never use browser `confirm()`.
 - Errors and success states use `StatusBanner`; never use browser `alert()`.
 - Loading states mirror the final page structure with skeletons.
@@ -59,20 +68,23 @@ import {
 ## Design-detail rules
 
 - Use `text-wrap: balance` for headings and `text-wrap: pretty` for short body copy.
-- Use tabular numerals for KPIs, chart axes, dates, counts, and financial values.
+- Use tabular numerals for Measure values, chart axes, dates, counts, and financial values.
 - Nested rounded surfaces must use concentric radii.
 - Use optical icon alignment where geometric centering looks wrong.
 - Use exact transition properties; never `transition: all`.
 - Use `scale(0.96)` for tactile press feedback.
 - Respect `prefers-reduced-motion`.
-- Keep the yellow accent scarce: at most one signature yellow focal treatment in a normal viewport. The brand gradient (tertiary → secondary → primary) is the more common structural accent; the yellow is reserved for a single high-attention moment per region.
+- Keep the yellow accent scarce: at most one signature yellow focal treatment
+  in a normal viewport. Repeated warnings use the semantic soft-warning
+  treatment. The brand gradient is an optional structural accent, never a
+  substitute for hierarchy or status meaning.
 
 ## Enforcement
 
 ```bash
 npm run design-system:guard
 npm run design-system:test
-npm run smoke
+AUTH_DISABLED=true PORT=3290 BASE=http://127.0.0.1:3290 bash ./scripts/smoke.sh
 ```
 
 The guard is a floor, not the definition of quality. A screen can pass the guard and still fail the system if it overuses cards, ignores canvas polarity, introduces colors outside the teal/navy/yellow family, or weakens hierarchy.

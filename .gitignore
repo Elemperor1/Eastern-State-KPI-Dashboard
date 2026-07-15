@@ -36,6 +36,9 @@ output/playwright/
 *.swp
 *.swo
 
+# Local strategic dashboard source document
+Eastern.State.Strategic.Dashboard.2025.2029.8.1.25.pdf
+
 # Local AI and editor integrations
 .claude/
 .cursor/

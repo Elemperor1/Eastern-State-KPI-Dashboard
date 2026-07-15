@@ -16,6 +16,7 @@ export * from "./FilterToolbar";
 export * from "./FormField";
 export * from "./IconButton";
 export * from "./Input";
+export * from "./LinkButton";
 export * from "./PageHeader";
 export * from "./PrintButton";
 export * from "./PrintReportHeader";

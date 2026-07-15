@@ -4,7 +4,8 @@ import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { ArrowRight } from "lucide-react";
 import { Alert, BrandMark, Button, FormField, Input } from "@/components/ui";
-import { apiFetch } from "@/lib/api-client";
+import { apiFetch, readJsonObject } from "@/lib/api-client";
+import { runEventHandler } from "@/lib/async-event";
 
 /**
  * Forced password-rotation page.
@@ -63,8 +64,12 @@ export default function SetupPasswordPage() {
         body: { currentPassword, newPassword },
       });
       if (!response.ok) {
-        const data = await response.json().catch(() => ({}));
-        setError(data.error ?? "Could not update your password.");
+        const data = await readJsonObject(response);
+        setError(
+          typeof data.error === "string"
+            ? data.error
+            : "Could not update your password.",
+        );
         setLoading(false);
         return;
       }
@@ -131,7 +136,10 @@ export default function SetupPasswordPage() {
             </p>
           </div>
 
-          <form onSubmit={handleSubmit} className="space-y-5">
+          <form
+            onSubmit={(event) => runEventHandler(handleSubmit, event)}
+            className="space-y-5"
+          >
             <FormField htmlFor="currentPassword" label="Current temporary password">
               <Input
                 id="currentPassword"

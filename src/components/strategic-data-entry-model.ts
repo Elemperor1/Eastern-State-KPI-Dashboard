@@ -2,6 +2,7 @@ import {
   strategyPeriods,
   type AverageInputMethod,
   type MeasurementType,
+  type ReportingCycleOption,
   type StrategyReportingFrequency,
 } from "@/features/strategy";
 import type {
@@ -10,7 +11,6 @@ import type {
   StrategicDataEntryRecord,
   StrategicDataEntrySelectedKpi,
 } from "@/features/strategy/data-entry-model";
-import type { ReportingCycleOption } from "@/features/strategy";
 
 export {
   STRATEGIC_DATA_ENTRY_YEARS,

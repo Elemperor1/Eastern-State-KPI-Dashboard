@@ -1,12 +1,12 @@
 "use client";
 
-import type { FormEvent } from "react";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, type FormEvent } from "react";
 import {
   CONFIGURATION_STATUSES,
   type ConfigurationStatus,
   type MeasurementType,
 } from "@/features/strategy";
+import { runEventHandler } from "@/lib/async-event";
 import {
   Badge,
   Button,
@@ -119,14 +119,17 @@ export function StrategicTargetEditorCard({
           <h3 className="text-xl font-semibold text-ink-900">{title}</h3>
           <p className="mt-1 text-sm leading-6 text-ink-500">{description}</p>
         </div>
-        <Badge variant={draft.id === null ? "warning" : "info"}>
+        <Badge variant={draft.id === null ? "incomplete" : "info"} label="Target status">
           {draft.id === null ? "Needs attention" : "Saved"}
         </Badge>
       </div>
       {feedback ? (
         <StatusBanner variant={feedback.variant}>{feedback.message}</StatusBanner>
       ) : null}
-      <form onSubmit={submit} className="space-y-5">
+      <form
+        onSubmit={(event) => runEventHandler(submit, event)}
+        className="space-y-5"
+      >
         <fieldset disabled={busy} className="grid grid-cols-1 gap-4 md:grid-cols-2">
           <FormField
             label={lockedTargetYear === undefined ? "Target year" : "Reporting year"}

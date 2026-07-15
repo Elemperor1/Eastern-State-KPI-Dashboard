@@ -2,6 +2,11 @@
 
 This context describes how Eastern State Penitentiary Historic Site defines, records, evaluates, and reports organizational performance. It distinguishes the historical KPI dashboard language from the first-class strategic-plan language so targets, progress, and history remain unambiguous.
 
+`docs/product-foundation.md` is the authority for canonical product and surface
+vocabulary. This glossary deliberately retains qualified source,
+implementation, and legacy terms where the bounded-context distinction matters;
+those terms are not interchangeable interface labels.
+
 ## Strategic plan structure
 
 **Strategic Plan**:

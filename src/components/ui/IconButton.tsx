@@ -1,13 +1,17 @@
 "use client";
 
 import { cn } from "@/lib/utils";
-import { LucideIcon } from "lucide-react";
+import { runEventHandler } from "@/lib/async-event";
+import { type LucideIcon } from "lucide-react";
 
-interface IconButtonProps extends React.ButtonHTMLAttributes<HTMLButtonElement> {
+interface IconButtonProps extends Omit<React.ButtonHTMLAttributes<HTMLButtonElement>, "onClick"> {
   icon: LucideIcon;
   label: string;
   variant?: "secondary" | "danger" | "ghost";
   size?: "sm" | "md";
+  onClick?: (
+    event: React.MouseEvent<HTMLButtonElement>,
+  ) => void | Promise<void>;
 }
 
 export function IconButton({
@@ -16,6 +20,7 @@ export function IconButton({
   variant = "secondary",
   size = "md",
   className,
+  onClick,
   ...props
 }: IconButtonProps) {
   return (
@@ -23,6 +28,7 @@ export function IconButton({
       type="button"
       aria-label={label}
       title={label}
+      onClick={onClick ? (event) => runEventHandler(onClick, event) : undefined}
       className={cn(
         "icon-button relative inline-flex items-center justify-center rounded-lg focus:outline-none transition-[scale,background-color,color,box-shadow] duration-150 ease-out active:scale-[0.96]",
         size === "sm" ? "size-10" : "size-11",

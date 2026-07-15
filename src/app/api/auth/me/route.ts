@@ -1,4 +1,4 @@
-import { NextRequest, NextResponse } from "next/server";
+import { type NextRequest, NextResponse } from "next/server";
 import { getCurrentUser } from "@/features/auth/session";
 import { ensureCsrfCookie } from "@/lib/request-guard";
 

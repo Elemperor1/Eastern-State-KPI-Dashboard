@@ -17,8 +17,9 @@ function firstValue(value: string | string[] | undefined): string | undefined {
 
 function statusVariant(status: string) {
   if (["complete", "exceeded", "on_track"].includes(status)) return "success" as const;
-  if (["at_risk", "needs_target", "target_not_finalized"].includes(status)) return "warning" as const;
-  if (["off_track", "needs_definition"].includes(status)) return "error" as const;
+  if (["needs_target", "target_not_finalized"].includes(status)) return "incomplete" as const;
+  if (["at_risk", "needs_definition"].includes(status)) return "warning" as const;
+  if (status === "off_track") return "error" as const;
   return "info" as const;
 }
 
@@ -95,7 +96,7 @@ export default async function StrategicPriorityPage({
                         {goal.completedKpisCount} of {goal.totalEligibleKpisCount} measures complete
                       </p>
                     </div>
-                    <Badge variant={statusVariant(goal.completionStatus)}>
+                    <Badge variant={statusVariant(goal.completionStatus)} label="Goal status">
                       {formatBoardReportToken(goal.completionStatus)}
                     </Badge>
                   </div>
@@ -109,7 +110,9 @@ export default async function StrategicPriorityPage({
                         >
                           <span className="min-w-0 flex-1 font-medium text-ink-900">{kpi.name}</span>
                           <span className="text-right font-semibold tabular text-ink-950">{kpi.result.displayValue}</span>
-                          <Badge variant={statusVariant(kpi.boardStatus)}>{formatBoardReportToken(kpi.boardStatus)}</Badge>
+                          <Badge variant={statusVariant(kpi.boardStatus)} label="Board status">
+                            {formatBoardReportToken(kpi.boardStatus)}
+                          </Badge>
                           <ArrowRight className="size-4 shrink-0 text-ink-400" aria-hidden />
                         </Link>
                       </li>

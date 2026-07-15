@@ -117,7 +117,7 @@ function parse<Schema extends z.ZodTypeAny>(
   if (!result.success) {
     throw new StrategyEditValidationError(message, issues(result.error));
   }
-  return result.data;
+  return result.data as z.output<Schema>;
 }
 
 function same(left: unknown, right: unknown): boolean {

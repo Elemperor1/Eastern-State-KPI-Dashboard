@@ -22,6 +22,16 @@ export const CSRF_COOKIE_NAME = "eastern_state_kpi_csrf";
 
 const MUTATION_METHODS = new Set(["POST", "PATCH", "PUT", "DELETE"]);
 
+/** Parse a JSON response without allowing Response.json()'s `any` to escape. */
+export async function readJsonObject(
+  response: Response,
+): Promise<Record<string, unknown>> {
+  const payload: unknown = await response.json().catch(() => null);
+  return typeof payload === "object" && payload !== null && !Array.isArray(payload)
+    ? payload as Record<string, unknown>
+    : {};
+}
+
 /** Read a cookie value from document.cookie by name (browser only). */
 export function readCsrfToken(): string | null {
   if (typeof document === "undefined") return null;

@@ -265,6 +265,7 @@ describe("strategic reporting server", () => {
       includeAudit: true,
     });
     expect(data?.actuals).toHaveLength(1);
+    expect(data?.goalId).toBe(goal.id);
     expect(data?.strategicAuditEvents).toEqual([event]);
     expect(listStrategicAuditIdentitiesForKpiMock).toHaveBeenCalledWith(metric.id);
     expect(loadStrategicMetricPageData("missing", { year: 2026 })).toBeNull();

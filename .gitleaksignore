@@ -1,0 +1,5 @@
+# Exact historical false positive: prose enumerating CSRF test cases was
+# interpreted as a generic API-key assignment. Owner: repository maintainers.
+# Remove when this commit is no longer in retained history or the upstream rule
+# stops matching comma-separated prose.
+7d2e5e28d0df24c0233ed28d74ad35e2325c947b:docs/csrf-hardening.md:generic-api-key:208

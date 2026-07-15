@@ -70,7 +70,7 @@ function toGoalRule(goal: StrategicGoalCompletionDefinition): GoalCompletionRule
             ? null
             : goal.manual_status === "complete",
       };
-    default:
+    case "all_required_kpis":
       return { type: "all_required_kpis" };
   }
 }

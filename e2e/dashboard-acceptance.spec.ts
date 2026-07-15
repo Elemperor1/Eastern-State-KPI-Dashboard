@@ -171,8 +171,18 @@ test("recovers from a failed atomic save and persists only after server success"
   await page.getByRole("textbox", { name: "Notes" }).fill("Acceptance reporting cycle");
   await page.getByRole("textbox", { name: "Source" }).fill("Acceptance fixture");
   await expect(page.getByRole("status")).toContainText("Unsaved changes");
+  await page.context().setOffline(true);
+  await expect(
+    page.getByRole("alert").filter({ hasText: "You're offline" }),
+  ).toContainText("offline");
+  await expect(page.getByRole("button", { name: "Save unavailable offline" })).toBeDisabled();
+  await expect(page.getByRole("spinbutton", { name: "Value" })).toHaveValue("17");
+  await page.context().setOffline(false);
+  await expect(page.getByRole("status")).toContainText("Unsaved changes");
   await page.getByRole("button", { name: "Save and continue" }).click();
-  await expect(page.getByRole("status")).toContainText("Simulated connection failure");
+  await expect(
+    page.getByRole("alert").filter({ hasText: "Simulated connection failure" }),
+  ).toContainText("Simulated connection failure");
   await expect(page.getByRole("spinbutton", { name: "Value" })).toHaveValue("17");
   await expect(page.getByRole("button", { name: new RegExp(ATOMIC_MEASURE) })).toContainText("Not started");
 
@@ -206,6 +216,8 @@ test("warns before primary navigation discards an unsaved form", async ({ page }
   await page.evaluate(() => window.history.back());
   const historyDialog = page.getByRole("alertdialog", { name: "Leave without saving?" });
   await expect(historyDialog).toBeVisible();
+  await expect(historyDialog.getByRole("button", { name: "Keep editing" })).toBeFocused();
+  await expect(page.locator("[data-app-shell-content]")).toHaveAttribute("inert", "");
   await historyDialog.getByRole("button", { name: "Keep editing" }).click();
   await expect(page).toHaveURL(/\/data-entry/);
   await expect(page.getByRole("spinbutton", { name: "Value" })).toHaveValue("18");
@@ -234,7 +246,9 @@ test("requires and persists every field in one multi-component form", async ({ p
 
   await values.nth(0).fill("3");
   await page.getByRole("button", { name: "Save and continue" }).click();
-  await expect(page.getByRole("status")).toContainText("required");
+  await expect(
+    page.getByRole("alert").filter({ hasText: "required" }),
+  ).toContainText("required");
   await expect(page.getByRole("button", { name: new RegExp(COMPONENT_MEASURE) })).toContainText("Not started");
 
   await values.nth(1).fill("400");
@@ -317,6 +331,16 @@ test("keeps Overview concise and reads saved strategic results", async ({ page }
   await page.getByRole("link", { name: /Reimagine Visitor Experience/ }).click();
   const atomicRow = page.getByRole("link", { name: new RegExp(ATOMIC_MEASURE) });
   await expect(atomicRow).toContainText("17 programs");
+  await atomicRow.click();
+  const targetLink = page.getByRole("link", { name: "Review target" });
+  await expect(targetLink).toBeVisible();
+  const targetHref = await targetLink.getAttribute("href");
+  const targetId = targetHref?.split("#")[1];
+  expect(targetId).toMatch(/^goal-target-measure-\d+$/);
+  await targetLink.click();
+  const targetHeading = page.locator(`#${targetId}`);
+  await expect(targetHeading).toBeVisible();
+  await expect(targetHeading).toBeFocused();
   expect(browserErrors).toEqual([]);
 });
 
@@ -344,7 +368,9 @@ test("uses one flat Setup workspace on desktop and mobile", async ({ page }) => 
   const createMeasure = page.getByRole("button", { name: "Create measure" });
   await createMeasure.click();
   await expect(createMeasure).toBeDisabled();
-  await expect(page.getByRole("status")).toContainText("Simulated create failure");
+  await expect(
+    page.getByRole("alert").filter({ hasText: "Simulated create failure" }),
+  ).toContainText("Simulated create failure");
   await expect(page.getByRole("textbox", { name: "Name" })).toHaveValue(
     "Temporary acceptance measure",
   );
@@ -442,7 +468,9 @@ test("uses one flat Setup workspace on desktop and mobile", async ({ page }) => 
   const createUser = page.getByRole("button", { name: "Create user" });
   await createUser.click();
   await expect(createUser).toBeDisabled();
-  await expect(page.getByRole("status")).toContainText("Simulated invite failure");
+  await expect(
+    page.getByRole("alert").filter({ hasText: "Simulated invite failure" }),
+  ).toContainText("Simulated invite failure");
   await page.unroute("**/api/users");
   await page.getByRole("button", { name: "Kerry Sautner" }).click();
   await expect(page.getByRole("region", { name: "Person details" })).toContainText("kerry@easternstate.org");
@@ -455,6 +483,27 @@ test("uses one flat Setup workspace on desktop and mobile", async ({ page }) => 
   await expect(recentActivity.getByText("kerry@easternstate.org").first()).toBeVisible();
 
   await page.setViewportSize({ width: 390, height: 844 });
+  await page.goto("/dashboard/overview");
+  const mobileMenuButton = page.getByRole("button", { name: "Open navigation" });
+  await mobileMenuButton.click();
+  const drawer = page.getByRole("complementary");
+  await expect(drawer.getByRole("button", { name: "Close navigation" })).toBeFocused();
+  await expect(page.locator("#main-content")).toHaveAttribute("inert", "");
+  await page.keyboard.press("Escape");
+  await expect(mobileMenuButton).toBeFocused();
+
+  await mobileMenuButton.click();
+  await drawer.getByRole("button", { name: "Close navigation" }).click();
+  await mobileMenuButton.click();
+  await expect(drawer.getByRole("button", { name: "Close navigation" })).toBeFocused();
+  await page.keyboard.press("Escape");
+
+  await page.emulateMedia({ reducedMotion: "reduce" });
+  await mobileMenuButton.click();
+  await expect(drawer).toHaveCSS("transform", "none");
+  await page.keyboard.press("Escape");
+  await page.emulateMedia({ reducedMotion: "no-preference" });
+
   await page.goto("/setup?area=measures&year=2029");
   await page.getByRole("complementary", { name: "Measure list" }).locator("ul a").first().click();
   await expect(page).toHaveURL(/\/setup\?area=measures&item=\d+&year=2029/);
@@ -471,6 +520,21 @@ test("uses one flat Setup workspace on desktop and mobile", async ({ page }) => 
   await page.getByRole("button", { name: "Back to list" }).click();
   await expect(page.getByRole("heading", { name: "Reporting checklist" })).toBeVisible();
   await expect(checklistItem).toBeFocused();
+
+  for (const width of [360, 390, 768, 1440, 1920]) {
+    await page.setViewportSize({ width, height: width < 1_000 ? 844 : 1_080 });
+    await page.goto("/dashboard/overview");
+    await expect(page.locator("#main-content")).toBeVisible();
+    expect(
+      await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth),
+      `Overview should not overflow horizontally at ${width}px`,
+    ).toBe(true);
+    if (width < 1_024) {
+      await expect(page.getByRole("button", { name: "Open navigation" })).toBeVisible();
+    } else {
+      await expect(page.getByRole("navigation", { name: "Primary" })).toBeVisible();
+    }
+  }
   expect(browserErrors.filter((message) => !message.includes("status of 500"))).toEqual([]);
 });
 
@@ -498,14 +562,17 @@ test("keeps visible Board Report, Trends, and exports on one reporting truth", a
   expect(csv).toContain("Full year");
   expect(csv).toContain(ATOMIC_MEASURE);
   expect(csv).toContain("17");
+  await expect(page.getByRole("status").filter({ hasText: "CSV export ready" })).toBeAttached();
 
   download = page.waitForEvent("download", { timeout: EXPORT_TIMEOUT });
   await page.getByRole("button", { name: "Export current view as PNG image" }).click();
   await downloadedBytes(await download, "png");
+  await expect(page.getByRole("status").filter({ hasText: "PNG export ready" })).toBeAttached();
 
   download = page.waitForEvent("download", { timeout: EXPORT_TIMEOUT });
   await page.getByRole("button", { name: "Export current report as PDF" }).click();
   await downloadedBytes(await download, "pdf");
+  await expect(page.getByRole("status").filter({ hasText: "PDF export ready" })).toBeAttached();
 
   await page.getByLabel("Report", { exact: true }).selectOption("trends");
   await expect(page).toHaveURL(/view=trends/);
@@ -515,4 +582,30 @@ test("keeps visible Board Report, Trends, and exports on one reporting truth", a
   await expect(page.getByText(/Full year · programs/)).toBeVisible();
 
   expect(browserErrors).toEqual([]);
+});
+
+test("recovers a route failure and restores focus to the application", async ({ page }, testInfo) => {
+  const run = e2eDatabaseRunFromMetadata(testInfo.config.metadata);
+  const db = new DatabaseSync(run.databasePath);
+  db.exec("PRAGMA busy_timeout = 5000");
+  let renamed = false;
+  try {
+    db.exec("ALTER TABLE strategic_goals RENAME TO strategic_goals_route_error");
+    renamed = true;
+    await page.goto("/dashboard/overview");
+    const errorHeading = page.getByRole("heading", { name: "Overview couldn’t load" });
+    await expect(errorHeading).toBeVisible();
+    await expect(errorHeading).toBeFocused();
+
+    db.exec("ALTER TABLE strategic_goals_route_error RENAME TO strategic_goals");
+    renamed = false;
+    await page.getByRole("button", { name: "Try again" }).click();
+    await expect(page.getByRole("heading", { name: "Overview", exact: true })).toBeVisible();
+    await expect(page.locator("#main-content")).toBeFocused();
+  } finally {
+    if (renamed) {
+      db.exec("ALTER TABLE strategic_goals_route_error RENAME TO strategic_goals");
+    }
+    db.close();
+  }
 });
