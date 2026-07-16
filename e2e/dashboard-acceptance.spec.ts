@@ -876,8 +876,8 @@ test("keeps visible Board Report, Trends, and exports on one reporting truth", a
 
   const trendChart = page.locator("svg.recharts-surface");
   await expect(trendChart).toBeVisible();
-  expect(await trendChart.getAttribute("role")).toBeNull();
-  expect(await trendChart.getAttribute("tabindex")).toBeNull();
+  await expect(trendChart).not.toHaveAttribute("role");
+  await expect(trendChart).not.toHaveAttribute("tabindex");
   await expect(trendChart.locator(".recharts-line-curve")).toHaveAttribute(
     "stroke",
     "var(--chart-primary)",
@@ -889,10 +889,12 @@ test("keeps visible Board Report, Trends, and exports on one reporting truth", a
 
   await page.setViewportSize({ width: 390, height: 844 });
   await expect(trendChart).toBeVisible();
-  expect(
-    await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth),
-    "Trends should not overflow horizontally at 390px",
-  ).toBe(true);
+  await expect
+    .poll(
+      () => page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth),
+      { message: "Trends should not overflow horizontally at 390px" },
+    )
+    .toBe(true);
 
   await page.setViewportSize({ width: 1440, height: 1_080 });
   await trendChart.locator(".recharts-line-dot").first().hover();
