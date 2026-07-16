@@ -97,7 +97,11 @@ export function StrategicTrendsView({
             <>
               <div className="h-96 tabular-nums" aria-label={`${selected.kpiName} trend chart`}>
                 <ResponsiveContainer width="100%" height="100%">
-                  <LineChart data={selected.points} margin={{ top: 12, right: 18, bottom: 8, left: 8 }}>
+                  <LineChart
+                    accessibilityLayer={false}
+                    data={selected.points}
+                    margin={{ top: 12, right: 18, bottom: 8, left: 8 }}
+                  >
                     <CartesianGrid stroke="var(--chart-grid)" vertical={false} />
                     <XAxis dataKey="year" tickLine={false} axisLine={false} />
                     <YAxis tickLine={false} axisLine={false} />

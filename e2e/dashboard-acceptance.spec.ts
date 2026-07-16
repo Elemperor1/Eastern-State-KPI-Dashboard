@@ -874,6 +874,33 @@ test("keeps visible Board Report, Trends, and exports on one reporting truth", a
   await expect(page.getByRole("table")).toContainText("17");
   await expect(page.getByText(/Full year · programs/)).toBeVisible();
 
+  const trendChart = page.locator("svg.recharts-surface");
+  await expect(trendChart).toBeVisible();
+  await expect(trendChart).not.toHaveAttribute("role");
+  await expect(trendChart).not.toHaveAttribute("tabindex");
+  await expect(trendChart.locator(".recharts-line-curve")).toHaveAttribute(
+    "stroke",
+    "var(--chart-primary)",
+  );
+  await expect(trendChart.locator(".recharts-line-curve")).toHaveAttribute(
+    "stroke-width",
+    "2.5",
+  );
+
+  await page.setViewportSize({ width: 390, height: 844 });
+  await expect(trendChart).toBeVisible();
+  await expect
+    .poll(
+      () => page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth),
+      { message: "Trends should not overflow horizontally at 390px" },
+    )
+    .toBe(true);
+
+  await page.setViewportSize({ width: 1440, height: 1_080 });
+  await trendChart.locator(".recharts-line-dot").first().hover();
+  await expect(page.locator(".recharts-tooltip-wrapper")).toContainText("2029");
+  await expect(page.locator(".recharts-tooltip-wrapper")).toContainText("programs : 17");
+
   expect(browserErrors).toEqual([]);
 });
 
