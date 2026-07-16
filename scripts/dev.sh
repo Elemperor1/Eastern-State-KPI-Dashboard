@@ -4,6 +4,9 @@
 # `npm run dev` runs this. It binds `next dev` to a single declared
 # host (BIND_HOST) so that src/lib/auth-flag.ts can verify the bypass
 # is only ever exposed on a loopback interface (D8AD-CAN-002).
+# Next.js 16 defaults `next dev` to Turbopack. This repository keeps Webpack
+# explicit so development and the Playwright web server use the same proven
+# bundler behavior as Next.js 15 and the production build.
 #
 # - When AUTH_DISABLED is set (in the shell or in a .env file), BIND_HOST
 #   defaults to 127.0.0.1 so the server is reachable only from
@@ -62,4 +65,4 @@ fi
 export BIND_HOST
 
 : "${PORT:=3000}"
-exec node_modules/.bin/next dev -H "$BIND_HOST" -p "$PORT"
+exec node_modules/.bin/next dev --webpack -H "$BIND_HOST" -p "$PORT"
