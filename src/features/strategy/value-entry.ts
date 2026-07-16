@@ -1,4 +1,4 @@
-import { z } from "zod";
+import { z } from "@/lib/zod";
 import { getDb, transaction } from "@/lib/db";
 import { recordStrategicAuditEvent } from "./audit";
 import { validateReportingPeriod } from "./periods";
@@ -146,7 +146,7 @@ const OptionalTextSchema = z
   .default(null);
 
 const AverageInputPayloadSchema = z
-  .record(z.unknown())
+  .record(z.string(), z.unknown())
   .nullable()
   .optional()
   .default(null);

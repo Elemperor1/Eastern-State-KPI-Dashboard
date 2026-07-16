@@ -1,5 +1,5 @@
 import { type NextRequest, NextResponse } from "next/server";
-import { z } from "zod";
+import { z } from "@/lib/zod";
 import { authErrorResponse, requireAdmin } from "@/features/auth/session";
 import {
   EXPLICIT_STRATEGY_REPORTING_FREQUENCIES,
@@ -58,7 +58,7 @@ export async function POST(req: NextRequest) {
   if (guard) return guard;
   const parsed = CreateSchema.safeParse(await req.json().catch(() => ({})));
   if (!parsed.success) {
-    return NextResponse.json({ error: "Invalid input", issues: parsed.error.flatten() }, { status: 400 });
+    return NextResponse.json({ error: "Invalid input", issues: z.flattenError(parsed.error) }, { status: 400 });
   }
   try {
     const created = createStrategicMeasure(parsed.data, user.id);
@@ -104,7 +104,7 @@ export async function PATCH(req: NextRequest) {
   if (guard) return guard;
   const parsed = UpdateSchema.safeParse(await req.json().catch(() => ({})));
   if (!parsed.success) {
-    return NextResponse.json({ error: "Invalid input", issues: parsed.error.flatten() }, { status: 400 });
+    return NextResponse.json({ error: "Invalid input", issues: z.flattenError(parsed.error) }, { status: 400 });
   }
   try {
     if ("action" in parsed.data) {

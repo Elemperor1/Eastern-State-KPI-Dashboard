@@ -1,5 +1,5 @@
 import { type NextRequest, NextResponse } from "next/server";
-import { z } from "zod";
+import { z } from "@/lib/zod";
 import { authErrorResponse, requireSession } from "@/features/auth/session";
 import {
   listStrategicReportingPeriods,
@@ -30,7 +30,7 @@ export async function GET(req: NextRequest) {
   });
   if (!parsed.success) {
     return NextResponse.json(
-      { error: "Invalid export query", issues: parsed.error.flatten() },
+      { error: "Invalid export query", issues: z.flattenError(parsed.error) },
       { status: 400 },
     );
   }

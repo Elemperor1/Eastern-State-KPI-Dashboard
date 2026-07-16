@@ -1,5 +1,5 @@
 import { type NextRequest, NextResponse } from "next/server";
-import { z } from "zod";
+import { z } from "@/lib/zod";
 import { authErrorResponse, requireAdmin } from "@/features/auth/session";
 import {
   STRATEGIC_PLAN_END_YEAR,
@@ -49,7 +49,7 @@ export async function PATCH(req: NextRequest) {
   const guard = assertMutationRequest(req);
   if (guard) return guard;
   const parsed = PatchSchema.safeParse(await req.json().catch(() => ({})));
-  if (!parsed.success) return invalidStrategyInput(parsed.error.flatten());
+  if (!parsed.success) return invalidStrategyInput(z.flattenError(parsed.error));
   try {
     if (parsed.data.action === "update") {
       return NextResponse.json({

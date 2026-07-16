@@ -1,5 +1,5 @@
 import { type NextRequest, NextResponse } from "next/server";
-import { z } from "zod";
+import { z } from "@/lib/zod";
 import { authErrorResponse, requireAdmin } from "@/features/auth/session";
 import {
   StrategicTargetCreateSchema,
@@ -45,7 +45,7 @@ export async function POST(req: NextRequest) {
   const parsed = StrategicTargetCreateSchema.safeParse(
     await req.json().catch(() => ({})),
   );
-  if (!parsed.success) return invalidStrategyInput(parsed.error.flatten());
+  if (!parsed.success) return invalidStrategyInput(z.flattenError(parsed.error));
   try {
     return NextResponse.json(
       { target: createStrategicTarget(parsed.data, auth.user!.id) },
@@ -62,7 +62,7 @@ export async function PATCH(req: NextRequest) {
   const auth = await authorize(req);
   if (auth.response) return auth.response;
   const parsed = PatchSchema.safeParse(await req.json().catch(() => ({})));
-  if (!parsed.success) return invalidStrategyInput(parsed.error.flatten());
+  if (!parsed.success) return invalidStrategyInput(z.flattenError(parsed.error));
   try {
     if (parsed.data.action === "update") {
       return NextResponse.json({

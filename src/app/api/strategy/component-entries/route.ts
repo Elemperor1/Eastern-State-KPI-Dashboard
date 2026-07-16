@@ -1,5 +1,5 @@
 import { type NextRequest, NextResponse } from "next/server";
-import { z } from "zod";
+import { z } from "@/lib/zod";
 import { authErrorResponse, requireAdmin } from "@/features/auth/session";
 import {
   deleteStrategyComponentEntry,
@@ -58,7 +58,7 @@ export async function DELETE(req: NextRequest) {
   const parsed = DeleteSchema.safeParse(await req.json().catch(() => ({})));
   if (!parsed.success) {
     return NextResponse.json(
-      { error: "Invalid input", issues: parsed.error.flatten() },
+      { error: "Invalid input", issues: z.flattenError(parsed.error) },
       { status: 400 },
     );
   }

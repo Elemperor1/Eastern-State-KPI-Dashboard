@@ -1,5 +1,5 @@
 import { type NextRequest, NextResponse } from "next/server";
-import { z } from "zod";
+import { z } from "@/lib/zod";
 import {
   authErrorResponse,
   requireAdmin,
@@ -31,8 +31,8 @@ const QuerySchema = z.object({
 });
 
 const PatchSchema = z.discriminatedUnion("action", [
-  z.object({ action: z.literal("update"), band: z.unknown() }).strict(),
-  z.object({ action: z.literal("reorder"), order: z.unknown() }).strict(),
+  z.object({ action: z.literal("update"), band: z.unknown().optional() }).strict(),
+  z.object({ action: z.literal("reorder"), order: z.unknown().optional() }).strict(),
   z.object({ action: z.literal("archive"), id: z.number().int().positive() }).strict(),
   z.object({ action: z.literal("restore"), id: z.number().int().positive() }).strict(),
 ]);
@@ -64,7 +64,7 @@ export async function GET(req: NextRequest) {
   });
   if (!parsed.success) {
     return NextResponse.json(
-      { error: "Invalid input", issues: parsed.error.flatten() },
+      { error: "Invalid input", issues: z.flattenError(parsed.error) },
       { status: 400 },
     );
   }
@@ -112,7 +112,7 @@ export async function PATCH(req: NextRequest) {
   const parsed = PatchSchema.safeParse(await req.json().catch(() => ({})));
   if (!parsed.success) {
     return NextResponse.json(
-      { error: "Invalid input", issues: parsed.error.flatten() },
+      { error: "Invalid input", issues: z.flattenError(parsed.error) },
       { status: 400 },
     );
   }
