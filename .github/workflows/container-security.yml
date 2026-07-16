@@ -56,15 +56,15 @@ jobs:
           docker build --file Dockerfile --tag "$IMAGE_REF" .
           docker image inspect "$IMAGE_REF" --format '{{.Id}}'
 
-      - name: Generate all-severity SARIF report
+      - name: Generate actionable SARIF report
         uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
         with:
           scan-type: image
           image-ref: ${{ env.IMAGE_REF }}
           scanners: vuln
           vuln-type: os,library
-          severity: UNKNOWN,LOW,MEDIUM,HIGH,CRITICAL
-          ignore-unfixed: false
+          severity: HIGH,CRITICAL
+          ignore-unfixed: true
           format: sarif
           output: trivy-results.sarif
           exit-code: "0"

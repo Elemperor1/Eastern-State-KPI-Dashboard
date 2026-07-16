@@ -1,7 +1,15 @@
-FROM node:24-bookworm-slim AS base
+FROM node:24-bookworm-slim@sha256:6f7b03f7c2c8e2e784dcf9295400527b9b1270fd37b7e9a7285cf83b6951452d AS base
 
-RUN npm install --global npm@11.18.0 \
-  && npm cache clean --force
+# Keep npm at the repository-tested major while pinning the registry artifact to
+# its published Subresource Integrity digest. The base image's bundled npm
+# currently contains a fixable undici advisory.
+RUN set -eux; \
+  node -e "fetch('https://registry.npmjs.org/npm/-/npm-11.18.0.tgz').then((response) => { if (!response.ok) throw new Error('npm download failed: ' + response.status); return response.arrayBuffer(); }).then((body) => require('node:fs').writeFileSync('/tmp/npm.tgz', Buffer.from(body)))"; \
+  echo "4faecce0be70366d1c67b1012c4adc1246354a6cc45bf589f92003073b05518d547403df1475c542d67a4845e22b4fafcd7cac0af02c7a96cc6814f09eb003fb  /tmp/npm.tgz" | sha512sum -c -; \
+  rm -rf /usr/local/lib/node_modules/npm; \
+  mkdir -p /usr/local/lib/node_modules/npm; \
+  tar -xzf /tmp/npm.tgz -C /usr/local/lib/node_modules/npm --strip-components=1; \
+  rm -f /tmp/npm.tgz
 
 FROM base AS deps
 
