@@ -1,4 +1,9 @@
-FROM node:24-bookworm-slim AS deps
+FROM node:24-bookworm-slim AS base
+
+RUN npm install --global npm@11.18.0 \
+  && npm cache clean --force
+
+FROM base AS deps
 
 WORKDIR /app
 COPY package.json package-lock.json ./
@@ -11,7 +16,7 @@ RUN DATABASE_PATH=/tmp/eastern-state-kpi-build.db npm run build \
   && rm -f /tmp/eastern-state-kpi-build.db* \
   && rm -rf /app/data
 
-FROM node:24-bookworm-slim AS runner
+FROM base AS runner
 
 WORKDIR /app
 ENV NODE_ENV=production

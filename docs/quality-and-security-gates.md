@@ -7,9 +7,11 @@ used by GitHub Actions.
 ## Toolchain baseline
 
 - Package manager: npm with `package-lock.json` lockfile version 3.
-- Declared runtime: Node.js 24 or newer and npm 11. CI and Docker use Node 24.
-- Application: Next.js 15 App Router, React 19, and strict TypeScript.
-- Lint: ESLint 9 flat config with Next.js/React Hooks rules and
+- Declared runtime: Node.js 24 or newer and npm 11.18. CI and Docker use Node
+  24; Docker installs the declared npm release instead of retaining the base
+  image's older bundled npm.
+- Application: Next.js 16 App Router, React 19, and strict TypeScript.
+- Lint: ESLint 10 flat config with Next.js/React Hooks rules and
   `typescript-eslint` project service.
 - Tests: Vitest for unit/integration tests and Playwright with Google Chrome for
   serial browser acceptance tests.
@@ -17,9 +19,10 @@ used by GitHub Actions.
   `data/kpi.db` is never used by Playwright.
 - Hooks: no hook manager is installed. Run `npm run check` before each commit.
 
-The remote points at `Elemperor1/Eastern-State-KPI-Dashboard` and the primary
-branch is `master`. Repository visibility cannot be established from the local
-checkout, so GitHub feature availability must be confirmed by an administrator.
+The remote points at the public
+`Elemperor1/Eastern-State-KPI-Dashboard` repository and the primary branch is
+`master`. If repository visibility or GitHub plan changes, re-check Dependency
+Review and code-scanning availability before making those checks required.
 
 ## Local commands
 
@@ -150,6 +153,49 @@ Dependabot checks npm and GitHub Actions weekly. Minor/patch development
 updates are grouped; open pull requests are capped to keep review volume
 bounded.
 
+### Dependency Review
+
+`.github/workflows/dependency-review.yml` compares the dependency graph on
+every pull request. It blocks newly introduced `high` or `critical`
+vulnerabilities in runtime, development, or unknown scopes. Lower-severity
+findings and patched-version guidance remain visible in the job summary without
+failing the check. License enforcement is disabled because this repository has
+no approved/denied license policy; adding one requires a separate policy
+decision.
+
+Dependency Review complements OSV rather than replacing it: OSV scans the
+whole committed npm lockfile, while Dependency Review evaluates only the
+dependency delta introduced by a pull request. The action is available for
+public repositories. A private repository requires GitHub Advanced Security;
+if visibility changes, confirm that entitlement before making this check
+required.
+
+### Production container
+
+`.github/workflows/container-security.yml` builds the root `Dockerfile`, the
+same Docker build definition selected by `fly.toml`, and scans the resulting
+local image without pushing it to a registry. Trivy scans both Debian OS
+packages and language dependencies. The all-severity scan (`UNKNOWN` through
+`CRITICAL`, including unfixed findings) is informational and is retained as a
+table artifact and the `trivy-container-image` SARIF category. A separate pass
+blocks only fixable `HIGH` and `CRITICAL` findings; an advisory with no fix is
+surfaced but does not fail the job.
+
+Pull requests run this workflow only when the production image inputs,
+application, scripts, or workflows change. Pushes to `master`, manual runs,
+and the weekly schedule scan the image again so newly published distro or npm
+advisories are detected even without a source change. GitHub does not grant
+`security-events: write` to fork pull requests, so those runs still build,
+scan, retain the text artifact, and enforce the blocking policy but skip SARIF
+publication.
+
+A separate Syft workflow is intentionally omitted. Trivy can already generate
+SPDX or CycloneDX from this exact image, while the repository currently has no
+tagged-release, signing, or attestation lifecycle that would give a second SBOM
+inventory durable release identity. Revisit an image SBOM when releases are
+tagged or attestations become part of the Fly deployment process; generate it
+from the production image and retain it with that release.
+
 ### Secrets
 
 Gitleaks 8.30.1 scans all retained commits locally. CI passes a validated
@@ -157,12 +203,13 @@ Gitleaks 8.30.1 scans all retained commits locally. CI passes a validated
 `fetch-depth: 0`; findings are always redacted. The scanner has no network in
 Docker and no credentials are passed to it.
 
-`.gitleaksignore` contains one exact historical fingerprint. A prose list of
-CSRF test cases in commit `7d2e5e2` was classified as a generic API-key
-assignment; the allowlist is limited to that commit, file, rule, and line. It
-must be removed when the commit leaves retained history or the upstream rule no
-longer matches that prose. Do not allowlist realistic test credentials; replace
-them with obviously deterministic fixtures.
+`.gitleaksignore` contains two exact historical fingerprints. A prose list of
+CSRF test cases in commit `7d2e5e2` and Impeccable critique prose about an
+authentication heading in commit `4232ee7` were classified as generic API-key
+assignments. Each allowlist entry is limited to its commit, file, rule, and
+line. Remove an entry when its commit leaves retained history or the upstream
+rule no longer matches that prose. Do not allowlist realistic test credentials;
+replace them with obviously deterministic fixtures.
 
 Gitleaks cannot revoke a credential or prove that an exposed credential was
 never used. Treat a real match as an incident: revoke/rotate it, remove it from
@@ -199,9 +246,32 @@ the fast local gate; review any lower-confidence result before suppression.
 Neither workflow references repository secrets, including on fork pull
 requests.
 
-Action references use supported stable major versions. Dependabot manages
-GitHub Actions updates separately; review action ownership and release notes as
-security-sensitive dependency changes.
+`.github/workflows/dependency-review.yml` exposes one pull-request-only
+`Dependency Review` check. `.github/workflows/container-security.yml` exposes
+`Container image / Trivy` on relevant pull requests, pushes to `master`, the
+weekly schedule, and manual dispatch. These two checks carry the blocking
+policies described above; their summaries and SARIF also contain informational
+findings.
+
+`.github/workflows/scorecard.yml` runs on pushes to `master`, weekly, and by
+manual dispatch. OpenSSF Scorecard evaluates repository and workflow
+supply-chain hygiene, publishes the public-repository result using OIDC,
+retains the raw SARIF artifact for 14 days, and uploads the distinct
+`openssf-scorecard` SARIF category. It is informational and is not a normal
+pull-request gate. `id-token: write` is granted only to this job because
+`publish_results: true` requires it. Public repositories support the action and
+code-scanning upload; private repositories require the applicable GitHub code
+security/Advanced Security features, and Scorecard result publication is
+disabled for private repositories.
+
+Every action added by these workflows is pinned to an immutable commit SHA
+with its release tag in a comment. Dependabot continues to manage the GitHub
+Actions ecosystem; review proposed SHA moves, action ownership, and release
+notes as security-sensitive dependency changes. The Scorecard job uses only
+the actions approved by Scorecard publication policy, runs on GitHub-hosted
+Ubuntu, and has no service container or job environment. Harden Runner is not
+added because the repository has no existing egress policy to preserve; adding
+one should be a repository-wide workflow-hardening decision.
 
 ## Investigating failures
 
@@ -213,9 +283,16 @@ security-sensitive dependency changes.
    `AUTH_DISABLED` unset for production paths.
 5. For OSV, confirm the advisory, reachable package path, fixed version, and
    whether the package is production or development-only.
-6. For Gitleaks, keep redaction enabled; inspect only rule/file/commit metadata
+6. For Dependency Review, confirm the introduced package/version and advisory;
+   use `allow-ghsas` only for a documented, time-bounded false positive.
+7. For Trivy, confirm the image package, source layer, fixed version, and
+   production reachability. Keep unfixed findings visible; any ignore must name
+   the advisory, owner, justification, and review date.
+8. For Scorecard, verify the repository setting or workflow evidence behind the
+   check before changing policy. A lower score is not by itself a PR failure.
+9. For Gitleaks, keep redaction enabled; inspect only rule/file/commit metadata
    until the value can be handled as a secret.
-7. For Semgrep/CodeQL, trace source-to-sink behavior. Fix reachable findings;
+10. For Semgrep/CodeQL, trace source-to-sink behavior. Fix reachable findings;
    record precise evidence for false positives.
 
 Do not commit generated SARIF/JSON reports, scanner caches, Playwright output,
@@ -223,8 +300,9 @@ build output, temp databases, or copied logs.
 
 ## Required checks and repository settings
 
-After these workflows run successfully on the default branch, an administrator
-should protect `master` and require all ten stable checks:
+After these workflows run successfully, an administrator should protect
+`master` and require the existing ten stable checks plus the two intentionally
+blocking security checks:
 
 - `Typecheck`
 - `Lint`
@@ -236,13 +314,19 @@ should protect `master` and require all ten stable checks:
 - `Semgrep`
 - `CodeQL (javascript-typescript)`
 - `CodeQL (python)`
+- `Dependency Review`
+- `Container image / Trivy`
+
+Do not require `Scorecard analysis`; it is scheduled/default-branch
+informational signal rather than a pull-request gate.
 
 Repository files implement the workflows and Dependabot schedule. The following
 settings are **not** changed by this work and still require a GitHub
 administrator, subject to plan/visibility availability:
 
 - enable branch protection/rulesets, required pull requests, and the checks
-  above;
+  above (the repository currently has neither branch protection nor a
+  ruleset);
 - enable Dependabot alerts and Dependabot security updates;
 - confirm code scanning accepts CodeQL uploads and alerts are visible;
 - enable GitHub Secret Scanning and push protection;

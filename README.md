@@ -224,7 +224,9 @@ npm run check
 Use `npm run check:all` for release-level validation and
 `npm run security:scan` for the pinned OSV-Scanner, Gitleaks, and Semgrep gates.
 GitHub Actions runs those gates independently alongside CodeQL so each can be a
-stable required check. See
+stable required check. Pull requests also receive dependency-delta review and
+a production-container Trivy scan; OpenSSF Scorecard runs as scheduled
+repository supply-chain signal. See
 [`docs/quality-and-security-gates.md`](docs/quality-and-security-gates.md) for
 commands, policies, exceptions, failure triage, and the GitHub settings an
 administrator must enable.

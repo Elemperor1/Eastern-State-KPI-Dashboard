@@ -1,0 +1,136 @@
+name: Container Security
+
+on:
+  push:
+    branches:
+      - master
+  pull_request:
+    branches:
+      - master
+    paths:
+      - .github/workflows/**
+      - .dockerignore
+      - Dockerfile
+      - fly.toml
+      - next.config.mjs
+      - package.json
+      - package-lock.json
+      - postcss.config.mjs
+      - public/**
+      - scripts/**
+      - src/**
+      - tailwind.config.ts
+      - tsconfig.json
+  schedule:
+    - cron: "17 9 * * 3"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: container-security-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  trivy:
+    name: Container image / Trivy
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    permissions:
+      contents: read
+      security-events: write
+    env:
+      IMAGE_REF: eastern-state-kpi:${{ github.sha }}
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        with:
+          persist-credentials: false
+
+      - name: Build production container image
+        shell: bash
+        run: |
+          set -euo pipefail
+          docker build --file Dockerfile --tag "$IMAGE_REF" .
+          docker image inspect "$IMAGE_REF" --format '{{.Id}}'
+
+      - name: Generate all-severity SARIF report
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
+        with:
+          scan-type: image
+          image-ref: ${{ env.IMAGE_REF }}
+          scanners: vuln
+          vuln-type: os,library
+          severity: UNKNOWN,LOW,MEDIUM,HIGH,CRITICAL
+          ignore-unfixed: false
+          format: sarif
+          output: trivy-results.sarif
+          exit-code: "0"
+          timeout: 10m0s
+          version: v0.70.0
+          cache: true
+
+      - name: Generate human-readable report
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
+        with:
+          scan-type: image
+          image-ref: ${{ env.IMAGE_REF }}
+          scanners: vuln
+          vuln-type: os,library
+          severity: UNKNOWN,LOW,MEDIUM,HIGH,CRITICAL
+          ignore-unfixed: false
+          format: table
+          output: trivy-results.txt
+          exit-code: "0"
+          timeout: 10m0s
+          version: v0.70.0
+          skip-setup-trivy: true
+          cache: false
+
+      - name: Add report to job summary
+        shell: bash
+        run: |
+          set -euo pipefail
+          {
+            echo "## Trivy container vulnerability report"
+            echo
+            echo "Image: \`$IMAGE_REF\`"
+            echo
+            echo '```text'
+            sed -n '1,200p' trivy-results.txt
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload human-readable report
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: trivy-container-report-${{ github.sha }}
+          path: trivy-results.txt
+          if-no-files-found: error
+          retention-days: 14
+
+      - name: Upload SARIF report to code scanning
+        if: ${{ always() && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository) }}
+        uses: github/codeql-action/upload-sarif@8aad20d150bbac5944a9f9d289da16a4b0d87c1e # v4.36.2
+        with:
+          sarif_file: trivy-results.sarif
+          category: trivy-container-image
+
+      - name: Block fixable high and critical vulnerabilities
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
+        with:
+          scan-type: image
+          image-ref: ${{ env.IMAGE_REF }}
+          scanners: vuln
+          vuln-type: os,library
+          severity: HIGH,CRITICAL
+          ignore-unfixed: true
+          format: table
+          exit-code: "1"
+          timeout: 10m0s
+          version: v0.70.0
+          skip-setup-trivy: true
+          cache: false

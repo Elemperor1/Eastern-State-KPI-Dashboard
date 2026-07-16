@@ -3,3 +3,9 @@
 # Remove when this commit is no longer in retained history or the upstream rule
 # stops matching comma-separated prose.
 7d2e5e28d0df24c0233ed28d74ad35e2325c947b:docs/csrf-hardening.md:generic-api-key:208
+
+# Exact historical false positive: an Impeccable critique's prose about the
+# authentication heading structure was interpreted as a generic API key.
+# Owner: repository maintainers. Remove when this commit leaves retained
+# history or the upstream rule no longer matches the prose.
+4232ee71508d3ef3870a661ef3cd0626a9d85313:.impeccable/critique/2026-07-15T18-43-23Z__src-app.md:generic-api-key:35
