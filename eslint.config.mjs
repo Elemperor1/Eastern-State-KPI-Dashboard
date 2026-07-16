@@ -1,16 +1,11 @@
-import { dirname } from "node:path";
-import { fileURLToPath } from "node:url";
-import { FlatCompat } from "@eslint/eslintrc";
+import { fixupConfigRules } from "@eslint/compat";
+import nextCoreWebVitals from "eslint-config-next/core-web-vitals";
 import globals from "globals";
 import tseslint from "typescript-eslint";
 
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = dirname(__filename);
+const configRoot = import.meta.dirname;
 
-const compat = new FlatCompat({
-  baseDirectory: __dirname,
-});
-
+const javascriptFiles = ["**/*.{js,jsx,mjs,cjs}"];
 const typescriptFiles = ["**/*.{ts,tsx,mts,cts}"];
 const runtimeBoundaryConditionFiles = [
   "src/app/data-entry/_components/StrategicDataEntryClient.tsx",
@@ -61,17 +56,34 @@ const eslintConfig = [
       "next-env.d.ts",
     ],
   },
-  ...compat.extends("next/core-web-vitals", "next/typescript"),
-  ...tseslint.configs.recommendedTypeChecked.map((config) => ({
-    ...config,
-    files: typescriptFiles,
-  })),
+  ...fixupConfigRules(nextCoreWebVitals),
+  {
+    files: javascriptFiles,
+    languageOptions: {
+      parser: tseslint.parser,
+    },
+  },
+  {
+    rules: {
+      // React Hooks 7 added these compiler-oriented rules after the previous
+      // lint baseline. Adopting them requires behavior-sensitive component
+      // refactors, so keep that work separate from the ESLint 10 migration.
+      "react-hooks/refs": "off",
+      "react-hooks/set-state-in-effect": "off",
+    },
+  },
+  ...tseslint.configs.recommendedTypeChecked.map(
+    ({ plugins: _plugins, ...config }) => ({
+      ...config,
+      files: typescriptFiles,
+    }),
+  ),
   {
     files: typescriptFiles,
     languageOptions: {
       parserOptions: {
         projectService: true,
-        tsconfigRootDir: __dirname,
+        tsconfigRootDir: configRoot,
       },
     },
     rules: {
