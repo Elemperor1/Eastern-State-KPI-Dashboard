@@ -27,6 +27,27 @@ describe("security workflow policy", () => {
     expect(unpinned).toEqual([]);
   });
 
+  it("disables credential persistence for every Quality checkout", () => {
+    const lines = read(".github/workflows/quality.yml").split("\n");
+    const checkoutIndexes = lines.flatMap((line, index) =>
+      line.includes("- uses: actions/checkout@") ? [index] : [],
+    );
+
+    expect(checkoutIndexes).toHaveLength(8);
+    for (const checkoutIndex of checkoutIndexes) {
+      const nextStepOffset = lines
+        .slice(checkoutIndex + 1)
+        .findIndex((line) => /^\s{6}- (?:uses|run|name):/u.test(line));
+      const endIndex =
+        nextStepOffset === -1
+          ? lines.length
+          : checkoutIndex + 1 + nextStepOffset;
+      const checkoutBlock = lines.slice(checkoutIndex, endIndex).join("\n");
+
+      expect(checkoutBlock).toContain("persist-credentials: false");
+    }
+  });
+
   it("pins the external production base image and npm bootstrap", () => {
     const dockerfile = read("Dockerfile");
 
