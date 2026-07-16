@@ -177,9 +177,9 @@ same Docker build definition selected by `fly.toml`, and scans the resulting
 local image without pushing it to a registry. Trivy scans both Debian OS
 packages and language dependencies. The all-severity scan (`UNKNOWN` through
 `CRITICAL`, including unfixed findings) is informational and is retained as a
-table artifact and the `trivy-container-image` SARIF category. A separate pass
-blocks only fixable `HIGH` and `CRITICAL` findings; an advisory with no fix is
-surfaced but does not fail the job.
+table artifact and job-summary evidence. Code-scanning SARIF and the blocking
+pass contain only fixable `HIGH` and `CRITICAL` findings, so the alert backlog
+stays actionable without discarding lower-severity or unfixed evidence.
 
 Pull requests run this workflow only when the production image inputs,
 application, scripts, or workflows change. Pushes to `master`, manual runs,

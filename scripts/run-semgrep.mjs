@@ -1,5 +1,3 @@
-import { join } from "node:path";
-import { tmpdir } from "node:os";
 import {
   dockerArgs,
   fail,
@@ -9,6 +7,7 @@ import {
 } from "./security-tooling.mjs";
 
 const SEMGREP_VERSION = "1.164.0";
+const SEMGREP_IMAGE = `semgrep/semgrep:${SEMGREP_VERSION}@sha256:207983631beecdbe7fa29196c7f4a7a5f29033933cdb76c687ce4a672e07618d`;
 const scanArgs = [
   "scan",
   "--config",
@@ -31,33 +30,8 @@ try {
   if (semgrep) {
     run(semgrep, scanArgs);
   } else {
-    const pipx = findExecutable("pipx");
-    if (pipx) {
-      const cacheRoot = join(tmpdir(), "eastern-state-kpi-semgrep");
-      run(
-        pipx,
-        ["run", "--spec", `semgrep==${SEMGREP_VERSION}`, "semgrep", ...scanArgs],
-        {
-          env: {
-            HOME: cacheRoot,
-            XDG_CACHE_HOME: join(cacheRoot, "xdg-cache"),
-            XDG_DATA_HOME: join(cacheRoot, "xdg-data"),
-            UV_CACHE_DIR: join(cacheRoot, "uv-cache"),
-            UV_TOOL_BIN_DIR: join(cacheRoot, "uv-bin"),
-            UV_TOOL_DIR: join(cacheRoot, "uv-tools"),
-            PIPX_HOME: join(cacheRoot, "pipx-home"),
-            PIPX_BIN_DIR: join(cacheRoot, "pipx-bin"),
-            PIP_CACHE_DIR: join(cacheRoot, "pip-cache"),
-          },
-        },
-      );
-    } else {
-      const docker = requireDocker();
-      run(
-        docker,
-        dockerArgs(`semgrep/semgrep:${SEMGREP_VERSION}`, scanArgs),
-      );
-    }
+    const docker = requireDocker();
+    run(docker, dockerArgs(SEMGREP_IMAGE, ["semgrep", ...scanArgs]));
   }
 } catch (error) {
   fail(
