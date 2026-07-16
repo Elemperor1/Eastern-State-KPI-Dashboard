@@ -44,6 +44,12 @@ databases, not production migration.
 Open <http://localhost:3000>. With the quick-start bypass, the app opens
 directly; with auth enabled, sign in normally.
 
+Next.js 16 defaults both development and production builds to Turbopack. This
+repository intentionally keeps Webpack explicit for `npm run dev` and
+`npm run build`, preserving the proven Next.js 15 bundler path while the
+framework runtime moves to Next.js 16. Playwright builds that production path
+before starting its loopback acceptance server.
+
 > **Auth bypass (temporary).** No tracked environment file enables the bypass.
 > Start development with `AUTH_DISABLED=true npm run dev` (or set the same value
 > in your untracked `.env.local`) to make the dashboard reachable without a
@@ -148,7 +154,7 @@ archive. ADR 0022 documents backup, migration, and rollback.
 
 | Layer       | Tech                                              |
 | ----------- | ------------------------------------------------- |
-| Framework   | Next.js 15 App Router + TypeScript          |
+| Framework   | Next.js 16 App Router + TypeScript                |
 | Styling     | Tailwind CSS with a custom brand palette          |
 | Database    | SQLite via Node's built-in `node:sqlite` module   |
 | Auth        | `iron-session` (encrypted cookies) + `bcryptjs`   |

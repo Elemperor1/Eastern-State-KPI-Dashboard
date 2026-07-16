@@ -10,11 +10,11 @@
   "scripts": {
     "dev": "bash ./scripts/dev.sh",
     "dev:stable": "WATCHPACK_POLLING=true WATCHPACK_POLLING_INTERVAL=1000 bash ./scripts/dev.sh",
-    "build": "next build",
+    "build": "next build --webpack",
     "start": "next start -p 3000",
     "start:deploy": "bash ./scripts/start-production.sh",
     "db:migrate": "tsx scripts/migrate.ts",
-    "typecheck": "tsc --noEmit",
+    "typecheck": "AUTH_DISABLED= next typegen && tsc --noEmit",
     "lint": "eslint . --max-warnings=0",
     "lint:fix": "eslint . --fix",
     "db:seed": "tsx scripts/seed.ts",

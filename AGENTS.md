@@ -1,6 +1,6 @@
 # Eastern State KPI — Agent Notes
 
-Internal KPI dashboard for Eastern State Penitentiary Historic Site. Next.js 15 App Router + SQLite + iron-session.
+Internal KPI dashboard for Eastern State Penitentiary Historic Site. Next.js 16 App Router + SQLite + iron-session.
 
 ## Current product boundary (issue 42)
 
@@ -65,7 +65,7 @@ On the first run against a fresh database, the seed creates `kerry@easternstate.
 | `npm run setup:admin`         | Operator-only: set a known password on a bootstrap account (`SETUP_ADMIN_PASSWORD=...`), clears `must_change_password`. Never logs the password. |
 | `npm run architecture:guard`  | Fails if server-owned source calls the app's own `/api/*` routes, client components import server-only data access, or removed internal read routes reappear in `src/` or smoke scripts. |
 | `npm test`                    | Vitest unit and contract tests across app, feature, and infrastructure boundaries |
-| `npm run test:e2e`            | Playwright/Chrome acceptance suite for the four destinations, strategic save recovery, removed routes, Setup, and CSV/PNG/PDF output. Starts a loopback dev server automatically. |
+| `npm run test:e2e`            | Playwright/Chrome acceptance suite for the four destinations, strategic save recovery, removed routes, Setup, and CSV/PNG/PDF output. Builds and starts a loopback production server automatically. |
 | `npm run perf:profile`         | Repeatable Chrome performance profile for the four destinations; requires a running server. |
 | `npm run test:coverage`       | Vitest with v8 coverage (≥ 90% on the shared reporting-cycle contract) |
 
@@ -117,9 +117,9 @@ gate. Run `npm test`; the smoke harness complements, rather than replaces,
 these unit and contract tests.
 
 Browser acceptance tests live in `e2e/dashboard-acceptance.spec.ts`. Run
-`npm run test:e2e`; Playwright provisions a disposable admin and starts a
-loopback-only auth-enabled dev server, uses the installed Google Chrome channel,
-validates downloaded PNG/PDF file
+`npm run test:e2e`; Playwright provisions a disposable admin, builds the explicit
+Webpack production path, and starts a loopback-only auth-enabled production
+server. It uses the installed Google Chrome channel, validates downloaded PNG/PDF file
 signatures and dimensions, and runs against a dedicated private temporary
 SQLite database. Its DB/WAL/SHM files and temporary application records are
 removed during identity-checked teardown, so `data/kpi.db` is never used by

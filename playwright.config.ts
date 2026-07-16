@@ -40,9 +40,10 @@ export default defineConfig({
     trace: "retain-on-failure",
   },
   webServer: {
-    // Polling avoids macOS/sandbox watcher exhaustion (EMFILE). The suite uses
-    // a real credentialed session against its private disposable database.
-    command: "npm run db:seed && npm run setup:admin && npm run dev",
+    // Exercise the production Webpack build so acceptance does not depend on
+    // development-only on-demand compilation. The suite still uses a real
+    // credentialed session against its private disposable database.
+    command: "bash ./scripts/e2e-server.sh",
     env: {
       APP_CANONICAL_ORIGIN: baseURL,
       AUTH_DISABLED: "false",
@@ -53,8 +54,6 @@ export default defineConfig({
       SESSION_SECRET: sessionSecret,
       SESSION_SECURE: "false",
       SETUP_ADMIN_PASSWORD: adminPassword,
-      WATCHPACK_POLLING: "true",
-      WATCHPACK_POLLING_INTERVAL: "1000",
     },
     url: `${baseURL}/dashboard/overview`,
     reuseExistingServer: false,
