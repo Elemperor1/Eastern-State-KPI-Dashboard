@@ -100,6 +100,27 @@ describe("/api/strategy/distribution-bands", () => {
     await expect(response.json()).resolves.toEqual({ bands: [BAND] });
   });
 
+  it("rejects invalid numeric query coercions without calling the repository", async () => {
+    const response = await GET(
+      new NextRequest(
+        "http://localhost/api/strategy/distribution-bands?kpi_id=invalid&reporting_year=invalid",
+      ),
+    );
+
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toMatchObject({
+      error: "Invalid input",
+      issues: {
+        formErrors: [],
+        fieldErrors: {
+          kpi_id: ["Expected number, received nan"],
+          reporting_year: ["Expected number, received nan"],
+        },
+      },
+    });
+    expect(mocks.list).not.toHaveBeenCalled();
+  });
+
   it("creates a band as an admin", async () => {
     const body = {
       kpi_id: 4,
@@ -125,6 +146,31 @@ describe("/api/strategy/distribution-bands", () => {
     expect(response.status).toBe(200);
     expect(mocks[mockName]).toHaveBeenCalled();
   });
+
+  it.each([
+    ["update", "update"],
+    ["reorder", "reorder"],
+  ] as const)(
+    "delegates a missing %s payload to the production domain validator",
+    async (action, mockName) => {
+      const actual = await vi.importActual<typeof import("@/features/strategy/server")>(
+        "@/features/strategy/server",
+      );
+      if (mockName === "update") {
+        mocks.update.mockImplementationOnce(actual.updateStrategyDistributionBand);
+      } else {
+        mocks.reorder.mockImplementationOnce(actual.reorderStrategyDistributionBands);
+      }
+
+      const response = await PATCH(mutation("PATCH", { action }));
+
+      expect(response.status).toBe(400);
+      await expect(response.json()).resolves.toEqual({
+        error: "Invalid strategy value entry.",
+        issues: [{ path: "", message: "Required" }],
+      });
+    },
+  );
 
   it("returns a structured validation error from the server contract", async () => {
     mocks.create.mockImplementationOnce(() => {

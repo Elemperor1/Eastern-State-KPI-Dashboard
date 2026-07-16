@@ -1,4 +1,4 @@
-import { z } from "zod";
+import { z } from "@/lib/zod";
 import {
   AGGREGATION_METHODS,
   AVERAGE_INPUT_METHODS,
@@ -98,9 +98,15 @@ const IsoDateSchema = z
     "Date must be valid.",
   );
 const NullableIsoDateSchema = IsoDateSchema.nullable().optional().default(null);
-const NullableIsoDateTimeSchema = z
-  .string()
-  .datetime({ offset: true })
+const CurrentIsoDateTimeSchema = z.iso.datetime({ offset: true });
+const ProductionIsoDateTimeSchema = z.string().refine(
+  (value) => {
+    const normalized = value.replace(/[+-]\d{2}:?\d{2}$/, "Z");
+    return CurrentIsoDateTimeSchema.safeParse(normalized).success;
+  },
+  { error: "Invalid datetime" },
+);
+const NullableIsoDateTimeSchema = ProductionIsoDateTimeSchema
   .nullable()
   .optional()
   .default(null);
@@ -877,7 +883,7 @@ const StrategyJsonValueSchema: z.ZodType<StrategyJsonValue> = z.lazy(() =>
     z.boolean(),
     z.null(),
     z.array(StrategyJsonValueSchema),
-    z.record(StrategyJsonValueSchema),
+    z.record(z.string(), StrategyJsonValueSchema),
   ]),
 );
 
@@ -977,7 +983,7 @@ const StrategicTargetShape = {
   external_target_year: z.boolean().default(false),
   target_value: FiniteNumberSchema.nullable().optional().default(null),
   structured_target: z
-    .record(StrategyJsonValueSchema)
+    .record(z.string(), StrategyJsonValueSchema)
     .nullable()
     .optional()
     .default(null),
@@ -1069,7 +1075,10 @@ export const StrategicTargetUpdateSchema = z
     target_year: YearSchema.optional(),
     external_target_year: z.boolean().optional(),
     target_value: FiniteNumberSchema.nullable().optional(),
-    structured_target: z.record(StrategyJsonValueSchema).nullable().optional(),
+    structured_target: z
+      .record(z.string(), StrategyJsonValueSchema)
+      .nullable()
+      .optional(),
     target_description: patchNullableText(4_000),
     baseline_year: YearSchema.nullable().optional(),
     baseline_value: FiniteNumberSchema.nullable().optional(),
@@ -1167,8 +1176,14 @@ export const StrategyAuditEventInputSchema = z
     new_value: StrategyJsonValueSchema.nullable().optional().default(null),
     actor_id: NullableIdSchema,
     actor_display_name: nullableText(200),
-    actor_email: z.string().trim().email().max(320).nullable().optional().default(null),
-    occurred_at: z.string().datetime({ offset: true }),
+    actor_email: z
+      .string()
+      .trim()
+      .pipe(z.email().max(320))
+      .nullable()
+      .optional()
+      .default(null),
+    occurred_at: ProductionIsoDateTimeSchema,
   })
   .strict()
   .superRefine((event, ctx) => {

@@ -1,5 +1,5 @@
 import { type NextRequest, NextResponse } from "next/server";
-import { z } from "zod";
+import { z } from "@/lib/zod";
 import { authErrorResponse, requireAdmin } from "@/features/auth/session";
 import { assertMutationRequest } from "@/lib/request-guard";
 import {
@@ -34,7 +34,7 @@ const AccountSchema = z
     disabled: z.boolean().optional(),
   })
   .refine((d) => d.role !== undefined || d.disabled !== undefined, {
-    message: "Provide either a role or a disabled flag.",
+    error: "Provide either a role or a disabled flag.",
   });
 
 function refreshedUsersPayload() {
@@ -53,7 +53,7 @@ export async function PATCH(req: NextRequest) {
   const parsed = AccountSchema.safeParse(await req.json().catch(() => ({})));
   if (!parsed.success) {
     return NextResponse.json(
-      { error: "Invalid input", issues: parsed.error.flatten() },
+      { error: "Invalid input", issues: z.flattenError(parsed.error) },
       { status: 400 },
     );
   }

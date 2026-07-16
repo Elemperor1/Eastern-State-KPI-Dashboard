@@ -1,4 +1,4 @@
-import { z } from "zod";
+import { z } from "@/lib/zod";
 import { getDb, transaction } from "@/lib/db";
 import { resolveConfiguredTargetValue } from "./calculations";
 import { recordStrategicAuditEvent } from "./audit";
@@ -108,7 +108,7 @@ function issues(error: z.ZodError): StrategyEditIssue[] {
   }));
 }
 
-function parse<Schema extends z.ZodTypeAny>(
+function parse<Schema extends z.ZodType>(
   schema: Schema,
   value: unknown,
   message: string,

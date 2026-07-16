@@ -122,6 +122,27 @@ describe("GET /api/strategy/export", () => {
     expect(loadBoardReportPageDataMock).not.toHaveBeenCalled();
   });
 
+  it("rejects non-numeric query input with the existing flattened API shape", async () => {
+    const response = await GET(
+      new NextRequest(
+        "http://localhost/api/strategy/export?year=not-a-year&throughMonth=not-a-month",
+      ),
+    );
+
+    expect(response.status).toBe(400);
+    await expect(response.json()).resolves.toMatchObject({
+      error: "Invalid export query",
+      issues: {
+        formErrors: [],
+        fieldErrors: {
+          year: ["Expected number, received nan"],
+          throughMonth: ["Expected number, received nan"],
+        },
+      },
+    });
+    expect(loadBoardReportPageDataMock).not.toHaveBeenCalled();
+  });
+
   it("rejects an unauthenticated request", async () => {
     requireSessionMock.mockRejectedValueOnce({ status: 401 });
     const response = await GET(

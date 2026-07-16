@@ -1,0 +1,87 @@
+{
+  "measurementConfiguration": {
+    "kpi_id": 41,
+    "measurement_type": "count",
+    "unit": "attendees",
+    "reporting_frequency": "annual",
+    "configuration_status": "active",
+    "effective_start_year": 2025,
+    "effective_end_year": 2029
+  },
+  "strategicTarget": {
+    "kpi_id": 41,
+    "target_scope": "full_plan",
+    "target_year": 2029,
+    "structured_target": {
+      "plan": {
+        "slug": "2025-2029-strategic-plan",
+        "priorities": [
+          {
+            "slug": "visitor-experience",
+            "goals": [
+              {
+                "slug": "increase-participation",
+                "measures": [
+                  {
+                    "slug": "annual-attendance",
+                    "thresholds": {
+                      "2027": 250000,
+                      "2029": 300000
+                    }
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      }
+    },
+    "configuration_status": "active",
+    "source_reference": "Approved strategic-plan target"
+  },
+  "observationWrite": {
+    "kpi_id": 41,
+    "reporting_year": 2026,
+    "value": 0,
+    "notes": "Zero is a recorded value, not missing data."
+  },
+  "averageObservationWrite": {
+    "kpi_id": 42,
+    "reporting_year": 2026,
+    "average_inputs": {
+      "method": "total_score",
+      "respondent_count": 10,
+      "total_score": 40,
+      "max_score_per_respondent": 5,
+      "total_possible_score": 50
+    }
+  },
+  "auditEvent": {
+    "entity_type": "target",
+    "entity_id": 7,
+    "action": "update",
+    "entity_display_name": "Annual attendance target",
+    "parent_priority_id": 1,
+    "parent_priority_name": "Reimagine Visitor Experience",
+    "parent_goal_id": 3,
+    "parent_goal_name": "Increase participation",
+    "previous_value": {
+      "target_value": 250000,
+      "context": {
+        "years": [2025, 2026, 2027, 2028, 2029],
+        "approved": true
+      }
+    },
+    "new_value": {
+      "target_value": 300000,
+      "context": {
+        "years": [2025, 2026, 2027, 2028, 2029],
+        "approved": true
+      }
+    },
+    "actor_id": 2,
+    "actor_display_name": "KPI administrator",
+    "actor_email": "kpi-admin@easternstate.org",
+    "occurred_at": "2026-07-16T14:00:00.000Z"
+  }
+}

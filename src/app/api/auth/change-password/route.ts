@@ -1,5 +1,5 @@
 import { type NextRequest, NextResponse } from "next/server";
-import { z } from "zod";
+import { z } from "@/lib/zod";
 import { verifyCredentials } from "@/features/auth/server";
 import { updateUserPassword } from "@/features/users/server";
 import { getCurrentUser, getSession } from "@/features/auth/session";
@@ -11,7 +11,7 @@ const ChangePasswordSchema = z
     newPassword: z.string().min(8),
   })
   .refine((data) => data.currentPassword !== data.newPassword, {
-    message: "The new password must be different from the current password.",
+    error: "The new password must be different from the current password.",
     path: ["newPassword"],
   });
 

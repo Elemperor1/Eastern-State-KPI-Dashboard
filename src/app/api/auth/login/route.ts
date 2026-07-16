@@ -1,5 +1,5 @@
 import { type NextRequest, NextResponse } from "next/server";
-import { z } from "zod";
+import { z } from "@/lib/zod";
 import { verifyCredentials } from "@/features/auth/server";
 import { getSession, AuthError } from "@/features/auth/session";
 import { ensureCsrfCookie } from "@/lib/request-guard";
@@ -11,7 +11,7 @@ import {
 } from "@/lib/login-throttle";
 
 const LoginSchema = z.object({
-  email: z.string().email(),
+  email: z.email(),
   password: z.string().min(1),
 });
 

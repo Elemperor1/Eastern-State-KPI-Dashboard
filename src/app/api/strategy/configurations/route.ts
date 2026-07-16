@@ -1,5 +1,5 @@
 import { type NextRequest, NextResponse } from "next/server";
-import { z } from "zod";
+import { z } from "@/lib/zod";
 import { authErrorResponse, requireAdmin } from "@/features/auth/session";
 import {
   MeasurementConfigurationCreateSchema,
@@ -39,7 +39,7 @@ const PatchSchema = z.discriminatedUnion("action", [
           successor.effective_end_year !== null &&
           successor.effective_end_year <= STRATEGIC_PLAN_END_YEAR,
         {
-          message: "Successor definitions must stay within 2025–2029.",
+          error: "Successor definitions must stay within 2025–2029.",
           path: ["effective_start_year"],
         },
       ),
@@ -67,7 +67,7 @@ export async function POST(req: NextRequest) {
   const parsed = MeasurementConfigurationCreateSchema.safeParse(
     await req.json().catch(() => ({})),
   );
-  if (!parsed.success) return invalidStrategyInput(parsed.error.flatten());
+  if (!parsed.success) return invalidStrategyInput(z.flattenError(parsed.error));
   try {
     const configuration = createMeasurementConfiguration(
       parsed.data,
@@ -85,7 +85,7 @@ export async function PATCH(req: NextRequest) {
   const auth = await authorize(req);
   if (auth.response) return auth.response;
   const parsed = PatchSchema.safeParse(await req.json().catch(() => ({})));
-  if (!parsed.success) return invalidStrategyInput(parsed.error.flatten());
+  if (!parsed.success) return invalidStrategyInput(z.flattenError(parsed.error));
   try {
     if (parsed.data.action === "update") {
       return NextResponse.json({
