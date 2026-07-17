@@ -17,8 +17,8 @@
  * use plain `fetch` for reads.
  */
 
-export const CSRF_HEADER = "x-csrf-token";
-export const CSRF_COOKIE_NAME = "eastern_state_kpi_csrf";
+const CSRF_HEADER = "x-csrf-token";
+const CSRF_COOKIE_NAME = "eastern_state_kpi_csrf";
 
 const MUTATION_METHODS = new Set(["POST", "PATCH", "PUT", "DELETE"]);
 
@@ -33,7 +33,7 @@ export async function readJsonObject(
 }
 
 /** Read a cookie value from document.cookie by name (browser only). */
-export function readCsrfToken(): string | null {
+function readCsrfToken(): string | null {
   if (typeof document === "undefined") return null;
   const prefix = `${CSRF_COOKIE_NAME}=`;
   for (const part of document.cookie.split(";")) {

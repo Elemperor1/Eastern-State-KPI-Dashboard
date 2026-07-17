@@ -7,18 +7,12 @@
  * root (`@/features/strategy`).
  */
 export {
-  configurationStatusBeforeArchive,
   listStrategicAuditEvents,
   recordStrategicAuditEvent,
-  type StrategicAuditEventType,
-  type StrategicAuditFilter,
-  type StrategicAuditWriteInput,
 } from "./audit";
 
 export {
   reconcileStrategicMigrationData,
-  type GovernmentSupportRatioRepair,
-  type StrategicMigrationReconciliationResult,
 } from "./migration-reconciliation";
 
 export {
@@ -33,35 +27,21 @@ export {
   restoreTarget,
   StrategyConfigurationError,
   StrategyEntityNotFoundError,
-  updateComponentConfigurationStatus,
-  updateGoalConfigurationStatus,
   updateMeasurementConfigurationStatus,
-  updateTargetConfigurationStatus,
-  type ChangeCounts,
-  type StrategicConfigurationEnsureResult,
 } from "./mutations";
 
 export {
   getComponentRecord,
-  getConfigurationGapCounts,
-  getEffectiveMeasurementConfig,
   getMeasurementConfigRecord,
-  getStrategicGoal,
   getStrategicGoalBySlug,
   getStrategicGoalRecord,
-  getStrategicGoalRecordBySlug,
   getTargetRecord,
   listStrategicAuditIdentitiesForKpi,
   listComponentsForConfiguration,
   listConfigurationGaps,
   listEffectiveMeasurementConfigs,
-  listEffectiveTargetsForComponent,
   listEffectiveTargetsForKpi,
   listStrategicGoals,
-  type ConfigurationGapFilter,
-  type StrategicAuditIdentity,
-  type StrategicGoalListFilter,
-  type StrategyReadOptions,
 } from "./queries";
 
 export {
@@ -70,21 +50,12 @@ export {
   deleteStrategyComponentEntry,
   deleteStrategyDistribution,
   deleteStrategyObservation,
-  getStrategyComponentEntry,
-  getStrategyDistribution,
-  getStrategyObservation,
   listEffectiveDistributionBands,
   listStrategyComponentEntries,
   listStrategyDistributions,
   listStrategyObservations,
   reorderStrategyDistributionBands,
   restoreStrategyDistributionBand,
-  StrategyComponentEntryWriteSchema,
-  StrategyMultiComponentBatchWriteSchema,
-  StrategyDistributionBandCreateSchema,
-  StrategyDistributionBandReorderSchema,
-  StrategyDistributionBandUpdateSchema,
-  StrategyDistributionWriteSchema,
   StrategyObservationWriteSchema,
   StrategyObservationSubmissionSchema,
   StrategyValueEntryNotFoundError,
@@ -94,16 +65,9 @@ export {
   upsertStrategyDistribution,
   upsertStrategyObservation,
   updateStrategyDistributionBand,
-  type DistributionBandListOptions,
-  type StrategyComponentEntryListOptions,
   type StrategyComponentEntryRecord,
-  type StrategyDistributionBandDefinition,
   type StrategyDistributionRecord,
-  type StrategyDistributionListOptions,
-  type StrategyDistributionValueRecord,
   type StrategyObservationRecord,
-  type StrategyObservationListOptions,
-  type StrategyValueEntryIssue,
 } from "./value-entry";
 
 export {
@@ -123,10 +87,4 @@ export {
   updateStrategicGoalSettings,
   updateStrategicTarget,
   updateStrategyComponent,
-  type AppendStrategicGoalMembershipInput,
-  type StrategicGoalMembershipCatalogContext,
-  type StrategyEditIssue,
-  type SuccessorMeasurementConfigurationResult,
-  type SuccessorStrategicGoalMembershipResult,
-  type SuccessorStrategicGoalResult,
 } from "./configuration-editing";

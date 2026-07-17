@@ -42,7 +42,6 @@ import {
   Select,
   StatusBanner,
   Table,
-  Tabs,
 } from "@/components/ui";
 ```
 

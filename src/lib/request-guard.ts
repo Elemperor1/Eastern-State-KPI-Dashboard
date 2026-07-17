@@ -48,8 +48,8 @@ import crypto from "node:crypto";
  * cannot probe the boundary any more precisely than the HTTP status.
  */
 
-export const CSRF_HEADER = "x-csrf-token";
-export const CSRF_COOKIE_NAME = "eastern_state_kpi_csrf";
+const CSRF_HEADER = "x-csrf-token";
+const CSRF_COOKIE_NAME = "eastern_state_kpi_csrf";
 
 /** Reasons are for SERVER LOGS ONLY; never serialize them to the client. */
 export type CsrfFailReason =
@@ -76,7 +76,7 @@ function logCsrf(reason: CsrfFailReason, req: NextRequest): void {
 }
 
 /** Allowed origins for the deployment. */
-export function canonicalOrigins(req: NextRequest): string[] {
+function canonicalOrigins(req: NextRequest): string[] {
   const configured = process.env.APP_CANONICAL_ORIGIN;
   if (configured && configured.trim()) {
     return configured

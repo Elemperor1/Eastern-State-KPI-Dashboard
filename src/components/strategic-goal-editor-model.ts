@@ -62,7 +62,7 @@ export interface StrategicGoalMutation {
   body: Record<string, unknown>;
 }
 
-export interface StrategicGoalMutationResult {
+interface StrategicGoalMutationResult {
   ok: boolean;
   error: string | null;
   goal?: Partial<PersistedStrategicGoal>;
@@ -84,7 +84,7 @@ export interface StrategicGoalMembershipMutation {
   body: Record<string, unknown>;
 }
 
-export interface StrategicGoalMembershipMutationResult {
+interface StrategicGoalMembershipMutationResult {
   ok: boolean;
   error: string | null;
   membership?: Pick<

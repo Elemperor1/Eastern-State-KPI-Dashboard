@@ -44,7 +44,7 @@ import {
   type ValidatedStrategyComponentUpdate,
 } from "./validation";
 
-export interface StrategyEditIssue {
+interface StrategyEditIssue {
   path: string;
   message: string;
 }
@@ -636,7 +636,7 @@ const SuccessorMeasurementConfigurationSchema = z
   })
   .strict();
 
-export interface SuccessorMeasurementConfigurationResult {
+interface SuccessorMeasurementConfigurationResult {
   predecessor: PersistedMeasurementConfig;
   successor: PersistedMeasurementConfig;
 }
@@ -1833,7 +1833,7 @@ const SuccessorStrategicGoalSchema = z
   })
   .strict();
 
-export interface SuccessorStrategicGoalResult {
+interface SuccessorStrategicGoalResult {
   predecessor: PersistedStrategicGoal;
   successor: PersistedStrategicGoal;
 }
@@ -2103,7 +2103,7 @@ const GOAL_MEMBERSHIP_SETTING_FIELDS = [
 
 const GOAL_MEMBERSHIP_SEMANTIC_FIELDS = ["is_required", "weight"] as const;
 
-export interface AppendStrategicGoalMembershipInput {
+interface AppendStrategicGoalMembershipInput {
   goal_id: number;
   role: "required" | "informational";
   weight?: number | null;
@@ -2111,7 +2111,7 @@ export interface AppendStrategicGoalMembershipInput {
   effective_end_year?: number | null;
 }
 
-export interface StrategicGoalMembershipCatalogContext {
+interface StrategicGoalMembershipCatalogContext {
   kpi_id: number;
   priority_id: number;
   kpi_archived_at: string | null;
@@ -2355,7 +2355,7 @@ const SuccessorStrategicGoalMembershipSchema = z
   })
   .strict();
 
-export interface SuccessorStrategicGoalMembershipResult {
+interface SuccessorStrategicGoalMembershipResult {
   predecessor: PersistedGoalMembership;
   successor: PersistedGoalMembership;
 }

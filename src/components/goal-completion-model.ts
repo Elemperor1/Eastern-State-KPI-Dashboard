@@ -1,4 +1,4 @@
-export interface GoalExclusionReasonViewModel {
+interface GoalExclusionReasonViewModel {
   goalId: string;
   goalName?: string | null;
   reasons: string[];
@@ -18,7 +18,7 @@ export interface PriorityGoalCompletionViewModel
   priorityName: string;
 }
 
-export interface NormalizedGoalExclusionReason {
+interface NormalizedGoalExclusionReason {
   goalId: string;
   goalName: string;
   reasons: string[];

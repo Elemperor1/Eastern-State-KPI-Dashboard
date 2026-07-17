@@ -58,13 +58,13 @@ export class StrategyConfigurationError extends Error {
   }
 }
 
-export interface ChangeCounts {
+interface ChangeCounts {
   created: number;
   updated: number;
   unchanged: number;
 }
 
-export interface StrategicConfigurationEnsureResult {
+interface StrategicConfigurationEnsureResult {
   goals: ChangeCounts;
   measurement_configs: ChangeCounts;
   memberships: ChangeCounts;
@@ -993,31 +993,10 @@ function updateConfigurationStatus(
   });
 }
 
-export function updateGoalConfigurationStatus(
-  id: number,
-  status: ConfigurationStatus,
-  actorId: number | null = null,
-): void {
-  updateConfigurationStatus("goal", id, status, actorId);
-}
 export function updateMeasurementConfigurationStatus(
   id: number,
   status: ConfigurationStatus,
   actorId: number | null = null,
 ): void {
   updateConfigurationStatus("measurement_config", id, status, actorId);
-}
-export function updateComponentConfigurationStatus(
-  id: number,
-  status: ConfigurationStatus,
-  actorId: number | null = null,
-): void {
-  updateConfigurationStatus("component", id, status, actorId);
-}
-export function updateTargetConfigurationStatus(
-  id: number,
-  status: ConfigurationStatus,
-  actorId: number | null = null,
-): void {
-  updateConfigurationStatus("target", id, status, actorId);
 }

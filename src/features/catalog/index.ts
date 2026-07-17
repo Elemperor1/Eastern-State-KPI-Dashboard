@@ -4,7 +4,6 @@ export {
   STRATEGIC_KPI_DEFINITIONS,
   STRATEGIC_PLAN_SOURCE_REFERENCE,
   type StrategicComponentDefinition,
-  type StrategicGoalDefinition,
   type StrategicKpiDefinition,
   type StrategicTargetDefinition,
 } from "./strategic-config";

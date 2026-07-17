@@ -16,7 +16,7 @@ import {
 import type { KPIWithCategory } from "@/lib/types";
 import type { StrategicCalculatedActual } from "./strategy-actuals";
 
-export type StrategicActualValue = StrategicCalculatedActual;
+type StrategicActualValue = StrategicCalculatedActual;
 
 export interface StrategicKpiProgressSummary {
   kpiId: number;
@@ -41,7 +41,7 @@ export interface StrategicKpiProgressSummary {
   completionProgress: ProgressResult;
 }
 
-export interface StrategicGoalProgressSummary {
+interface StrategicGoalProgressSummary {
   goalId: string;
   goalName: string;
   priorityId: string;

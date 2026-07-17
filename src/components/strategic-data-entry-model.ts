@@ -13,14 +13,10 @@ import type {
 } from "@/features/strategy/data-entry-model";
 
 export {
-  STRATEGIC_DATA_ENTRY_YEARS,
   type StrategicDataEntryBandOption,
-  type StrategicDataEntryBandValue,
   type StrategicDataEntryComponentOption,
-  type StrategicDataEntryKpiOption,
   type StrategicDataEntryPageData,
   type StrategicDataEntryRecord,
-  type StrategicDataEntryRecordKind,
   type StrategicDataEntrySelectedKpi,
 } from "@/features/strategy/data-entry-model";
 

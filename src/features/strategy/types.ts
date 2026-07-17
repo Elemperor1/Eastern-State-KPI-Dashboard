@@ -160,22 +160,13 @@ export const STRATEGY_AUDIT_ACTIONS = [
 ] as const;
 export type StrategyAuditAction = (typeof STRATEGY_AUDIT_ACTIONS)[number];
 
-export type StrategyJsonPrimitive = string | number | boolean | null;
+type StrategyJsonPrimitive = string | number | boolean | null;
 export type StrategyJsonValue =
   | StrategyJsonPrimitive
   | StrategyJsonValue[]
   | { [key: string]: StrategyJsonValue };
 
-export interface StrategyRecordMetadata {
-  created_by: number | null;
-  created_at: string;
-  updated_by: number | null;
-  updated_at: string;
-  archived_at: string | null;
-  deleted_at: string | null;
-}
-
-export interface ConfigurationGapFields {
+interface ConfigurationGapFields {
   configuration_status: ConfigurationStatus;
   unresolved_question: string | null;
   owner: string | null;
@@ -185,7 +176,7 @@ export interface ConfigurationGapFields {
   last_reviewed_date: string | null;
 }
 
-export interface EffectiveYearRange {
+interface EffectiveYearRange {
   effective_start_year: number;
   effective_end_year: number | null;
 }
@@ -205,26 +196,6 @@ export interface StrategicGoalInput
   display_order: number;
 }
 
-export interface StrategicGoalRecord
-  extends StrategicGoalInput,
-    StrategyRecordMetadata {
-  id: number;
-}
-
-export interface StrategicGoalMembershipInput extends EffectiveYearRange {
-  goal_id: number;
-  kpi_id: number;
-  role: GoalMembershipRole;
-  weight: number | null;
-  display_order: number;
-}
-
-export interface StrategicGoalMembershipRecord
-  extends StrategicGoalMembershipInput,
-    StrategyRecordMetadata {
-  id: number;
-}
-
 export interface MeasurementConfigInput
   extends ConfigurationGapFields,
     EffectiveYearRange {
@@ -242,51 +213,6 @@ export interface MeasurementConfigInput
   allow_score_over_max?: boolean;
 }
 
-export interface MeasurementConfigRecord
-  extends MeasurementConfigInput,
-    StrategyRecordMetadata {
-  id: number;
-}
-
-/** Raw fields retained so averages and satisfaction results can be recalculated. */
-export interface RawAverageInputs {
-  method: AverageInputMethod;
-  respondent_count: number | null;
-  total_score: number | null;
-  average_score: number | null;
-  max_score_per_respondent: number | null;
-  total_possible_score: number | null;
-  positive_response_count: number | null;
-  total_response_count: number | null;
-  allow_over_max: boolean;
-}
-
-export interface ObservationInput {
-  kpi_id: number;
-  component_id: number | null;
-  measurement_type: MeasurementType;
-  reporting_frequency: StrategyReportingFrequency;
-  reporting_year: number;
-  reporting_month: number | null;
-  reporting_quarter: number | null;
-  value: number | null;
-  numerator: number | null;
-  denominator: number | null;
-  fixed_denominator: number | null;
-  average_inputs: RawAverageInputs | null;
-  baseline_value: number | null;
-  previous_period_value: number | null;
-  notes: string | null;
-  source_reference: string | null;
-  observed_at: string | null;
-}
-
-export interface ObservationRecord
-  extends ObservationInput,
-    StrategyRecordMetadata {
-  id: number;
-}
-
 export interface TargetInput extends EffectiveYearRange {
   kpi_id: number;
   component_id: number | null;
@@ -296,10 +222,6 @@ export interface TargetInput extends EffectiveYearRange {
   target_description: string | null;
   target_year: number;
   is_external_target: boolean;
-}
-
-export interface TargetRecord extends TargetInput, StrategyRecordMetadata {
-  id: number;
 }
 
 export interface ComponentInput extends EffectiveYearRange {
@@ -324,30 +246,17 @@ export interface ComponentInput extends EffectiveYearRange {
   configuration_status: ConfigurationStatus;
 }
 
-export interface ComponentRecord
-  extends ComponentInput,
-    StrategyRecordMetadata {
-  id: number;
-}
-
 export const DISTRIBUTION_DERIVED_GROUPS = ["white", "non_white"] as const;
 export type DistributionDerivedGroup =
   (typeof DISTRIBUTION_DERIVED_GROUPS)[number];
 
-export interface DistributionCategoryInput {
+interface DistributionCategoryInput {
   key: string;
   label: string;
   count: number;
   display_order: number;
   derived_group: DistributionDerivedGroup | null;
   is_archived: boolean;
-}
-
-export interface DistributionCategoryRecord extends DistributionCategoryInput {
-  id: number;
-  distribution_id: number;
-  /** Immutable label used by historical reports after a band is renamed. */
-  label_snapshot: string;
 }
 
 export interface DistributionInput {
@@ -360,32 +269,4 @@ export interface DistributionInput {
   categories: DistributionCategoryInput[];
   notes: string | null;
   source_reference: string | null;
-}
-
-export interface DistributionRecord
-  extends Omit<DistributionInput, "categories">,
-    StrategyRecordMetadata {
-  id: number;
-  categories: DistributionCategoryRecord[];
-}
-
-export interface StrategyAuditEventInput {
-  entity_type: StrategyAuditEntityType;
-  entity_id: number;
-  action: StrategyAuditAction;
-  entity_display_name: string;
-  parent_priority_id: number | null;
-  parent_priority_name: string | null;
-  parent_goal_id: number | null;
-  parent_goal_name: string | null;
-  previous_value: StrategyJsonValue | null;
-  new_value: StrategyJsonValue | null;
-  actor_id: number | null;
-  actor_display_name: string | null;
-  actor_email: string | null;
-  occurred_at: string;
-}
-
-export interface StrategyAuditEventRecord extends StrategyAuditEventInput {
-  id: number;
 }

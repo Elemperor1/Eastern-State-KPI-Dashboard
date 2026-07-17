@@ -73,7 +73,7 @@ function newBypassHash(): string {
  * row is upserted with this id, FK references from `monthly_entries.updated_by`
  * and `breakdown_entries.updated_by` resolve cleanly.
  */
-export const BYPASS_USER_ID = -1;
+const BYPASS_USER_ID = -1;
 
 /**
  * Generate a per-install random password. 24 chars from a 64-symbol

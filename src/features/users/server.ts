@@ -101,10 +101,6 @@ export function findUserCredentialRecordByEmail(
   return row ? rowToCredentialRecord(row) : null;
 }
 
-export async function hashPassword(plain: string): Promise<string> {
-  return bcrypt.hash(plain, SALT_ROUNDS);
-}
-
 export function createUser(input: {
   email: string;
   name: string;

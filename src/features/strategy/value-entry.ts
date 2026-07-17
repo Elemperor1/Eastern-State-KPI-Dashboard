@@ -17,7 +17,7 @@ import {
 
 type StoredPeriodType = Exclude<StrategyReportingFrequency, "flexible">;
 
-export interface StrategyValueEntryIssue {
+interface StrategyValueEntryIssue {
   path: string;
   message: string;
 }
@@ -86,7 +86,7 @@ export interface StrategyComponentEntryRecord
   configuration_id: number;
 }
 
-export interface StrategyDistributionValueRecord {
+interface StrategyDistributionValueRecord {
   id: number;
   band_id: number;
   slug: string;
@@ -171,7 +171,7 @@ export const StrategyObservationWriteSchema = z
   })
   .strict();
 
-export const StrategyComponentEntryWriteSchema = z
+const StrategyComponentEntryWriteSchema = z
   .object({
     component_id: z.number().int().positive(),
     ...ValuePayloadShape,
@@ -205,7 +205,7 @@ const DistributionBandWriteSchema = z
     }
   });
 
-export const StrategyDistributionWriteSchema = z
+const StrategyDistributionWriteSchema = z
   .object({
     kpi_id: z.number().int().positive(),
     component_id: z.number().int().positive().nullable().optional().default(null),
@@ -221,7 +221,7 @@ export const StrategyDistributionWriteSchema = z
   })
   .strict();
 
-export const StrategyMultiComponentBatchWriteSchema = z
+const StrategyMultiComponentBatchWriteSchema = z
   .object({
     submission_type: z.literal("multi_input"),
     writes: z
@@ -297,12 +297,12 @@ function validateDistributionBandDefinition(
   }
 }
 
-export const StrategyDistributionBandCreateSchema = z
+const StrategyDistributionBandCreateSchema = z
   .object(DistributionBandDefinitionShape)
   .strict()
   .superRefine(validateDistributionBandDefinition);
 
-export const StrategyDistributionBandUpdateSchema = z
+const StrategyDistributionBandUpdateSchema = z
   .object({
     id: z.number().int().positive(),
     ...DistributionBandDefinitionShape,
@@ -310,7 +310,7 @@ export const StrategyDistributionBandUpdateSchema = z
   .strict()
   .superRefine(validateDistributionBandDefinition);
 
-export const StrategyDistributionBandReorderSchema = z
+const StrategyDistributionBandReorderSchema = z
   .object({
     kpi_id: z.number().int().positive(),
     component_id: z.number().int().positive().nullable().optional().default(null),
@@ -918,7 +918,7 @@ function readObservation(
   return asObservation(row, measurementType, reportingFrequency);
 }
 
-export interface StrategyObservationListOptions {
+interface StrategyObservationListOptions {
   kpi_id: number;
   reporting_year: number;
 }
@@ -1191,7 +1191,7 @@ function readComponentEntry(
   return asComponentEntry(row, component, configuration);
 }
 
-export interface StrategyComponentEntryListOptions {
+interface StrategyComponentEntryListOptions {
   component_id: number;
   reporting_year: number;
 }
@@ -1655,7 +1655,7 @@ function readDistribution(id: number): StrategyDistributionRecord {
   return asDistribution(row, bands);
 }
 
-export interface StrategyDistributionListOptions {
+interface StrategyDistributionListOptions {
   kpi_id: number;
   component_id?: number | null;
   reporting_year: number;
@@ -2040,7 +2040,7 @@ function assertDistributionBandOwner(
   };
 }
 
-export interface DistributionBandListOptions {
+interface DistributionBandListOptions {
   kpi_id: number;
   component_id?: number | null;
   reporting_year: number;

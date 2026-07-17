@@ -31,7 +31,7 @@ export interface SessionData {
  * reaching it by a reserved-email check in verifyCredentials(), so the
  * stored hash is a defense-in-depth measure, not the only barrier.
  */
-export function getBypassUser(): SessionUser {
+function getBypassUser(): SessionUser {
   ensureSeedAdmin();
   const row = findUserByEmail(BYPASS_USER_EMAIL);
   if (!row) {

@@ -7,9 +7,9 @@ import type {
 } from "./types";
 import { asStrategicAuditEvent, type StrategicAuditEvent } from "./records";
 
-export type StrategicAuditEventType = StrategyAuditAction;
+type StrategicAuditEventType = StrategyAuditAction;
 
-export interface StrategicAuditWriteInput {
+interface StrategicAuditWriteInput {
   entity_type: StrategyAuditEntityType;
   entity_id: number;
   event_type: StrategicAuditEventType;
@@ -108,7 +108,7 @@ export function recordStrategicAuditEvent(
   return asStrategicAuditEvent(row);
 }
 
-export interface StrategicAuditFilter {
+interface StrategicAuditFilter {
   entity_type?: StrategyAuditEntityType;
   entity_id?: number;
   identities?: Array<{

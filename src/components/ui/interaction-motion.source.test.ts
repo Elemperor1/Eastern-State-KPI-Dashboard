@@ -21,8 +21,6 @@ describe("interaction and motion contracts", () => {
   it("keeps shared interaction timing on the fast motion token", () => {
     const css = source("../../app/globals.css");
     const primitives = [
-      source("./Tabs.tsx"),
-      source("./CardAction.tsx"),
       source("./Checkbox.tsx"),
       source("./IconButton.tsx"),
       source("./Breadcrumb.tsx"),

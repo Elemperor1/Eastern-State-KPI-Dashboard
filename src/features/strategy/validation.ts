@@ -10,7 +10,6 @@ import {
   GOAL_MANUAL_STATUSES,
   GOAL_MEMBERSHIP_ROLES,
   MEASUREMENT_TYPES,
-  PROGRESS_STATES,
   STRATEGY_AUDIT_ACTIONS,
   STRATEGY_AUDIT_ENTITY_TYPES,
   STRATEGY_REPORTING_FREQUENCIES,
@@ -20,33 +19,32 @@ import {
   type StrategyJsonValue,
 } from "./types";
 
-export const MeasurementTypeSchema = z.enum(MEASUREMENT_TYPES);
-export const StrategyReportingFrequencySchema = z.enum(
+const MeasurementTypeSchema = z.enum(MEASUREMENT_TYPES);
+const StrategyReportingFrequencySchema = z.enum(
   STRATEGY_REPORTING_FREQUENCIES,
 );
 export const ConfigurationStatusSchema = z.enum(CONFIGURATION_STATUSES);
-export const EditableConfigurationStatusSchema = z.enum([
+const EditableConfigurationStatusSchema = z.enum([
   "draft",
   "needs_definition",
   "needs_target",
   "ready",
   "active",
 ]);
-export const BoardStatusSchema = z.enum(BOARD_STATUSES);
-export const AggregationMethodSchema = z.enum(AGGREGATION_METHODS);
-export const ComponentAggregationRoleSchema = z.enum(
+const BoardStatusSchema = z.enum(BOARD_STATUSES);
+const AggregationMethodSchema = z.enum(AGGREGATION_METHODS);
+const ComponentAggregationRoleSchema = z.enum(
   COMPONENT_AGGREGATION_ROLES,
 );
-export const GoalCompletionRuleSchema = z.enum(GOAL_COMPLETION_RULES);
-export const GoalManualStatusSchema = z.enum(GOAL_MANUAL_STATUSES);
-export const GoalMembershipRoleSchema = z.enum(GOAL_MEMBERSHIP_ROLES);
-export const TargetScopeSchema = z.enum(TARGET_SCOPES);
-export const ProgressStateSchema = z.enum(PROGRESS_STATES);
-export const AverageInputMethodSchema = z.enum(AVERAGE_INPUT_METHODS);
-export const StrategyAuditEntityTypeSchema = z.enum(
+const GoalCompletionRuleSchema = z.enum(GOAL_COMPLETION_RULES);
+const GoalManualStatusSchema = z.enum(GOAL_MANUAL_STATUSES);
+const GoalMembershipRoleSchema = z.enum(GOAL_MEMBERSHIP_ROLES);
+const TargetScopeSchema = z.enum(TARGET_SCOPES);
+const AverageInputMethodSchema = z.enum(AVERAGE_INPUT_METHODS);
+const StrategyAuditEntityTypeSchema = z.enum(
   STRATEGY_AUDIT_ENTITY_TYPES,
 );
-export const StrategyAuditActionSchema = z.enum(STRATEGY_AUDIT_ACTIONS);
+const StrategyAuditActionSchema = z.enum(STRATEGY_AUDIT_ACTIONS);
 
 const IdSchema = z.number().int().positive();
 const YearSchema = z.number().int().min(1900).max(2100);
@@ -800,7 +798,7 @@ export const ComponentSetInputSchema = z
     }
   });
 
-export const DistributionCategoryInputSchema = z
+const DistributionCategoryInputSchema = z
   .object({
     key: SlugSchema,
     label: NameSchema,
@@ -1241,39 +1239,12 @@ export const StrategyAuditEventInputSchema = z
     }
   });
 
-// Short aliases keep route/service call sites readable while retaining the
-// domain-specific names for documentation and discovery.
-export const GoalInputSchema = StrategicGoalInputSchema;
-export const GoalMembershipInputSchema = StrategicGoalMembershipInputSchema;
-export const AverageRawInputsSchema = RawAverageInputsSchema;
-export const AuditEventInputSchema = StrategyAuditEventInputSchema;
-
-export type ValidatedStrategicGoalInput = z.output<typeof StrategicGoalInputSchema>;
-export type ValidatedGoalMembershipInput = z.output<
-  typeof StrategicGoalMembershipInputSchema
->;
-export type ValidatedGoalMembershipUpdate = z.output<
-  typeof StrategicGoalMembershipUpdateSchema
->;
-export type ValidatedMeasurementConfigInput = z.output<
-  typeof MeasurementConfigInputSchema
->;
-export type ValidatedRawAverageInputs = z.output<typeof RawAverageInputsSchema>;
 export type ValidatedObservationInput = z.output<typeof ObservationInputSchema>;
-export type ValidatedTargetInput = z.output<typeof TargetInputSchema>;
-export type ValidatedComponentInput = z.output<typeof ComponentInputSchema>;
-export type ValidatedDistributionInput = z.output<typeof DistributionInputSchema>;
-export type ValidatedAuditEventInput = z.output<
-  typeof StrategyAuditEventInputSchema
->;
 export type ValidatedMeasurementConfigurationCreate = z.output<
   typeof MeasurementConfigurationCreateSchema
 >;
 export type ValidatedMeasurementConfigurationUpdate = z.output<
   typeof MeasurementConfigurationUpdateSchema
->;
-export type ValidatedStrategicGoalSettingsUpdate = z.output<
-  typeof StrategicGoalSettingsUpdateSchema
 >;
 export type ValidatedStrategicTargetCreate = z.output<
   typeof StrategicTargetCreateSchema
@@ -1281,12 +1252,6 @@ export type ValidatedStrategicTargetCreate = z.output<
 export type ValidatedStrategicTargetUpdate = z.output<
   typeof StrategicTargetUpdateSchema
 >;
-export type ValidatedStrategyComponentCreate = z.output<
-  typeof StrategyComponentCreateSchema
->;
 export type ValidatedStrategyComponentUpdate = z.output<
   typeof StrategyComponentUpdateSchema
->;
-export type ValidatedStrategyComponentReorder = z.output<
-  typeof StrategyComponentReorderSchema
 >;

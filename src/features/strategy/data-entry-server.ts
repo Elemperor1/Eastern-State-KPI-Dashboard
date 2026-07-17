@@ -408,16 +408,3 @@ export function loadStrategicDataEntryPageData({
     loadError: null,
   };
 }
-
-export function dataEntryLoadFailure(
-  reportingYear: number,
-  requestedPeriod?: string | null,
-): StrategicDataEntryPageData {
-  const reportingPeriods = buildReportingCycleOptions(["annual"], reportingYear);
-  return emptyPageData(
-    reportingYear,
-    reportingCycleForSelection(requestedPeriod, reportingPeriods),
-    reportingPeriods,
-    "Data Entry could not be loaded. No values were changed.",
-  );
-}

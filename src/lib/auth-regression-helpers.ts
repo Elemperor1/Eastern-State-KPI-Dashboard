@@ -6,8 +6,8 @@
  * caller owns the in-memory cookie jar (set up per test file via
  * `vi.mock("next/headers", ...)`), installs a captured cookie before
  * calling `dispatch`, and inspects the returned Response. The helpers
- * only know how to (a) create accounts, (b) call any protected API
- * route handler by (method, path), and (c) assert the shared
+ * only know how to (a) call any protected API route handler by
+ * (method, path), and (b) assert the shared
  * authorization-boundary response shapes.
  *
  * ## Protected API routes covered by the suite
@@ -86,8 +86,6 @@
  */
 import { expect } from "vitest";
 import { NextRequest } from "next/server";
-import { createUser } from "@/features/users/server";
-import type { User } from "./types";
 
 import * as categories from "@/app/api/categories/route";
 import * as kpis from "@/app/api/kpis/route";
@@ -105,7 +103,7 @@ import * as strategyGoals from "@/app/api/strategy/goals/route";
 import * as strategyMemberships from "@/app/api/strategy/memberships/route";
 
 export type HttpMethod = "GET" | "POST" | "PATCH" | "DELETE";
-export type Gate = "requireSession" | "requireAdmin";
+type Gate = "requireSession" | "requireAdmin";
 
 export interface ProtectedRoute {
   method: HttpMethod;
@@ -200,9 +198,9 @@ const HANDLERS: Record<string, Handler> = {
  * value here is arbitrary because the guard only compares header to
  * cookie for equality.
  */
-export const TEST_CSRF_TOKEN = "test-csrf-token-0123456789abcdef";
+const TEST_CSRF_TOKEN = "test-csrf-token-0123456789abcdef";
 
-export const CSRF_COOKIE_NAME = "eastern_state_kpi_csrf";
+const CSRF_COOKIE_NAME = "eastern_state_kpi_csrf";
 
 /** Default headers that satisfy the request guard for a mutation. */
 function csrfPassHeaders(): Record<string, string> {
@@ -252,21 +250,6 @@ export async function dispatch(
   return handler(req);
 }
 
-/** Account factories (active, non-must_change unless requested). */
-export function createAdmin(
-  email = "admin-regression@example.com",
-  password = "AdminReg!2026",
-): User {
-  return createUser({ email, name: "Admin Regression", password, role: "admin" });
-}
-
-export function createViewer(
-  email = "viewer-regression@example.com",
-  password = "ViewerReg!2026",
-): User {
-  return createUser({ email, name: "Viewer Regression", password, role: "viewer" });
-}
-
 /**
  * Shared-boundary response assertions. Every protected route uses
  * `authErrorResponse`, so the shapes are uniform across the whole API.
@@ -290,7 +273,3 @@ export async function assertForbidden(res: Response): Promise<void> {
 }
 
 /** 2xx (default 200) — the gate let an authenticated caller through. */
-/** Routes whose handlers do not accept a NextRequest argument. */
-export function routeKey(r: ProtectedRoute): string {
-  return `${r.method} ${r.path}`;
-}

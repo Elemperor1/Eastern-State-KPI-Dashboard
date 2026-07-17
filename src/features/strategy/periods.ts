@@ -22,7 +22,7 @@ export const STRATEGY_MONTH_LABELS = [
 export const STRATEGY_QUARTER_LABELS = ["Q1", "Q2", "Q3", "Q4"] as const;
 export const FLEXIBLE_PERIOD_MODES = ["monthly", "annual"] as const;
 
-export type FlexiblePeriodMode = (typeof FLEXIBLE_PERIOD_MODES)[number];
+type FlexiblePeriodMode = (typeof FLEXIBLE_PERIOD_MODES)[number];
 export type ConcreteStrategyReportingFrequency =
   ExplicitStrategyReportingFrequency;
 
@@ -59,7 +59,7 @@ export interface StrategyPeriodOption {
   label: string;
 }
 
-export interface StrategyPeriodCandidate {
+interface StrategyPeriodCandidate {
   reportingFrequency?: unknown;
   reportingYear?: unknown;
   periodIndex?: unknown;
@@ -68,7 +68,7 @@ export interface StrategyPeriodCandidate {
   flexibleMode?: unknown;
 }
 
-export type StrategyPeriodIssueCode =
+type StrategyPeriodIssueCode =
   | "INVALID_INPUT"
   | "INVALID_FREQUENCY"
   | "INVALID_YEAR"
@@ -79,7 +79,7 @@ export type StrategyPeriodIssueCode =
   | "PERIOD_REQUIRED"
   | "INVALID_PERIOD";
 
-export interface StrategyPeriodIssue {
+interface StrategyPeriodIssue {
   code: StrategyPeriodIssueCode;
   path: keyof StrategyPeriodCandidate | "input";
   message: string;

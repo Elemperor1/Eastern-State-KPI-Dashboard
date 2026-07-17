@@ -17,17 +17,16 @@ import {
   type ProgressState,
 } from "./types";
 
-export { MEASUREMENT_TYPES };
 export type { MeasurementType };
-export type CalculationState = "ok" | "missing" | "invalid";
-export type ProgressDirection = "higher" | "lower";
-export type ProgressStatus = ProgressState;
-export type ConfigurationStatus = DomainConfigurationStatus;
+type CalculationState = "ok" | "missing" | "invalid";
+type ProgressDirection = "higher" | "lower";
+type ProgressStatus = ProgressState;
+type ConfigurationStatus = DomainConfigurationStatus;
 export type AverageMethod = AverageInputMethod;
-export type MultiComponentAggregation = AggregationMethod;
-export type GoalCompletionRuleType = DomainGoalCompletionRule;
+type MultiComponentAggregation = AggregationMethod;
+type GoalCompletionRuleType = DomainGoalCompletionRule;
 
-export interface CalculationIssue {
+interface CalculationIssue {
   kind: "missing" | "invalid";
   code: string;
   message: string;
@@ -39,31 +38,31 @@ interface BaseMeasurementInput {
   precision?: number;
 }
 
-export interface BinaryMeasurementInput extends BaseMeasurementInput {
+interface BinaryMeasurementInput extends BaseMeasurementInput {
   measurementType: "binary";
   completed?: boolean | null;
 }
 
-export interface MilestoneMeasurementInput extends BaseMeasurementInput {
+interface MilestoneMeasurementInput extends BaseMeasurementInput {
   measurementType: "milestone";
   completed?: boolean | null;
   completedMilestones?: number | null;
   totalMilestones?: number | null;
 }
 
-export interface ScalarMeasurementInput extends BaseMeasurementInput {
+interface ScalarMeasurementInput extends BaseMeasurementInput {
   measurementType: "count" | "cumulative" | "currency";
   value?: number | null;
 }
 
-export interface PercentageMeasurementInput extends BaseMeasurementInput {
+interface PercentageMeasurementInput extends BaseMeasurementInput {
   measurementType: "percentage";
   numerator?: number | null;
   denominator?: number | null;
   fixedDenominator?: number | null;
 }
 
-export interface AverageMeasurementInput extends BaseMeasurementInput {
+interface AverageMeasurementInput extends BaseMeasurementInput {
   measurementType: "average";
   method: AverageMethod;
   respondentCount?: number | null;
@@ -77,27 +76,27 @@ export interface AverageMeasurementInput extends BaseMeasurementInput {
   allowOverMaximum?: boolean;
 }
 
-export interface YearOverYearMeasurementInput extends BaseMeasurementInput {
+interface YearOverYearMeasurementInput extends BaseMeasurementInput {
   measurementType: "year_over_year";
   currentValue?: number | null;
   previousPeriodValue?: number | null;
 }
 
-export interface DistributionCategoryInput {
+interface DistributionCategoryInput {
   id: string;
   label: string;
   count?: number | null;
   derivedGroup?: DistributionDerivedGroup | null;
 }
 
-export interface DistributionMeasurementInput extends BaseMeasurementInput {
+interface DistributionMeasurementInput extends BaseMeasurementInput {
   measurementType: "distribution";
   respondentTotal?: number | null;
   categories: DistributionCategoryInput[];
   allowNonExclusive?: boolean;
 }
 
-export interface RatioMeasurementInput extends BaseMeasurementInput {
+interface RatioMeasurementInput extends BaseMeasurementInput {
   measurementType: "ratio";
   numerator?: number | null;
   denominator?: number | null;
@@ -116,7 +115,7 @@ export type AtomicMeasurementInput =
   | DistributionMeasurementInput
   | RatioMeasurementInput;
 
-export interface MultiComponentInput {
+interface MultiComponentInput {
   id: string;
   label: string;
   input: AtomicMeasurementInput;
@@ -130,7 +129,7 @@ export interface MultiComponentInput {
   configurationStatus?: ConfigurationStatus;
 }
 
-export interface MultiComponentMeasurementInput extends BaseMeasurementInput {
+interface MultiComponentMeasurementInput extends BaseMeasurementInput {
   measurementType: "multi_component";
   aggregationMethod: MultiComponentAggregation;
   components: MultiComponentInput[];
@@ -138,7 +137,7 @@ export interface MultiComponentMeasurementInput extends BaseMeasurementInput {
 
 export type MeasurementInput = AtomicMeasurementInput | MultiComponentMeasurementInput;
 
-export interface DistributionCategoryResult {
+interface DistributionCategoryResult {
   id: string;
   label: string;
   count: number;
@@ -146,7 +145,7 @@ export interface DistributionCategoryResult {
   derivedGroup: DistributionDerivedGroup | null;
 }
 
-export interface DistributionResult {
+interface DistributionResult {
   respondentTotal: number;
   categoryTotal: number;
   unallocatedCount: number;
@@ -155,7 +154,7 @@ export interface DistributionResult {
   derivedNonWhitePercentage: number | null;
 }
 
-export interface MultiComponentResult {
+interface MultiComponentResult {
   id: string;
   label: string;
   unit: string;
@@ -307,7 +306,7 @@ export type GoalKpiExclusionReason =
   | "missing_progress"
   | "invalid_progress";
 
-export interface ExcludedGoalKpi {
+interface ExcludedGoalKpi {
   id: string;
   label?: string;
   reason: GoalKpiExclusionReason;
@@ -342,7 +341,7 @@ export interface GoalRollupInput {
   result: GoalCompletionResult;
 }
 
-export interface ExcludedGoalReason {
+interface ExcludedGoalReason {
   goalId: string;
   reasons: string[];
 }
@@ -355,7 +354,7 @@ export interface GoalRollupSummary {
   excludedGoalReasons: ExcludedGoalReason[];
 }
 
-export interface PriorityGoalRollup extends GoalRollupSummary {
+interface PriorityGoalRollup extends GoalRollupSummary {
   priorityId: string;
   priorityName?: string;
 }

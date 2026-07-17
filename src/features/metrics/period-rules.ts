@@ -1,7 +1,7 @@
 import type { ReportingFrequency } from "@/lib/types";
 
 export const ANNUAL_ENTRY_MONTH = 0;
-export const FIRST_MONTH = 1;
+const FIRST_MONTH = 1;
 export const LAST_MONTH = 12;
 export const MONTH_NUMBERS = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12] as const;
 export const MONTH_LABELS = [
