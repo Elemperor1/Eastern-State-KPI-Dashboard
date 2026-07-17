@@ -3,7 +3,10 @@ set -euo pipefail
 
 cd "$(git rev-parse --show-toplevel)"
 
-ignored_tracked="$(git ls-files -ci --exclude-standard)"
+# Only repository-owned .gitignore files define this invariant. Git's
+# --exclude-standard also reads .git/info/exclude and each developer's global
+# excludes file, which would make the CI result depend on local configuration.
+ignored_tracked="$(git ls-files -ci --exclude-per-directory=.gitignore)"
 if [[ -n "$ignored_tracked" ]]; then
   echo "Repository hygiene guard failed: tracked files are hidden by .gitignore:" >&2
   printf '%s\n' "$ignored_tracked" >&2

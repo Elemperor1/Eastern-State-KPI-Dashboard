@@ -199,9 +199,17 @@ bash security-audit/D8AD-CAN-004/fixtures/run_harness.sh
 ```
 
 Prerequisites: a git worktree of revision `ea7263d` at `/tmp/eskpi-baseline`
-with `npm install` run and Python 3 with `playwright` installed. Playwright's
-managed Chromium is used by default; set `PLAYWRIGHT_CHROMIUM_EXECUTABLE` only
-when an explicit browser binary is required.
+with `npm install` run, plus the pinned Python driver and its managed browser:
+
+```sh
+python3 -m pip install -r security-audit/D8AD-CAN-004/fixtures/requirements.txt
+python3 -m playwright install chromium
+```
+
+Playwright 1.49.1 installs Chromium 131.0.6778.33 (cache revision 1148), which
+matches the recorded experiment. Set `PLAYWRIGHT_CHROMIUM_EXECUTABLE` only for
+an intentional browser override and record that binary's version with any new
+results.
 
 ## Fixtures
 

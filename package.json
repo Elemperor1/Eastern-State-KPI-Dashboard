@@ -24,7 +24,7 @@
     "architecture:guard": "bash ./scripts/architecture-boundary-guard.sh",
     "design-system:guard": "bash ./scripts/design-tokens-guard.sh && bash ./scripts/design-system-guard.sh && bash ./scripts/auth-bypass-guard.sh && bash ./scripts/architecture-boundary-guard.sh",
     "quality:guards": "npm run design-system:guard && npm run hygiene:guard && bash ./scripts/d8ad-can-008-ci-gate.sh",
-    "design-system:test": "bash ./scripts/design-tokens-guard.sh && bash ./scripts/design-system-guard.sh && bash ./scripts/auth-bypass-guard.sh && bash ./scripts/architecture-boundary-guard.sh && bash ./scripts/d8ad-can-008-ci-gate.sh && npm run hygiene:guard && npm run typecheck && AUTH_DISABLED= npm run build",
+    "design-system:test": "npm run quality:guards && npm run typecheck && AUTH_DISABLED= npm run build",
     "test": "vitest run",
     "test:unit": "vitest run",
     "test:ci": "vitest run --reporter=default",

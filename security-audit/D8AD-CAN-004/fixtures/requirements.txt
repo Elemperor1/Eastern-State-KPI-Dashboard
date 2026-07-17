@@ -1,0 +1,2 @@
+# Pins Chromium 131.0.6778.33 (Playwright cache revision 1148).
+playwright==1.49.1

@@ -15,7 +15,8 @@ dumps, an empty placeholder, or a local source PDF. The change does not alter
 application behavior or Git history.
 
 A pattern-based regression guard now fails CI when a local/generated path is
-tracked or when an already tracked file becomes hidden by `.gitignore`.
+tracked or when an already tracked file becomes hidden by a repository-owned
+`.gitignore` rule.
 
 ## Baseline receipt
 
@@ -134,9 +135,9 @@ returns no path after the change.
   The CSRF JSON records cookie-attachment booleans and deterministic attack
   payloads, not raw session cookies.
 - User-specific home paths and ephemeral scan paths were removed from retained
-  documents. The historical CSRF harness now uses Playwright's managed browser
-  by default and accepts `PLAYWRIGHT_CHROMIUM_EXECUTABLE` only as an optional
-  override.
+  documents. The historical CSRF harness now pins Playwright 1.49.1 and its
+  managed Chromium 131 revision, and accepts `PLAYWRIGHT_CHROMIUM_EXECUTABLE`
+  only as a documented intentional override.
 
 No credential rotation or history rewrite is required based on the findings.
 The removed blobs remain in existing Git history because history rewriting was
@@ -146,12 +147,14 @@ explicitly out of scope.
 
 `scripts/repository-hygiene-guard.sh` checks two stable invariants:
 
-1. no tracked file is hidden by the active ignore rules; and
+1. no tracked file is hidden by a repository-owned `.gitignore` rule; and
 2. no tracked path belongs to a known local/generated family.
 
-It deliberately does not list every allowed repository file. The guard is
-available as `npm run hygiene:guard` and runs through both lint/prelint and the
-official `npm run design-system:test` CI gate.
+It deliberately excludes developer-global and `.git/info/exclude` rules from
+the first invariant, so local Git configuration cannot break CI, and does not
+list every allowed repository file. The guard is available as
+`npm run hygiene:guard` and runs through both lint/prelint and the official
+`npm run design-system:test` CI gate.
 
 ## Validation
 
@@ -159,6 +162,8 @@ official `npm run design-system:test` CI gate.
 | --- | --- |
 | `npm ci --cache /private/tmp/eastern-state-npm-cache` | Passed: 504 packages installed, 0 npm audit vulnerabilities. The default user cache first failed with a pre-existing ownership error; the isolated cache proved the lockfile install. |
 | `npm run hygiene:guard` | Passed. |
+| Hygiene guard with a synthetic global exclude for tracked `package.json` | Passed; repository-owned `.gitignore` rules remain authoritative and developer-global rules do not affect the result. |
+| Pinned CSRF browser requirement | Passed: Playwright 1.49.1 resolves Chromium 131.0.6778.33, cache revision 1148. |
 | Representative `git check-ignore --no-index` matrix | Passed for build, test, coverage, cache, log, env, SQLite, export, scanner, OS/editor, and agent paths; required source, docs, workflows, fixtures, traces, and `.ok` pack files remained visible. |
 | `git ls-files -ci --exclude-standard` | Empty. |
 | `git diff --check` | Passed. |
@@ -191,7 +196,7 @@ test, workflow, or deployment consumer.
 | Snapshot | Files | Bytes | MiB |
 | --- | ---: | ---: | ---: |
 | Default-branch baseline | 417 | 23,983,468 | 22.872 |
-| Hygiene pull request | 415 | 12,484,936 | 11.907 |
+| Hygiene pull request | 416 | 12,485,816 | 11.907 |
 
 The tracked checkout shrank by approximately 48%. The removed raw outputs and
 local PDF account for 11,498,832 bytes; path sanitization also removes repeated
