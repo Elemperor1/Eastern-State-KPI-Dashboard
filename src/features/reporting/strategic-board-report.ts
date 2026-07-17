@@ -29,7 +29,7 @@ export type BoardReportingFrequency =
   | "one_time"
   | "flexible";
 
-export type BoardStatus =
+type BoardStatus =
   | "not_reported"
   | "not_started"
   | "on_track"
@@ -47,7 +47,7 @@ export type BoardConfigurationStatus =
   | "active"
   | "archived";
 
-export type BoardCalculationState = "ok" | "missing" | "invalid";
+type BoardCalculationState = "ok" | "missing" | "invalid";
 export type BoardProgressStatus =
   | "not_reported"
   | "not_started"
@@ -61,7 +61,7 @@ export type BoardProgressStatus =
   | "needs_definition"
   | "not_applicable";
 
-export interface GoalCompletionSummaryInput {
+interface GoalCompletionSummaryInput {
   completedGoalsCount?: number | null;
   totalEligibleGoalsCount?: number | null;
   completionPercentage?: number | null;
@@ -69,7 +69,7 @@ export interface GoalCompletionSummaryInput {
   excludedGoalReasons?: Array<string | null | undefined> | null;
 }
 
-export interface CalculatedResultInput {
+interface CalculatedResultInput {
   state?: BoardCalculationState | null;
   value?: number | null;
   displayValue?: string | null;
@@ -90,7 +90,7 @@ export interface TargetProgressInput {
   targetDescription?: string | null;
 }
 
-export interface BoardComponentInput {
+interface BoardComponentInput {
   id: string;
   label: string;
   measurementType: BoardMeasurementType;
@@ -101,7 +101,7 @@ export interface BoardComponentInput {
   unresolvedReasons?: Array<string | null | undefined> | null;
 }
 
-export interface DemographicBandInput {
+interface DemographicBandInput {
   id: string;
   label: string;
   count?: number | null;
@@ -111,7 +111,7 @@ export interface DemographicBandInput {
   derivedGroup?: "white" | "non_white" | null;
 }
 
-export interface DemographicDistributionInput {
+interface DemographicDistributionInput {
   respondentTotal?: number | null;
   mutuallyExclusive?: boolean | null;
   populationCaveat?: string | null;
@@ -119,14 +119,14 @@ export interface DemographicDistributionInput {
   derivedNonWhitePercentage?: number | null;
 }
 
-export interface RevenueStreamInput {
+interface RevenueStreamInput {
   id: string;
   label: string;
   value?: number | null;
   sharePercentage?: number | null;
 }
 
-export interface RevenueBreakdownInput {
+interface RevenueBreakdownInput {
   totalRevenue?: number | null;
   streams?: RevenueStreamInput[] | null;
 }
@@ -148,7 +148,7 @@ export interface StrategicBoardKpiInput {
   unresolvedReasons?: Array<string | null | undefined> | null;
 }
 
-export interface StrategicBoardGoalInput {
+interface StrategicBoardGoalInput {
   id: string;
   name: string;
   completionStatus?: BoardProgressStatus | null;
@@ -160,7 +160,7 @@ export interface StrategicBoardGoalInput {
   kpis?: StrategicBoardKpiInput[] | null;
 }
 
-export interface StrategicBoardPriorityInput {
+interface StrategicBoardPriorityInput {
   id: string;
   name: string;
   goalCompletion?: GoalCompletionSummaryInput | null;
@@ -184,7 +184,7 @@ export interface GoalCompletionSummaryViewModel {
   countLabel: string;
 }
 
-export interface CalculatedResultViewModel {
+interface CalculatedResultViewModel {
   state: BoardCalculationState;
   value: number | null;
   displayValue: string;
@@ -220,7 +220,7 @@ export interface BoardComponentViewModel {
   unresolvedReasons: string[];
 }
 
-export interface DemographicBandViewModel {
+interface DemographicBandViewModel {
   id: string;
   label: string;
   count: number | null;
@@ -238,7 +238,7 @@ export interface DemographicDistributionViewModel {
   derivedNonWhitePercentage: number | null;
 }
 
-export interface RevenueStreamViewModel {
+interface RevenueStreamViewModel {
   id: string;
   label: string;
   value: number | null;
@@ -765,8 +765,8 @@ export const STRATEGIC_BOARD_CSV_COLUMNS = [
   "Revenue Stream Share Percentage",
 ] as const;
 
-export type StrategicBoardCsvColumn = (typeof STRATEGIC_BOARD_CSV_COLUMNS)[number];
-export type StrategicBoardCsvValue = string | number | boolean | null;
+type StrategicBoardCsvColumn = (typeof STRATEGIC_BOARD_CSV_COLUMNS)[number];
+type StrategicBoardCsvValue = string | number | boolean | null;
 export type StrategicBoardCsvRow = Record<
   StrategicBoardCsvColumn,
   StrategicBoardCsvValue

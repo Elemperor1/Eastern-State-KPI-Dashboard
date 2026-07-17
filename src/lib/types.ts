@@ -77,56 +77,8 @@ export interface KPI {
   archived_at?: string | null;
 }
 
-export interface MonthlyEntry {
-  id: number;
-  kpi_id: number;
-  year: number;
-  month: number; // 1-12 for monthly, 0 for annual full-year snapshot
-  value: number;
-  notes: string | null;
-  updated_by: number | null;
-  updated_at: string;
-}
-
-export interface MonthlyEntryWithMeta extends MonthlyEntry {
-  kpi_name: string;
-  kpi_unit: string;
-  kpi_unit_type: UnitType;
-  category_id: number;
-  category_name: string;
-  category_slug: string;
-}
-
-export interface BreakdownEntry {
-  id: number;
-  kpi_id: number;
-  year: number;
-  month: number;
-  label: string;
-  value: number;
-  sort_order: number;
-  notes: string | null;
-  updated_by: number | null;
-  updated_at: string;
-}
-
-export interface BreakdownEntryWithMeta extends BreakdownEntry {
-  kpi_name: string;
-  kpi_unit: string;
-  category_id: number;
-  category_name: string;
-  category_slug: string;
-}
-
-export interface ComparisonPoint {
-  label: string;
-  month: number;
-  value?: number;
-  [yearKey: string]: number | string | null | undefined;
-}
-
 /** Audit-trail row written whenever a monthly or breakdown entry is changed. */
-export interface EntryHistory {
+interface EntryHistory {
   id: number;
   entry_type: "monthly" | "breakdown";
   entry_id: number | null;
@@ -140,54 +92,6 @@ export interface EntryHistory {
   new_notes: string | null;
   changed_by: number | null;
   changed_at: string;
-}
-
-export type GoalType = "pct" | "number";
-
-export interface KpiGoal {
-  id: number;
-  kpi_id: number;
-  target_year: number;
-  /** Fixed actual-data year used to calculate the target. */
-  baseline_year: number;
-  goal_type: GoalType;
-  target_value: number;
-  enabled: boolean;
-  notes: string | null;
-  created_by: number | null;
-  created_at: string;
-  updated_by: number | null;
-  updated_at: string;
-}
-
-export interface KpiGoalWithMeta extends KpiGoal {
-  kpi_name: string;
-  kpi_slug: string;
-  kpi_unit: string;
-  kpi_unit_type: UnitType;
-  category_id: number;
-  category_name: string;
-  category_slug: string;
-  /** Direction of the KPI — used to interpret progress for "lower is better" metrics. */
-  direction: Direction;
-  /** Reporting frequency — annual goals have identical YTD and full-year values. */
-  reporting_frequency: ReportingFrequency;
-  /** Actual-data year used for the progress values in this model. */
-  progress_year: number;
-
-  /** Actual value through the selected month (YTD for monthly KPIs, annual for annual KPIs). */
-  ytd_value: number | null;
-  /** Target value through the selected month (prorated from the annual target for monthly KPIs). */
-  ytd_target: number | null;
-  /** YTD pacing percentage (0–100). Compares actual-through-month vs target-through-month. Null when target is unavailable. */
-  ytd_progress_pct: number | null;
-
-  /** Actual value for the full year (sum of all months, or the annual month-0 value). */
-  full_year_value: number | null;
-  /** Full-year target (fixed baseline + target_value). Null when baseline is unavailable. */
-  full_year_target: number | null;
-  /** Full-year completion percentage (0–100). Compares full-year actual vs full-year target. Null when target is unavailable. */
-  full_year_progress_pct: number | null;
 }
 
 /**
@@ -242,43 +146,4 @@ export interface KPIWithCategory extends KPI {
   /** Present on catalog-admin reads that include archived priorities. */
   category_archived_at?: string | null;
   children?: KPIWithCategory[]; // populated for breakdown parents
-}
-
-export interface YearSummary {
-  year: number;
-  ytdValue: number;
-  fullYearValue: number;
-  monthlyValues: Record<number, number>;
-}
-
-export interface KPIAnalytics {
-  kpi: KPIWithCategory;
-  years: YearSummary[];
-  monthlyComparison: {
-    currentValue: number;
-    compareValue: number;
-    delta: number;
-    pctChange: number | null;
-    ptsChange: number | null; // for percent unit types
-    currentYear: number;
-    compareYear: number;
-    currentMonth: number;
-    isAnnual: boolean;
-    /** True when both years lack any underlying entry for the queried period.
-     *  Surfaces a "No data" badge instead of a misleading ±0% delta. */
-    isEmpty: boolean;
-  };
-  ytdComparison: {
-    currentValue: number;
-    compareValue: number;
-    delta: number;
-    pctChange: number | null;
-    ptsChange: number | null;
-    currentYear: number;
-    compareYear: number;
-    throughMonth: number;
-    isAnnual: boolean;
-    /** True when both years lack any underlying entry at or before the through-month. */
-    isEmpty: boolean;
-  };
 }

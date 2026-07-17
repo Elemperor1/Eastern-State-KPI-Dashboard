@@ -2,19 +2,19 @@ import { resolveConfiguredTargetValue } from "./calculations";
 import type { PersistedTarget } from "./records";
 import type { ConfigurationStatus, MeasurementType } from "./types";
 
-export type EffectiveTargetKind =
+type EffectiveTargetKind =
   | "annual"
   | "future_full_plan"
   | "past_full_plan"
   | null;
 
-export type TargetCalculationConfigurationStatus =
+type TargetCalculationConfigurationStatus =
   | "ready"
   | "active"
   | "needs_definition"
   | "needs_target";
 
-export interface EffectiveTargetDecision {
+interface EffectiveTargetDecision {
   kind: EffectiveTargetKind;
   target: PersistedTarget | null;
   value: number | null;

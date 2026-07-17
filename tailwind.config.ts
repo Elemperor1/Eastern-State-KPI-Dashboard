@@ -12,14 +12,14 @@ import type { Config } from "tailwindcss";
  * - `brand`: the teal story. `brand-500` is `#209ba5` (primary), and the
  *            700/800/900 steps step up into the secondary dark teal
  *            `#005f6f`. Used for buttons, chips, focus rings, the
- *            gradient endpoints, and chart strokes.
+ *            focus rings, and chart strokes.
  * - `accent`: the Sample-data signal. `accent-500` is `#f7f242`; the
  *             application does not use this family for generic warnings,
  *             charts, selection, or decoration.
  *
- * The chart palette and CSS variables in `globals.css` carry the same
- * three hexes through every other surface (gradients, recharts, design
- * system shadows). Keep this file, globals.css, and DESIGN.md in sync.
+ * CSS variables in `globals.css` carry the same brand values through
+ * Recharts and design-system shadows. Keep this file, globals.css, and
+ * DESIGN.md in sync.
  */
 const config: Config = {
   content: [
@@ -78,29 +78,15 @@ const config: Config = {
         // Galano Grotesque is the project's licensed brand font (© René
         // Bieder, 2014). The @font-face declarations in globals.css
         // expose four weights (300/400/500/700) under a single family
-        // name; the system fallback chain (-apple-system etc.) is the
-        // same on both `sans` and `display` so a missed weight never
-        // produces a different visual fallback on a hero headline.
+        // name; the system fallback chain keeps a missed weight readable.
         sans: ["Galano Grotesque", "-apple-system", "BlinkMacSystemFont", "Segoe UI", "sans-serif"],
-        display: ["Galano Grotesque", "-apple-system", "BlinkMacSystemFont", "Segoe UI", "sans-serif"],
-        mono: ["Monaco", "Menlo", "Ubuntu Mono", "monospace"],
       },
       boxShadow: {
         // Shadows are tinted with the navy so the floating cards feel
         // rooted in the brand instead of an off-the-shelf Tailwind
         // greyscale. The previous violet tints (#1f1633, #150f23) are
         // swapped for the new navy ink.
-        card: "0 0 0 1px rgba(0,54,73,0.07), 0 1px 2px -1px rgba(0,54,73,0.08), 0 4px 14px rgba(0,54,73,0.035)",
-        soft: "0 0 0 1px rgba(0,54,73,0.08), 0 2px 6px rgba(0,54,73,0.05)",
         floating: "0 0.5rem 1.5rem rgba(0,33,48,0.18)",
-      },
-      backgroundImage: {
-        // Brand gradient — tertiary → secondary → primary (navy → dark
-        // teal → medium teal). This is the canonical brand gradient and
-        // is also exposed as `bg-brand-gradient` so feature pages can
-        // drop it onto a hero without reaching for a hex literal.
-        "brand-gradient":
-          "linear-gradient(to right, #003649, #005f6f, #209ba5)",
       },
     },
   },

@@ -6,8 +6,6 @@
  * auth regression tests import through this feature module so the product
  * authorization boundary has one public home.
  */
-export type { SessionData } from "@/lib/session";
-
 export {
   AuthError,
   authErrorResponse,

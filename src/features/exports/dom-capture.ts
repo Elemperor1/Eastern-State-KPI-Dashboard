@@ -14,10 +14,10 @@ export const EXPORT_DEFERRED_SELECTOR = "[data-raster-export-deferred]";
 export const EXPORT_MIN_WIDTH_ATTRIBUTE = "data-raster-export-min-width";
 
 /** Conservative canvas limits with headroom below Chromium's 32,767px edge. */
-export const MAX_RASTER_DIMENSION = 30_000;
-export const MAX_RASTER_PIXELS = 24_000_000;
-export const MIN_RASTER_OUTPUT_WIDTH = 512;
-export const MIN_RASTER_SCALE = 0.25;
+const MAX_RASTER_DIMENSION = 30_000;
+const MAX_RASTER_PIXELS = 24_000_000;
+const MIN_RASTER_OUTPUT_WIDTH = 512;
+const MIN_RASTER_SCALE = 0.25;
 
 export function resolveRasterCaptureScale({
   width,

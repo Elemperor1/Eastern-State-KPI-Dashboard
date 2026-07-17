@@ -218,7 +218,7 @@ export class DependentEntriesError extends Error {
 }
 
 /** Number of live monthly + breakdown entries for a KPI, including descendants. */
-export function countKPIDependents(id: number): number {
+function countKPIDependents(id: number): number {
   const db = getDb();
   const row = db
     .prepare(
@@ -263,7 +263,7 @@ export function countCategoryDependents(id: number): number {
   return Number(row.n);
 }
 
-export function deleteCategory(id: number): void {
+function deleteCategory(id: number): void {
   const dependents = countCategoryDependents(id);
   if (dependents > 0) {
     throw new DependentEntriesError("category", dependents);
@@ -315,43 +315,6 @@ export function getKPI(
     )
     .get(id) as Record<string, unknown> | undefined;
   return row ? asKpiWithCategory(row) : null;
-}
-
-export function getKPIBySlug(
-  slug: string,
-  options: { includeArchived?: boolean } = {},
-): KPIWithCategory | null {
-  const db = getDb();
-  const row = db
-    .prepare(
-      `SELECT k.*, c.name as category_name, c.slug as category_slug,
-              c.archived_at as category_archived_at
-       FROM kpis k
-       JOIN categories c ON c.id = k.category_id
-       WHERE k.slug = ?
-         ${options.includeArchived ? "" : "AND k.archived_at IS NULL AND c.archived_at IS NULL"}`,
-    )
-    .get(slug) as Record<string, unknown> | undefined;
-  return row ? asKpiWithCategory(row) : null;
-}
-
-export function listChildKPIs(
-  parentId: number,
-  options: { includeArchived?: boolean } = {},
-): KPIWithCategory[] {
-  const db = getDb();
-  const rows = db
-    .prepare(
-      `SELECT k.*, c.name as category_name, c.slug as category_slug,
-              c.archived_at as category_archived_at
-       FROM kpis k
-       JOIN categories c ON c.id = k.category_id
-       WHERE k.parent_id = ?
-         ${options.includeArchived ? "" : "AND k.archived_at IS NULL AND c.archived_at IS NULL"}
-       ORDER BY k.sort_order ASC, k.name ASC`,
-    )
-    .all(parentId) as Record<string, unknown>[];
-  return rows.map(asKpiWithCategory);
 }
 
 export function createKPI(
@@ -572,7 +535,7 @@ export function updateKPI(
   });
 }
 
-export function deleteKPI(id: number): void {
+function deleteKPI(id: number): void {
   const dependents = countKPIDependents(id);
   if (dependents > 0) {
     throw new DependentEntriesError("kpi", dependents);

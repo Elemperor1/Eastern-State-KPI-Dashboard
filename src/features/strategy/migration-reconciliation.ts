@@ -7,12 +7,12 @@ const LEGACY_QUESTION =
 const RATIO_QUESTION =
   "Finalize the government-support target as a portion of contributed revenue.";
 
-export type GovernmentSupportRatioRepair =
+type GovernmentSupportRatioRepair =
   | "already_current"
   | "not_applicable"
   | "repaired";
 
-export interface StrategicMigrationReconciliationResult {
+interface StrategicMigrationReconciliationResult {
   governmentSupportRatio: GovernmentSupportRatioRepair;
   canonicalGoalMetadata: number;
   canonicalMemberships: number;

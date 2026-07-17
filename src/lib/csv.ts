@@ -4,7 +4,7 @@ const FORMULA_LEADING = /^[=+\-@\t\r]/;
 const FORMULA_LEADING_AFTER_SPACES = /^ +[=+\-@]/;
 
 /** Neutralize text that spreadsheet applications could evaluate as a formula. */
-export function neutralizeFormulaPrefix(value: string): string {
+function neutralizeFormulaPrefix(value: string): string {
   if (value.length === 0) return value;
   if (FORMULA_LEADING.test(value) || FORMULA_LEADING_AFTER_SPACES.test(value)) {
     return `'${value}`;

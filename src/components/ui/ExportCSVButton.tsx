@@ -5,10 +5,6 @@ import { Download } from "lucide-react";
 import { Button } from "./Button";
 import { buildCSV, ensureCsvExt, inferColumns } from "./csv-helpers";
 
-// Re-export the pure helpers so callers can use them too without importing
-// a second module path.
-export { buildCSV, ensureCsvExt, inferColumns, escapeCell } from "./csv-helpers";
-
 export interface ExportCSVButtonProps {
   /** Rows to serialize. Each object's own enumerable keys become the columns. */
   rows: Record<string, unknown>[];

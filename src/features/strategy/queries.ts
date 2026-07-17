@@ -33,12 +33,12 @@ import {
   type StrategyComponentWithTargets,
 } from "./records";
 
-export interface StrategyReadOptions {
+interface StrategyReadOptions {
   year?: number;
   includeArchived?: boolean;
 }
 
-export interface StrategicAuditIdentity {
+interface StrategicAuditIdentity {
   entity_type: StrategyAuditEntityType;
   entity_id: number;
 }
@@ -116,7 +116,7 @@ export function getStrategicGoalRecord(
   return row ? asStrategicGoal(row) : null;
 }
 
-export function getStrategicGoalRecordBySlug(
+function getStrategicGoalRecordBySlug(
   slug: string,
 ): PersistedStrategicGoal | null {
   const row = getDb()
@@ -228,7 +228,7 @@ export function listEffectiveTargetsForKpi(
   return rows.map(asTarget);
 }
 
-export function listEffectiveTargetsForComponent(
+function listEffectiveTargetsForComponent(
   componentId: number,
   year: number,
   options: Pick<StrategyReadOptions, "includeArchived"> = {},
@@ -318,7 +318,7 @@ function listGoalMembers(
   });
 }
 
-export interface StrategicGoalListFilter extends StrategyReadOptions {
+interface StrategicGoalListFilter extends StrategyReadOptions {
   priority_id?: number;
   priority_slug?: string;
   configuration_status?: ConfigurationStatus;
@@ -364,7 +364,7 @@ export function listStrategicGoals(
   });
 }
 
-export function getStrategicGoal(
+function getStrategicGoal(
   id: number,
   options: StrategyReadOptions = {},
 ): StrategicGoalReadModel | null {
@@ -393,7 +393,7 @@ export function getStrategicGoalBySlug(
   return goal ? getStrategicGoal(goal.id, options) : null;
 }
 
-export interface ConfigurationGapFilter {
+interface ConfigurationGapFilter {
   year?: number;
   priority_id?: number;
   goal_id?: number;

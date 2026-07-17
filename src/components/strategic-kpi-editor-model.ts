@@ -29,7 +29,7 @@ export const STRATEGY_EDITOR_ENDPOINTS = {
   distributionBands: "/api/strategy/distribution-bands",
 } as const;
 
-export interface StrategicKpiGoalContext {
+interface StrategicKpiGoalContext {
   id: number;
   name: string;
   priorityName: string;
@@ -138,7 +138,7 @@ export interface StrategyEditorMutation {
   body: Record<string, unknown>;
 }
 
-export interface StrategyEditorMutationResult {
+interface StrategyEditorMutationResult {
   ok: boolean;
   error: string | null;
 }

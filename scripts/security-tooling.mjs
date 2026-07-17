@@ -2,7 +2,7 @@ import { accessSync, constants, existsSync } from "node:fs";
 import { delimiter, join } from "node:path";
 import { spawnSync } from "node:child_process";
 
-export const repositoryRoot = process.cwd();
+const repositoryRoot = process.cwd();
 
 export function findExecutable(name) {
   const localExecutable = join(repositoryRoot, "node_modules", ".bin", name);
