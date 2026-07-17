@@ -33,7 +33,7 @@ Use these labels in product decisions:
 
 | Evidence | What it supports | What it does not support |
 | --- | --- | --- |
-| `Eastern.State.Strategic.Dashboard.2025.2029.8.1.25.pdf` | Five priorities, named goals, KPI/data/result/target fields, Board-level notes, and unresolved TK/TBD decisions | User behavior, task frequency, usability, or preferred terminology |
+| Local, untracked `Eastern.State.Strategic.Dashboard.2025.2029.8.1.25.pdf` | Five priorities, named goals, KPI/data/result/target fields, Board-level notes, and unresolved TK/TBD decisions; this document records the durable product conclusions needed by a clean clone | User behavior, task frequency, usability, or preferred terminology |
 | Accepted ADRs, especially 0020–0022 | Canonical strategic data, calculation ownership, four destinations, permissions, archive, and migration boundaries | Whether the workflow matches real reporting handoffs |
 | Current source, schema, unit/contract tests, smoke, and Playwright acceptance | Implemented rules, supported actions, permissions, and tested recovery behavior | Why people behave as they do or whether a feature is valuable |
 | July 15 browser walk at desktop and 390 px | Rendered hierarchy, navigation, current copy, responsive behavior, and available feedback | Viewer behavior, production data quality, or longitudinal usage |

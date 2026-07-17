@@ -193,15 +193,15 @@ a preflight.
 ## Reproducing
 
 ```sh
-cd "/Users/jacobcyber/Documents/Eastern State KPI"
+cd /path/to/Eastern-State-KPI-Dashboard
 bash security-audit/D8AD-CAN-004/fixtures/run_harness.sh
 # results: security-audit/D8AD-CAN-004/fixtures/csrf_results.json
 ```
 
 Prerequisites: a git worktree of revision `ea7263d` at `/tmp/eskpi-baseline`
-with `npm install` run; Playwright Chromium build 1148 at
-`~/Library/Caches/ms-playwright/chromium-1148/`; Python 3 with
-`playwright` installed.
+with `npm install` run and Python 3 with `playwright` installed. Playwright's
+managed Chromium is used by default; set `PLAYWRIGHT_CHROMIUM_EXECUTABLE` only
+when an explicit browser binary is required.
 
 ## Fixtures
 

@@ -1,5 +1,8 @@
 # Dependencies and generated builds
 node_modules/
+.npm/
+.pnpm-store/
+.yarn/cache/
 .next/
 next-env.d.ts
 out/
@@ -7,33 +10,87 @@ build/
 dist/
 .turbo/
 .vercel/
+.cache/
+.swc/
 
 # Local runtime data
 data/
+*.db
+*.sqlite
+*.sqlite3
+*.db-journal
+*.db-shm
+*.db-wal
+*.sqlite-journal
+*.sqlite-shm
+*.sqlite-wal
+!**/fixtures/**/*.db
+!**/fixtures/**/*.sqlite
+!**/fixtures/**/*.sqlite3
+!**/testdata/**/*.db
+!**/testdata/**/*.sqlite
+!**/testdata/**/*.sqlite3
 
 # Environment files and local credentials
 .env
 .env.*
 !.env.example
+!.env.*.example
 *.pem
 
 # Tests, coverage, and browser artifacts
 coverage/
 .nyc_output/
+.vitest/
+.pytest_cache/
+.ruff_cache/
+__pycache__/
+*.py[cod]
+.coverage
+htmlcov/
 .playwright-cli/
 playwright-report/
 test-results/
 blob-report/
 output/playwright/
+playwright/.cache/
 
 # Tool caches and logs
 *.log
+logs/
 *.tsbuildinfo
 .eslintcache
+.stylelintcache
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# Temporary and backup files
+*.tmp
+*.temp
+*.bak
+*.orig
+*~
+
+# Generated exports, uploads, and scanner output
+/downloads/
+/generated-exports/
+/uploads/
+ultimate-bug-scan-report.*
+/trivy-results.*
+/semgrep-results.*
+/gitleaks-report.*
+/osv-results.*
+/.codex-security-scans/
+/security-scan-results/
 
 # OS and editor files
 .DS_Store
+Thumbs.db
 .idea/
+.vscode/
+.history/
 *.swp
 *.swo
 
@@ -41,12 +98,21 @@ output/playwright/
 Eastern.State.Strategic.Dashboard.2025.2029.8.1.25.pdf
 
 # Local AI and editor integrations
+.agents/
 .claude/
 .cursor/
 .opencode/
 .pi/
 .codex/skills/
+.codex/security-scans/
+.codex/tmp/
 
-# OpenKnowledge workspace metadata
-.ok/
+# OpenKnowledge workspace metadata; keep the two versioned pack contracts.
+.ok/*
+!.ok/skills/
+.ok/skills/*
+!.ok/skills/open-knowledge-pack-codebase-wiki/
+!.ok/skills/open-knowledge-pack-codebase-wiki/SKILL.md
+!.ok/skills/open-knowledge-pack-knowledge-base/
+!.ok/skills/open-knowledge-pack-knowledge-base/SKILL.md
 .okignore

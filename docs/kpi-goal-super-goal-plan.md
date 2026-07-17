@@ -8,7 +8,7 @@
 
 - Status: complete; every targeted integrity gap is closed and backed by fresh post-fix proof
 - Prepared: 2026-07-09; completion audit reconciled: 2026-07-13
-- Repository: `/Users/jacobcyber/Documents/Eastern State KPI`
+- Repository: the checked-out project root
 
 ## 1. Objective and source material
 
@@ -21,8 +21,11 @@ ratio semantics. Neither turns an unresolved or missing target into zero.
 The audit used these sources:
 
 - the full 20-phase goal attached to the Codex task;
-- `Eastern.State.Strategic.Dashboard.2025.2029.8.1.25.pdf` (one-page board
-  working document, visually rendered and text-extracted during the audit);
+- the local, untracked
+  `Eastern.State.Strategic.Dashboard.2025.2029.8.1.25.pdf` (one-page board
+  working document, visually rendered and text-extracted during the audit;
+  its durable conclusions are recorded in this plan and
+  `docs/product-foundation.md`);
 - current schema and migration code in `src/lib/db.ts` and
   `src/lib/schema-version.json`;
 - the canonical sample plan in `src/features/catalog/strategic-plan.ts`;

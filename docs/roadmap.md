@@ -349,7 +349,7 @@ Each prompt below is sized for one focused session. They are ordered. Tackle 7.1
 
 ```bash
 # First-time setup
-cd "/Users/jacobcyber/Documents/Eastern State KPI"
+cd /path/to/Eastern-State-KPI-Dashboard
 npm install
 npm run db:seed
 npm run build
