@@ -42,17 +42,12 @@ Hostnames (all resolve to 127.0.0.1 via --host-resolver-rules):
 """
 import json
 import os
-import sys
 import time
 import urllib.parse
 
-sys.path.insert(0, "/opt/homebrew/lib/python3.14/site-packages")
 from playwright.sync_api import sync_playwright
 
-CHROMIUM_EXE = (
-    "/Users/jacobcyber/Library/Caches/ms-playwright/chromium-1148/"
-    "chrome-mac/Chromium.app/Contents/MacOS/Chromium"
-)
+CHROMIUM_EXE = os.environ.get("PLAYWRIGHT_CHROMIUM_EXECUTABLE")
 
 APP_HOST = "app.eastern-state-kpi-dashboard.fly.dev"
 SAME_HOST = "evil.eastern-state-kpi-dashboard.fly.dev"
@@ -374,14 +369,17 @@ def main():
     cat_id = None
 
     with sync_playwright() as pw:
-        browser = pw.chromium.launch(
-            headless=True, executable_path=CHROMIUM_EXE,
-            args=[
+        launch_options = {
+            "headless": True,
+            "args": [
                 "--host-resolver-rules=" + RESOLVER_RULES,
                 "--no-first-run",
                 "--no-default-browser-check",
             ],
-        )
+        }
+        if CHROMIUM_EXE:
+            launch_options["executable_path"] = CHROMIUM_EXE
+        browser = pw.chromium.launch(**launch_options)
         context = browser.new_context()
         admin_page = login(context)
 

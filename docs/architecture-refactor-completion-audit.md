@@ -3,7 +3,8 @@
 Status: complete — requirements proven
 Last updated: 2026-07-08
 
-This is the requirement-level evidence ledger for the modular-monolith objective at `/Users/jacobcyber/.codex/attachments/9dbe2c83-383b-4496-850d-9c46fd20ce8a/goal-objective.md`.
+This is the requirement-level evidence ledger for the completed
+modular-monolith Codex objective.
 
 `docs/architecture-refactor-inventory.md` records incremental slices. This file
 records the final evidence proving each required outcome.

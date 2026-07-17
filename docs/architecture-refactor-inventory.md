@@ -8,7 +8,8 @@ ownership tables are historical evidence, not a current navigation or module
 map. See `docs/issue-42-replacement-inventory.md` for the subtraction that
 replaced those production workflows.
 
-This inventory tracks the preservation-first modular refactor described in the Codex objective file at `/Users/jacobcyber/.codex/attachments/9dbe2c83-383b-4496-850d-9c46fd20ce8a/goal-objective.md`.
+This inventory tracks the preservation-first modular refactor described in the
+completed Codex objective.
 
 The refactor is not a rewrite, redesign, framework migration, or product expansion. Each slice should preserve approved behavior and strengthen tests before moving ownership boundaries.
 

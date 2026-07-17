@@ -193,15 +193,23 @@ a preflight.
 ## Reproducing
 
 ```sh
-cd "/Users/jacobcyber/Documents/Eastern State KPI"
+cd /path/to/Eastern-State-KPI-Dashboard
 bash security-audit/D8AD-CAN-004/fixtures/run_harness.sh
 # results: security-audit/D8AD-CAN-004/fixtures/csrf_results.json
 ```
 
 Prerequisites: a git worktree of revision `ea7263d` at `/tmp/eskpi-baseline`
-with `npm install` run; Playwright Chromium build 1148 at
-`~/Library/Caches/ms-playwright/chromium-1148/`; Python 3 with
-`playwright` installed.
+with `npm install` run, plus the pinned Python driver and its managed browser:
+
+```sh
+python3 -m pip install -r security-audit/D8AD-CAN-004/fixtures/requirements.txt
+python3 -m playwright install chromium
+```
+
+Playwright 1.49.1 installs Chromium 131.0.6778.33 (cache revision 1148), which
+matches the recorded experiment. Set `PLAYWRIGHT_CHROMIUM_EXECUTABLE` only for
+an intentional browser override and record that binary's version with any new
+results.
 
 ## Fixtures
 

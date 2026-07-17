@@ -35,6 +35,7 @@ Review and code-scanning availability before making those checks required.
 | `npm run test:ci` | Run all Vitest unit and integration tests non-interactively. |
 | `npm run test:e2e` | Run the isolated Playwright acceptance suite. |
 | `npm run build` | Build the production Next.js application. |
+| `npm run hygiene:guard` | Reject tracked generated, ignored, local-only, database, environment, scanner, and editor artifacts. |
 | `npm run check` | Typecheck, lint/guards, and unit/integration tests. |
 | `npm run check:all` | `check`, production build, and E2E tests. |
 | `npm run security:dependencies` | Scan the committed lockfile with OSV-Scanner 2.3.8. |
@@ -76,8 +77,19 @@ Promise-returning UI handlers are invoked through a synchronous boundary that
 catches rejections, and untyped JSON responses are narrowed before use.
 
 The pre-lint guards additionally enforce design tokens/components, the
-loopback-only auth bypass, architectural boundaries, and the shell-injection
-regression suite. Formatting preferences are deliberately not blocking.
+loopback-only auth bypass, architectural boundaries, repository hygiene, and
+the shell-injection regression suite. The hygiene guard is pattern-based: it
+rejects tracked local/generated families and any tracked file hidden by
+`.gitignore`, without maintaining a fragile allowlist of every repository file.
+Formatting preferences are deliberately not blocking.
+
+Local databases, environment files, build/test output, downloaded exports,
+raw scanner output, editor state, and agent scratch state stay untracked. The
+two OpenKnowledge pack contracts under `.ok/skills/` are deliberate versioned
+development inputs; other `.ok/` workspace metadata remains local. Historical
+security reports, performance traces, Impeccable design evidence, and the
+D8AD-CAN-004 browser fixture are intentionally versioned evidence rather than
+live scanner output.
 
 Calibrated exceptions are visible in `eslint.config.mjs`:
 
