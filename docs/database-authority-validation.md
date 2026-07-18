@@ -138,7 +138,7 @@ definitions, components, targets, bands, and values.
 | Two-axis self-review | specification and standards reviewers found migration rollback, literal-year defaults, archived range handling, shared validation, wrapping, field errors, loading semantics, dirty navigation, and stale `AGENTS.md` gaps; every finding was corrected and revalidated |
 | Diff hygiene | `git diff --check` passed |
 | Architecture boundary | `npm run architecture:guard` passed with bootstrap/reconciliation/year-authority checks |
-| Hosted PR checks | Pending publication of the required unmerged review branch |
+| Hosted PR checks | Draft PR #63 is open, mergeable, and unmerged. Required CI, typecheck, lint, unit/integration, authenticated E2E, Dependency Review/OSV, Gitleaks, Semgrep, CodeQL for JavaScript/TypeScript and Python, container Trivy, and Vercel preview all passed. Scorecard intentionally runs only on `master`/schedule/manual dispatch; the baseline `4ffa5f3` master run passed before this branch was cut. |
 
 ## Known risks and deferred decisions
 
