@@ -206,6 +206,53 @@
         "path": "src/components/StrategicBoardReport.tsx",
         "summary": "Require at least one rendered Strategic Goal before reporting success; empty reports use an incomplete status and state that completeness cannot be assessed."
       }
+    },
+    {
+      "id": "BUG-CAND-005",
+      "title": "Responsive E2E uses a one-shot geometry probe before a long Measure row is paint-ready",
+      "affectedWorkflow": "Required GitHub End-to-End gate for responsive and zoom-equivalent acceptance",
+      "reproductionSteps": [
+        "Run npm run test:e2e on GitHub Actions for stabilization head 366b1cc5c190afa10ce1447e586e1e280696ed53.",
+        "Allow the responsive workflow to navigate and resize through its complete route/viewport matrix.",
+        "Immediately call boundingBox() on the two spans in the long Measure row.",
+        "Observe either span may return null before the route is paint-ready even though the row locator resolved."
+      ],
+      "expectedBehavior": "The required responsive test waits for the observable row geometry and then verifies stacking/overflow; runner paint timing alone does not fail an otherwise healthy product workflow.",
+      "actualBehavior": "The first GitHub run returned null from the direct name-span boundingBox call at e2e/dashboard-acceptance.spec.ts:478. Six earlier workflows passed; the remaining four did not run after the failure.",
+      "severity": "low",
+      "userImpact": "A transient CI failure blocks trustworthy stabilization/refactor comparison even when the product geometry is correct.",
+      "frequency": "one failure in the first GitHub run after a complete local 11/11 pass; the exact unchanged failed-job rerun passed 11/11",
+      "dataLossOrSecurityRisk": "none; CI reliability and baseline trust only",
+      "rootCause": "The assertion read a nullable paint-dependent bounding box once instead of polling for non-null stable geometry after navigation/resize.",
+      "evidence": [
+        {
+          "type": "github-check-log",
+          "source": "GitHub Actions run 29652460948, job 88100995140",
+          "detail": "At line 478 expect(nameBox).not.toBeNull() received null after the responsive route matrix."
+        },
+        {
+          "type": "local-retest",
+          "source": "isolated Playwright Chromium full suite",
+          "detail": "The same responsive workflow passed as part of 11/11 local authenticated production workflows."
+        },
+        {
+          "type": "unchanged-ci-rerun",
+          "source": "GitHub Actions run 29652460948 attempt 2, job 88101305997",
+          "detail": "The unchanged commit passed the complete End-to-End job in 2m34s, confirming a timing-sensitive test probe rather than persistent product geometry."
+        }
+      ],
+      "predatesGoal": true,
+      "disposition": "confirmed_bug",
+      "proposedDisposition": "Replace the direct boundingBox probe with a bounded retry-aware observable geometry assertion without weakening the stacking contract.",
+      "regression": {
+        "path": "e2e/dashboard-acceptance.spec.ts",
+        "before": "GitHub End-to-End failed at the direct non-null boundingBox assertion after six workflows passed.",
+        "after": "The same strict existence, stacking, and clipping contract passed through expect.poll in the targeted 28.7-second browser workflow; exact post-fix CI result is pending."
+      },
+      "fix": {
+        "path": "e2e/dashboard-acceptance.spec.ts",
+        "summary": "Poll until both paint-dependent boxes exist, then require evidence-below-name and non-clipping geometry in the same observable assertion."
+      }
     }
   ]
 }

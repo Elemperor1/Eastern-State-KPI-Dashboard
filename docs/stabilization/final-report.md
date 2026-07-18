@@ -8,13 +8,14 @@ Merged baseline: `ef29cfbf2f396c061063a15fcd6f2cfbeff48922`
 
 Stabilization branch: `codex/pre-architecture-stabilization-2026-07-17`
 
-Pull request: pending publication; this report must be updated with the final
-head and check-run receipts before closeout.
+Pull request: [#62](https://github.com/Elemperor1/Eastern-State-KPI-Dashboard/pull/62)
+(draft; do not merge)
 
 ## Executive result
 
-The audit confirmed 12 pre-existing defects: two misleading empty-reporting
-states and ten security/control defects. All 12 received the smallest durable
+The audit confirmed 13 pre-existing defects: two misleading empty-reporting
+states, ten security/control defects, and one responsive E2E reliability defect.
+All 13 received the smallest durable
 correction and a regression that failed against the merged baseline before the
 fix. No confirmed defect is deferred. Nine additional candidates were rejected
 as expected behavior, enhancement, duplicate, or not reproducible. One
@@ -60,6 +61,7 @@ execution matrix is in `bug-test-matrix.json`.
 | --- | --- | --- |
 | BUG-CAND-003 | Medium | Empty Overview claimed all included Goals were ready. |
 | BUG-CAND-004 | Medium | Empty Board Report claimed reporting was complete. |
+| BUG-CAND-005 | Low | A one-shot responsive geometry probe could fail before the long Measure row was paint-ready. |
 | CAN-001 | Low | Login throttle retained unbounded attacker-controlled state and did linear cleanup. |
 | CAN-002 | Medium | Identity-dependent bcrypt work exposed an active-account timing oracle. |
 | CAN-004 | Medium | In-flight old-password verification could mint a post-rotation session. |
@@ -92,6 +94,8 @@ root cause, and disposition evidence is retained in `defect-ledger.json` and
   whitespace/control run.
 - OSV and Gitleaks fallback images are digest-pinned. OpenCode accepts only the
   installed reviewed desktop bundle and otherwise fails closed.
+- The responsive long-Measure assertion now polls for paint-ready geometry but
+  retains the same existence, stacking, and non-clipping requirements.
 
 No architecture layer, schema, product destination, or feature workflow was
 introduced or redesigned.
@@ -110,6 +114,9 @@ introduced or redesigned.
 - CSV tests: mixed whitespace/control formula prefixes.
 - Security workflow policy tests: immutable OSV/Gitleaks images and fail-closed
   local MCP provenance.
+- Responsive E2E: the first GitHub run exposed the nullable one-shot geometry
+  read, the unchanged rerun passed, and the targeted retry-aware assertion
+  passed locally without weakening the layout contract.
 
 The focused security phase ended with 429 passing authentication/session tests
 and 34 passing export/supply-chain tests. The complete suite ended at 80 files
@@ -153,7 +160,7 @@ deployment/ingress validation, not the architecture refactor.
 | Typecheck | Passed | Passed |
 | Lint/guards | Passed | Passed; embedded smoke 51/51 |
 | Design-system/production build | Baseline post-merge Quality passed | Passed locally and in Docker |
-| Authenticated browser acceptance | Discovery/manual paths | 11/11 workflows passed in isolated Chromium |
+| Authenticated browser acceptance | Discovery/manual paths | 11/11 workflows passed locally; unchanged GitHub rerun 11/11; retry-aware responsive regression passed |
 | Reporting-cycle coverage | Existing threshold | 100% statements/lines/functions, 97.05% branches |
 | Development smoke | 51/51 with matched private DB | Contract retained |
 | Production-container smoke | Baseline workflow passed | 53/53 with real admin session |
@@ -162,7 +169,7 @@ deployment/ingress validation, not the architecture refactor.
 | Semgrep | Baseline post-merge check passed | 13 rules / 271 targets, zero findings |
 | Trivy blocking policy | Baseline post-merge check passed | Zero fixable HIGH/CRITICAL findings |
 | SQLite | Existing fixtures passed | Fresh migration twice; integrity `ok`; no FK violations |
-| GitHub CodeQL / Vercel | Exact baseline passed | Pending stabilization-head PR checks |
+| GitHub CodeQL / Vercel | Exact baseline passed | PR #62 JavaScript/TypeScript and Python CodeQL plus Vercel preview passed on the stabilization code head |
 
 The initial official Google Chrome run passed two workflows, then encountered a
 focus timeout. The exact rerun could not launch because the application bundle

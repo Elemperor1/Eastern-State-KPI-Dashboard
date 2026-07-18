@@ -204,6 +204,27 @@
       "command": "git diff --check and focused diff review",
       "result": "passed",
       "summary": "No whitespace errors; changes remain limited to confirmed defects, regression coverage, scanner integrity, and stabilization evidence."
+    },
+    {
+      "id": "LIVE-PR-001",
+      "kind": "github-pull-request",
+      "command": "draft PR #62 checks for stabilization code head 366b1cc5c190afa10ce1447e586e1e280696ed53",
+      "result": "passed",
+      "summary": "JavaScript/TypeScript and Python CodeQL, Vercel preview, Required CI Gate, dependencies, Dependency Review, lint, typecheck, unit/integration, Gitleaks, Semgrep, and container Trivy passed. The initial E2E attempt is separately dispositioned in DISC-CI-E2E-001."
+    },
+    {
+      "id": "DISC-CI-E2E-001",
+      "kind": "candidate-reproduction",
+      "command": "GitHub Actions run 29652460948 attempts 1 and 2",
+      "result": "failed",
+      "summary": "Attempt 1 returned null from a direct responsive boundingBox probe after six workflows passed. The unchanged attempt-2 rerun passed the full End-to-End job in 2m34s, confirming timing-sensitive test instrumentation and recording BUG-CAND-005 before remediation."
+    },
+    {
+      "id": "FIX-CI-E2E-001",
+      "kind": "responsive-e2e-regression",
+      "command": "targeted responsive Playwright workflow in isolated Chromium",
+      "result": "passed",
+      "summary": "The retry-aware assertion passed in 28.7 seconds and retains strict non-null, evidence-below-name, and non-clipping geometry. Exact post-fix GitHub E2E is the final external receipt."
     }
   ]
 }

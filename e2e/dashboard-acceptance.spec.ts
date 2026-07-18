@@ -473,16 +473,24 @@ test("reflows every destination and detail route across the required viewport an
   await page.setViewportSize({ width: 320, height: 844 });
   await page.goto("/dashboard/category/visitor-experience?year=2029");
   const longMeasure = page.locator("a[href*='interpretive-plan-milestones-on-schedule']");
-  const nameBox = await longMeasure.locator(":scope > span").nth(0).boundingBox();
-  const evidenceBox = await longMeasure.locator(":scope > span").nth(1).boundingBox();
-  expect(nameBox).not.toBeNull();
-  expect(evidenceBox).not.toBeNull();
-  expect(evidenceBox!.y).toBeGreaterThan(nameBox!.y);
-  expect(
-    await longMeasure.locator(":scope > span").nth(0).evaluate(
-      (element) => element.scrollWidth <= element.clientWidth,
-    ),
-  ).toBe(true);
+  const measureName = longMeasure.locator(":scope > span").nth(0);
+  const measureEvidence = longMeasure.locator(":scope > span").nth(1);
+  await expect.poll(
+    async () => {
+      const [nameBox, evidenceBox] = await Promise.all([
+        measureName.boundingBox(),
+        measureEvidence.boundingBox(),
+      ]);
+      if (!nameBox || !evidenceBox) return null;
+      return {
+        evidenceBelowName: evidenceBox.y > nameBox.y,
+        nameFits: await measureName.evaluate(
+          (element) => element.scrollWidth <= element.clientWidth,
+        ),
+      };
+    },
+    { message: "The long Measure row should finish painting without clipping" },
+  ).toEqual({ evidenceBelowName: true, nameFits: true });
 
   expect(browserErrors).toEqual([]);
 });
