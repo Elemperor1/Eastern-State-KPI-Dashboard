@@ -104,7 +104,8 @@ introduced or redesigned.
 
 - `ExecutiveOverview.test.tsx`: empty Goals versus configured/all-ready state.
 - `StrategicBoardReport.test.tsx`: empty report versus configured/complete state.
-- `login-throttle.test.ts`: maximum retained identities and bounded prune batch.
+- `login-throttle.test.ts`: maximum retained identities, bounded prune batch,
+  and active-lockout preservation under attacker-controlled capacity flooding.
 - `auth.test.ts`: one bcrypt comparison for reserved, unknown, and disabled
   identities.
 - Login/session tests: correct-password recovery, independent IP budget,
@@ -119,8 +120,8 @@ introduced or redesigned.
   passed locally without weakening the layout contract.
 
 The focused security phase ended with 429 passing authentication/session tests
-and 34 passing export/supply-chain tests. The complete suite ended at 80 files
-and 1,201 tests.
+and 34 passing export/supply-chain tests. After review remediation, the complete
+suite ended at 80 files and 1,202 tests.
 
 ## 5. Candidates rejected
 
@@ -156,7 +157,7 @@ deployment/ingress validation, not the architecture refactor.
 
 | Gate | Merged baseline | Stabilization result |
 | --- | --- | --- |
-| Unit/integration/contract | 78 files / 1,187 tests passed | 80 files / 1,201 tests passed |
+| Unit/integration/contract | 78 files / 1,187 tests passed | 80 files / 1,202 tests passed |
 | Typecheck | Passed | Passed |
 | Lint/guards | Passed | Passed; embedded smoke 51/51 |
 | Design-system/production build | Baseline post-merge Quality passed | Passed locally and in Docker |
@@ -243,7 +244,7 @@ CSV/PNG/PDF/print truth, and route-error focus/recovery.
 **Recommendation: ready for architectural change after this stabilization PR
 passes live checks and is merged normally.** No known blocker or unfixed
 confirmed defect remains in the tested scope. The later refactor should use the
-behavior inventory, 57-case matrix, 1,201-test suite, 11 browser workflows, and
+behavior inventory, 57-case matrix, 1,202-test suite, 11 browser workflows, and
 machine-readable candidate/evidence ledgers as its comparison baseline. Any
 future mismatch should be evaluated against these observable contracts before
 being attributed to the old architecture or accepted as intentional change.

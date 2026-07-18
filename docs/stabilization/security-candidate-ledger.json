@@ -27,8 +27,8 @@
       "predatesGoal": true,
       "disposition": "confirmed_bug",
       "proposedDisposition": "Add bounded deterministic eviction and bounded/periodic cleanup with regression coverage.",
-      "regression": {"path": "src/lib/login-throttle.test.ts", "before": "The new cap and bounded-sweep tests failed against the baseline.", "after": "The throttle suite and the 429-test focused security set pass."},
-      "fix": {"paths": ["src/lib/login-throttle.ts"], "summary": "Cap retained counters at a configurable 4,096 by default, evict least-recently-failed identities in O(1), and inspect at most 64 entries per request-path prune."}
+      "regression": {"path": "src/lib/login-throttle.test.ts", "before": "The cap and bounded-sweep tests failed against the baseline; review then showed unconditional capacity eviction could also discard an active lockout.", "after": "The throttle suite covers the cap, fixed-size sweep, and a locked identity that remains enforced while attacker-controlled keys flood capacity."},
+      "fix": {"paths": ["src/lib/login-throttle.ts"], "summary": "Cap retained counters at a configurable 4,096 by default, maintain an O(1) unlocked-entry eviction index that pins active lockouts, decline new admission when every retained identity is locked, and inspect at most 64 entries per request-path prune."}
     },
     {
       "id": "CAN-002",

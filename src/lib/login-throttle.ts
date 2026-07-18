@@ -9,8 +9,8 @@
  * When *either* counter for a given login attempt exceeds the
  * threshold within the failure window, subsequent attempts for that
  * key are rejected with HTTP 429 for the lockout window. A successful
- * login clears the counters for both keys so legitimate users are not
- * locked out after a stray typo.
+ * login clears that account's counter while preserving the source-IP
+ * budget, which may represent spraying against other accounts.
  *
  * State is held in a per-process Map. The single-process Next.js
  * deployment model used by this app makes that adequate. If the app
@@ -44,6 +44,10 @@ interface ThrottleEntry {
 }
 
 const store = new Map<string, ThrottleEntry>();
+// Unlocked entries are the only safe capacity-eviction candidates. Keep a
+// second insertion-ordered index so admission remains O(1) without ever
+// sacrificing an active lockout to attacker-controlled key flooding.
+const evictionCandidates = new Map<string, true>();
 const PRUNE_BATCH_SIZE = 64;
 
 function readNumber(
@@ -94,6 +98,28 @@ function freshEntry(): ThrottleEntry {
   return { failures: 0, windowStart: 0, lockedUntil: 0 };
 }
 
+function refreshEvictionCandidate(
+  key: string,
+  entry: ThrottleEntry,
+  now: number,
+): void {
+  evictionCandidates.delete(key);
+  if (entry.lockedUntil <= now) evictionCandidates.set(key, true);
+}
+
+function evictOldestUnlocked(now: number): boolean {
+  while (evictionCandidates.size > 0) {
+    const key = evictionCandidates.keys().next().value as string | undefined;
+    if (key === undefined) return false;
+    evictionCandidates.delete(key);
+    const entry = store.get(key);
+    if (!entry || entry.lockedUntil > now) continue;
+    store.delete(key);
+    return true;
+  }
+  return false;
+}
+
 /**
  * If the entry is in a current lockout, return the ms remaining (≥ 0).
  * Otherwise return 0. A lockout is treated as expired once its
@@ -105,6 +131,8 @@ export function lockedMsRemaining(key: string, now: number = Date.now()): number
   const entry = store.get(key);
   if (!entry) return 0;
   if (entry.lockedUntil > now) return entry.lockedUntil - now;
+  // A lockout that expired since the last write is now safe to evict.
+  refreshEvictionCandidate(key, entry, now);
   return 0;
 }
 
@@ -121,9 +149,11 @@ export function recordFailure(key: string, now: number = Date.now()): {
   const { threshold, windowMs, lockoutMs, maxEntries } = resolvedConfig();
   let entry = store.get(key);
   if (!entry) {
-    if (store.size >= maxEntries) {
-      const oldestKey = store.keys().next().value as string | undefined;
-      if (oldestKey !== undefined) store.delete(oldestKey);
+    if (store.size >= maxEntries && !evictOldestUnlocked(now)) {
+      // Every retained identity is actively locked. Decline to admit this
+      // attacker-controlled key rather than deleting a lockout early or
+      // exceeding the configured memory bound.
+      return { failures: 1, lockedUntil: 0 };
     }
     entry = freshEntry();
     store.set(key, entry);
@@ -146,12 +176,14 @@ export function recordFailure(key: string, now: number = Date.now()): {
   // the full attacker-controlled store.
   store.delete(key);
   store.set(key, entry);
+  refreshEvictionCandidate(key, entry, now);
   return { failures: entry.failures, lockedUntil: entry.lockedUntil };
 }
 
 /** Clear any tracking for `key`. Called on a successful login. */
 export function clearFailures(key: string): void {
   store.delete(key);
+  evictionCandidates.delete(key);
 }
 
 /**
@@ -172,9 +204,13 @@ export function pruneExpired(now: number = Date.now()): number {
     if (!oldest) break;
     const [key, entry] = oldest;
     store.delete(key);
+    evictionCandidates.delete(key);
     const lockoutOver = entry.lockedUntil <= now;
     const windowOver = now - entry.windowStart > windowMs;
-    if (!(lockoutOver && windowOver)) store.set(key, entry);
+    if (!(lockoutOver && windowOver)) {
+      store.set(key, entry);
+      refreshEvictionCandidate(key, entry, now);
+    }
     inspected += 1;
   }
   return inspected;
@@ -183,6 +219,7 @@ export function pruneExpired(now: number = Date.now()): number {
 /** Test-only: clear the entire store. */
 export function _resetForTests(): void {
   store.clear();
+  evictionCandidates.clear();
 }
 
 /** Test-only: expose cardinality without exposing mutable entries. */

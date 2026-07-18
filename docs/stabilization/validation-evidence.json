@@ -225,6 +225,13 @@
       "command": "targeted responsive Playwright workflow in isolated Chromium",
       "result": "passed",
       "summary": "The retry-aware assertion passed in 28.7 seconds and retains strict non-null, evidence-below-name, and non-clipping geometry. Exact post-fix GitHub E2E is the final external receipt."
+    },
+    {
+      "id": "REVIEW-FIX-001",
+      "kind": "review-remediation",
+      "command": "npx vitest run src/lib/login-throttle.test.ts src/app/api/auth/login/route.test.ts; npm test; npm run design-system:test; npm run lint; npm run test:e2e",
+      "result": "passed",
+      "summary": "The focused throttle/login suites passed 20 tests, the complete suite passed 80 files / 1,202 tests, all build/lint/guard gates passed, and authenticated production browser acceptance passed 11/11. Capacity flooding now evicts only unlocked identities and preserves active account/IP lockouts; the reviewed 409 compare-and-swap response and correct-credential recovery behavior remain unchanged because they are explicit stabilization contracts."
     }
   ]
 }
