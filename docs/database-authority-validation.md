@@ -125,13 +125,20 @@ definitions, components, targets, bands, and values.
 
 | Gate | Receipt |
 | --- | --- |
-| Unit/integration/contracts | `82 files / 1,214 tests` passed |
-| Focused schema migration | `9/9` passed, including schema 9/10/11 paths, stable IDs, generic constraints, FK checks, and idempotent reopen |
+| Unit/integration/contracts | `82 files / 1,217 tests` passed in the isolated worktree and again from a clean clone |
+| Focused schema migration | `10/10` passed, including schema 9/10/11 paths, stable IDs, generic constraints, FK checks, injected-failure rollback, and idempotent reopen |
 | Public migration entrypoint | `9/9` passed, including one-time initialization/repair and initialized-database no-rebootstrap |
-| TypeScript | `npx tsc --noEmit` passed |
+| Installation persistence | `6/6` passed, including missing/ambiguous state, bootstrap-once, optimistic editing/audit, and archive-aware range contraction |
+| TypeScript and production build | `npm run design-system:test` passed from the isolated worktree and clean clone, including `next typegen`, `tsc --noEmit`, and the explicit Webpack production build |
+| Repository guards and lint | design tokens/system, auth bypass, architecture, hygiene, ShellCheck/injection, and zero-warning ESLint all passed |
+| Browser acceptance | authenticated production Chrome suite passed `11/11`; the intentional final recovery test temporarily removes `strategic_goals` and restores it after verifying route recovery/focus |
+| Production container | final image `eastern-state-kpi:db-authority-final` (`sha256:3a75c77bd742…`) built from the clean clone; authenticated smoke passed `53/53` against the container-owned SQLite database |
+| Security scanners | OSV scanned 594 packages with no issues; Gitleaks scanned the four-commit branch range with no leaks; Semgrep ran 13 rules across 278 files with 0 findings; pinned Trivy 0.70.0 found 0 fixable HIGH/CRITICAL OS or library vulnerabilities |
+| Clean-clone data rehearsal | isolated `npm ci` succeeded; fresh seed produced schema 12, one active organization/plan, 5 priorities, 59 KPIs, 22 goals, 59 configurations/memberships, 46 components, and zero FK violations; two migration reruns were no-ops; focused migration/installation suite passed `25/25` |
+| Two-axis self-review | specification and standards reviewers found migration rollback, literal-year defaults, archived range handling, shared validation, wrapping, field errors, loading semantics, dirty navigation, and stale `AGENTS.md` gaps; every finding was corrected and revalidated |
 | Diff hygiene | `git diff --check` passed |
 | Architecture boundary | `npm run architecture:guard` passed with bootstrap/reconciliation/year-authority checks |
-| Remaining repository, browser, container, and security gates | Pending final branch validation |
+| Hosted PR checks | Pending publication of the required unmerged review branch |
 
 ## Known risks and deferred decisions
 
