@@ -73,11 +73,10 @@ export async function POST(req: NextRequest) {
     const ipKey = `ip:${ip}`;
     const acctKey = `acct:${normalizedEmail}`;
     const ipLockedMs = lockedMsRemaining(ipKey);
-    const acctLockedMs = lockedMsRemaining(acctKey);
-    if (ipLockedMs > 0 || acctLockedMs > 0) {
+    if (ipLockedMs > 0) {
       const retryAfterSec = Math.max(
         1,
-        Math.ceil(Math.max(ipLockedMs, acctLockedMs) / 1000),
+        Math.ceil(ipLockedMs / 1000),
       );
       return NextResponse.json(
         {
@@ -91,8 +90,28 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    const user = await verifyCredentials(email, password);
-    if (!user) {
+    const verified = await verifyCredentials(email, password);
+    const acctLockedMs = lockedMsRemaining(acctKey);
+    if (!verified) {
+      // Account-wide abuse tracking throttles wrong guesses, but it is
+      // checked only after credential verification so an anonymous actor
+      // cannot lock the legitimate holder out with the correct password.
+      if (acctLockedMs > 0) {
+        return NextResponse.json(
+          {
+            error:
+              "Too many failed attempts. Please wait a few minutes and try again.",
+          },
+          {
+            status: 429,
+            headers: {
+              "Retry-After": String(
+                Math.max(1, Math.ceil(acctLockedMs / 1000)),
+              ),
+            },
+          },
+        );
+      }
       // Record the failure on both key spaces. The lockout, if
       // triggered, applies to whichever key first crosses the
       // threshold. Only emit Retry-After if at least one key is
@@ -117,10 +136,10 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    // Successful login: clear any prior failure tracking so a user
-    // who just fat-fingered their password a few times is not
-    // suddenly throttled.
-    clearFailures(ipKey);
+    const { user, credentialVersion } = verified;
+    // A correct credential clears only its account history. Aggregate
+    // source-IP failures may describe spraying against other accounts and
+    // must survive an unrelated successful login.
     clearFailures(acctKey);
 
     const session = await getSession();
@@ -132,6 +151,7 @@ export async function POST(req: NextRequest) {
     // by construction (login happens after any prior change), so the
     // session is valid immediately.
     session.issuedAt = Date.now();
+    session.credentialVersion = credentialVersion;
     await session.save();
     // Tell the client whether the just-authenticated account still owes
     // a password rotation. The login page routes the user to the forced

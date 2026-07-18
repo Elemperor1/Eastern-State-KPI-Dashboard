@@ -14,6 +14,7 @@ function statusFor(priority: ExecutiveOverviewPageData["summary"]["priorities"][
 
 export function ExecutiveOverview({ data }: { data: ExecutiveOverviewPageData }) {
   const organization = normalizeGoalCompletionViewModel(data.summary.organization);
+  const hasStrategicGoals = data.summary.goals.length > 0;
 
   return (
     <div className="page-content page-enter">
@@ -92,7 +93,14 @@ export function ExecutiveOverview({ data }: { data: ExecutiveOverviewPageData })
         <h2 id="attention-heading" className="section-title mb-5">Needs attention</h2>
         {data.needsAttention.length === 0 ? (
           <Card variant="quiet" className="p-5">
-            <EmptyState title="Nothing needs attention" description="All included goals are ready for reporting." />
+            <EmptyState
+              title={hasStrategicGoals
+                ? "Nothing needs attention"
+                : `No Strategic Goals for ${data.summary.selectedYear}`}
+              description={hasStrategicGoals
+                ? "All included goals are ready for reporting."
+                : "There are no Strategic Goals configured for this Reporting Year."}
+            />
           </Card>
         ) : (
           <ul className="divide-y divide-ink-200 border-y border-ink-200">

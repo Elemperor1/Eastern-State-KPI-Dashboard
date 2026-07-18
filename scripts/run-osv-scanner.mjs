@@ -7,6 +7,8 @@ import {
 } from "./security-tooling.mjs";
 
 const OSV_SCANNER_VERSION = "2.3.8";
+const OSV_SCANNER_IMAGE =
+  `ghcr.io/google/osv-scanner:v${OSV_SCANNER_VERSION}@sha256:64e86bec6df2466feea5137fc7c78fb3b7c21ec077f014d7130f64810e50676b`;
 const scanArgs = [
   "scan",
   "source",
@@ -23,7 +25,7 @@ try {
     run(
       docker,
       dockerArgs(
-        `ghcr.io/google/osv-scanner:v${OSV_SCANNER_VERSION}`,
+        OSV_SCANNER_IMAGE,
         [
           "scan",
           "source",

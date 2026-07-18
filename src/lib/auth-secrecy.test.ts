@@ -9,6 +9,7 @@ import {
   createUser,
   findUserByEmail,
   updateUserPassword,
+  updateUserPasswordIfCurrent,
 } from "@/features/users/server";
 import { getDb, resetDb } from "./db";
 
@@ -267,6 +268,26 @@ describe("ensureSeedAdmin credential secrecy (in-process)", () => {
     const row = readHash("kerry@easternstate.org");
     expect(row.must_change).toBe(1);
     expect(bcrypt.compareSync(temp, row.hash)).toBe(true);
+  });
+
+  it("rejects a stale self-service password write after an administrator reset", () => {
+    process.env.BOOTSTRAP_ADMIN_PASSWORD = "SENTINEL-Admin-DoNotLog-2026!";
+    ensureSeedAdmin();
+    const kerry = findUserByEmail("kerry@easternstate.org")!;
+    const staleHash = readHash(kerry.email).hash;
+
+    updateUserPassword(kerry.id, "AdministratorReset!2026", true);
+    const changed = updateUserPasswordIfCurrent(
+      kerry.id,
+      staleHash,
+      "StaleSelfService!2026",
+      false,
+    );
+
+    expect(changed).toBe(false);
+    const row = readHash(kerry.email);
+    expect(bcrypt.compareSync("AdministratorReset!2026", row.hash)).toBe(true);
+    expect(bcrypt.compareSync("StaleSelfService!2026", row.hash)).toBe(false);
   });
 });
 

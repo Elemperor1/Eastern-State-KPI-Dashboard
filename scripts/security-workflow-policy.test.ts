@@ -97,6 +97,28 @@ describe("security workflow policy", () => {
     expect(quality).not.toContain("actions/setup-python");
   });
 
+  it("pins Docker fallback scanners to reviewed image digests", () => {
+    const osv = read("scripts/run-osv-scanner.mjs");
+    const gitleaks = read("scripts/run-gitleaks.mjs");
+
+    expect(osv).toContain(
+      "ghcr.io/google/osv-scanner:v${OSV_SCANNER_VERSION}@sha256:64e86bec6df2466feea5137fc7c78fb3b7c21ec077f014d7130f64810e50676b",
+    );
+    expect(gitleaks).toContain(
+      "ghcr.io/gitleaks/gitleaks:v${GITLEAKS_VERSION}@sha256:c00b6bd0aeb3071cbcb79009cb16a60dd9e0a7c60e2be9ab65d25e6bc8abbb7f",
+    );
+  });
+
+  it("fails closed when the local OpenKnowledge MCP bundle is unavailable", () => {
+    const config = read("opencode.json");
+
+    expect(config).not.toContain("@latest");
+    expect(config).not.toContain("exec npx");
+    expect(config).toContain("$HOME/Applications/OpenKnowledge.app");
+    expect(config).toContain("/Applications/OpenKnowledge.app");
+    expect(config).toContain("exit 127");
+  });
+
   it("publishes a private vulnerability reporting path", () => {
     const policy = read("SECURITY.md");
 

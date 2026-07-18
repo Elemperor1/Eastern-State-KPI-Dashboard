@@ -7,6 +7,8 @@ import {
 } from "./security-tooling.mjs";
 
 const GITLEAKS_VERSION = "8.30.1";
+const GITLEAKS_IMAGE =
+  `ghcr.io/gitleaks/gitleaks:v${GITLEAKS_VERSION}@sha256:c00b6bd0aeb3071cbcb79009cb16a60dd9e0a7c60e2be9ab65d25e6bc8abbb7f`;
 const shaPattern = /^[0-9a-f]{7,64}$/u;
 
 function scanRevision() {
@@ -45,7 +47,7 @@ try {
     run(
       docker,
       dockerArgs(
-        `ghcr.io/gitleaks/gitleaks:v${GITLEAKS_VERSION}`,
+        GITLEAKS_IMAGE,
         args,
         { network: false },
       ),

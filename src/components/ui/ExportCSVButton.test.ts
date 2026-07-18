@@ -34,6 +34,12 @@ describe("ExportCSVButton helpers", () => {
       expect(escapeCell('she said "hi"')).toBe('"she said ""hi"""');
     });
 
+    it("neutralizes formula markers after mixed leading whitespace and controls", () => {
+      expect(escapeCell("\n=1+1")).toBe('"\'\n=1+1"');
+      expect(escapeCell(" \t@SUM(A1)")).toBe("' \t@SUM(A1)");
+      expect(escapeCell("\u000b-2+2")).toBe("'\u000b-2+2");
+    });
+
     it("quotes values containing newlines (CR or LF)", () => {
       expect(escapeCell("line1\nline2")).toBe('"line1\nline2"');
       expect(escapeCell("line1\r\nline2")).toBe('"line1\r\nline2"');

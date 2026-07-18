@@ -16,6 +16,16 @@ import os from "node:os";
 import path from "node:path";
 import { NextRequest } from "next/server";
 
+const { sessionState } = vi.hoisted(() => ({
+  sessionState: {
+    user: undefined as unknown,
+    issuedAt: undefined as number | undefined,
+    credentialVersion: undefined as number | undefined,
+    save: vi.fn(async () => {}),
+    destroy: vi.fn(async () => {}),
+  },
+}));
+
 // Mock the verifier so we control success vs failure per-test.
 vi.mock("@/features/auth/server", async () => {
   const actual = await vi.importActual<typeof import("@/features/auth/server")>("@/features/auth/server");
@@ -34,11 +44,7 @@ vi.mock("@/features/auth/session", async () => {
   );
   return {
     ...actual,
-    getSession: vi.fn(async () => ({
-      user: undefined,
-      save: async () => {},
-      destroy: async () => {},
-    })),
+    getSession: vi.fn(async () => sessionState),
   };
 });
 
@@ -87,6 +93,11 @@ afterAll(() => {
 beforeEach(() => {
   _resetForTests();
   vi.mocked(verifyCredentials).mockReset();
+  sessionState.user = undefined;
+  sessionState.issuedAt = undefined;
+  sessionState.credentialVersion = undefined;
+  sessionState.save.mockClear();
+  sessionState.destroy.mockClear();
   // Pin a tight config: 3 failures inside 1 second → 2-second lockout.
   vi.stubEnv("LOGIN_LOCKOUT_THRESHOLD", "3");
   vi.stubEnv("LOGIN_LOCKOUT_WINDOW_MS", "1000");
@@ -236,28 +247,34 @@ describe("POST /api/auth/login throttle integration", () => {
     expect(differentFlyIp.status).toBe(401);
   });
 
-  it("clears counters on a successful login so a stale failure does not lock a user out", async () => {
-    // Two failures from the same IP+account (under the threshold).
+  it("preserves the aggregate IP budget when one account logs in successfully", async () => {
+    // Two failures from the same IP against different accounts (under
+    // the threshold) establish source-wide spray history.
     vi.mocked(verifyCredentials).mockResolvedValue(null);
     await POST(
       makeLoginRequest(
-        { email: "lucky@example.com", password: "wrong" },
+        { email: "first@example.com", password: "wrong" },
         "10.0.0.7",
       ),
     );
     await POST(
       makeLoginRequest(
-        { email: "lucky@example.com", password: "wrong" },
+        { email: "second@example.com", password: "wrong" },
         "10.0.0.7",
       ),
     );
-    // Now succeed.
+    // A success for a third account must not erase failures against
+    // other accounts from this source.
     vi.mocked(verifyCredentials).mockResolvedValue({
-      id: 1,
-      email: "lucky@example.com",
-      name: "Lucky",
-      role: "admin",
-      must_change_password: false,
+      user: {
+        id: 1,
+        email: "lucky@example.com",
+        name: "Lucky",
+        role: "admin",
+        must_change_password: false,
+      },
+      credentialVersion: 101,
+      passwordHash: "$2a$10$test-lucky",
     });
     const ok = await POST(
       makeLoginRequest(
@@ -267,16 +284,90 @@ describe("POST /api/auth/login throttle integration", () => {
     );
     expect(ok.status).toBe(200);
 
-    // A new failure from the same IP+account should start at 1, not
-    // 3, because the success cleared the counters.
+    // The next failure reaches the IP threshold, and the following
+    // request is rejected from the retained source budget.
+    vi.mocked(verifyCredentials).mockResolvedValue(null);
+    const threshold = await POST(
+      makeLoginRequest(
+        { email: "fourth@example.com", password: "wrong" },
+        "10.0.0.7",
+      ),
+    );
+    expect(threshold.status).toBe(401);
+    expect(threshold.headers.get("Retry-After")).not.toBeNull();
+
+    const blocked = await POST(
+      makeLoginRequest(
+        { email: "fifth@example.com", password: "wrong" },
+        "10.0.0.7",
+      ),
+    );
+    expect(blocked.status).toBe(429);
+  });
+
+  it("allows the correct password through an attacker-triggered account lock", async () => {
+    vi.mocked(verifyCredentials).mockResolvedValue(null);
+    for (let i = 0; i < 3; i += 1) {
+      const res = await POST(
+        makeLoginRequest(
+          { email: "victim@example.com", password: "wrong" },
+          `10.0.1.${i + 1}`,
+        ),
+      );
+      expect(res.status).toBe(401);
+    }
+
+    vi.mocked(verifyCredentials).mockResolvedValue({
+      user: {
+        id: 2,
+        email: "victim@example.com",
+        name: "Victim",
+        role: "viewer",
+        must_change_password: false,
+      },
+      credentialVersion: 202,
+      passwordHash: "$2a$10$test-victim",
+    });
+    const recovered = await POST(
+      makeLoginRequest(
+        { email: "victim@example.com", password: "correct" },
+        "10.0.1.99",
+      ),
+    );
+    expect(recovered.status).toBe(200);
+
     vi.mocked(verifyCredentials).mockResolvedValue(null);
     const after = await POST(
       makeLoginRequest(
-        { email: "lucky@example.com", password: "wrong" },
-        "10.0.0.7",
+        { email: "victim@example.com", password: "wrong" },
+        "10.0.1.100",
       ),
     );
     expect(after.status).toBe(401);
     expect(after.headers.get("Retry-After")).toBeNull();
+  });
+
+  it("binds the saved session to the credential version that bcrypt verified", async () => {
+    vi.mocked(verifyCredentials).mockResolvedValue({
+      user: {
+        id: 3,
+        email: "versioned@example.com",
+        name: "Versioned",
+        role: "admin",
+        must_change_password: false,
+      },
+      credentialVersion: 417,
+      passwordHash: "$2a$10$test-versioned",
+    });
+
+    const res = await POST(
+      makeLoginRequest(
+        { email: "versioned@example.com", password: "correct" },
+        "10.0.2.1",
+      ),
+    );
+
+    expect(res.status).toBe(200);
+    expect(sessionState.credentialVersion).toBe(417);
   });
 });

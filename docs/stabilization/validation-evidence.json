@@ -1,0 +1,209 @@
+{
+  "schemaVersion": 1,
+  "baselineCommit": "ef29cfbf2f396c061063a15fcd6f2cfbeff48922",
+  "receipts": [
+    {
+      "id": "BASE-REMOTE-001",
+      "kind": "remote-precondition",
+      "command": "gh pr view 61 and post-merge master run/check inspection",
+      "result": "passed",
+      "summary": "PR #61 merged at ef29cfb. Post-merge Quality, CodeQL, Container Security, and Scorecard workflows completed successfully; all 12 check runs and Vercel deployment succeeded."
+    },
+    {
+      "id": "BASE-WORKTREE-001",
+      "kind": "isolation",
+      "command": "git worktree add -b codex/pre-architecture-stabilization-2026-07-17 /private/tmp/eastern-state-kpi-pre-architecture-stabilization origin/master",
+      "result": "passed",
+      "summary": "Clean isolated worktree created at ef29cfb without modifying the primary checkout's unrelated state."
+    },
+    {
+      "id": "BASE-TEST-001",
+      "kind": "unit-integration-contract",
+      "command": "npm test",
+      "result": "passed",
+      "summary": "78 files and 1,187 tests passed in 9.21 seconds."
+    },
+    {
+      "id": "BASE-TYPE-001",
+      "kind": "typecheck",
+      "command": "npm run typecheck",
+      "result": "passed",
+      "summary": "Next route types generated and TypeScript completed without error."
+    },
+    {
+      "id": "BASE-LINT-001",
+      "kind": "lint-and-guards",
+      "command": "npm run lint",
+      "result": "passed",
+      "summary": "Design/token/auth/architecture/hygiene/shell-injection guards and ESLint passed; the embedded fake-server smoke passed 51 checks."
+    },
+    {
+      "id": "DISC-RESP-001",
+      "kind": "candidate-reproduction",
+      "command": "Playwright CLI 390 x 844 Overview geometry assertion",
+      "result": "passed",
+      "summary": "All five Priority rows had non-intersecting content groups, no row overflow, and no page overflow; BUG-CAND-001 classified cannot_reproduce."
+    },
+    {
+      "id": "DISC-SMOKE-001",
+      "kind": "development-smoke",
+      "command": "AUTH_DISABLED=true PORT=3387 BASE=http://127.0.0.1:3387 bash ./scripts/smoke.sh",
+      "result": "failed",
+      "summary": "The first 43 product/removed-route checks passed, then smoke-catalog could not find an unused strategic percentage reporting slot; recorded as BUG-CAND-002 before investigation."
+    },
+    {
+      "id": "DISC-SMOKE-002",
+      "kind": "development-smoke-retest",
+      "command": "AUTH_DISABLED=true DATABASE_PATH=/private/tmp/eastern-state-kpi-stabilization-019f71d5.db PORT=3387 BASE=http://127.0.0.1:3387 bash ./scripts/smoke.sh",
+      "result": "passed",
+      "summary": "Matched server/harness database environment passed 51/51. BUG-CAND-002 classified expected_behavior after the fresh selector also returned a valid unused slot."
+    },
+    {
+      "id": "DISC-EMPTY-001",
+      "kind": "empty-database-browser",
+      "command": "Playwright CLI false-readiness assertion on a migrated, unseeded schema-11 database",
+      "result": "failed",
+      "summary": "Overview combined a 0-of-0 denominator with readiness copy. Recorded as confirmed BUG-CAND-003 before implementation inspection."
+    },
+    {
+      "id": "FIX-EMPTY-001",
+      "kind": "regression-and-browser-retest",
+      "command": "npx vitest run src/app/dashboard/overview/ExecutiveOverview.test.tsx plus Playwright CLI empty-state assertion",
+      "result": "passed",
+      "summary": "Two rendering regressions pass and the original browser symptom is absent; the configured/no-attention ready state remains unchanged."
+    },
+    {
+      "id": "DISC-EMPTY-002",
+      "kind": "empty-database-board-report",
+      "command": "Playwright CLI Board Report article assertion on a migrated, unseeded schema-11 database",
+      "result": "failed",
+      "summary": "A zero-priority/zero-Goal report claimed both nothing needs attention and all reporting requirements are complete. Recorded as confirmed BUG-CAND-004 before code inspection."
+    },
+    {
+      "id": "FIX-EMPTY-002",
+      "kind": "regression-and-browser-retest",
+      "command": "npx vitest run src/components/StrategicBoardReport.test.tsx plus Playwright CLI report-article assertion",
+      "result": "passed",
+      "summary": "Two full-report rendering regressions pass and the original empty Board Report contradiction is absent in the live browser."
+    },
+    {
+      "id": "SEC-DISC-001",
+      "kind": "independent-security-discovery",
+      "command": "Codex Security scan f60c4ce1-f026-4bbe-ab24-8b4261cc557f plus independent threat-model and attack-path review",
+      "result": "passed",
+      "summary": "All 18 security candidates were recorded before remediation: 10 confirmed, one deferred proof gap, two cannot reproduce, three expected behavior, one enhancement, and one duplicate."
+    },
+    {
+      "id": "FIX-SEC-001",
+      "kind": "red-green-security-regressions",
+      "command": "focused Vitest authentication, session, throttle, CSV, and workflow-policy suites",
+      "result": "passed",
+      "summary": "The intended security regressions failed before remediation and 429 focused tests passed after the minimal fixes. The export and supply-chain set moved from three intended failures to 34 passing tests."
+    },
+    {
+      "id": "FINAL-UNIT-001",
+      "kind": "unit-integration-contract",
+      "command": "npm test",
+      "result": "passed",
+      "summary": "80 files and 1,201 tests passed after remediation."
+    },
+    {
+      "id": "FINAL-TYPE-001",
+      "kind": "typecheck",
+      "command": "npm run typecheck",
+      "result": "passed",
+      "summary": "Route types and TypeScript completed without error after correcting the new test fixture to the production GoalCompletionResult contract."
+    },
+    {
+      "id": "FINAL-DESIGN-001",
+      "kind": "design-system-and-production-build",
+      "command": "npm run design-system:test",
+      "result": "passed",
+      "summary": "Token, component, auth-bypass, architecture, repository-hygiene, and shell-injection guards passed, followed by TypeScript and a production Next.js build."
+    },
+    {
+      "id": "FINAL-LINT-001",
+      "kind": "lint-and-guards",
+      "command": "npm run lint",
+      "result": "passed",
+      "summary": "All prelint guards, the embedded 51-check fake-server smoke, and ESLint passed."
+    },
+    {
+      "id": "FINAL-E2E-001",
+      "kind": "browser-environment-diagnostic",
+      "command": "npm run test:e2e and exact official-channel rerun",
+      "result": "deferred",
+      "summary": "The installed Google Chrome application updated from the framework used by the user's running process; subsequent isolated launches aborted before page creation. The user-owned browser process was not killed. This is an environment limitation, not a confirmed product defect."
+    },
+    {
+      "id": "FINAL-E2E-002",
+      "kind": "authenticated-production-browser-acceptance",
+      "command": "npx playwright test -c playwright.chromium.config.ts using isolated Playwright Chromium",
+      "result": "passed",
+      "summary": "All 11 workflows passed in 47.6 seconds against a private auth-enabled production database, including forced password rotation, atomic save recovery, unsaved-form navigation, responsive/zoom matrices, keyboard focus, print media, CSV/PNG/PDF signatures and dimensions, and route-error recovery. The temporary browser config was removed afterward."
+    },
+    {
+      "id": "FINAL-A11Y-001",
+      "kind": "accessibility",
+      "command": "npm test accessibility contracts plus the 11-workflow Playwright suite",
+      "result": "passed",
+      "summary": "Contrast, focus, reduced-motion, labels/statuses, print semantics, dialog/navigation focus, local table overflow, live-region sequencing, and error focus/restoration checks passed in executable tests."
+    },
+    {
+      "id": "FINAL-COVERAGE-001",
+      "kind": "coverage",
+      "command": "npm run test:coverage",
+      "result": "passed",
+      "summary": "Reporting-cycle coverage passed at 100% statements, lines, and functions and 97.05% branches."
+    },
+    {
+      "id": "FINAL-OSV-001",
+      "kind": "dependency-security",
+      "command": "npm run security:dependencies",
+      "result": "passed",
+      "summary": "OSV-Scanner 2.3.8 inspected 594 lockfile packages and found no issues. The unchanged command ran from a Docker-visible mirror because Docker Desktop cannot bind-mount the isolated /private/tmp worktree."
+    },
+    {
+      "id": "FINAL-GITLEAKS-001",
+      "kind": "secret-scan",
+      "command": "npm run security:secrets",
+      "result": "passed",
+      "summary": "Gitleaks 8.30.1 scanned 110 commits and approximately 17.19 MB from a self-contained Docker-visible clone; no leaks were found."
+    },
+    {
+      "id": "FINAL-SEMGREP-001",
+      "kind": "static-security",
+      "command": "npm run security:semgrep",
+      "result": "passed",
+      "summary": "Semgrep 1.164.0 ran 13 rules across 271 targets with approximately 99.9% parsed lines and zero findings."
+    },
+    {
+      "id": "FINAL-DB-001",
+      "kind": "database-initialization-and-migration",
+      "command": "DATABASE_PATH=/private/tmp/eastern-state-kpi-final-migration-20260718.db npm run db:migrate twice; SQLite integrity and foreign-key checks",
+      "result": "passed",
+      "summary": "Fresh schema-11 initialization and the idempotent rerun succeeded; integrity_check returned ok and foreign_key_check returned no rows. Existing migration fixture contracts also passed in the 1,201-test suite."
+    },
+    {
+      "id": "FINAL-CONTAINER-001",
+      "kind": "production-container",
+      "command": "docker build; private-volume production start; authenticated scripts/smoke.sh; runtime DB checks",
+      "result": "passed",
+      "summary": "Image 19318cf4202f built, contained no generated database, started with production auth against a private volume, passed 53/53 smoke checks, and retained clean SQLite integrity/foreign keys. Disposable container and volume were removed."
+    },
+    {
+      "id": "FINAL-TRIVY-001",
+      "kind": "container-security",
+      "command": "Trivy 0.70.0 image scan under the repository blocking policy",
+      "result": "passed",
+      "summary": "The built image had zero fixable HIGH or CRITICAL OS/library vulnerabilities."
+    },
+    {
+      "id": "FINAL-DIFF-001",
+      "kind": "change-integrity",
+      "command": "git diff --check and focused diff review",
+      "result": "passed",
+      "summary": "No whitespace errors; changes remain limited to confirmed defects, regression coverage, scanner integrity, and stabilization evidence."
+    }
+  ]
+}

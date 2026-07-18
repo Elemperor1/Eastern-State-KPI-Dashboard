@@ -1,10 +1,14 @@
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 import bcrypt from "bcryptjs";
 import { ensureSeedAdmin, verifyCredentials } from "@/features/auth/server";
-import { createUser, findUserByEmail } from "@/features/users/server";
+import {
+  createUser,
+  findUserByEmail,
+  setUserDisabled,
+} from "@/features/users/server";
 import { getDb, resetDb } from "./db";
 
 /**
@@ -84,6 +88,26 @@ describe("verifyCredentials", () => {
     expect(
       await verifyCredentials("nobody@example.com", "anything"),
     ).toBeNull();
+  });
+
+  it("performs one bcrypt comparison for reserved, unknown, and disabled identities", async () => {
+    const disabled = createUser({
+      email: "disabled@example.com",
+      name: "Disabled",
+      password: "DisabledPass!2026",
+      role: "viewer",
+    });
+    setUserDisabled(disabled.id, true);
+    const compare = vi.spyOn(bcrypt, "compare");
+
+    try {
+      await verifyCredentials("auth-disabled@local", "wrong");
+      await verifyCredentials("unknown@example.com", "wrong");
+      await verifyCredentials("disabled@example.com", "wrong");
+      expect(compare).toHaveBeenCalledTimes(3);
+    } finally {
+      compare.mockRestore();
+    }
   });
 
   it("rejects the wrong password for a real seeded admin", async () => {
@@ -178,6 +202,6 @@ describe("verifyCredentials", () => {
       "freshuser@example.com",
       "FreshPass!2026",
     );
-    expect(user?.role).toBe("viewer");
+    expect(user?.user.role).toBe("viewer");
   });
 });

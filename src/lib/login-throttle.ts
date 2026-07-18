@@ -23,6 +23,8 @@
  *   LOGIN_LOCKOUT_WINDOW_MS  rolling window in ms (default 5 min)
  *   LOGIN_LOCKOUT_DURATION_MS  how long the lockout lasts
  *                              (default 5 min)
+ *   LOGIN_THROTTLE_MAX_ENTRIES maximum retained identity counters
+ *                              (default 4096)
  *
  * The defaults are deliberately lenient for a small-staff internal
  * dashboard: 10 wrong attempts in 5 minutes → 5-minute lockout. A
@@ -42,6 +44,7 @@ interface ThrottleEntry {
 }
 
 const store = new Map<string, ThrottleEntry>();
+const PRUNE_BATCH_SIZE = 64;
 
 function readNumber(
   name: string,
@@ -78,6 +81,7 @@ function resolvedConfig() {
       1000,
       24 * 60 * 60 * 1000,
     ),
+    maxEntries: readNumber("LOGIN_THROTTLE_MAX_ENTRIES", 4096, 1, 100_000),
   };
 }
 
@@ -114,9 +118,13 @@ export function recordFailure(key: string, now: number = Date.now()): {
   failures: number;
   lockedUntil: number;
 } {
-  const { threshold, windowMs, lockoutMs } = resolvedConfig();
+  const { threshold, windowMs, lockoutMs, maxEntries } = resolvedConfig();
   let entry = store.get(key);
   if (!entry) {
+    if (store.size >= maxEntries) {
+      const oldestKey = store.keys().next().value as string | undefined;
+      if (oldestKey !== undefined) store.delete(oldestKey);
+    }
     entry = freshEntry();
     store.set(key, entry);
   }
@@ -133,6 +141,11 @@ export function recordFailure(key: string, now: number = Date.now()): {
   if (entry.failures >= threshold && entry.lockedUntil <= now) {
     entry.lockedUntil = now + lockoutMs;
   }
+  // Refresh insertion order so bounded eviction favors identities that
+  // have not recorded a recent failure. This is O(1); no request scans
+  // the full attacker-controlled store.
+  store.delete(key);
+  store.set(key, entry);
   return { failures: entry.failures, lockedUntil: entry.lockedUntil };
 }
 
@@ -148,18 +161,31 @@ export function clearFailures(key: string): void {
  * model does not give us a clean place to host a long-lived timer
  * that survives serverless cold starts).
  */
-export function pruneExpired(now: number = Date.now()): void {
+export function pruneExpired(now: number = Date.now()): number {
   const { windowMs } = resolvedConfig();
-  for (const [key, entry] of store) {
+  const toInspect = Math.min(PRUNE_BATCH_SIZE, store.size);
+  let inspected = 0;
+  while (inspected < toInspect) {
+    const oldest = store.entries().next().value as
+      | [string, ThrottleEntry]
+      | undefined;
+    if (!oldest) break;
+    const [key, entry] = oldest;
+    store.delete(key);
     const lockoutOver = entry.lockedUntil <= now;
     const windowOver = now - entry.windowStart > windowMs;
-    if (lockoutOver && windowOver) {
-      store.delete(key);
-    }
+    if (!(lockoutOver && windowOver)) store.set(key, entry);
+    inspected += 1;
   }
+  return inspected;
 }
 
 /** Test-only: clear the entire store. */
 export function _resetForTests(): void {
   store.clear();
+}
+
+/** Test-only: expose cardinality without exposing mutable entries. */
+export function _storeSizeForTests(): number {
+  return store.size;
 }

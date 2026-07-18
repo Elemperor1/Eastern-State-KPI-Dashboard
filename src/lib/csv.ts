@@ -1,12 +1,27 @@
 const NEEDS_QUOTE = /[",\n\r]/;
 const CRLF = "\r\n";
-const FORMULA_LEADING = /^[=+\-@\t\r]/;
-const FORMULA_LEADING_AFTER_SPACES = /^ +[=+\-@]/;
+const FORMULA_MARKERS = new Set(["=", "+", "-", "@"]);
+
+function isLeadingWhitespaceOrControl(char: string): boolean {
+  const code = char.charCodeAt(0);
+  return /\s/u.test(char) || code <= 0x1f || code === 0x7f;
+}
 
 /** Neutralize text that spreadsheet applications could evaluate as a formula. */
 function neutralizeFormulaPrefix(value: string): string {
   if (value.length === 0) return value;
-  if (FORMULA_LEADING.test(value) || FORMULA_LEADING_AFTER_SPACES.test(value)) {
+  // Tab and CR are themselves formula triggers in common spreadsheet
+  // guidance. Other whitespace/control prefixes are skipped so consumers
+  // that normalize them cannot expose a hidden marker afterward.
+  if (value[0] === "\t" || value[0] === "\r") return `'${value}`;
+  let markerIndex = 0;
+  while (
+    markerIndex < value.length &&
+    isLeadingWhitespaceOrControl(value[markerIndex]!)
+  ) {
+    markerIndex += 1;
+  }
+  if (FORMULA_MARKERS.has(value[markerIndex] ?? "")) {
     return `'${value}`;
   }
   return value;

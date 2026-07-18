@@ -52,7 +52,11 @@ vi.mock("@/features/auth/session", () => ({
 }));
 
 vi.mock("@/features/auth/server", () => ({
-  verifyCredentials: vi.fn(async () => ADMIN),
+  verifyCredentials: vi.fn(async () => ({
+    user: ADMIN,
+    credentialVersion: 1,
+    passwordHash: "$2a$10$test",
+  })),
 }));
 
 vi.mock("@/features/users/server", () => ({
@@ -60,6 +64,7 @@ vi.mock("@/features/users/server", () => ({
   deleteUser: vi.fn(() => {}),
   listUsers: vi.fn(() => []),
   updateUserPassword: vi.fn(() => {}),
+  updateUserPasswordIfCurrent: vi.fn(() => true),
   findUserById: vi.fn((id: number) => ({
     id,
     email: "target@test",
