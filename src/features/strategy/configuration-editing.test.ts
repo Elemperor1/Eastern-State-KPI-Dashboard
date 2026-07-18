@@ -3,6 +3,7 @@ import os from "node:os";
 import path from "node:path";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { getDb, resetDb } from "@/lib/db";
+import { bootstrapTestInstallation } from "@/features/installation/test-fixture";
 import {
   createMeasurementConfiguration,
   createSuccessorMeasurementConfiguration,
@@ -103,6 +104,7 @@ describe("strategic configuration editing repository", () => {
   beforeEach(() => {
     resetDb();
     process.env.DATABASE_PATH = path.join(tmpDir, `edit-${databaseIndex++}.db`);
+    bootstrapTestInstallation();
     const db = getDb();
     actorId = Number(
       db
@@ -115,8 +117,9 @@ describe("strategic configuration editing repository", () => {
     categoryId = Number(
       db
         .prepare(
-          `INSERT INTO categories (slug, name, sort_order)
-           VALUES ('visitor-experience', 'Visitor Experience', 1)`,
+          `INSERT INTO categories (plan_id, slug, name, sort_order)
+           VALUES ((SELECT id FROM strategic_plans WHERE status = 'active'),
+                   'visitor-experience', 'Visitor Experience', 1)`,
         )
         .run().lastInsertRowid,
     );
@@ -972,6 +975,7 @@ describe("strategic configuration editing repository", () => {
 
     resetDb();
     process.env.DATABASE_PATH = path.join(tmpDir, `edit-${databaseIndex++}.db`);
+    bootstrapTestInstallation();
     const db = getDb();
     const localActor = Number(
       db
@@ -984,8 +988,9 @@ describe("strategic configuration editing repository", () => {
     const localCategory = Number(
       db
         .prepare(
-          `INSERT INTO categories (slug, name, sort_order)
-           VALUES ('successor-test', 'Successor Test', 1)`,
+          `INSERT INTO categories (plan_id, slug, name, sort_order)
+           VALUES ((SELECT id FROM strategic_plans WHERE status = 'active'),
+                   'successor-test', 'Successor Test', 1)`,
         )
         .run().lastInsertRowid,
     );

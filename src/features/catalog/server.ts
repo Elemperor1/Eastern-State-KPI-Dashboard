@@ -8,6 +8,7 @@ import {
   getStrategicGoalRecord,
   recordStrategicAuditEvent,
 } from "@/features/strategy/server";
+import { getActiveInstallation } from "@/features/installation/server";
 import { getDb, transaction } from "@/lib/db";
 import type {
   Category,
@@ -20,6 +21,7 @@ import type {
 
 interface CategoryRow {
   id: number;
+  plan_id: number;
   slug: string;
   name: string;
   description: string | null;
@@ -47,6 +49,7 @@ interface KPIRow {
 function asCategory(row: Record<string, unknown>): CategoryRow {
   return {
     id: Number(row.id),
+    plan_id: Number(row.plan_id),
     slug: String(row.slug),
     name: String(row.name),
     description: row.description == null ? null : String(row.description),
@@ -144,14 +147,15 @@ export function createCategory(
 ): Category {
   return transaction(() => {
     const db = getDb();
+    const planId = getActiveInstallation().plan.id;
     const slug = input.slug.trim();
     const name = input.name.trim();
     const result = db
       .prepare(
-        `INSERT INTO categories (slug, name, description, sort_order)
-         VALUES (?, ?, ?, ?)`,
+        `INSERT INTO categories (plan_id, slug, name, description, sort_order)
+         VALUES (?, ?, ?, ?, ?)`,
       )
-      .run(slug, name, input.description ?? null, input.sort_order ?? 0);
+      .run(planId, slug, name, input.description ?? null, input.sort_order ?? 0);
     const row = rawCategory(Number(result.lastInsertRowid));
     recordLegacyCategoryEvent(null, row, "create", actorId);
     return asCategory(row);

@@ -190,6 +190,14 @@ function migrateSchema(raw: DatabaseSync): void {
     return;
   }
 
+  // v11 -> v12 adds the durable installation/plan owner and attaches every
+  // existing Strategic Priority to that plan without changing a business id.
+  if (version === 11) {
+    ensureStrategicSchemaV10Columns(raw);
+    migrateInstallationSchemaV12(raw);
+    return;
+  }
+
   // v10 → v11 keeps every strategic row and id while narrowing component
   // slug uniqueness to the effective measurement configuration that owns it
   // and adding explicit numerator/denominator roles for ratio aggregation.
@@ -198,6 +206,7 @@ function migrateSchema(raw: DatabaseSync): void {
   if (version === 10) {
     ensureStrategicSchemaV10Columns(raw);
     migrateStrategicSchemaV11(raw);
+    migrateInstallationSchemaV12(raw);
     return;
   }
 
@@ -206,6 +215,8 @@ function migrateSchema(raw: DatabaseSync): void {
   // planning sidecars used by the next dashboard model.
   if (version === 9) {
     migrateStrategicSchemaV10(raw);
+    migrateStrategicSchemaV11(raw);
+    migrateInstallationSchemaV12(raw);
     return;
   }
 
@@ -222,6 +233,8 @@ function migrateSchema(raw: DatabaseSync): void {
       "INSERT OR REPLACE INTO meta (key, value) VALUES ('schema_version', '9');",
     );
     migrateStrategicSchemaV10(raw);
+    migrateStrategicSchemaV11(raw);
+    migrateInstallationSchemaV12(raw);
     return;
   }
 
@@ -543,7 +556,215 @@ function migrateStrategicSchemaV11(raw: DatabaseSync): void {
         );
       }
       raw.exec(
-        `INSERT OR REPLACE INTO meta (key, value) VALUES ('schema_version', ${SCHEMA_VERSION});`,
+        "INSERT OR REPLACE INTO meta (key, value) VALUES ('schema_version', '11');",
+      );
+      raw.exec("COMMIT;");
+    } catch (error) {
+      try {
+        raw.exec("ROLLBACK;");
+      } catch {
+        // Surface the migration error.
+      }
+      throw error;
+    }
+  } finally {
+    if (foreignKeysEnabled) raw.exec("PRAGMA foreign_keys = ON;");
+  }
+}
+
+function initializeInstallationSchema(raw: DatabaseSync): void {
+  raw.exec(`
+    CREATE TABLE IF NOT EXISTS organizations (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      slug TEXT UNIQUE NOT NULL,
+      name TEXT NOT NULL,
+      short_name TEXT NOT NULL,
+      status TEXT NOT NULL DEFAULT 'active'
+        CHECK (status IN ('active','archived')),
+      archived_at TEXT,
+      created_by INTEGER REFERENCES users(id) ON DELETE SET NULL,
+      created_at TEXT NOT NULL DEFAULT (datetime('now')),
+      updated_by INTEGER REFERENCES users(id) ON DELETE SET NULL,
+      updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+    );
+
+    CREATE UNIQUE INDEX IF NOT EXISTS idx_organizations_single_active
+      ON organizations((1))
+      WHERE status = 'active' AND archived_at IS NULL;
+
+    CREATE TABLE IF NOT EXISTS strategic_plans (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      organization_id INTEGER NOT NULL
+        REFERENCES organizations(id) ON DELETE RESTRICT,
+      slug TEXT NOT NULL,
+      name TEXT NOT NULL,
+      description TEXT,
+      start_year INTEGER NOT NULL CHECK (start_year BETWEEN 1900 AND 2100),
+      end_year INTEGER NOT NULL CHECK (end_year BETWEEN start_year AND 2100),
+      status TEXT NOT NULL DEFAULT 'draft'
+        CHECK (status IN ('draft','active','archived')),
+      revision INTEGER NOT NULL DEFAULT 1 CHECK (revision > 0),
+      source_reference TEXT,
+      archived_at TEXT,
+      created_by INTEGER REFERENCES users(id) ON DELETE SET NULL,
+      created_at TEXT NOT NULL DEFAULT (datetime('now')),
+      updated_by INTEGER REFERENCES users(id) ON DELETE SET NULL,
+      updated_at TEXT NOT NULL DEFAULT (datetime('now')),
+      UNIQUE (organization_id, slug)
+    );
+
+    CREATE UNIQUE INDEX IF NOT EXISTS idx_strategic_plans_active_organization
+      ON strategic_plans(organization_id)
+      WHERE status = 'active' AND archived_at IS NULL;
+    CREATE INDEX IF NOT EXISTS idx_strategic_plans_status
+      ON strategic_plans(status, archived_at);
+
+    CREATE TABLE IF NOT EXISTS installation_audit_events (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      entity_type TEXT NOT NULL CHECK (entity_type IN ('organization','strategic_plan')),
+      entity_id INTEGER NOT NULL,
+      event_type TEXT NOT NULL CHECK (event_type IN ('create','update','archive','restore')),
+      entity_display_name TEXT NOT NULL,
+      previous_value_json TEXT,
+      new_value_json TEXT,
+      actor_id INTEGER REFERENCES users(id) ON DELETE SET NULL,
+      actor_email_snapshot TEXT,
+      occurred_at TEXT NOT NULL DEFAULT (datetime('now'))
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_installation_audit_entity
+      ON installation_audit_events(entity_type, entity_id, occurred_at);
+    CREATE INDEX IF NOT EXISTS idx_installation_audit_occurred
+      ON installation_audit_events(occurred_at, id);
+  `);
+}
+
+/**
+ * v11 -> v12 database-authority migration.
+ *
+ * The embedded values below are a one-time historical migration input. After
+ * schema 12 is recorded, ordinary startup never compares or reconciles these
+ * values with persisted installation content.
+ */
+function migrateInstallationSchemaV12(raw: DatabaseSync): void {
+  const foreignKeysEnabled = Number(
+    (
+      raw.prepare("PRAGMA foreign_keys").get() as
+        | { foreign_keys?: number | bigint }
+        | undefined
+    )?.foreign_keys ?? 0,
+  ) === 1;
+
+  if (foreignKeysEnabled) raw.exec("PRAGMA foreign_keys = OFF;");
+  try {
+    raw.exec("BEGIN IMMEDIATE;");
+    try {
+      initializeInstallationSchema(raw);
+      const organization = raw.prepare(
+        `INSERT INTO organizations (slug, name, short_name, status)
+         VALUES ('eastern-state-penitentiary-historic-site',
+                 'Eastern State Penitentiary Historic Site',
+                 'Eastern State', 'active')
+         RETURNING id`,
+      ).get() as { id: number };
+      const plan = raw.prepare(
+        `INSERT INTO strategic_plans (
+           organization_id, slug, name, start_year, end_year, status,
+           source_reference
+         ) VALUES (?, 'strategic-plan-2025-2029', 'Strategic Plan',
+                   2025, 2029, 'active',
+                   'Eastern State Strategic Dashboard 2025-2029 (8.1.25)')
+         RETURNING id`,
+      ).get(Number(organization.id)) as { id: number };
+      raw.prepare(
+        `INSERT INTO installation_audit_events (
+           entity_type, entity_id, event_type, entity_display_name,
+           previous_value_json, new_value_json
+         ) VALUES ('organization', ?, 'create', ?, NULL, ?)`,
+      ).run(
+        Number(organization.id),
+        "Eastern State Penitentiary Historic Site",
+        JSON.stringify({
+          slug: "eastern-state-penitentiary-historic-site",
+          name: "Eastern State Penitentiary Historic Site",
+          short_name: "Eastern State",
+          status: "active",
+        }),
+      );
+      raw.prepare(
+        `INSERT INTO installation_audit_events (
+           entity_type, entity_id, event_type, entity_display_name,
+           previous_value_json, new_value_json
+         ) VALUES ('strategic_plan', ?, 'create', ?, NULL, ?)`,
+      ).run(
+        Number(plan.id),
+        "Strategic Plan",
+        JSON.stringify({
+          organization_id: Number(organization.id),
+          slug: "strategic-plan-2025-2029",
+          name: "Strategic Plan",
+          start_year: 2025,
+          end_year: 2029,
+          status: "active",
+          source_reference:
+            "Eastern State Strategic Dashboard 2025-2029 (8.1.25)",
+        }),
+      );
+
+      raw.exec(`
+        DROP TRIGGER IF EXISTS categories_set_updated_at_after_insert;
+        DROP TRIGGER IF EXISTS categories_set_updated_at_after_update;
+        DROP INDEX IF EXISTS idx_categories_archived_at;
+
+        CREATE TABLE categories_v12 (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          plan_id INTEGER NOT NULL REFERENCES strategic_plans(id) ON DELETE RESTRICT,
+          slug TEXT UNIQUE NOT NULL,
+          name TEXT NOT NULL,
+          description TEXT,
+          sort_order INTEGER NOT NULL DEFAULT 0,
+          archived_at TEXT,
+          updated_at TEXT
+        );
+      `);
+      raw.prepare(
+        `INSERT INTO categories_v12 (
+           id, plan_id, slug, name, description, sort_order, archived_at,
+           updated_at
+         )
+         SELECT id, ?, slug, name, description, sort_order, archived_at,
+                updated_at
+         FROM categories`,
+      ).run(Number(plan.id));
+      raw.exec(`
+        DROP TABLE categories;
+        ALTER TABLE categories_v12 RENAME TO categories;
+        CREATE INDEX idx_categories_archived_at ON categories(archived_at);
+
+        CREATE TRIGGER categories_set_updated_at_after_insert
+        AFTER INSERT ON categories
+        FOR EACH ROW WHEN NEW.updated_at IS NULL
+        BEGIN
+          UPDATE categories SET updated_at = datetime('now') WHERE id = NEW.id;
+        END;
+
+        CREATE TRIGGER categories_set_updated_at_after_update
+        AFTER UPDATE OF plan_id, slug, name, description, sort_order, archived_at
+        ON categories
+        FOR EACH ROW WHEN NEW.updated_at IS OLD.updated_at
+        BEGIN
+          UPDATE categories SET updated_at = datetime('now') WHERE id = NEW.id;
+        END;
+      `);
+
+      const violations = raw.prepare("PRAGMA foreign_key_check").all();
+      if (violations.length > 0) {
+        throw new Error(
+          `Schema 12 installation migration produced ${violations.length} foreign-key violation(s).`,
+        );
+      }
+      raw.exec(
+        "INSERT OR REPLACE INTO meta (key, value) VALUES ('schema_version', '12');",
       );
       raw.exec("COMMIT;");
     } catch (error) {
@@ -592,7 +813,7 @@ function migrateStrategicSchemaV10(raw: DatabaseSync): void {
 
     initializeStrategicSchema(raw);
     raw.exec(
-      `INSERT OR REPLACE INTO meta (key, value) VALUES ('schema_version', ${SCHEMA_VERSION});`,
+      "INSERT OR REPLACE INTO meta (key, value) VALUES ('schema_version', '10');",
     );
     raw.exec("COMMIT;");
   } catch (error) {
@@ -1083,9 +1304,11 @@ function initializeStrategicSchema(raw: DatabaseSync): void {
 }
 
 function initializeSchema(raw: DatabaseSync): void {
+  initializeInstallationSchema(raw);
   raw.exec(`
     CREATE TABLE IF NOT EXISTS categories (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
+      plan_id INTEGER NOT NULL REFERENCES strategic_plans(id) ON DELETE RESTRICT,
       slug TEXT UNIQUE NOT NULL,
       name TEXT NOT NULL,
       description TEXT,

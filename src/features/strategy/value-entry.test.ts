@@ -4,6 +4,7 @@ import path from "node:path";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { listCalculatedStrategyActuals } from "@/features/reporting/strategy-actuals-server";
 import { getDb, resetDb } from "@/lib/db";
+import { bootstrapTestInstallation } from "@/features/installation/test-fixture";
 import { listStrategicAuditEvents } from "./audit";
 import { archiveComponent } from "./mutations";
 import {
@@ -48,8 +49,9 @@ function seedKpi(
   if (!category) {
     const categoryId = Number(
       db.prepare(
-        `INSERT INTO categories (slug, name, description, sort_order)
-         VALUES ('visitor-experience', 'Reimagine Visitor Experience', '', 0)`,
+        `INSERT INTO categories (plan_id, slug, name, description, sort_order)
+         VALUES ((SELECT id FROM strategic_plans WHERE status = 'active'),
+                 'visitor-experience', 'Reimagine Visitor Experience', '', 0)`,
       ).run().lastInsertRowid,
     );
     category = { id: categoryId };
@@ -117,6 +119,7 @@ describe("strategy value-entry persistence", () => {
   beforeEach(() => {
     resetDb();
     process.env.DATABASE_PATH = path.join(tmpDir, `value-${databaseIndex++}.db`);
+    bootstrapTestInstallation();
   });
 
   afterAll(() => {

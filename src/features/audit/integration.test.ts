@@ -3,6 +3,7 @@ import os from "node:os";
 import path from "node:path";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { getDb, resetDb } from "@/lib/db";
+import { bootstrapTestInstallation } from "@/features/installation/test-fixture";
 import {
   listDeletedHistoryCategories,
   listDeletedHistoryKpis,
@@ -26,6 +27,7 @@ describe("read-only legacy Activity archive", () => {
   beforeEach(() => {
     resetDb();
     process.env.DATABASE_PATH = path.join(tmpDir, `activity-${databaseIndex++}.db`);
+    bootstrapTestInstallation();
     const db = getDb();
     actorId = Number(
       db.prepare(
@@ -35,8 +37,9 @@ describe("read-only legacy Activity archive", () => {
     );
     categoryId = Number(
       db.prepare(
-        `INSERT INTO categories (slug, name, sort_order)
-         VALUES ('visitor-experience', 'Visitor Experience', 1)`,
+        `INSERT INTO categories (plan_id, slug, name, sort_order)
+         VALUES ((SELECT id FROM strategic_plans WHERE status = 'active'),
+                 'visitor-experience', 'Visitor Experience', 1)`,
       ).run().lastInsertRowid,
     );
     kpiId = Number(

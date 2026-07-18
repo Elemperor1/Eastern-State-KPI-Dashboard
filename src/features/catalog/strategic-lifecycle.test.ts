@@ -10,6 +10,7 @@ import {
   listStrategicGoals,
 } from "@/features/strategy/server";
 import { getDb, resetDb } from "@/lib/db";
+import { bootstrapTestInstallation } from "@/features/installation/test-fixture";
 import {
   archiveKPI,
   countCategoryDependents,
@@ -108,6 +109,7 @@ describe("schema-10 strategic catalog lifecycle", () => {
       tmpDir,
       `catalog-${databaseIndex++}.db`,
     );
+    bootstrapTestInstallation();
   });
 
   afterAll(() => {
