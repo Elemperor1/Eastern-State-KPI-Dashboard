@@ -111,9 +111,13 @@ Setup retains its existing Measures, Goals, People, and Activity workspaces.
 The smallest missing capability is added above Setup → Goals: an admin can edit
 the Organization display/short names and Strategic Plan name, description,
 start/end years, and source reference. Saves use the existing protected
-`PATCH /api/categories` boundary, an expected revision, a single transaction,
-and immutable audit events. Range contraction is rejected when it would
-exclude persisted definitions, targets, bands, or observations. Existing
+`PATCH /api/categories` boundary, shared request/domain validation, an expected
+revision, a single transaction, and immutable audit events. The form joins the
+shared stay/discard guard, focuses the first invalid field, exposes field-level
+year errors, and retains its draft after failed saves. Range contraction is
+rejected when it would exclude active definitions or persisted observations;
+archived definitions, targets, and bands may remain as historical records.
+Existing
 editors continue to manage priorities, measures, goals, memberships,
 definitions, components, targets, bands, and values.
 
@@ -139,9 +143,11 @@ definitions, components, targets, bands, and values.
 - Logo/font administration is out of scope; existing Eastern State assets are
   presentation assets, not a second source for textual installation identity.
 - Legacy rows and `entry_history` remain the documented read-only archive.
-- Plan contraction is deliberately conservative. Operators must archive or
-  successor-date conflicting definitions/targets/bands and remove conflicting
-  observations through supported audited workflows before shortening a plan.
+- Plan contraction is deliberately conservative for active records. Operators
+  must archive or successor-date conflicting definitions/targets/bands and
+  remove conflicting observations through supported audited workflows before
+  shortening a plan. Archived definitions remain available as history without
+  blocking the new active range.
 - The generic bootstrap initializer remains internal to the strategy mutation
   module but is absent from the runtime public facade, takes all content as an
   explicit argument, and is guarded against runtime callers. Moving that

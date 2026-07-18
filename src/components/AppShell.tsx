@@ -290,11 +290,11 @@ export function AppShell({
         className="fixed inset-x-0 top-0 z-40 flex h-16 items-center justify-between bg-ink-900 px-4 text-white lg:hidden"
         inert={mobileOpen}
       >
-        <Link href="/dashboard/overview" className="flex min-h-11 items-center gap-3" aria-label={`${organizationShortName} home`}>
+        <Link href="/dashboard/overview" className="flex min-h-11 min-w-0 items-center gap-3" aria-label={`${organizationShortName} home`}>
           <BrandMark size="sm" />
-          <div>
-            <span className="block text-sm font-semibold leading-tight">{organizationShortName}</span>
-            <span className="block text-[10px] uppercase tracking-[0.1em] text-white/50">{planName}</span>
+          <div className="min-w-0">
+            <span className="block break-words text-sm font-semibold leading-tight">{organizationShortName}</span>
+            <span className="block break-words text-[10px] uppercase tracking-[0.1em] text-white/50">{planName}</span>
           </div>
         </Link>
         <Button
@@ -314,8 +314,8 @@ export function AppShell({
         <Link href="/dashboard/overview" className="mx-4 mb-8 mt-5 flex items-center gap-3" aria-label={`${organizationShortName} home`}>
             <BrandMark size="md" />
           <div className="min-w-0">
-            <span className="block truncate text-sm font-semibold leading-tight">{organizationShortName}</span>
-            <span className="mt-1 block truncate text-[10px] uppercase tracking-[0.1em] text-white/50">
+            <span className="block break-words text-sm font-semibold leading-tight">{organizationShortName}</span>
+            <span className="mt-1 block break-words text-[10px] uppercase tracking-[0.1em] text-white/50">
               {planName}
             </span>
           </div>
@@ -345,13 +345,13 @@ export function AppShell({
             <div className="mb-8 flex items-center justify-between px-4 pt-5">
               <Link
                 href="/dashboard/overview"
-                className="flex items-center gap-3"
+                className="flex min-w-0 items-center gap-3"
                 onClick={() => setMobileOpen(false)}
               >
                 <BrandMark size="md" />
-                <div>
-                  <span className="block text-sm font-semibold">{organizationShortName}</span>
-                  <span className="block text-[10px] uppercase tracking-[0.1em] text-white/50">{planName}</span>
+                <div className="min-w-0">
+                  <span className="block break-words text-sm font-semibold">{organizationShortName}</span>
+                  <span className="block break-words text-[10px] uppercase tracking-[0.1em] text-white/50">{planName}</span>
                 </div>
               </Link>
               <Button

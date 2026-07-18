@@ -1,5 +1,6 @@
 import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
+import { readFileSync } from "node:fs";
 import { describe, expect, it, vi } from "vitest";
 
 vi.mock("next/navigation", () => ({
@@ -44,5 +45,19 @@ describe("PlanSettingsClient", () => {
     expect(html).toContain('value="2030"');
     expect(html).toContain('value="2032"');
     expect(html).toContain("Save plan settings");
+    expect(html).toContain("First reporting year");
+    expect(html).toContain("Last reporting year");
+    expect(html).toContain("btn-primary");
+  });
+
+  it("participates in the shared unsaved-change and accessible validation contracts", () => {
+    const source = readFileSync(new URL("./PlanSettingsClient.tsx", import.meta.url), "utf8");
+    expect(source).toContain("useUnsavedChanges");
+    expect(source).toContain("setUnsavedState({ dirty: isDirty, busy })");
+    expect(source).toContain('querySelector<HTMLElement>(\'[aria-invalid="true"]\')');
+    expect(source).toContain("aria-invalid={Boolean(errors.startYear)}");
+    expect(source).toContain("aria-invalid={Boolean(errors.endYear)}");
+    expect(source).toContain('variant="primary"');
+    expect(source).toContain("isLoading={busy}");
   });
 });

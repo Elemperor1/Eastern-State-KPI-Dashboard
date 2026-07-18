@@ -165,7 +165,11 @@ done
 
 echo
 echo "Canonical strategic mutation and report truth"
-catalog_json="$("$REPO_ROOT/node_modules/.bin/tsx" "$REPO_ROOT/scripts/smoke-catalog.ts")"
+if [ -n "${SMOKE_CATALOG_JSON:-}" ]; then
+  catalog_json="$SMOKE_CATALOG_JSON"
+else
+  catalog_json="$("$REPO_ROOT/node_modules/.bin/tsx" "$REPO_ROOT/scripts/smoke-catalog.ts")"
+fi
 kpi=$(printf "%s" "$catalog_json" | python3 -c "import sys,json; print(json.load(sys.stdin)['ids']['strategyPercentageKpi'])")
 year=$(printf "%s" "$catalog_json" | python3 -c "import sys,json; print(json.load(sys.stdin)['ids']['strategyPercentageYear'])")
 mutation_request "$cookie_jar" POST "/api/strategy/observations" \

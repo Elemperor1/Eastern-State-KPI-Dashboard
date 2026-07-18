@@ -1,6 +1,7 @@
 import { z } from "@/lib/zod";
 import { getDb, transaction } from "@/lib/db";
 import type { ActiveInstallation, InstallationAuditEvent } from "./types";
+import { PlanSettingsUpdateSchema } from "./validation";
 
 export type { ActiveInstallation, InstallationAuditEvent } from "./types";
 
@@ -35,22 +36,6 @@ const BootstrapSchema = z.object({
       message: "Plan end year must be on or after its start year.",
     }),
 });
-
-const UpdateSchema = z
-  .object({
-    expectedRevision: z.number().int().positive(),
-    organizationName: NameSchema,
-    organizationShortName: ShortNameSchema,
-    planName: NameSchema,
-    planDescription: OptionalTextSchema,
-    startYear: YearSchema,
-    endYear: YearSchema,
-    sourceReference: OptionalTextSchema,
-  })
-  .refine((input) => input.startYear <= input.endYear, {
-    path: ["endYear"],
-    message: "Plan end year must be on or after its start year.",
-  });
 
 export class InstallationNotConfiguredError extends Error {
   constructor(message = "The active installation and strategic plan are not configured.") {
@@ -309,19 +294,30 @@ function assertPlanRangeCanChange(startYear: number, endYear: number): void {
     {
       label: "Strategic Goal effective ranges",
       query:
-        "SELECT COUNT(*) AS count FROM strategic_goals WHERE plan_start_year < ? OR plan_end_year > ?",
+        `SELECT COUNT(*) AS count FROM strategic_goals
+         WHERE archived_at IS NULL AND configuration_status <> 'archived'
+           AND (plan_start_year < ? OR plan_end_year > ?)`,
       params: [startYear, endYear],
     },
     {
       label: "Goal memberships",
       query:
-        "SELECT COUNT(*) AS count FROM goal_kpis WHERE effective_from_year < ? OR COALESCE(effective_to_year, ?) > ?",
+        `SELECT COUNT(*) AS count
+         FROM goal_kpis membership
+         JOIN strategic_goals goal ON goal.id = membership.goal_id
+         WHERE membership.archived_at IS NULL
+           AND goal.archived_at IS NULL
+           AND goal.configuration_status <> 'archived'
+           AND (membership.effective_from_year < ? OR
+                COALESCE(membership.effective_to_year, ?) > ?)`,
       params: [startYear, endYear, endYear],
     },
     {
       label: "Measurement configurations",
       query:
-        "SELECT COUNT(*) AS count FROM kpi_measurement_configs WHERE effective_from_year < ? OR COALESCE(effective_to_year, ?) > ?",
+        `SELECT COUNT(*) AS count FROM kpi_measurement_configs
+         WHERE archived_at IS NULL AND configuration_status <> 'archived'
+           AND (effective_from_year < ? OR COALESCE(effective_to_year, ?) > ?)`,
       params: [startYear, endYear, endYear],
     },
     {
@@ -346,15 +342,17 @@ function assertPlanRangeCanChange(startYear: number, endYear: number): void {
       label: "Distribution band effective ranges",
       query:
         `SELECT COUNT(*) AS count FROM distribution_bands
-         WHERE effective_from_year < ? OR
-           (effective_to_year IS NOT NULL AND effective_to_year > ?)`,
+         WHERE archived_at IS NULL AND
+           (effective_from_year < ? OR
+            (effective_to_year IS NOT NULL AND effective_to_year > ?))`,
       params: [startYear, endYear],
     },
     {
       label: "Plan-scoped targets",
       query:
         `SELECT COUNT(*) AS count FROM kpi_targets
-         WHERE external_target_year = 0
+         WHERE archived_at IS NULL AND configuration_status <> 'archived'
+           AND external_target_year = 0
            AND (target_year < ? OR target_year > ? OR
                 (reporting_year IS NOT NULL AND
                  (reporting_year < ? OR reporting_year > ?)))`,
@@ -393,10 +391,10 @@ function planSnapshot(installation: ActiveInstallation) {
 }
 
 export function updateActiveInstallation(
-  input: z.input<typeof UpdateSchema>,
+  input: z.input<typeof PlanSettingsUpdateSchema>,
   actorId: number,
 ): ActiveInstallation {
-  const parsed = UpdateSchema.parse(input);
+  const parsed = PlanSettingsUpdateSchema.parse(input);
   return transaction(() => {
     const current = getActiveInstallation();
     if (current.plan.revision !== parsed.expectedRevision) {

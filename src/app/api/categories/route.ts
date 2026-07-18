@@ -18,6 +18,7 @@ import {
   InstallationValidationError,
   updateActiveInstallation,
 } from "@/features/installation/server";
+import { PlanSettingsUpdateActionSchema } from "@/features/installation/validation";
 
 const CreateSchema = z.object({
   slug: z.string().min(1).regex(/^[a-z0-9-]+$/),
@@ -59,23 +60,7 @@ export async function POST(req: NextRequest) {
 }
 
 const UpdateSchema = z.union([
-  z
-    .object({
-      action: z.literal("update_plan"),
-      expectedRevision: z.number().int().positive(),
-      organizationName: z.string().trim().min(1).max(200),
-      organizationShortName: z.string().trim().min(1).max(80),
-      planName: z.string().trim().min(1).max(200),
-      planDescription: z.string().trim().min(1).max(4_000).nullable(),
-      startYear: z.number().int().min(1900).max(2100),
-      endYear: z.number().int().min(1900).max(2100),
-      sourceReference: z.string().trim().min(1).max(4_000).nullable(),
-    })
-    .strict()
-    .refine((input) => input.startYear <= input.endYear, {
-      path: ["endYear"],
-      message: "Plan end year must be on or after its start year.",
-    }),
+  PlanSettingsUpdateActionSchema,
   z
     .object({
       action: z.enum(["archive", "restore"]),

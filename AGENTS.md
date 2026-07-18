@@ -7,7 +7,9 @@ Internal KPI dashboard for Eastern State Penitentiary Historic Site. Next.js 16 
 ADR 0022 supersedes older route and interaction notes below wherever they
 conflict. The production product has exactly four destinations:
 `/dashboard/overview`, `/data-entry`, `/reports`, and `/setup`. Setup contains
-Measures, Goals, People, and Activity. The former `/admin/*` and
+Measures, Goals, People, and Activity; persisted Organization and Strategic
+Plan settings are edited inside Goals rather than through a fifth destination.
+The former `/admin/*` and
 `/dashboard/trends` pages are removed, as are the legacy `/api/entries`,
 `/api/breakdowns`, and `/api/goals` mutation adapters. Legacy SQLite rows and
 `entry_history` remain a read-only archive; current writes use the strategic
@@ -40,7 +42,7 @@ npm run db:seed   # destructive/disposable: resets KPI-owned sample data
 AUTH_DISABLED=true npm run dev   # loopback-only bypass at http://localhost:3000
 ```
 
-For an existing schema-9 or schema-10 database, especially a production volume, back it up
+For an existing schema-9, schema-10, or schema-11 database, especially a production volume, back it up
 and run `DATABASE_PATH=/absolute/path/to/kpi.db npm run db:migrate`. Do not run
 `db:seed` as a production migration; it intentionally replaces KPI-owned
 values, definitions, and audit history while preserving users.
@@ -60,7 +62,7 @@ On the first run against a fresh database, the seed creates `kerry@easternstate.
 | `npm run lint`                | `next lint` — runs the token, design-system, auth-bypass, and architecture guards first via `prelint`|
 | `npm run design-system:guard` | Fails if raw `<button>`/`<input>`/primitive classes used outside `src/components/ui/`, or if hex literals / `transition: all` / inline-style hex bypasses are introduced in `src/app/**` or `src/components/**` (excluding `src/components/ui/` and `src/app/globals.css`). |
 | `npm run design-system:test`  | Token, design-system, auth-bypass, architecture, and shell-injection guards + `tsc --noEmit` + a production `next build` with `AUTH_DISABLED` cleared — **the CI gate**. Run this before opening a PR; CI is expected to invoke this script verbatim. |
-| `npm run db:migrate`          | Apply the idempotent additive schema migration and strategic mapping without seeding or resetting existing data. Back up SQLite first. |
+| `npm run db:migrate`          | Apply the idempotent additive schema migration and consume any one-time database-authority content marker without seeding or resetting existing data. Back up SQLite first. |
 | `npm run db:seed`             | Destructively reset KPI-owned legacy/strategy tables and reseed disposable 2024–2026 sample data; users are preserved. |
 | `npm run setup:admin`         | Operator-only: set a known password on a bootstrap account (`SETUP_ADMIN_PASSWORD=...`), clears `must_change_password`. Never logs the password. |
 | `npm run architecture:guard`  | Fails if server-owned source calls the app's own `/api/*` routes, client components import server-only data access, or removed internal read routes reappear in `src/` or smoke scripts. |
@@ -135,9 +137,10 @@ symlinks/hardlinks, and parent-directory escapes are rejected before seeding.
 - `src/components/ui/` — **shared design-system library**. Import via `@/components/ui`; never hand-roll buttons/inputs/selects/tables outside this folder (`design-system:guard` enforces it).
 - `src/components/` — shared feature components for the shell, reports, Setup, and Data Entry.
 - `src/lib/` — shared database, session, auth-flag, request-guard, slug, and type infrastructure. Live strategic calculations stay in `src/features/strategy/`.
-- `src/features/catalog/strategic-plan.ts` — canonical 5-priority, 59-KPI legacy sample catalog and 25 backward-compatible per-KPI target rows.
-- `src/features/catalog/strategic-config.ts` — explicit 22 named strategic goals, one stable-slug membership/configuration for every KPI, and 46 component definitions.
-- `src/features/strategy/` — schema-11 records, validation, calculations, raw-value/configuration operations, immutable audit, and report queries.
+- `src/features/installation/` — schema-12 Organization/Strategic Plan ownership, typed active-installation reads, optimistic edits, plan-range integrity, and immutable installation audit.
+- `src/features/catalog/strategic-plan.ts` — bootstrap/test fixture for the initial 5-priority, 59-KPI sample catalog and 25 backward-compatible per-KPI target rows; never a runtime authority.
+- `src/features/catalog/strategic-config.ts` — bootstrap/migration/test fixture for the initial 22 goals, memberships/configurations, and 46 component definitions; runtime code must not import it.
+- `src/features/strategy/` — schema-12 records, validation, calculations, raw-value/configuration operations, immutable audit, and report queries.
 - `scripts/migrate.ts` — idempotent production-safe schema/configuration migration; `scripts/seed.ts` is the explicit destructive disposable-data reset (users preserved).
 - `DESIGN.md` (root) — visual language authority. `docs/design-system.md` translates it into component rules.
 
@@ -149,7 +152,7 @@ and `/setup`. Setup areas are Measures, Goals, People, and Activity.
 - Annual-only metrics are stored with `month = 0` in `monthly_entries` (single full-year value). See `src/lib/types.ts:60`.
 - `unit_type` ∈ `count | percent | currency | attendance | note | breakdown`. Breakdown KPIs write to `breakdown_entries` (label × year), not `monthly_entries`.
 - Direction (`higher | lower | neutral`) drives good/bad coloring — read it instead of hardcoding sign.
-- Schema bump: edit `src/lib/schema-version.json`. **Schema 8 was the intentional catalog replacement:** versions 7 and older reset KPI tables + `entry_history`, preserve users, and require `npm run db:seed`; back up production before crossing that boundary. **Schema 9 is additive:** v8 legacy KPI goals are preserved and receive a fixed `baseline_year` from their latest available pre-target actual. **Schema 10 is additive from 9:** it creates strategic sidecars and maps the existing 5-priority/22-goal/59-KPI configuration. **Schema 11 is additive from 10:** it scopes component identity to each effective configuration and records explicit ratio aggregation roles while preserving existing IDs and values. Use `npm run db:migrate`, not `db:seed`, for an existing database. ADR 0020 and `docs/migration-notes.md` record rollout and rollback.
+- Schema bump: edit `src/lib/schema-version.json`. **Schema 8 was the intentional catalog replacement:** versions 7 and older reset KPI tables + `entry_history`, preserve users, and require `npm run db:seed`; back up production before crossing that boundary. **Schema 9 is additive:** v8 legacy KPI goals are preserved and receive a fixed `baseline_year` from their latest available pre-target actual. **Schema 10 is additive from 9:** it creates strategic sidecars and maps the existing 5-priority/22-goal/59-KPI configuration. **Schema 11 is additive from 10:** it scopes component identity to each effective configuration and records explicit ratio aggregation roles while preserving existing IDs and values. **Schema 12 is additive from 11:** it persists Organization/Strategic Plan ownership, attaches every priority through a required `plan_id`, removes plan-specific schema defaults/checks, and marks one explicit content-migration pass. Once the marker is consumed, reruns never recreate deleted strategic content. Use `npm run db:migrate`, not `db:seed`, for an existing database. ADR 0023 and `docs/migration-notes.md` record rollout and rollback.
 - Annual pacing and full-plan progress are separate contracts. Annual targets are selected by `reporting_year`; full-plan targets have no reporting year and use their plan target year. Do not substitute one for the other when a target is missing.
 - Effective-dated target/configuration integrity is enforced. Defined annual and full-plan targets must retain compatible configuration coverage, and full-plan selection uses nearest future then latest past. Once values or targets use calculation semantics, create a successor instead of editing them in place. For component lifecycle changes, archive affected parent/component targets first; restore the configuration and components before restoring targets.
 - First-class strategic observations are the sole live reporting source. Retained legacy rows are visible only as archive/history evidence and are never used as a fallback calculation input.
@@ -179,7 +182,7 @@ and `/setup`. Setup areas are Measures, Goals, People, and Activity.
 - API handlers follow the pattern `try { await requireSession()/requireAdmin() } catch { return 401/403 }`. All protected mutations require admin. `GET /api/strategy/export` and `GET /api/strategy/distribution-bands` require any valid session; the exhaustive matrix is 28 protected route/method combinations, 26 admin-gated.
 - Use `zod` for request body validation on API routes.
 - Server dashboard pages call the explicit reporting operations in `src/features/reporting/server.ts`; client components must not import `getDb()` or server-only feature modules.
-- New measures are added at runtime in Setup → Measures. The canonical strategic-plan set and priorities are defined in `src/features/catalog/strategic-plan.ts`; update that definition and its invariant test when changing the seeded set, then rerun `npm run db:seed`.
+- New measures and priorities are added at runtime in Setup → Measures; plan identity/range and goals are edited in Setup → Goals. The database is authoritative after initialization. Change the fixture modules only when intentionally changing fresh-install/development seed content, update their invariant tests, and rerun `npm run db:seed` only against a disposable database.
 
 ## Gotchas
 

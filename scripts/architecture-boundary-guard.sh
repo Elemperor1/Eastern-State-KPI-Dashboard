@@ -249,6 +249,18 @@ if [ -n "$embedded_plan_boundary_hits" ]; then
   flag_failure "runtime source embeds a strategic-plan year boundary" "$embedded_plan_boundary_hits"
 fi
 
+literal_plan_year_default_hits="$(
+  grep -R -n -E '(filter|options)\.year[[:space:]]*\?\?[[:space:]]*[0-9]{4}' \
+    src/features src/app src/components src/lib \
+    --include='*.ts' --include='*.tsx' \
+    | grep -v -E '\.test\.(ts|tsx):' \
+    | head -40 || true
+)"
+
+if [ -n "$literal_plan_year_default_hits" ]; then
+  flag_failure "runtime source uses a literal strategic reporting-year default" "$literal_plan_year_default_hits"
+fi
+
 if [ "$FAILED" -eq 0 ]; then
   echo "✅ Architecture boundary guard passed: server code uses feature calls, app/components avoid low-level DB access, client code avoids server-only imports, cross-feature imports use public surfaces, pure calculations avoid framework/database dependencies, runtime code avoids bootstrap/reconciliation authority, plan years remain database-backed, and removed read APIs stay removed."
   exit 0

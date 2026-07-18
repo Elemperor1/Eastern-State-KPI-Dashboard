@@ -207,4 +207,89 @@ describe("database-backed installation and plan", () => {
       ]),
     );
   });
+
+  it("blocks active out-of-range definitions but permits contraction after they are archived", () => {
+    const installation = bootstrapInstallation(bootstrap).installation;
+    const actorId = Number(
+      getDb()
+        .prepare(
+          `INSERT INTO users (email, name, password_hash, role)
+           VALUES ('range-editor@example.org', 'Range Editor', 'hash', 'admin')`,
+        )
+        .run().lastInsertRowid,
+    );
+    const priority = createCategory({ slug: "range-priority", name: "Range priority" });
+    const kpiId = Number(
+      getDb()
+        .prepare(
+          `INSERT INTO kpis (
+             category_id, slug, name, unit, unit_type,
+             reporting_frequency, direction, sort_order
+           ) VALUES (?, 'range-kpi', 'Range KPI', 'count', 'count',
+                     'annual', 'higher', 1)`,
+        )
+        .run(priority.id).lastInsertRowid,
+    );
+    const goalId = Number(
+      getDb()
+        .prepare(
+          `INSERT INTO strategic_goals (
+             priority_id, slug, name, plan_start_year, plan_end_year,
+             configuration_status
+           ) VALUES (?, 'range-goal', 'Range goal', 2025, 2029, 'active')`,
+        )
+        .run(priority.id).lastInsertRowid,
+    );
+    getDb()
+      .prepare(
+        `INSERT INTO kpi_measurement_configs (
+           kpi_id, effective_from_year, effective_to_year,
+           measurement_type, reporting_frequency, aggregation_method,
+           configuration_status
+         ) VALUES (?, 2025, 2029, 'count', 'annual', 'none', 'archived')`,
+      )
+      .run(kpiId);
+    getDb()
+      .prepare(
+        `INSERT INTO distribution_bands (
+           kpi_id, slug, label, effective_from_year, effective_to_year, archived_at
+         ) VALUES (?, 'historic-band', 'Historic band', 2025, 2029, datetime('now'))`,
+      )
+      .run(kpiId);
+    getDb()
+      .prepare(
+        `INSERT INTO kpi_targets (
+           kpi_id, target_scope, reporting_year, target_year,
+           target_value, configuration_status, archived_at
+         ) VALUES (?, 'annual', 2029, 2029, 10, 'archived', datetime('now'))`,
+      )
+      .run(kpiId);
+
+    const contraction = {
+      expectedRevision: installation.plan.revision,
+      organizationName: installation.organization.name,
+      organizationShortName: installation.organization.shortName,
+      planName: installation.plan.name,
+      planDescription: installation.plan.description,
+      startYear: 2026,
+      endYear: 2028,
+      sourceReference: installation.plan.sourceReference,
+    };
+    expect(() => updateActiveInstallation(contraction, actorId)).toThrow(
+      "Strategic Goal effective ranges",
+    );
+
+    getDb()
+      .prepare(
+        `UPDATE strategic_goals
+         SET configuration_status = 'archived', archived_at = datetime('now')
+         WHERE id = ?`,
+      )
+      .run(goalId);
+
+    expect(updateActiveInstallation(contraction, actorId)).toMatchObject({
+      plan: { startYear: 2026, endYear: 2028, revision: 2 },
+      years: [2026, 2027, 2028],
+    });
+  });
 });

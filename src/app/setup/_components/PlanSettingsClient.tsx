@@ -1,19 +1,38 @@
 "use client";
 
-import { useState, type FormEvent } from "react";
+import {
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type FormEvent,
+  type ReactNode,
+} from "react";
 import { useRouter } from "next/navigation";
 import type { ActiveInstallation } from "@/features/installation/types";
+import {
+  PlanSettingsUpdateSchema,
+  type PlanSettingsUpdate,
+} from "@/features/installation/validation";
 import { apiFetch } from "@/lib/api-client";
 import { runEventHandler } from "@/lib/async-event";
+import { useUnsavedChanges } from "@/components/UnsavedChangesContext";
 import { Button, FormField, Input, StatusBanner, Textarea } from "@/components/ui";
 
-export function PlanSettingsClient({
-  installation,
-}: {
-  installation: ActiveInstallation;
-}) {
-  const router = useRouter();
-  const [draft, setDraft] = useState({
+interface PlanSettingsDraft {
+  organizationName: string;
+  organizationShortName: string;
+  planName: string;
+  planDescription: string;
+  startYear: string;
+  endYear: string;
+  sourceReference: string;
+}
+
+type PlanSettingsErrors = Partial<Record<keyof PlanSettingsDraft, string>>;
+
+function draftFromInstallation(installation: ActiveInstallation): PlanSettingsDraft {
+  return {
     organizationName: installation.organization.name,
     organizationShortName: installation.organization.shortName,
     planName: installation.plan.name,
@@ -21,46 +40,114 @@ export function PlanSettingsClient({
     startYear: String(installation.plan.startYear),
     endYear: String(installation.plan.endYear),
     sourceReference: installation.plan.sourceReference ?? "",
-  });
+  };
+}
+
+function payloadFromDraft(
+  draft: PlanSettingsDraft,
+  expectedRevision: number,
+): PlanSettingsUpdate {
+  return {
+    expectedRevision,
+    organizationName: draft.organizationName.trim(),
+    organizationShortName: draft.organizationShortName.trim(),
+    planName: draft.planName.trim(),
+    planDescription: draft.planDescription.trim() || null,
+    startYear: Number(draft.startYear),
+    endYear: Number(draft.endYear),
+    sourceReference: draft.sourceReference.trim() || null,
+  };
+}
+
+function errorHint(error: string | undefined, fallback?: ReactNode): ReactNode {
+  return error ? (
+    <span className="font-medium text-[var(--color-danger-text)]">{error}</span>
+  ) : (
+    fallback ?? null
+  );
+}
+
+export function PlanSettingsClient({
+  installation,
+}: {
+  installation: ActiveInstallation;
+}) {
+  const router = useRouter();
+  const { setState: setUnsavedState } = useUnsavedChanges();
+  const initialDraft = useMemo(
+    () => draftFromInstallation(installation),
+    [installation],
+  );
+  const [draft, setDraft] = useState(initialDraft);
+  const [baseline, setBaseline] = useState(initialDraft);
+  const [revision, setRevision] = useState(installation.plan.revision);
+  const [errors, setErrors] = useState<PlanSettingsErrors>({});
   const [busy, setBusy] = useState(false);
   const [feedback, setFeedback] = useState<{
     variant: "success" | "error";
     message: string;
   } | null>(null);
+  const formRef = useRef<HTMLFormElement>(null);
+  const isDirty = useMemo(
+    () => JSON.stringify(draft) !== JSON.stringify(baseline),
+    [baseline, draft],
+  );
 
-  function update(key: keyof typeof draft, value: string) {
+  useEffect(() => {
+    setUnsavedState({ dirty: isDirty, busy });
+    return () => setUnsavedState({ dirty: false, busy: false });
+  }, [busy, isDirty, setUnsavedState]);
+
+  function update(key: keyof PlanSettingsDraft, value: string) {
     setDraft((current) => ({ ...current, [key]: value }));
+    setErrors((current) => {
+      const next = { ...current };
+      delete next[key];
+      return next;
+    });
     setFeedback(null);
+  }
+
+  function focusFirstInvalidField() {
+    window.requestAnimationFrame(() =>
+      formRef.current
+        ?.querySelector<HTMLElement>('[aria-invalid="true"]')
+        ?.focus(),
+    );
   }
 
   async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    const startYear = Number(draft.startYear);
-    const endYear = Number(draft.endYear);
-    if (!Number.isInteger(startYear) || !Number.isInteger(endYear) || startYear > endYear) {
+    const parsed = PlanSettingsUpdateSchema.safeParse(
+      payloadFromDraft(draft, revision),
+    );
+    if (!parsed.success) {
+      const nextErrors: PlanSettingsErrors = {};
+      for (const issue of parsed.error.issues) {
+        const field = issue.path[0];
+        if (typeof field === "string" && field in draft && !nextErrors[field as keyof PlanSettingsDraft]) {
+          nextErrors[field as keyof PlanSettingsDraft] = issue.message;
+        }
+      }
+      setErrors(nextErrors);
       setFeedback({
         variant: "error",
-        message: "Use whole years, with the plan ending on or after it starts.",
+        message: "Correct the highlighted plan settings and try again.",
       });
+      focusFirstInvalidField();
       return;
     }
+
     setBusy(true);
     try {
       const response = await apiFetch("/api/categories", {
         method: "PATCH",
-        body: {
-          action: "update_plan",
-          expectedRevision: installation.plan.revision,
-          organizationName: draft.organizationName.trim(),
-          organizationShortName: draft.organizationShortName.trim(),
-          planName: draft.planName.trim(),
-          planDescription: draft.planDescription.trim() || null,
-          startYear,
-          endYear,
-          sourceReference: draft.sourceReference.trim() || null,
-        },
+        body: { action: "update_plan", ...parsed.data },
       });
-      const body = (await response.json().catch(() => ({}))) as { error?: string };
+      const body = (await response.json().catch(() => ({}))) as {
+        error?: string;
+        installation?: ActiveInstallation;
+      };
       if (!response.ok) {
         setFeedback({
           variant: "error",
@@ -68,6 +155,13 @@ export function PlanSettingsClient({
         });
         return;
       }
+      const savedDraft = body.installation
+        ? draftFromInstallation(body.installation)
+        : draft;
+      setDraft(savedDraft);
+      setBaseline(savedDraft);
+      setRevision(body.installation?.plan.revision ?? revision + 1);
+      setErrors({});
       setFeedback({ variant: "success", message: "Plan settings saved." });
       router.refresh();
     } catch {
@@ -89,32 +183,37 @@ export function PlanSettingsClient({
         </p>
       </div>
       {feedback ? <StatusBanner variant={feedback.variant}>{feedback.message}</StatusBanner> : null}
-      <form onSubmit={(event) => runEventHandler(submit, event)} className="grid grid-cols-1 gap-5 md:grid-cols-2">
-        <FormField label="Organization name" htmlFor="plan-organization-name">
-          <Input id="plan-organization-name" required value={draft.organizationName} onChange={(event) => update("organizationName", event.target.value)} />
+      <form
+        ref={formRef}
+        onSubmit={(event) => runEventHandler(submit, event)}
+        className="grid grid-cols-1 gap-5 md:grid-cols-2"
+        aria-busy={busy}
+      >
+        <FormField label="Organization name" htmlFor="plan-organization-name" hint={errorHint(errors.organizationName)}>
+          <Input id="plan-organization-name" required aria-invalid={Boolean(errors.organizationName)} value={draft.organizationName} onChange={(event) => update("organizationName", event.target.value)} />
         </FormField>
-        <FormField label="Short name" htmlFor="plan-organization-short-name">
-          <Input id="plan-organization-short-name" required value={draft.organizationShortName} onChange={(event) => update("organizationShortName", event.target.value)} />
+        <FormField label="Short name" htmlFor="plan-organization-short-name" hint={errorHint(errors.organizationShortName)}>
+          <Input id="plan-organization-short-name" required aria-invalid={Boolean(errors.organizationShortName)} value={draft.organizationShortName} onChange={(event) => update("organizationShortName", event.target.value)} />
         </FormField>
-        <FormField label="Plan name" htmlFor="plan-name">
-          <Input id="plan-name" required value={draft.planName} onChange={(event) => update("planName", event.target.value)} />
+        <FormField label="Plan name" htmlFor="plan-name" hint={errorHint(errors.planName)}>
+          <Input id="plan-name" required aria-invalid={Boolean(errors.planName)} value={draft.planName} onChange={(event) => update("planName", event.target.value)} />
         </FormField>
-        <div className="grid grid-cols-2 gap-4">
-          <FormField label="Start year" htmlFor="plan-start-year">
-            <Input id="plan-start-year" type="number" min={1900} max={2100} required value={draft.startYear} onChange={(event) => update("startYear", event.target.value)} />
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+          <FormField label="Start year" htmlFor="plan-start-year" hint={errorHint(errors.startYear, "First reporting year in this plan.")}>
+            <Input id="plan-start-year" type="number" min={1900} max={2100} required aria-invalid={Boolean(errors.startYear)} value={draft.startYear} onChange={(event) => update("startYear", event.target.value)} />
           </FormField>
-          <FormField label="End year" htmlFor="plan-end-year">
-            <Input id="plan-end-year" type="number" min={1900} max={2100} required value={draft.endYear} onChange={(event) => update("endYear", event.target.value)} />
+          <FormField label="End year" htmlFor="plan-end-year" hint={errorHint(errors.endYear, "Last reporting year in this plan.")}>
+            <Input id="plan-end-year" type="number" min={1900} max={2100} required aria-invalid={Boolean(errors.endYear)} value={draft.endYear} onChange={(event) => update("endYear", event.target.value)} />
           </FormField>
         </div>
-        <FormField label="Description" htmlFor="plan-description" className="md:col-span-2">
-          <Textarea id="plan-description" rows={3} value={draft.planDescription} onChange={(event) => update("planDescription", event.target.value)} />
+        <FormField label="Description" htmlFor="plan-description" className="md:col-span-2" hint={errorHint(errors.planDescription)}>
+          <Textarea id="plan-description" rows={3} aria-invalid={Boolean(errors.planDescription)} value={draft.planDescription} onChange={(event) => update("planDescription", event.target.value)} />
         </FormField>
-        <FormField label="Source reference" htmlFor="plan-source-reference" className="md:col-span-2">
-          <Textarea id="plan-source-reference" rows={2} value={draft.sourceReference} onChange={(event) => update("sourceReference", event.target.value)} />
+        <FormField label="Source reference" htmlFor="plan-source-reference" className="md:col-span-2" hint={errorHint(errors.sourceReference)}>
+          <Textarea id="plan-source-reference" rows={2} aria-invalid={Boolean(errors.sourceReference)} value={draft.sourceReference} onChange={(event) => update("sourceReference", event.target.value)} />
         </FormField>
         <div className="md:col-span-2">
-          <Button type="submit" disabled={busy}>{busy ? "Saving…" : "Save plan settings"}</Button>
+          <Button type="submit" variant="primary" isLoading={busy}>Save plan settings</Button>
         </div>
       </form>
     </section>

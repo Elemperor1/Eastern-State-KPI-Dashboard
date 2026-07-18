@@ -1,6 +1,7 @@
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
+import { DatabaseSync } from "node:sqlite";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { getDb, resetDb, SCHEMA_VERSION } from "@/lib/db";
 
@@ -564,6 +565,49 @@ describe("schema 12 migration", () => {
     expect(countRows(reopened, "organizations")).toBe(1);
     expect(countRows(reopened, "strategic_plans")).toBe(1);
     expect(countRows(reopened, "installation_audit_events")).toBe(2);
+  });
+
+  it("rolls back every schema-12 change when installation ownership cannot be installed", () => {
+    const fixture = seedCurrentFixture();
+    downgradeInstallationOwnershipToV11(fixture.db);
+    fixture.db.exec(`
+      CREATE TABLE installation_audit_events (
+        id INTEGER PRIMARY KEY AUTOINCREMENT
+      );
+    `);
+    resetDb();
+
+    expect(() => getDb()).toThrow();
+
+    const verify = new DatabaseSync(dbPath);
+    expect(
+      Number(
+        (
+          verify
+            .prepare("SELECT value FROM meta WHERE key = 'schema_version'")
+            .get() as { value: string }
+        ).value,
+      ),
+    ).toBe(11);
+    expect(
+      (verify.prepare("PRAGMA table_info(categories)").all() as Array<{ name: string }>).map(
+        (column) => column.name,
+      ),
+    ).not.toContain("plan_id");
+    expect(
+      verify
+        .prepare(
+          `SELECT name FROM sqlite_master
+           WHERE type = 'table' AND name IN ('organizations', 'strategic_plans')`,
+        )
+        .all(),
+    ).toEqual([]);
+    expect(
+      (verify.prepare("PRAGMA table_info(installation_audit_events)").all() as Array<{ name: string }>).map(
+        (column) => column.name,
+      ),
+    ).toEqual(["id"]);
+    verify.close();
   });
 
   it("migrates a schema-9 copy additively without changing legacy rows or ids", () => {
