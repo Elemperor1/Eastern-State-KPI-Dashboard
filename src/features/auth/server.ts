@@ -8,6 +8,16 @@ import {
 } from "@/features/users/server";
 
 const SALT_ROUNDS = 10;
+const DUMMY_PASSWORD_HASH =
+  "$2a$10$sVm4XeWhNRaHkJSh/LMtO.pHJReJDR94yAAMOaNM6xbqslZeM29Ou";
+
+export interface VerifiedCredentials {
+  user: SessionUser;
+  /** Revocation/credential version read from the same row as the hash. */
+  credentialVersion: number;
+  /** Internal compare-and-swap token; never returned by an HTTP route. */
+  passwordHash: string;
+}
 
 /**
  * Reserved account identifiers that must never be reachable through the
@@ -30,29 +40,26 @@ function isReservedEmail(email: string): boolean {
 export async function verifyCredentials(
   email: string,
   password: string,
-): Promise<SessionUser | null> {
-  if (isReservedEmail(email)) {
-    // Reserved accounts (dev bypass, system tasks) must never be reachable
-    // through the login route. Return null without consulting the DB so
-    // timing/leak surface is identical to "no such user".
-    return null;
-  }
-  const row = findUserCredentialRecordByEmail(email);
-  if (!row) return null;
-  // A disabled account cannot log in (D8AD-CAN-003). Return null with
-  // the same generic shape used for "no such user" / "wrong password"
-  // so the login response does not leak that the account exists but is
-  // disabled — the caller sees the identical "Invalid email or password."
-  // 401 either way.
-  if (row.disabled) return null;
-  const ok = await bcrypt.compare(password, row.password_hash);
-  if (!ok) return null;
+): Promise<VerifiedCredentials | null> {
+  // Missing, disabled, and reserved identities still pay exactly one bcrypt
+  // comparison against a fixed non-credential hash. This keeps the public
+  // generic 401 from becoming an active-account timing oracle.
+  const row = isReservedEmail(email)
+    ? null
+    : findUserCredentialRecordByEmail(email);
+  const comparisonHash = row && !row.disabled ? row.password_hash : DUMMY_PASSWORD_HASH;
+  const ok = await bcrypt.compare(password, comparisonHash);
+  if (!row || row.disabled || !ok) return null;
   return {
-    id: row.id,
-    email: row.email,
-    name: row.name,
-    role: row.role,
-    must_change_password: row.must_change_password,
+    user: {
+      id: row.id,
+      email: row.email,
+      name: row.name,
+      role: row.role,
+      must_change_password: row.must_change_password,
+    },
+    credentialVersion: row.sessions_valid_after,
+    passwordHash: row.password_hash,
   };
 }
 

@@ -181,6 +181,7 @@ export function StrategicBoardReport({
 }: StrategicBoardReportProps) {
   const counts = countStrategicBoardReportStructure(report);
   const selectedYear = report.selectedYear?.toString() ?? "Not specified";
+  const hasStrategicGoals = counts.goals > 0;
 
   return (
     <div
@@ -229,10 +230,16 @@ export function StrategicBoardReport({
             </p>
           </div>
           <Badge
-            variant={report.unresolvedReasons.length > 0 ? "warning" : "success"}
+            variant={!hasStrategicGoals
+              ? "incomplete"
+              : report.unresolvedReasons.length > 0
+                ? "warning"
+                : "success"}
             label="Reporting status"
           >
-            {report.unresolvedReasons.length > 0
+            {!hasStrategicGoals
+              ? "No Strategic Goals configured"
+              : report.unresolvedReasons.length > 0
               ? `${report.unresolvedReasons.length} need attention`
               : "Nothing needs attention"}
           </Badge>
@@ -256,7 +263,9 @@ export function StrategicBoardReport({
             Reporting completeness
           </h3>
           <p className="mt-2 text-sm leading-6 text-ink-600">
-            {report.unresolvedReasons.length > 0
+            {!hasStrategicGoals
+              ? "Reporting completeness cannot be assessed because no Strategic Goals are configured for this Reporting Year."
+              : report.unresolvedReasons.length > 0
               ? `${report.unresolvedReasons.length} items need attention. Detailed reasons are shown with each affected goal and measure below.`
               : "All reporting requirements represented in this report are complete."}
           </p>

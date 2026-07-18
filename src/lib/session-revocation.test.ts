@@ -70,7 +70,7 @@ vi.mock("next/headers", () => ({
   headers: async () => new Map<string, string>(),
 }));
 
-import { getCurrentUser, requireAdmin } from "@/features/auth/session";
+import { getCurrentUser, getSession, requireAdmin } from "@/features/auth/session";
 import { ensureSeedAdmin } from "@/features/auth/server";
 import {
   createUser,
@@ -461,6 +461,34 @@ describe("strictly monotonic session watermark", () => {
     } finally {
       now.mockRestore();
     }
+  });
+
+  it("rejects a session issued after rotation when it carries a stale credential version", async () => {
+    const target = createUser({
+      email: "stale-login@example.com",
+      name: "Stale Login",
+      password: "OldCredential!2026",
+      role: "viewer",
+    });
+    const verifiedVersion = target.sessions_valid_after;
+    updateUserPassword(target.id, "ResetCredential!2026", true);
+
+    resetSession();
+    const stale = await getSession();
+    stale.user = {
+      id: target.id,
+      email: target.email,
+      name: target.name,
+      role: target.role,
+      must_change_password: false,
+    };
+    stale.issuedAt = Date.now() + 60_000;
+    (stale as typeof stale & { credentialVersion?: number }).credentialVersion =
+      verifiedVersion;
+    await stale.save();
+
+    expect(await getCurrentUser()).toBeNull();
+    expect(sessionCookie()).toBeUndefined();
   });
 });
 

@@ -1,0 +1,258 @@
+{
+  "schemaVersion": 1,
+  "repository": "Elemperor1/Eastern-State-KPI-Dashboard",
+  "baselineCommit": "ef29cfbf2f396c061063a15fcd6f2cfbeff48922",
+  "createdOn": "2026-07-17",
+  "dispositions": [
+    "pending_reproduction",
+    "confirmed_bug",
+    "duplicate",
+    "expected_behavior",
+    "enhancement",
+    "cannot_reproduce",
+    "deferred"
+  ],
+  "relatedLedgers": [
+    "docs/stabilization/security-candidate-ledger.json"
+  ],
+  "candidates": [
+    {
+      "id": "BUG-CAND-001",
+      "title": "Long Strategic Priority names may collide with state text at 390 px",
+      "affectedWorkflow": "Overview strategic-performance review on a narrow mobile viewport",
+      "reproductionSteps": [
+        "Run the exact merged baseline with seeded strategic data.",
+        "Open /dashboard/overview?year=2026 at a 390 x 844 viewport.",
+        "Inspect every Strategic Priority row containing a long real catalog name.",
+        "Measure or visually verify overlap among the name, Not available, and Needs attention text."
+      ],
+      "expectedBehavior": "Long priority names and qualified state text stack or wrap without collision, clipping, horizontal page overflow, or loss of meaning.",
+      "actualBehavior": "The exact PR #61 merged baseline stacks all five Priority rows at 390 x 844. A DOM geometry assertion found no group intersection, row overflow, or page overflow, and visual inspection found no collision.",
+      "severity": "none",
+      "userImpact": "A mobile reviewer may be unable to read which Strategic Priority has which performance state.",
+      "frequency": "0 of 5 seeded Priority rows on the exact baseline",
+      "dataLossOrSecurityRisk": "none known",
+      "rootCause": "The documented observation is stale relative to the baseline. Commit ae21ce0 changed Priority rows to one column below the sm breakpoint before this goal began.",
+      "evidence": [
+        {
+          "type": "documented-observation",
+          "source": "docs/product-foundation.md",
+          "detail": "July 15 live walk records a 390 px collision between long Priority names and state text."
+        },
+        {
+          "type": "executable-reproduction",
+          "source": "Playwright CLI against http://127.0.0.1:3387/dashboard/overview?year=2026",
+          "detail": "At 390 x 844, a red-capable geometry check asserted no overlap/overflow for all five Priority rows; viewport and row rectangles were returned in the command receipt."
+        },
+        {
+          "type": "screenshot",
+          "source": "output/playwright/baseline-overview-390.png",
+          "detail": "Full-page baseline screenshot visually confirms clean stacking; local evidence is intentionally kept under the ignored Playwright output directory."
+        },
+        {
+          "type": "history",
+          "source": "commit ae21ce0 / src/app/dashboard/overview/ExecutiveOverview.tsx",
+          "detail": "The responsive one-column-until-sm classes predate the audit baseline."
+        }
+      ],
+      "predatesGoal": true,
+      "disposition": "cannot_reproduce",
+      "proposedDisposition": "No code change. Retain this rejected candidate as evidence that a stale documented observation was checked against the exact merged baseline.",
+      "regression": null,
+      "fix": null
+    },
+    {
+      "id": "BUG-CAND-002",
+      "title": "Live smoke harness cannot select an unused strategic percentage reporting slot after a clean seed",
+      "affectedWorkflow": "Operator/release validation of the canonical strategic mutation and report truth",
+      "reproductionSteps": [
+        "Create a fresh disposable database with DATABASE_PATH set and run npm run db:seed.",
+        "Start the loopback development server with AUTH_DISABLED=true against that database.",
+        "Run AUTH_DISABLED=true PORT=<port> BASE=http://127.0.0.1:<port> bash ./scripts/smoke.sh.",
+        "Observe scripts/smoke-catalog.ts fail before the canonical mutation round trip."
+      ],
+      "expectedBehavior": "The documented smoke harness selects a safe real strategic reporting slot, performs and cleans up a canonical observation, verifies report/export truth and Activity, and finishes 51/51 on a clean seeded database.",
+      "actualBehavior": "The failure occurs only when the server and smoke process use different databases. A clean private database produced an unused KPI 5/year 2029 slot, and the full smoke passed 51/51 when DATABASE_PATH matched the running server.",
+      "severity": "none",
+      "userImpact": "None in the documented same-environment workflow. The failed audit invocation was invalid because its catalog selector inspected a different database than the server.",
+      "frequency": "1 failure with mismatched database environments; 0 failures in the fresh direct selector and matched-environment full smoke",
+      "dataLossOrSecurityRisk": "No data loss observed; the harness stops before its write/cleanup round trip.",
+      "rootCause": "Audit setup mismatch: the development server used a private DATABASE_PATH while the first smoke command omitted it, so smoke-catalog inspected the worktree default database.",
+      "evidence": [
+        {
+          "type": "command-failure",
+          "source": "AUTH_DISABLED=true PORT=3387 BASE=http://127.0.0.1:3387 bash ./scripts/smoke.sh",
+          "detail": "Product and removed-route checks passed; scripts/smoke-catalog.ts:53 threw before the canonical mutation section."
+        },
+        {
+          "type": "minimal-reproduction",
+          "source": "DATABASE_PATH=/private/tmp/eastern-state-kpi-smoke-repro-a-019f71d5.db npx tsx scripts/smoke-catalog.ts",
+          "detail": "A second clean seed returned strategyPercentageKpi 5 and strategyPercentageYear 2029."
+        },
+        {
+          "type": "full-retest",
+          "source": "AUTH_DISABLED=true DATABASE_PATH=/private/tmp/eastern-state-kpi-stabilization-019f71d5.db PORT=3387 BASE=http://127.0.0.1:3387 bash ./scripts/smoke.sh",
+          "detail": "All 51 checks passed, including strategic write, export truth, cleanup, and Activity audit."
+        }
+      ],
+      "predatesGoal": true,
+      "disposition": "expected_behavior",
+      "proposedDisposition": "No code change. All isolated smoke invocations must propagate the same DATABASE_PATH as the server because the harness intentionally uses the local database to select and clean a safe real record.",
+      "regression": null,
+      "fix": null
+    },
+    {
+      "id": "BUG-CAND-003",
+      "title": "Empty Overview falsely states that all included goals are ready for reporting",
+      "affectedWorkflow": "First-run or intentionally empty database review on Overview",
+      "reproductionSteps": [
+        "Create a fresh schema-11 database with npm run db:migrate and do not seed strategic Goals.",
+        "Start the loopback application against that database.",
+        "Open /dashboard/overview?year=2026.",
+        "Observe 0 of 0 goals completed alongside Nothing needs attention and All included goals are ready for reporting."
+      ],
+      "expectedBehavior": "When no Strategic Goals exist, Overview explains that there are no goals configured for the selected Reporting Year and does not claim readiness or success. Any action offered must be role-appropriate.",
+      "actualBehavior": "The organization denominator is 0 of 0, but the Needs attention region renders the success-like empty copy Nothing needs attention / All included goals are ready for reporting.",
+      "severity": "medium",
+      "userImpact": "A reviewer or first-run Admin can be told the reporting model is ready when no Strategic Goals exist, undermining the decision-integrity baseline.",
+      "frequency": "deterministic on every valid database with zero selected-year Goals",
+      "dataLossOrSecurityRisk": "none",
+      "rootCause": "ExecutiveOverview selected its attention empty state solely from needsAttention.length === 0. It did not distinguish an empty configured Goal set from a nonempty set with no attention items.",
+      "evidence": [
+        {
+          "type": "browser-snapshot",
+          "source": "Playwright CLI snapshot of http://127.0.0.1:3388/dashboard/overview?year=2026",
+          "detail": "Accessible tree contains Not available, 0 of 0 goals completed, Nothing needs attention, and All included goals are ready for reporting."
+        },
+        {
+          "type": "failing-reproduction",
+          "source": "Playwright CLI empty-Overview false-readiness assertion",
+          "detail": "The command throws only when the zero denominator and both readiness claims coexist; it failed deterministically on the merged baseline."
+        },
+        {
+          "type": "regression-test",
+          "source": "src/app/dashboard/overview/ExecutiveOverview.test.tsx",
+          "detail": "The focused server-rendered component test failed before the fix and covers both zero Goals and a configured/no-attention ready state."
+        },
+        {
+          "type": "browser-retest",
+          "source": "Playwright CLI empty-Overview state assertion",
+          "detail": "After the fix, the old readiness title/description counts are zero and the explicit no-Goals title/description each appear once."
+        }
+      ],
+      "predatesGoal": true,
+      "disposition": "confirmed_bug",
+      "proposedDisposition": "Fixed with the smallest presentation-state distinction; retain targeted regression and full browser/validation coverage.",
+      "regression": {
+        "path": "src/app/dashboard/overview/ExecutiveOverview.test.tsx",
+        "command": "npx vitest run src/app/dashboard/overview/ExecutiveOverview.test.tsx",
+        "before": "1 failed, 1 passed",
+        "after": "2 passed"
+      },
+      "fix": {
+        "path": "src/app/dashboard/overview/ExecutiveOverview.tsx",
+        "summary": "Use the existing summary Goal count to render an explicit no-Goals state while retaining the all-ready copy for configured Goals."
+      }
+    },
+    {
+      "id": "BUG-CAND-004",
+      "title": "Empty Board Report falsely states that reporting is complete and nothing needs attention",
+      "affectedWorkflow": "First-run/empty database Board Report review and its CSV, PNG, PDF, and print representations",
+      "reproductionSteps": [
+        "Create a fresh schema-11 database with npm run db:migrate and no seeded priorities, Goals, or Measures.",
+        "Open /reports?view=board&year=2026.",
+        "Confirm the report counts 0 Strategic priorities, 0 Strategic goals, and 0 Measures.",
+        "Observe Reporting status: Nothing needs attention and All reporting requirements represented in this report are complete alongside No strategic priorities available."
+      ],
+      "expectedBehavior": "An empty Board Report states that no Strategic Priorities or Goals are configured and does not claim readiness or reporting completion. Screen and exports must carry the same honest empty state.",
+      "actualBehavior": "The report contradicts its zero counts/no-priorities state by claiming nothing needs attention and all represented reporting requirements are complete.",
+      "severity": "medium",
+      "userImpact": "A reviewer or exported artifact can falsely represent an unconfigured Strategic Plan as complete, damaging trust in the reporting baseline.",
+      "frequency": "deterministic on every Board Report backed by zero selected-year Goals/priorities",
+      "dataLossOrSecurityRisk": "none",
+      "rootCause": "StrategicBoardReport derived both the Reporting status badge and Reporting completeness sentence solely from unresolvedReasons.length. Empty reports have no unresolved rows, so the component treated absence as success while a separate branch rendered no priorities.",
+      "evidence": [
+        {
+          "type": "browser-snapshot",
+          "source": "Playwright CLI snapshot of http://127.0.0.1:3388/reports?view=board&year=2026",
+          "detail": "Accessible report tree shows zero priorities/goals/measures, both false readiness claims, and the no-priorities empty state."
+        },
+        {
+          "type": "failing-reproduction",
+          "source": "Playwright CLI Board Report article assertion",
+          "detail": "The command throws only when zero Goals, both readiness claims, and no-priorities copy coexist; it failed on the merged baseline."
+        },
+        {
+          "type": "regression-test",
+          "source": "src/components/StrategicBoardReport.test.tsx",
+          "detail": "The complete rendered report test failed before the fix and preserves the configured/no-unresolved success case."
+        },
+        {
+          "type": "browser-retest",
+          "source": "Playwright CLI Board Report article assertion",
+          "detail": "After the fix, both false readiness phrases are absent and the explicit no-Goals status/completeness explanation is present."
+        }
+      ],
+      "predatesGoal": true,
+      "disposition": "confirmed_bug",
+      "proposedDisposition": "Fixed at the report presentation boundary without changing calculations; retain rendering and browser/export coverage.",
+      "regression": {
+        "path": "src/components/StrategicBoardReport.test.tsx",
+        "command": "npx vitest run src/components/StrategicBoardReport.test.tsx",
+        "before": "1 failed, 1 passed",
+        "after": "2 passed"
+      },
+      "fix": {
+        "path": "src/components/StrategicBoardReport.tsx",
+        "summary": "Require at least one rendered Strategic Goal before reporting success; empty reports use an incomplete status and state that completeness cannot be assessed."
+      }
+    },
+    {
+      "id": "BUG-CAND-005",
+      "title": "Responsive E2E uses a one-shot geometry probe before a long Measure row is paint-ready",
+      "affectedWorkflow": "Required GitHub End-to-End gate for responsive and zoom-equivalent acceptance",
+      "reproductionSteps": [
+        "Run npm run test:e2e on GitHub Actions for stabilization head 366b1cc5c190afa10ce1447e586e1e280696ed53.",
+        "Allow the responsive workflow to navigate and resize through its complete route/viewport matrix.",
+        "Immediately call boundingBox() on the two spans in the long Measure row.",
+        "Observe either span may return null before the route is paint-ready even though the row locator resolved."
+      ],
+      "expectedBehavior": "The required responsive test waits for the observable row geometry and then verifies stacking/overflow; runner paint timing alone does not fail an otherwise healthy product workflow.",
+      "actualBehavior": "The first GitHub run returned null from the direct name-span boundingBox call at e2e/dashboard-acceptance.spec.ts:478. Six earlier workflows passed; the remaining four did not run after the failure.",
+      "severity": "low",
+      "userImpact": "A transient CI failure blocks trustworthy stabilization/refactor comparison even when the product geometry is correct.",
+      "frequency": "one failure in the first GitHub run after a complete local 11/11 pass; the exact unchanged failed-job rerun passed 11/11",
+      "dataLossOrSecurityRisk": "none; CI reliability and baseline trust only",
+      "rootCause": "The assertion read a nullable paint-dependent bounding box once instead of polling for non-null stable geometry after navigation/resize.",
+      "evidence": [
+        {
+          "type": "github-check-log",
+          "source": "GitHub Actions run 29652460948, job 88100995140",
+          "detail": "At line 478 expect(nameBox).not.toBeNull() received null after the responsive route matrix."
+        },
+        {
+          "type": "local-retest",
+          "source": "isolated Playwright Chromium full suite",
+          "detail": "The same responsive workflow passed as part of 11/11 local authenticated production workflows."
+        },
+        {
+          "type": "unchanged-ci-rerun",
+          "source": "GitHub Actions run 29652460948 attempt 2, job 88101305997",
+          "detail": "The unchanged commit passed the complete End-to-End job in 2m34s, confirming a timing-sensitive test probe rather than persistent product geometry."
+        }
+      ],
+      "predatesGoal": true,
+      "disposition": "confirmed_bug",
+      "proposedDisposition": "Replace the direct boundingBox probe with a bounded retry-aware observable geometry assertion without weakening the stacking contract.",
+      "regression": {
+        "path": "e2e/dashboard-acceptance.spec.ts",
+        "before": "GitHub End-to-End failed at the direct non-null boundingBox assertion after six workflows passed.",
+        "after": "The same strict existence, stacking, and clipping contract passed through expect.poll in the targeted 28.7-second browser workflow; exact post-fix CI result is pending."
+      },
+      "fix": {
+        "path": "e2e/dashboard-acceptance.spec.ts",
+        "summary": "Poll until both paint-dependent boxes exist, then require evidence-below-name and non-clipping geometry in the same observable assertion."
+      }
+    }
+  ]
+}

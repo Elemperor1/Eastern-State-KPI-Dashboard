@@ -185,6 +185,33 @@ export function updateUserPassword(
 }
 
 /**
+ * Replace a password only if the live credential still matches the hash that
+ * was reauthenticated. This binds proof and write into one SQLite statement,
+ * so an administrator reset that wins the race cannot be overwritten by a
+ * stale self-service request.
+ */
+export function updateUserPasswordIfCurrent(
+  id: number,
+  expectedPasswordHash: string,
+  newPassword: string,
+  mustChange: boolean,
+): boolean {
+  const db = getDb();
+  const hash = bcrypt.hashSync(newPassword, SALT_ROUNDS);
+  const now = Date.now();
+  return transaction(() => {
+    const result = db.prepare(
+      `UPDATE users
+       SET password_hash = ?,
+           must_change_password = ?,
+           sessions_valid_after = MAX(?, sessions_valid_after + 1)
+       WHERE id = ? AND password_hash = ?`,
+    ).run(hash, mustChange ? 1 : 0, now, id, expectedPasswordHash);
+    return result.changes === 1;
+  });
+}
+
+/**
  * Change a user's role and bump the revocation watermark atomically and
  * monotonically so every currently issued session is invalidated immediately.
  */

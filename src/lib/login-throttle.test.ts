@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   _resetForTests,
+  _storeSizeForTests,
   clearFailures,
   lockedMsRemaining,
   pruneExpired,
@@ -16,6 +17,7 @@ describe("login-throttle", () => {
     vi.stubEnv("LOGIN_LOCKOUT_THRESHOLD", "3");
     vi.stubEnv("LOGIN_LOCKOUT_WINDOW_MS", "1000");
     vi.stubEnv("LOGIN_LOCKOUT_DURATION_MS", "2000");
+    vi.stubEnv("LOGIN_THROTTLE_MAX_ENTRIES", "256");
   });
 
   afterEach(() => {
@@ -143,5 +145,42 @@ describe("login-throttle", () => {
     expect(lockedMsRemaining("acct:b@x", pruneTime)).toBe(0);
     // C never existed.
     expect(lockedMsRemaining("acct:c@x", pruneTime)).toBe(0);
+  });
+
+  it("keeps attacker-controlled throttle state within the configured cap", () => {
+    vi.stubEnv("LOGIN_THROTTLE_MAX_ENTRIES", "4");
+    const t0 = 1_000_000;
+    for (let i = 0; i < 20; i += 1) {
+      recordFailure(`acct:user-${i}@example.com`, t0 + i);
+    }
+    expect(_storeSizeForTests()).toBeLessThanOrEqual(4);
+  });
+
+  it("preserves an active lockout while other identities flood the capacity", () => {
+    vi.stubEnv("LOGIN_THROTTLE_MAX_ENTRIES", "4");
+    const t0 = 1_000_000;
+    const lockedKey = "acct:locked@example.com";
+    recordFailure(lockedKey, t0);
+    recordFailure(lockedKey, t0 + 10);
+    recordFailure(lockedKey, t0 + 20);
+
+    for (let i = 0; i < 20; i += 1) {
+      recordFailure(`acct:flood-${i}@example.com`, t0 + 30 + i);
+    }
+
+    expect(_storeSizeForTests()).toBe(4);
+    expect(lockedMsRemaining(lockedKey, t0 + 100)).toBe(1920);
+  });
+
+  it("bounds one request-path expiry sweep to a fixed batch", () => {
+    const t0 = 1_000_000;
+    for (let i = 0; i < 200; i += 1) {
+      recordFailure(`acct:user-${i}@example.com`, t0);
+    }
+
+    const inspected = pruneExpired(t0 + 1500);
+
+    expect(inspected).toBeLessThanOrEqual(64);
+    expect(_storeSizeForTests()).toBe(136);
   });
 });

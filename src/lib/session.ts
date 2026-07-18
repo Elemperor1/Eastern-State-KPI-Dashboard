@@ -16,6 +16,10 @@ export interface SessionData {
    *  before the change). Deletion invalidates by row absence instead.
    *  See getCurrentUser(). */
   issuedAt?: number;
+  /** Exact revocation/credential version read with the password hash at
+   * login. New sessions must match the live watermark exactly, which
+   * rejects authentication that finishes after a concurrent rotation. */
+  credentialVersion?: number;
 }
 
 /**
@@ -145,7 +149,12 @@ export async function getCurrentUser(): Promise<SessionUser | null> {
     return null;
   }
   const issuedAt = session.issuedAt ?? 0;
-  if (issuedAt < dbUser.sessions_valid_after) {
+  const credentialVersion = session.credentialVersion;
+  const credentialIsCurrent =
+    credentialVersion === undefined
+      ? issuedAt >= dbUser.sessions_valid_after
+      : credentialVersion === dbUser.sessions_valid_after;
+  if (!credentialIsCurrent) {
     // A security-sensitive account change bumped the watermark past
     // this session's issuance time. Invalidate everywhere: destroy
     // the cookie and treat as logged out.
@@ -166,10 +175,14 @@ export async function getCurrentUser(): Promise<SessionUser | null> {
     session.user.role !== synced.role ||
     session.user.name !== synced.name ||
     session.user.must_change_password !== synced.must_change_password ||
-    session.issuedAt === undefined;
+    session.issuedAt === undefined ||
+    session.credentialVersion === undefined;
   if (stale) {
     session.user = synced;
     if (session.issuedAt === undefined) session.issuedAt = issuedAt;
+    if (session.credentialVersion === undefined) {
+      session.credentialVersion = dbUser.sessions_valid_after;
+    }
     await session.save();
   }
   return synced;
@@ -200,7 +213,13 @@ export async function getCurrentUserReadOnly(): Promise<SessionUser | null> {
   if (!dbUser) return null;
   if (dbUser.disabled) return null;
   const issuedAt = session.issuedAt ?? 0;
-  if (issuedAt < dbUser.sessions_valid_after) return null;
+  if (
+    session.credentialVersion === undefined
+      ? issuedAt < dbUser.sessions_valid_after
+      : session.credentialVersion !== dbUser.sessions_valid_after
+  ) {
+    return null;
+  }
   return {
     id: dbUser.id,
     email: dbUser.email,

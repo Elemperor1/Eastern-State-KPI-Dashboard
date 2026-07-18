@@ -1,7 +1,7 @@
 import { type NextRequest, NextResponse } from "next/server";
 import { z } from "@/lib/zod";
 import { verifyCredentials } from "@/features/auth/server";
-import { updateUserPassword } from "@/features/users/server";
+import { updateUserPasswordIfCurrent } from "@/features/users/server";
 import { getCurrentUser, getSession } from "@/features/auth/session";
 import { assertMutationRequest } from "@/lib/request-guard";
 
@@ -88,7 +88,23 @@ export async function POST(req: NextRequest) {
 
   // Atomic: hash + must_change=0 + sessions_valid_after=now in one
   // transaction. The watermark bump invalidates all prior sessions.
-  updateUserPassword(user.id, newPassword, false);
+  const changed = updateUserPasswordIfCurrent(
+    user.id,
+    reauthenticated.passwordHash,
+    newPassword,
+    false,
+  );
+  if (!changed) {
+    const session = await getSession();
+    session.destroy();
+    return NextResponse.json(
+      {
+        error:
+          "Your credential changed before this request completed. Sign in again.",
+      },
+      { status: 409 },
+    );
+  }
 
   // Destroy this actor's session too (req 6: invalidate sessions
   // issued "before or during" the replacement). The client must
