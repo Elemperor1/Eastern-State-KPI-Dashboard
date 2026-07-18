@@ -18,7 +18,11 @@ const STRATEGIC_TABLES = [
   "strategic_audit_events",
 ] as const;
 
-const INSTALLATION_TABLES = ["organizations", "strategic_plans"] as const;
+const INSTALLATION_TABLES = [
+  "organizations",
+  "strategic_plans",
+  "installation_audit_events",
+] as const;
 
 const LEGACY_TABLES = [
   "users",
@@ -407,6 +411,23 @@ describe("schema 12 migration", () => {
     expect(columnNames(db, "kpi_component_entries")).toContain("average_score");
     expect(columnNames(db, "kpi_components")).toContain("aggregation_role");
     expect(columnNames(db, "distribution_bands")).toContain("derived_group");
+    const goalColumns = db.prepare("PRAGMA table_info(strategic_goals)").all() as Array<{
+      name: string;
+      dflt_value: string | null;
+    }>;
+    expect(goalColumns.find((column) => column.name === "plan_start_year")?.dflt_value).toBeNull();
+    expect(goalColumns.find((column) => column.name === "plan_end_year")?.dflt_value).toBeNull();
+    const membershipColumns = db.prepare("PRAGMA table_info(goal_kpis)").all() as Array<{
+      name: string;
+      dflt_value: string | null;
+    }>;
+    expect(
+      membershipColumns.find((column) => column.name === "effective_from_year")?.dflt_value,
+    ).toBeNull();
+    const targetSchema = db
+      .prepare("SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'kpi_targets'")
+      .get() as { sql: string };
+    expect(targetSchema.sql).not.toContain("BETWEEN 2025 AND 2029");
 
     // Foundation only: canonical strategic goals/configurations are not
     // backfilled by the schema migration itself.
@@ -495,6 +516,47 @@ describe("schema 12 migration", () => {
     expect(countRows(migrated, "organizations")).toBe(1);
     expect(countRows(migrated, "strategic_plans")).toBe(1);
     expect(countRows(migrated, "installation_audit_events")).toBe(2);
+    const migratedGoalColumns = migrated
+      .prepare("PRAGMA table_info(strategic_goals)")
+      .all() as Array<{ name: string; dflt_value: string | null }>;
+    expect(
+      migratedGoalColumns.find((column) => column.name === "plan_start_year")
+        ?.dflt_value,
+    ).toBeNull();
+    expect(
+      migratedGoalColumns.find((column) => column.name === "plan_end_year")
+        ?.dflt_value,
+    ).toBeNull();
+    const migratedMembershipColumns = migrated
+      .prepare("PRAGMA table_info(goal_kpis)")
+      .all() as Array<{ name: string; dflt_value: string | null }>;
+    expect(
+      migratedMembershipColumns.find(
+        (column) => column.name === "effective_from_year",
+      )?.dflt_value,
+    ).toBeNull();
+    expect(
+      (
+        migrated
+          .prepare(
+            "SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'kpi_targets'",
+          )
+          .get() as { sql: string }
+      ).sql,
+    ).not.toContain("BETWEEN 2025 AND 2029");
+    migrated
+      .prepare("UPDATE strategic_plans SET end_year = 2030 WHERE status = 'active'")
+      .run();
+    expect(() =>
+      migrated
+        .prepare(
+          `INSERT INTO kpi_targets (
+             kpi_id, target_scope, target_year, target_value,
+             configuration_status
+           ) VALUES (?, 'full_plan', 2030, 1, 'draft')`,
+        )
+        .run(before.kpiId),
+    ).not.toThrow();
     expect(migrated.prepare("PRAGMA foreign_key_check").all()).toEqual([]);
 
     resetDb();

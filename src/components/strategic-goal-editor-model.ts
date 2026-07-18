@@ -1,7 +1,6 @@
 import {
   StrategicGoalInputSchema,
   StrategicGoalMembershipUpdateSchema,
-  STRATEGIC_PLAN_END_YEAR,
   type BoardStatus,
   type ConfigurationStatus,
   type GoalCompletionRuleName,
@@ -105,11 +104,12 @@ export interface StrategicGoalFilters {
 export function canCreateStrategicGoalSuccessor(
   goal: Pick<StrategicGoalEditorRecord, "plan_start_year" | "plan_end_year">,
   reportingYear: number,
+  planEndYear: number,
 ): boolean {
   return (
-    reportingYear < STRATEGIC_PLAN_END_YEAR &&
+    reportingYear < planEndYear &&
     Math.max(goal.plan_start_year + 1, reportingYear + 1) <=
-      Math.min(goal.plan_end_year, STRATEGIC_PLAN_END_YEAR)
+      Math.min(goal.plan_end_year, planEndYear)
   );
 }
 
@@ -119,13 +119,14 @@ export function canCreateGoalMembershipSuccessor(
     "effectiveFromYear" | "effectiveToYear"
   >,
   reportingYear: number,
+  planEndYear: number,
 ): boolean {
   const finalYear = Math.min(
-    membership.effectiveToYear ?? STRATEGIC_PLAN_END_YEAR,
-    STRATEGIC_PLAN_END_YEAR,
+    membership.effectiveToYear ?? planEndYear,
+    planEndYear,
   );
   return (
-    reportingYear < STRATEGIC_PLAN_END_YEAR &&
+    reportingYear < planEndYear &&
     Math.max(membership.effectiveFromYear + 1, reportingYear + 1) <= finalYear
   );
 }
@@ -220,19 +221,21 @@ export function buildStrategicGoalMembershipSuccessorMutation(
   membershipId: number,
   effectiveStartYear: number,
   draft: StrategicGoalMembershipDraft,
+  planStartYear: number,
+  planEndYear: number,
 ): ReturnType<typeof buildStrategicGoalMembershipMutation> {
   const built = buildStrategicGoalMembershipMutation(membershipId, draft);
   if (!built.ok) return built;
   if (
     !Number.isInteger(effectiveStartYear) ||
-    effectiveStartYear < 2025 ||
-    effectiveStartYear > STRATEGIC_PLAN_END_YEAR
+    effectiveStartYear < planStartYear ||
+    effectiveStartYear > planEndYear
   ) {
     return {
       ok: false,
       mutation: null,
       errors: {
-        effective_start_year: "Use a whole strategic-plan year from 2025 through 2029.",
+        effective_start_year: `Use a whole strategic-plan year from ${planStartYear} through ${planEndYear}.`,
       },
     };
   }

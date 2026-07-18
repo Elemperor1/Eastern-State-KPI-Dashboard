@@ -269,8 +269,18 @@ describe("strategic configuration admin routes", () => {
         },
       }),
     );
-    expect(outsidePlan.status).toBe(400);
-    expect(mocks.createSuccessorMeasurementConfiguration).toHaveBeenCalledTimes(1);
+    expect(outsidePlan.status).toBe(201);
+    expect(mocks.createSuccessorMeasurementConfiguration).toHaveBeenLastCalledWith(
+      {
+        predecessor_id: 21,
+        successor: {
+          ...successor,
+          effective_start_year: 2030,
+          effective_end_year: 2030,
+        },
+      },
+      ADMIN.id,
+    );
   });
 
   it("maps repository validation, missing, and conflict errors to 400/404/409", async () => {

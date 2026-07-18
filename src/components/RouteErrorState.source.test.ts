@@ -13,7 +13,8 @@ describe("route error recovery contract", () => {
     expect(component).toContain("ROUTE_RECOVERY_FOCUS_KEY");
     expect(component).toContain('href="/dashboard/overview"');
     expect(component).toContain('href="/reports"');
-    expect(component).toContain("Eastern State Strategic Plan");
+    expect(component).toContain(">Strategic Plan</span>");
+    expect(component).not.toContain("Eastern State Strategic Plan");
     expect(component).not.toContain("Eastern State KPI");
     expect(component).not.toContain("error.message");
   });

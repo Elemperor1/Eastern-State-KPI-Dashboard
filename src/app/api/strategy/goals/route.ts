@@ -2,7 +2,6 @@ import { type NextRequest, NextResponse } from "next/server";
 import { z } from "@/lib/zod";
 import { authErrorResponse, requireAdmin } from "@/features/auth/session";
 import {
-  STRATEGIC_PLAN_END_YEAR,
   StrategicGoalSettingsUpdateSchema,
   StrategyEntityLifecycleSchema,
 } from "@/features/strategy";
@@ -27,7 +26,7 @@ const PatchSchema = z.discriminatedUnion("action", [
     .object({
       action: z.literal("create_successor"),
       predecessor_id: z.number().int().positive(),
-      effective_start_year: z.number().int().min(2025).max(STRATEGIC_PLAN_END_YEAR),
+      effective_start_year: z.number().int().min(1900).max(2100),
       update: StrategicGoalSettingsUpdateSchema,
     })
     .strict(),

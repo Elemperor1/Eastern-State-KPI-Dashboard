@@ -1,6 +1,6 @@
 # ADR 0020: Strategic Plan as Canonical KPI Data
 
-Status: accepted
+Status: superseded in part by ADR 0023
 Date: 2026-07-08
 
 ## Context
@@ -15,7 +15,8 @@ snapshots to the strategic-plan measures.
 
 ## Decision
 
-- `src/features/catalog/strategic-plan.ts` is the canonical seeded definition.
+- `src/features/catalog/strategic-plan.ts` is the explicit disposable/bootstrap
+  fixture. After initialization, persisted schema-12 rows are authoritative.
 - Every current strategic KPI is annual and stores its value at `month = 0`.
 - KPI names retain the source `Strategic Goal — Measure` form for display and
   backward compatibility. Schema 10 supersedes name-prefix grouping with

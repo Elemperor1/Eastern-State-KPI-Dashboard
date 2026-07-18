@@ -4,8 +4,6 @@ import { authErrorResponse, requireAdmin } from "@/features/auth/session";
 import {
   EXPLICIT_STRATEGY_REPORTING_FREQUENCIES,
   MEASUREMENT_TYPES,
-  STRATEGIC_PLAN_END_YEAR,
-  STRATEGIC_PLAN_START_YEAR,
 } from "@/features/strategy";
 import { assertMutationRequest } from "@/lib/request-guard";
 import {
@@ -36,8 +34,8 @@ const CreateSchema = z.object({
   reporting_year: z
     .number()
     .int()
-    .min(STRATEGIC_PLAN_START_YEAR)
-    .max(STRATEGIC_PLAN_END_YEAR),
+    .min(1900)
+    .max(2100),
   slug: z.string().min(1).regex(/^[a-z0-9-]+$/),
   name: z.string().min(1),
   unit: z.string().trim().min(1),

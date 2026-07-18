@@ -8,6 +8,7 @@ import { Badge, Breadcrumb, EmptyState, PageHeader, Progress } from "@/component
 import { getCurrentUserReadOnly } from "@/features/auth/session";
 import { listDashboardYears, loadStrategicPriorityPageData } from "@/features/reporting/server";
 import { formatBoardReportPercentage, formatBoardReportToken } from "@/components/strategic-board-report-presentation";
+import { getActiveInstallation } from "@/features/installation/server";
 
 export const dynamic = "force-dynamic";
 
@@ -39,13 +40,14 @@ export default async function StrategicPriorityPage({
   if (user.must_change_password) redirect("/setup-password");
 
   const years = listDashboardYears();
+  const installation = getActiveInstallation();
   const requestedYear = Number(firstValue(query.year));
   const selectedYear = years.includes(requestedYear) ? requestedYear : Math.max(...years);
   const data = loadStrategicPriorityPageData(slug, { year: selectedYear });
   if (!data) redirect("/dashboard/overview");
 
   return (
-    <AppShell user={user}>
+    <AppShell user={user} organizationShortName={installation.organization.shortName} planName={installation.plan.name}>
       <div className="page-content page-enter">
         <Breadcrumb href="/dashboard/overview" label="Overview" />
         <PageHeader

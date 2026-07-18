@@ -1,6 +1,5 @@
 import type { MeasurementType, StrategyReportingFrequency } from "./types";
 import {
-  STRATEGIC_DATA_ENTRY_YEARS,
   type StrategicDataEntryBandOption,
   type StrategicDataEntryPageData,
   type StrategicDataEntryRecord,
@@ -21,6 +20,7 @@ import {
   listStrategyDistributions,
   listStrategyObservations,
 } from "./server";
+import { getActiveInstallation } from "@/features/installation/server";
 
 type Goal = ReturnType<typeof listStrategicGoals>[number];
 type Member = Goal["members"][number];
@@ -199,13 +199,14 @@ function loadContextRecords(context: Context, reportingYear: number) {
 
 function emptyPageData(
   reportingYear: number,
+  years: number[],
   reportingPeriod: ReportingCycleOption,
   reportingPeriods: ReportingCycleOption[],
   message: string,
 ): StrategicDataEntryPageData {
   return {
     reportingYear,
-    years: [...STRATEGIC_DATA_ENTRY_YEARS],
+    years,
     reportingPeriod,
     reportingPeriods,
     showSelectedKpi: false,
@@ -227,6 +228,7 @@ export function loadStrategicDataEntryPageData({
   reportingPeriod?: string | null;
   requestedKpiId: number | null;
 }): StrategicDataEntryPageData {
+  const years = [...getActiveInstallation().years];
   const goals = listStrategicGoals({ year: reportingYear });
   const allContexts = Array.from(
     new Map(
@@ -306,6 +308,7 @@ export function loadStrategicDataEntryPageData({
     return {
       ...emptyPageData(
         reportingYear,
+        years,
         reportingPeriod,
         reportingPeriods,
         "No measures are due for this reporting period.",
@@ -319,7 +322,7 @@ export function loadStrategicDataEntryPageData({
   if (!configuration?.measurement_type || !configuration.reporting_frequency) {
     return {
       reportingYear,
-      years: [...STRATEGIC_DATA_ENTRY_YEARS],
+      years,
       reportingPeriod,
       reportingPeriods,
       showSelectedKpi: requested !== undefined,
@@ -397,7 +400,7 @@ export function loadStrategicDataEntryPageData({
 
   return {
     reportingYear,
-    years: [...STRATEGIC_DATA_ENTRY_YEARS],
+    years,
     reportingPeriod,
     reportingPeriods,
     showSelectedKpi: requested !== undefined,

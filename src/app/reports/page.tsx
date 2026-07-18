@@ -10,6 +10,7 @@ import {
   reportingCycleThroughMonth,
 } from "@/features/reporting/server";
 import { reportingCycleForSelection } from "@/features/strategy";
+import { getActiveInstallation } from "@/features/installation/server";
 import { firstSearchParam } from "@/lib/search-params";
 import { BoardReportView } from "./BoardReportView";
 import { ReportFilters } from "./ReportFilters";
@@ -27,6 +28,7 @@ export default async function ReportsPage({
   if (user.must_change_password) redirect("/setup-password");
 
   const params = await searchParams;
+  const installation = getActiveInstallation();
   const view = firstSearchParam(params.view) === "trends"
     ? "trends"
     : "board";
@@ -39,7 +41,7 @@ export default async function ReportsPage({
   const throughMonth = reportingCycleThroughMonth(period);
 
   return (
-    <AppShell user={user}>
+    <AppShell user={user} organizationShortName={installation.organization.shortName} planName={installation.plan.name}>
       <div className="page-content page-content-wide page-enter">
         <PageHeader title="Reports" />
         <ReportFilters

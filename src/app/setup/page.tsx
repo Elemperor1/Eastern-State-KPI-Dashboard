@@ -7,6 +7,7 @@ import { KPIManagerClient } from "./_components/KPIManagerClient";
 import { StrategicKpiEditorClient } from "./_components/StrategicKpiEditorClient";
 import { StrategicGoalsEditorClient } from "./_components/StrategicGoalsEditorClient";
 import { UserManagerClient } from "./_components/UserManagerClient";
+import { PlanSettingsClient } from "./_components/PlanSettingsClient";
 import type { StrategicGoalEditorRecord } from "@/components/strategic-goal-editor-model";
 import type { StrategicKpiEditorData } from "@/components/strategic-kpi-editor-model";
 import {
@@ -18,6 +19,7 @@ import {
 import { getCurrentUserReadOnly } from "@/features/auth/session";
 import { getKPI, listCategories, listKPIs } from "@/features/catalog/server";
 import { resolveStrategicReportingYear } from "@/features/strategy";
+import { getActiveInstallation } from "@/features/installation/server";
 import {
   listComponentsForConfiguration,
   listConfigurationGaps,
@@ -58,10 +60,14 @@ export default async function SetupPage({ searchParams }: { searchParams: Promis
 
   const params = await searchParams;
   const area = setupArea(firstSearchParam(params.area));
-  const year = resolveStrategicReportingYear(firstSearchParam(params.year));
+  const installation = getActiveInstallation();
+  const year = resolveStrategicReportingYear(
+    firstSearchParam(params.year),
+    installation.years,
+  );
 
   return (
-    <AppShell user={user}>
+    <AppShell user={user} organizationShortName={installation.organization.shortName} planName={installation.plan.name}>
       <div className="page-content page-content-wide page-enter">
         <PageHeader title="Setup" />
         <nav aria-label="Setup areas" className="mb-8 flex gap-1 overflow-x-auto border-b border-ink-200">
@@ -153,6 +159,7 @@ function MeasuresArea({ params, year }: { params: Params; year: number }) {
 }
 
 function GoalsArea({ params, year }: { params: Params; year: number }) {
+  const installation = getActiveInstallation();
   const goals = listStrategicGoals({ year, includeArchived: true });
   const initialGoals: StrategicGoalEditorRecord[] = goals.map((goal) => ({
     ...goal,
@@ -175,12 +182,16 @@ function GoalsArea({ params, year }: { params: Params; year: number }) {
         .filter((item): item is StrategicKpiEditorData => item !== null)
     : [];
   return (
-    <StrategicGoalsEditorClient
-      initialGoals={initialGoals}
-      initialSelectedGoalId={initialGoals.some((goal) => goal.id === requestedGoalId) ? requestedGoalId : null}
-      reportingYear={year}
-      targetData={targetData}
-    />
+    <>
+      <PlanSettingsClient installation={installation} />
+      <StrategicGoalsEditorClient
+        initialGoals={initialGoals}
+        initialSelectedGoalId={initialGoals.some((goal) => goal.id === requestedGoalId) ? requestedGoalId : null}
+        reportingYear={year}
+        planYears={[...installation.years]}
+        targetData={targetData}
+      />
+    </>
   );
 }
 
@@ -292,5 +303,6 @@ function loadKpiEditorData(kpiId: number, reportingYear: number): StrategicKpiEd
       archivedAt: band.archived_at,
     })),
     reportingYear,
+    planYears: [...getActiveInstallation().years],
   };
 }

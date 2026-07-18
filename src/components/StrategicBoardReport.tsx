@@ -196,6 +196,7 @@ export function StrategicBoardReport({
       >
         <PrintReportHeader
           className="!block"
+          organizationName={report.organizationName}
           eyebrow="Strategic plan · Board report"
           title={report.organizationName}
           subtitle="Results, targets, progress, and items that need attention."
@@ -290,7 +291,10 @@ export function StrategicBoardReport({
         ))
       )}
 
-        <PrintReportFooter className="!block" />
+        <PrintReportFooter
+          className="!block"
+          notice={`Internal — ${report.organizationName} · For internal use only`}
+        />
       </article>
     </div>
   );

@@ -11,6 +11,8 @@ The canonical cross-layer product specification is
 evidence boundary, user needs, product outcome, conceptual model, vocabulary,
 navigation, flows, states, and constraints that future visual work must
 preserve. ADR 0022 remains the four-destination and legacy-archive authority;
+ADR 0023 makes the initialized SQLite organization and strategic plan the
+runtime content authority;
 `CONTEXT.md` remains the detailed domain glossary; `DESIGN.md` remains the
 visual-system authority.
 
@@ -27,7 +29,7 @@ npm run db:seed
 AUTH_DISABLED=true npm run dev
 ```
 
-For an existing schema-9 or schema-10 database, especially a production SQLite volume, back
+For an existing schema-9, schema-10, or schema-11 database, especially a production SQLite volume, back
 up the database and its WAL/SHM files and run the additive migration instead of
 the destructive sample seed:
 
@@ -86,8 +88,11 @@ file-watcher limits.
 ### Data model
 
 The legacy KPI catalog remains intact. Schema 10 introduced the normalized
-strategic sidecar, and schema 11 hardens its effective-dated component identity
-and ratio semantics, so every KPI can explicitly define:
+strategic sidecar, schema 11 hardened its effective-dated component identity
+and ratio semantics, and schema 12 added persisted organization/plan ownership.
+After initialization, SQLite—not the seed snapshot—is authoritative for the
+organization identity, plan years, priorities, goals, measures, configurations,
+components, targets, and source references. Every KPI can explicitly define:
 
 - **category** — one of the 5 Eastern State strategic priorities
 - **metric name**
@@ -107,7 +112,7 @@ Legacy annual-only values remain stored as a single full-year value at internal
 which is rendered as a human label and never offered as a month. Legacy
 breakdown metrics continue to use `breakdown_entries` keyed by label × year.
 
-### Strategic-plan metric set (5 priorities · 22 named goals · 59 KPIs)
+### Initial strategic-plan fixture (5 priorities · 22 named goals · 59 KPIs)
 
 - **Reimagine Visitor Experience** — 16 KPIs, 13 with 2027/2029 targets
 - **Advance Historic Preservation** — 13 KPIs, 4 with targets
@@ -115,7 +120,7 @@ breakdown metrics continue to use `breakdown_entries` keyed by label × year.
 - **Support Learning through Justice Education** — 9 KPIs, 1 with a target
 - **Enhance Organizational Capacity** — 12 KPIs, 4 with targets
 
-The source dashboard is mapped explicitly by stable slug. It includes 46
+The explicit one-time seed/migration fixture is mapped by stable slug. It includes 46
 component definitions and preserves every TK/TBD target as an unresolved
 configuration item rather than inventing a zero. The older 25 per-KPI target
 rows remain available for backward compatibility; they are not the named goal
@@ -167,10 +172,13 @@ The schema is versioned (`src/lib/schema-version.json` mirrored into
 `meta.schema_version`). Schema 10 migrates schema 9 transactionally and
 additively; schema 11 then rebuilds only the strategic component sidecar so
 component slugs are configuration-scoped and ratio numerator/denominator roles
-are explicit. Neither migration resets legacy KPI values, targets, IDs, users,
-or audit history. The production migrator applies only narrowly fingerprinted,
-audited corrections to prior system-owned canonical contracts and leaves
-operator-attributed/customized rows unchanged. All sample data is flagged via `meta.sample_data` and surfaced
+are explicit. Schema 12 adds `organizations` and `strategic_plans`, assigns
+every priority to the active plan, removes plan-specific year defaults/checks,
+and preserves every descendant ID and value. Its one-time content-migration
+marker permits initialization or narrowly fingerprinted historical repair only
+during the explicit upgrade pass; subsequent migration runs do not reconcile
+operator content from code. None of these additive migrations resets legacy KPI
+values, targets, IDs, users, or audit history. All sample data is flagged via `meta.sample_data` and surfaced
 as a "Sample data" badge throughout the UI.
 
 ## Routes
@@ -336,19 +344,22 @@ from schema 9: `npm run db:migrate` creates the strategic sidecars and
 idempotently maps the existing catalog without resetting legacy IDs, values,
 targets, users, or audit history. Schema 11 additively scopes component identity
 to each effective configuration and records ratio aggregation roles while
-preserving existing component IDs and observations. Back up a production
-database before any migration; see ADR 0020 and `docs/migration-notes.md`.
+preserving existing component IDs and observations. Schema 12 adds the
+database-owned organization/plan boundary and removes embedded plan-year
+constraints while preserving strategic records and IDs. Back up a production
+database before any migration; see ADR 0023 and `docs/migration-notes.md`.
 
 ## Data model (schema)
 
-- **categories** — slug, name, description, sort order
+- **organizations / strategic_plans** — persisted installation identity, plan metadata, inclusive reporting-year range, revision, and audit ownership
+- **categories** — plan owner, slug, name, description, sort order
 - **kpis** — category, optional parent, slug, name, unit label, `unit_type`, `reporting_frequency`, `direction`, description, sort order, active flag
 - **monthly_entries** — KPI × year × month (1–12 monthly, 0 annual) = value + notes; unique per (kpi, year, month)
 - **breakdown_entries** — KPI × year × month × label = value + notes; `month = 0` for annual breakdowns, `1–12` for monthly breakdowns; unique per (kpi, year, month, label)
 - **strategic_goals / goal_kpis** — 22 named goals (each with 2–5 KPIs) and explicit, effective-dated membership for all 59 KPIs
 - **kpi_measurement_configs / kpi_targets** — typed formulas, frequencies, statuses, configuration gaps, and distinct annual/full-plan targets
 - **kpi_observations** — first-class KPI values and raw calculation inputs by typed period
-- **kpi_components / kpi_component_entries** — 46 canonical component definitions plus raw component values; identity is configuration-scoped and ratio roles are explicit
+- **kpi_components / kpi_component_entries** — initially seeded component definitions plus raw component values; identity is configuration-scoped and ratio roles are explicit
 - **distribution_bands / distribution_observations / distribution_values** — effective band definitions, respondent totals, counts, immutable label snapshots, and successor-only edits for referenced calculation classifications
 - **strategic_audit_events** — immutable snapshots for strategic configuration, lifecycle, and value changes
 - **users** — name, email, bcrypt-hashed password, role

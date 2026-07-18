@@ -2,7 +2,6 @@ import {
   MeasurementConfigurationCreateSchema,
   MeasurementConfigurationUpdateSchema,
   resolveEffectiveTargetPolicy,
-  STRATEGIC_PLAN_END_YEAR,
   StrategicTargetCreateSchema,
   StrategicTargetUpdateSchema,
   StrategyComponentCreateSchema,
@@ -58,6 +57,7 @@ export interface StrategicKpiEditorData {
   components: StrategyComponentWithTargets[];
   distributionBands: StrategicDistributionBandEditorRecord[];
   reportingYear: number;
+  planYears: number[];
 }
 
 export interface ConfigurationFormDraft {
@@ -301,13 +301,14 @@ export function successorConfigurationDraftFromData(
 export function canCreateMeasurementSuccessor(
   configuration: PersistedMeasurementConfig,
   reportingYear: number,
+  planEndYear: number,
 ): boolean {
   const finalYear = Math.min(
-    configuration.effective_to_year ?? STRATEGIC_PLAN_END_YEAR,
-    STRATEGIC_PLAN_END_YEAR,
+    configuration.effective_to_year ?? planEndYear,
+    planEndYear,
   );
   return (
-    reportingYear < STRATEGIC_PLAN_END_YEAR &&
+    reportingYear < planEndYear &&
     Math.max(configuration.effective_from_year + 1, reportingYear + 1) <=
       finalYear
   );
@@ -332,6 +333,7 @@ export function targetDraftForScope(
   targets: PersistedTarget[],
   scope: TargetScope,
   reportingYear: number,
+  planEndYear: number,
 ): TargetFormDraft {
   const decision = resolveEffectiveTargetPolicy({
     targets,
@@ -346,7 +348,7 @@ export function targetDraftForScope(
     id: target?.id ?? null,
     scope,
     targetYear: String(
-      target?.target_year ?? (scope === "annual" ? reportingYear : 2029),
+      target?.target_year ?? (scope === "annual" ? reportingYear : planEndYear),
     ),
     externalTargetYear: target?.external_target_year ?? false,
     targetValue:
@@ -369,6 +371,8 @@ export function buildTargetFormPayload(
   draft: TargetFormDraft,
   kpiId: number,
   measurementType: MeasurementType | null,
+  planStartYear: number,
+  planEndYear: number,
   componentId: number | null = null,
 ): StrategyEditorBuildResult {
   const targetYear = requiredNumber(draft.targetYear);
@@ -392,11 +396,11 @@ export function buildTargetFormPayload(
     !Number.isInteger(targetYear) ||
     (draft.externalTargetYear
       ? targetYear < 1900 || targetYear > 2100
-      : targetYear < 2025 || targetYear > 2029)
+      : targetYear < planStartYear || targetYear > planEndYear)
   ) {
     errors.target_year = draft.externalTargetYear
       ? "External target year must be between 1900 and 2100."
-      : "Target year must be between 2025 and 2029.";
+      : `Target year must be between ${planStartYear} and ${planEndYear}.`;
   }
   if (
     targetValue === null &&

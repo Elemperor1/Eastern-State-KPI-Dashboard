@@ -5,6 +5,10 @@ import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { getDb, resetDb } from "@/lib/db";
 import { bootstrapTestInstallation } from "@/features/installation/test-fixture";
 import {
+  getActiveInstallation,
+  updateActiveInstallation,
+} from "@/features/installation/server";
+import {
   createMeasurementConfiguration,
   createSuccessorMeasurementConfiguration,
   createSuccessorStrategicGoal,
@@ -916,6 +920,43 @@ describe("strategic configuration editing repository", () => {
     ).toThrow(
       expect.objectContaining({ code: "successor_outside_plan" }),
     );
+  });
+
+  it("accepts a successor in a newly persisted plan year", () => {
+    const plan = getActiveInstallation();
+    updateActiveInstallation(
+      {
+        expectedRevision: plan.plan.revision,
+        organizationName: plan.organization.name,
+        organizationShortName: plan.organization.shortName,
+        planName: plan.plan.name,
+        planDescription: plan.plan.description,
+        startYear: plan.plan.startYear,
+        endYear: 2030,
+        sourceReference: plan.plan.sourceReference,
+      },
+      actorId,
+    );
+    const predecessor = createMeasurementConfiguration(
+      configuration(countKpiId),
+      actorId,
+    );
+
+    const successor = createSuccessorMeasurementConfiguration(
+      {
+        predecessor_id: predecessor.id,
+        successor: configuration(countKpiId, {
+          effective_start_year: 2030,
+          effective_end_year: 2030,
+        }),
+      },
+      actorId,
+    );
+
+    expect(successor.successor).toMatchObject({
+      effective_from_year: 2030,
+      effective_to_year: 2030,
+    });
   });
 
   it("rejects a successor that leaves the predecessor tail uncovered", () => {

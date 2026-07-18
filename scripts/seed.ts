@@ -15,13 +15,14 @@ import {
   STRATEGIC_PLAN_YEARS,
 } from "../src/features/catalog/strategic-plan";
 import { getDb, transaction } from "../src/lib/db";
-import { ensureStrategicPlanConfiguration } from "../src/features/strategy/server";
+import { initializeStrategicPlanConfiguration } from "../src/features/strategy/mutations";
 import {
   seedLegacyBreakdown,
   seedLegacyGoal,
   seedLegacyScalar,
 } from "./legacy-seed";
 import { EASTERN_STATE_INSTALLATION_FIXTURE } from "./bootstrap/installation-fixture";
+import { EASTERN_STATE_STRATEGIC_CONFIGURATION_FIXTURE } from "./bootstrap/strategic-configuration-fixture";
 
 function resetStrategicPlanData(): void {
   const db = getDb();
@@ -137,7 +138,9 @@ function main(): void {
     }
   });
 
-  const strategicConfiguration = ensureStrategicPlanConfiguration();
+  const strategicConfiguration = initializeStrategicPlanConfiguration(
+    EASTERN_STATE_STRATEGIC_CONFIGURATION_FIXTURE,
+  );
   ensureSeedAdmin();
   const kpis = listKPIs();
   console.log(

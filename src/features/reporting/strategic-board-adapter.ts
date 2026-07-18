@@ -24,10 +24,14 @@ export function buildStrategicBoardReportFromSummary({
   summary,
   goals,
   reportingPeriod,
+  organizationName = "Organization",
+  organizationSlug,
 }: {
   summary: StrategicDashboardSummary;
   goals: StrategicGoalReadModel[];
   reportingPeriod?: string;
+  organizationName?: string;
+  organizationSlug?: string;
 }): StrategicBoardReportViewModel {
   const goalsById = new Map(goals.map((goal) => [String(goal.id), goal]));
   const goalSummariesByPriority = new Map<string, typeof summary.goals>();
@@ -38,7 +42,8 @@ export function buildStrategicBoardReportFromSummary({
   }
 
   return buildStrategicBoardReport({
-    organizationName: "Eastern State Penitentiary Historic Site",
+    organizationName,
+    organizationSlug,
     selectedYear: summary.selectedYear,
     reportingPeriod,
     organizationGoalCompletion: {

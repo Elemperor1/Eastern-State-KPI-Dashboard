@@ -168,6 +168,52 @@ describe("strategy value-entry persistence", () => {
     expect(listStrategicAuditEvents({ entity_type: "kpi_observation" })).toHaveLength(2);
   });
 
+  it("rejects value years outside the persisted active plan", () => {
+    const { kpiId, configurationId } = seedKpi(
+      "future-observation",
+      "count",
+      "annual",
+    );
+    getDb()
+      .prepare(
+        "UPDATE kpi_measurement_configs SET effective_to_year = 2030 WHERE id = ?",
+      )
+      .run(configurationId);
+
+    expect(() =>
+      upsertStrategyObservation(
+        { kpi_id: kpiId, reporting_year: 2030, value: 1 },
+        null,
+      ),
+    ).toThrow(StrategyValueEntryValidationError);
+  });
+
+  it("rejects distribution-band ranges outside the persisted active plan", () => {
+    const { kpiId } = seedKpi(
+      "future-distribution-band",
+      "distribution",
+      "annual",
+    );
+
+    expect(() =>
+      createStrategyDistributionBand(
+        {
+          kpi_id: kpiId,
+          component_id: null,
+          slug: "future",
+          label: "Future",
+          effective_from_year: 2025,
+          effective_to_year: 2030,
+          display_order: 0,
+          is_unknown: false,
+          is_declined: false,
+          derived_group: null,
+        },
+        null,
+      ),
+    ).toThrow(StrategyValueEntryValidationError);
+  });
+
   it("derives the internal annual period and never accepts user month zero", () => {
     const { kpiId } = seedKpi("annual-workshops", "count", "annual");
     const saved = upsertStrategyObservation(

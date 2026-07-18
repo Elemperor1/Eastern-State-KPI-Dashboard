@@ -38,7 +38,7 @@ export interface ExportPdfOptions {
  */
 export async function exportElementToPdf({
   targetId,
-  fileName = "eastern-state-kpi.pdf",
+  fileName = "strategic-plan-report.pdf",
 }: ExportPdfOptions): Promise<void> {
   const target = document.getElementById(targetId);
   if (!target) {

@@ -35,6 +35,7 @@ export interface StrategicMetricPageData {
 }
 
 export interface StrategicTrendReportData {
+  organizationSlug: string;
   years: number[];
   series: Array<{
     kpiId: number;

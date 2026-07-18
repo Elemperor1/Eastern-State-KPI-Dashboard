@@ -7,7 +7,6 @@ import {
   BOARD_STATUSES,
   CONFIGURATION_STATUSES,
   MEASUREMENT_TYPES,
-  STRATEGIC_PLAN_REPORTING_YEARS,
   STRATEGY_REPORTING_FREQUENCIES,
   type AggregationMethod,
   type BoardStatus,
@@ -220,7 +219,7 @@ export function StrategicKpiEditorClient({ data }: { data: StrategicKpiEditorDat
               )
             }
           >
-            {STRATEGIC_PLAN_REPORTING_YEARS.map((year) => (
+            {data.planYears.map((year) => (
               <option key={year} value={year}>
                 {year}
               </option>
@@ -329,7 +328,11 @@ function ConfigurationEditor({
   const archived = data.configuration?.archived_at !== null && data.configuration !== null;
   const successorAvailable =
     data.configuration !== null &&
-    canCreateMeasurementSuccessor(data.configuration, data.reportingYear);
+    canCreateMeasurementSuccessor(
+      data.configuration,
+      data.reportingYear,
+      data.planYears.at(-1)!,
+    );
 
   useEffect(() => {
     setSuccessorMode(false);
@@ -574,8 +577,8 @@ function ConfigurationEditor({
                 <Input
                   id="strategy-effective-start"
                   type="number"
-                  min={successorMode ? 2025 : 1900}
-                  max={successorMode ? 2029 : 2100}
+                  min={successorMode ? data.planYears[0] : 1900}
+                  max={successorMode ? data.planYears.at(-1) : 2100}
                   value={draft.effectiveStartYear}
                   aria-invalid={Boolean(errors.effective_start_year)}
                   onChange={(event) => update("effectiveStartYear", event.target.value)}
@@ -585,8 +588,8 @@ function ConfigurationEditor({
                 <Input
                   id="strategy-effective-end"
                   type="number"
-                  min={successorMode ? 2025 : 1900}
-                  max={successorMode ? 2029 : 2100}
+                  min={successorMode ? data.planYears[0] : 1900}
+                  max={successorMode ? data.planYears.at(-1) : 2100}
                   value={draft.effectiveEndYear}
                   aria-invalid={Boolean(errors.effective_end_year)}
                   onChange={(event) => update("effectiveEndYear", event.target.value)}

@@ -6,6 +6,7 @@ import { StrategicBoardReport } from "./StrategicBoardReport";
 function emptyReport(): StrategicBoardReportViewModel {
   return {
     organizationName: "Eastern State Penitentiary Historic Site",
+    organizationSlug: "eastern-state",
     selectedYear: 2026,
     reportingPeriod: "Full year",
     organizationGoalCompletion: {

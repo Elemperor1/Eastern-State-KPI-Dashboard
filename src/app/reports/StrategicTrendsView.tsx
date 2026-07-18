@@ -84,7 +84,7 @@ export function StrategicTrendsView({
         </FormField>
         <ExportCSVButton
           rows={csvRows}
-          filename={`eastern-state-trend-${selected?.kpiId ?? "report"}.csv`}
+          filename={`${data.organizationSlug}-trend-${selected?.kpiId ?? "report"}.csv`}
         />
       </div>
 

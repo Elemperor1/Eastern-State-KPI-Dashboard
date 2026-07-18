@@ -16,7 +16,7 @@ export interface PrintReportFooterProps {
 }
 
 export function PrintReportFooter({
-  notice = "Internal — Eastern State Penitentiary Historic Site · For internal use only",
+  notice = "Internal strategic plan report · For internal use only",
   className,
 }: PrintReportFooterProps) {
   const generated = new Date().toLocaleString("en-US", {

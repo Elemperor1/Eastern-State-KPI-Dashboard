@@ -3,13 +3,7 @@ import {
   STRATEGY_QUARTER_LABELS,
   type ConcreteStrategyReportingFrequency,
 } from "./periods";
-import {
-  STRATEGIC_PLAN_END_YEAR,
-  STRATEGIC_PLAN_REPORTING_YEARS,
-  STRATEGIC_PLAN_START_YEAR,
-  type MeasurementType,
-  type StrategyReportingFrequency,
-} from "./types";
+import type { MeasurementType, StrategyReportingFrequency } from "./types";
 
 export type ReportingCyclePeriodType = ConcreteStrategyReportingFrequency;
 
@@ -35,20 +29,17 @@ const FREQUENCY_ORDER: ReportingCyclePeriodType[] = [
 
 export function resolveStrategicReportingYear(
   requested: string | number | null | undefined,
+  planYears: readonly number[],
   currentYear = new Date().getFullYear(),
 ): number {
+  if (planYears.length === 0) {
+    throw new Error("The active strategic plan has no reporting years.");
+  }
   const parsed = Number(requested);
-  if (
-    STRATEGIC_PLAN_REPORTING_YEARS.includes(
-      parsed as (typeof STRATEGIC_PLAN_REPORTING_YEARS)[number],
-    )
-  ) {
+  if (planYears.includes(parsed)) {
     return parsed;
   }
-  return Math.max(
-    STRATEGIC_PLAN_START_YEAR,
-    Math.min(currentYear, STRATEGIC_PLAN_END_YEAR),
-  );
+  return Math.max(planYears[0]!, Math.min(currentYear, planYears.at(-1)!));
 }
 
 function option(

@@ -25,7 +25,7 @@ interface Props {
  */
 export function ExportPNGButton({
   targetId,
-  fileName = "eastern-state-kpi.png",
+  fileName = "strategic-plan-report.png",
 }: Props) {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);

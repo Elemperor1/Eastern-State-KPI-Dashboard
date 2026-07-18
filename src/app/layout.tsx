@@ -2,9 +2,8 @@ import type { Metadata } from "next";
 import "./globals.css";
 
 export const metadata: Metadata = {
-  title: "Eastern State Strategic Plan",
-  description:
-    "Internal strategic plan reporting for Eastern State Penitentiary Historic Site.",
+  title: "Strategic Plan",
+  description: "Internal strategic plan reporting and decision support.",
   robots: { index: false, follow: false },
   icons: {
     // Multi-size .ico (16/32/48/64/128/256) for legacy browsers — generated

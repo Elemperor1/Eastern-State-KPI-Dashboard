@@ -16,8 +16,8 @@ export function BoardReportView({ data }: { data: BoardReportPageData }) {
         <SampleDataBadge sample={data.sampleData} />
         <ExportCSVButton rows={csv.rows} columns={[...csv.columns]} filename={csv.filename} />
         <PrintButton />
-        <ExportPNGButton targetId={targetId} fileName={`eastern-state-board-report-${data.report.selectedYear}.png`} />
-        <ExportPDFButton targetId={targetId} fileName={`eastern-state-board-report-${data.report.selectedYear}.pdf`} />
+        <ExportPNGButton targetId={targetId} fileName={`${data.report.organizationSlug}-board-report-${data.report.selectedYear}.png`} />
+        <ExportPDFButton targetId={targetId} fileName={`${data.report.organizationSlug}-board-report-${data.report.selectedYear}.pdf`} />
       </div>
       <StrategicBoardReport id={targetId} report={data.report} />
     </>

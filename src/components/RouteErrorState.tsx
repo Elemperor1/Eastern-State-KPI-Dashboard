@@ -38,7 +38,7 @@ export function RouteErrorState({ title, reset }: RouteErrorStateProps) {
             className="inline-flex items-center gap-3 rounded-md focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--color-focus)]"
           >
             <BrandMark size="sm" />
-            <span className="font-semibold text-ink-950">Eastern State Strategic Plan</span>
+            <span className="font-semibold text-ink-950">Strategic Plan</span>
           </Link>
           <nav aria-label="Recovery navigation" className="flex items-center gap-2">
             <LinkButton href="/dashboard/overview" size="sm" variant="ghost">

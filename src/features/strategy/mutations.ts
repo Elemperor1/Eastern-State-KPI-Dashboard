@@ -1,11 +1,3 @@
-import {
-  STRATEGIC_GOAL_DEFINITIONS,
-  STRATEGIC_KPI_DEFINITIONS,
-  STRATEGIC_PLAN_SOURCE_REFERENCE,
-  type StrategicComponentDefinition,
-  type StrategicKpiDefinition,
-  type StrategicTargetDefinition,
-} from "@/features/catalog";
 import { getDb, transaction } from "@/lib/db";
 import {
   ComponentInputSchema,
@@ -29,17 +21,81 @@ import {
   type PersistedStrategicGoal,
 } from "./records";
 import type {
+  AggregationMethod,
+  ComponentAggregationRole,
   ConfigurationStatus,
   MeasurementType,
+  StrategyReportingFrequency,
   StrategyJsonValue,
+  TargetScope,
 } from "./types";
 import {
   assertStrategyEntityArchiveIntegrity,
   assertStrategyEntityRestoreIntegrity,
 } from "./configuration-editing";
 
-const PLAN_START_YEAR = 2025;
-const PLAN_END_YEAR = 2029;
+export interface StrategicTargetBootstrapDefinition {
+  scope: TargetScope;
+  reporting_year?: number;
+  target_year: number;
+  target_value: number | null;
+  target_description: string;
+  configuration_status: ConfigurationStatus;
+  structured_target?: Record<string, string | number | boolean | null>;
+}
+
+export interface StrategicComponentBootstrapDefinition {
+  slug: string;
+  label: string;
+  measurement_type: MeasurementType;
+  unit: string;
+  numerator_label?: string;
+  denominator_label?: string;
+  fixed_denominator?: number;
+  aggregation_role?: ComponentAggregationRole;
+  weight?: number;
+  configuration_status?: ConfigurationStatus;
+  unresolved_question?: string;
+  targets?: StrategicTargetBootstrapDefinition[];
+}
+
+export interface StrategicKpiBootstrapDefinition {
+  kpi_slug: string;
+  goal_slug: string;
+  measurement_type: MeasurementType;
+  unit?: string;
+  reporting_frequency: StrategyReportingFrequency;
+  aggregation_method: AggregationMethod;
+  configuration_status: ConfigurationStatus;
+  numerator_label?: string;
+  denominator_label?: string;
+  fixed_denominator?: number;
+  calculation_precision?: number;
+  required?: boolean;
+  weight?: number;
+  unresolved_question?: string;
+  target_description?: string;
+  targets?: StrategicTargetBootstrapDefinition[];
+  components?: StrategicComponentBootstrapDefinition[];
+}
+
+export interface StrategicGoalBootstrapDefinition {
+  priority_slug: string;
+  slug: string;
+  name: string;
+  description: string;
+  sort_order: number;
+  configuration_status?: ConfigurationStatus;
+  unresolved_question?: string;
+}
+
+export interface StrategicConfigurationBootstrapInput {
+  planStartYear: number;
+  planEndYear: number;
+  sourceReference: string;
+  goals: readonly StrategicGoalBootstrapDefinition[];
+  kpis: readonly StrategicKpiBootstrapDefinition[];
+}
 
 export class StrategyEntityNotFoundError extends Error {
   constructor(
@@ -122,7 +178,9 @@ interface CatalogContext {
   >;
 }
 
-function loadCatalogContext(): CatalogContext {
+function loadCatalogContext(
+  bootstrap: StrategicConfigurationBootstrapInput,
+): CatalogContext {
   const db = getDb();
   const categoryRows = db
     .prepare("SELECT id, slug, name FROM categories")
@@ -148,10 +206,10 @@ function loadCatalogContext(): CatalogContext {
       },
     ]),
   );
-  const missingPriorities = STRATEGIC_GOAL_DEFINITIONS.filter(
+  const missingPriorities = bootstrap.goals.filter(
     (goal) => !categories.has(goal.priority_slug),
   ).map((goal) => goal.priority_slug);
-  const missingKpis = STRATEGIC_KPI_DEFINITIONS.filter(
+  const missingKpis = bootstrap.kpis.filter(
     (definition) => !kpis.has(definition.kpi_slug),
   ).map((definition) => definition.kpi_slug);
   if (missingPriorities.length || missingKpis.length) {
@@ -178,8 +236,9 @@ function readGoalRaw(slug: string): Record<string, unknown> | undefined {
 }
 
 function syncGoal(
-  definition: (typeof STRATEGIC_GOAL_DEFINITIONS)[number],
+  definition: StrategicGoalBootstrapDefinition,
   priority: { id: number; name: string },
+  bootstrap: StrategicConfigurationBootstrapInput,
   actorId: number | null,
 ): { row: PersistedStrategicGoal; change: Change } {
   const db = getDb();
@@ -189,8 +248,8 @@ function syncGoal(
     priority_id: priority.id,
     name: definition.name,
     description: definition.description,
-    plan_start_year: PLAN_START_YEAR,
-    plan_end_year: PLAN_END_YEAR,
+    plan_start_year: bootstrap.planStartYear,
+    plan_end_year: bootstrap.planEndYear,
     completion_rule: "all_required_kpis",
     threshold_count: null,
     threshold_percentage: null,
@@ -198,7 +257,7 @@ function syncGoal(
     board_level_status: "not_reported",
     configuration_status: before?.archived_at ? "archived" : configuredStatus,
     unresolved_question: definition.unresolved_question ?? null,
-    source_reference: STRATEGIC_PLAN_SOURCE_REFERENCE,
+    source_reference: bootstrap.sourceReference,
     sort_order: definition.sort_order,
   };
   StrategicGoalInputSchema.parse({
@@ -212,14 +271,14 @@ function syncGoal(
     manual_status: null,
     board_level_status: "not_reported",
     display_order: definition.sort_order,
-    effective_start_year: PLAN_START_YEAR,
-    effective_end_year: PLAN_END_YEAR,
+    effective_start_year: bootstrap.planStartYear,
+    effective_end_year: bootstrap.planEndYear,
     configuration_status: configuredStatus,
     unresolved_question: definition.unresolved_question ?? null,
     owner: null,
     due_date: null,
     resolution_notes: null,
-    source_reference: STRATEGIC_PLAN_SOURCE_REFERENCE,
+    source_reference: bootstrap.sourceReference,
     last_reviewed_date: null,
   });
 
@@ -237,8 +296,8 @@ function syncGoal(
       definition.slug,
       definition.name,
       definition.description,
-      PLAN_START_YEAR,
-      PLAN_END_YEAR,
+      bootstrap.planStartYear,
+      bootstrap.planEndYear,
       "all_required_kpis",
       null,
       null,
@@ -246,7 +305,7 @@ function syncGoal(
       "not_reported",
       configuredStatus,
       definition.unresolved_question ?? null,
-      STRATEGIC_PLAN_SOURCE_REFERENCE,
+      bootstrap.sourceReference,
       definition.sort_order,
       actorId,
       actorId,
@@ -282,7 +341,7 @@ function syncGoal(
       previous_value: before ? snapshot(before, expected) : null,
       new_value: snapshot(after, expected),
       actor_id: actorId,
-      source_reference: STRATEGIC_PLAN_SOURCE_REFERENCE,
+      source_reference: bootstrap.sourceReference,
     });
   }
   return {
@@ -296,9 +355,10 @@ function syncGoal(
 }
 
 function syncConfig(
-  definition: StrategicKpiDefinition,
+  definition: StrategicKpiBootstrapDefinition,
   kpi: { id: number; name: string; unit: string },
   goal: PersistedStrategicGoal,
+  bootstrap: StrategicConfigurationBootstrapInput,
   actorId: number | null,
 ): { row: PersistedMeasurementConfig; change: Change } {
   const db = getDb();
@@ -307,7 +367,7 @@ function syncConfig(
     .prepare(
       "SELECT * FROM kpi_measurement_configs WHERE kpi_id = ? AND effective_from_year = ?",
     )
-    .get(kpi.id, PLAN_START_YEAR) as Record<string, unknown> | undefined;
+    .get(kpi.id, bootstrap.planStartYear) as Record<string, unknown> | undefined;
   const unresolvedQuestion = unresolvedQuestionFor(
     definition.configuration_status,
     definition.unresolved_question,
@@ -315,7 +375,7 @@ function syncConfig(
     definition.target_description,
   );
   const expected: Record<string, unknown> = {
-    effective_to_year: PLAN_END_YEAR,
+    effective_to_year: bootstrap.planEndYear,
     measurement_type: definition.measurement_type,
     unit: configuredUnit,
     numerator_label: definition.numerator_label ?? null,
@@ -329,7 +389,7 @@ function syncConfig(
       ? "archived"
       : definition.configuration_status,
     unresolved_question: unresolvedQuestion,
-    source_reference: STRATEGIC_PLAN_SOURCE_REFERENCE,
+    source_reference: bootstrap.sourceReference,
   };
   MeasurementConfigInputSchema.parse({
     kpi_id: kpi.id,
@@ -342,14 +402,14 @@ function syncConfig(
     aggregation_method: definition.aggregation_method,
     board_level_status: "not_reported",
     calculation_precision: definition.calculation_precision ?? 1,
-    effective_start_year: PLAN_START_YEAR,
-    effective_end_year: PLAN_END_YEAR,
+    effective_start_year: bootstrap.planStartYear,
+    effective_end_year: bootstrap.planEndYear,
     configuration_status: definition.configuration_status,
     unresolved_question: unresolvedQuestion,
     owner: null,
     due_date: null,
     resolution_notes: null,
-    source_reference: STRATEGIC_PLAN_SOURCE_REFERENCE,
+    source_reference: bootstrap.sourceReference,
     last_reviewed_date: null,
   });
 
@@ -365,7 +425,7 @@ function syncConfig(
        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     ).run(
       kpi.id,
-      PLAN_START_YEAR,
+      bootstrap.planStartYear,
       ...Object.values(expected),
       actorId,
       actorId,
@@ -389,7 +449,7 @@ function syncConfig(
     .prepare(
       "SELECT * FROM kpi_measurement_configs WHERE kpi_id = ? AND effective_from_year = ?",
     )
-    .get(kpi.id, PLAN_START_YEAR) as Record<string, unknown>;
+    .get(kpi.id, bootstrap.planStartYear) as Record<string, unknown>;
   if (change !== "unchanged") {
     recordStrategicAuditEvent({
       entity_type: "measurement_config",
@@ -401,7 +461,7 @@ function syncConfig(
       previous_value: before ? snapshot(before, expected) : null,
       new_value: snapshot(after, expected),
       actor_id: actorId,
-      source_reference: STRATEGIC_PLAN_SOURCE_REFERENCE,
+      source_reference: bootstrap.sourceReference,
     });
   }
   return { row: asMeasurementConfig(after), change };
@@ -410,8 +470,9 @@ function syncConfig(
 function syncMembership(
   goal: PersistedStrategicGoal,
   kpi: { id: number; name: string },
-  definition: StrategicKpiDefinition,
+  definition: StrategicKpiBootstrapDefinition,
   displayOrder: number,
+  bootstrap: StrategicConfigurationBootstrapInput,
   actorId: number | null,
 ): Change {
   const db = getDb();
@@ -420,12 +481,12 @@ function syncMembership(
       `SELECT * FROM goal_kpis
        WHERE goal_id = ? AND kpi_id = ? AND effective_from_year = ?`,
     )
-    .get(goal.id, kpi.id, PLAN_START_YEAR) as Record<string, unknown> | undefined;
+    .get(goal.id, kpi.id, bootstrap.planStartYear) as Record<string, unknown> | undefined;
   const expected: Record<string, unknown> = {
     is_required: definition.required === false ? 0 : 1,
     weight: definition.weight ?? 1,
     display_order: displayOrder,
-    effective_to_year: PLAN_END_YEAR,
+    effective_to_year: bootstrap.planEndYear,
   };
   StrategicGoalMembershipInputSchema.parse({
     goal_id: goal.id,
@@ -433,8 +494,8 @@ function syncMembership(
     role: definition.required === false ? "informational" : "required",
     weight: definition.weight ?? 1,
     display_order: displayOrder,
-    effective_start_year: PLAN_START_YEAR,
-    effective_end_year: PLAN_END_YEAR,
+    effective_start_year: bootstrap.planStartYear,
+    effective_end_year: bootstrap.planEndYear,
   });
   let change: Change;
   if (!before) {
@@ -449,8 +510,8 @@ function syncMembership(
       expected.is_required,
       expected.weight,
       displayOrder,
-      PLAN_START_YEAR,
-      PLAN_END_YEAR,
+      bootstrap.planStartYear,
+      bootstrap.planEndYear,
       actorId,
       actorId,
     );
@@ -470,7 +531,7 @@ function syncMembership(
       `SELECT * FROM goal_kpis
        WHERE goal_id = ? AND kpi_id = ? AND effective_from_year = ?`,
     )
-    .get(goal.id, kpi.id, PLAN_START_YEAR) as Record<string, unknown>;
+    .get(goal.id, kpi.id, bootstrap.planStartYear) as Record<string, unknown>;
   if (change !== "unchanged") {
     recordStrategicAuditEvent({
       entity_type: "goal_membership",
@@ -482,19 +543,20 @@ function syncMembership(
       previous_value: before ? snapshot(before, expected) : null,
       new_value: snapshot(after, expected),
       actor_id: actorId,
-      source_reference: STRATEGIC_PLAN_SOURCE_REFERENCE,
+      source_reference: bootstrap.sourceReference,
     });
   }
   return change;
 }
 
 function syncComponent(
-  definition: StrategicComponentDefinition,
-  parentDefinition: StrategicKpiDefinition,
+  definition: StrategicComponentBootstrapDefinition,
+  parentDefinition: StrategicKpiBootstrapDefinition,
   kpi: { id: number; name: string },
   config: PersistedMeasurementConfig,
   goal: PersistedStrategicGoal,
   displayOrder: number,
+  bootstrap: StrategicConfigurationBootstrapInput,
   actorId: number | null,
 ): { row: PersistedComponent; change: Change } {
   const db = getDb();
@@ -545,8 +607,8 @@ function syncComponent(
     weight: definition.weight ?? 1,
     display_order: displayOrder,
     configuration_status: componentStatus,
-    effective_start_year: PLAN_START_YEAR,
-    effective_end_year: PLAN_END_YEAR,
+    effective_start_year: bootstrap.planStartYear,
+    effective_end_year: bootstrap.planEndYear,
   });
   let change: Change;
   if (!before) {
@@ -602,7 +664,7 @@ function syncComponent(
       previous_value: before ? snapshot(before, expected) : null,
       new_value: snapshot(after, expected),
       actor_id: actorId,
-      source_reference: STRATEGIC_PLAN_SOURCE_REFERENCE,
+      source_reference: bootstrap.sourceReference,
     });
   }
   return { row: asComponent(after), change };
@@ -610,7 +672,7 @@ function syncComponent(
 
 function targetLookup(
   subject: { kpiId?: number; componentId?: number },
-  target: StrategicTargetDefinition,
+  target: StrategicTargetBootstrapDefinition,
 ): Record<string, unknown> | undefined {
   const subjectColumn = subject.kpiId === undefined ? "component_id" : "kpi_id";
   const subjectId = subject.kpiId ?? subject.componentId!;
@@ -628,9 +690,10 @@ function targetLookup(
 
 function syncTarget(
   subject: { kpiId?: number; componentId?: number; measurementType: MeasurementType },
-  definition: StrategicTargetDefinition,
+  definition: StrategicTargetBootstrapDefinition,
   displayName: string,
   goal: PersistedStrategicGoal,
+  bootstrap: StrategicConfigurationBootstrapInput,
   actorId: number | null,
 ): Change {
   const db = getDb();
@@ -646,7 +709,7 @@ function syncTarget(
     configuration_status: before?.archived_at
       ? "archived"
       : definition.configuration_status,
-    source_reference: STRATEGIC_PLAN_SOURCE_REFERENCE,
+    source_reference: bootstrap.sourceReference,
   };
   // The qualitative recognition target is intentionally explicit but numeric-null.
   // Other targets pass the complete measurement-aware schema.
@@ -660,8 +723,8 @@ function syncTarget(
       target_description: definition.target_description,
       target_year: definition.target_year,
       is_external_target: false,
-      effective_start_year: PLAN_START_YEAR,
-      effective_end_year: PLAN_END_YEAR,
+      effective_start_year: bootstrap.planStartYear,
+      effective_end_year: bootstrap.planEndYear,
     });
   } else if (!definition.target_description.trim()) {
     throw new StrategyConfigurationError(
@@ -688,7 +751,7 @@ function syncTarget(
       structuredJson,
       definition.target_description,
       definition.configuration_status,
-      STRATEGIC_PLAN_SOURCE_REFERENCE,
+      bootstrap.sourceReference,
       actorId,
       actorId,
     );
@@ -716,22 +779,22 @@ function syncTarget(
       previous_value: before ? snapshot(before, expected) : null,
       new_value: snapshot(after, expected),
       actor_id: actorId,
-      source_reference: STRATEGIC_PLAN_SOURCE_REFERENCE,
+      source_reference: bootstrap.sourceReference,
     });
   }
   return change;
 }
 
 /**
- * Backfill the canonical strategic configuration by stable slug. The operation
- * is additive and idempotent: it never deletes legacy or extra strategic rows,
- * and a no-op rerun writes neither timestamps nor audit events.
+ * Explicit fresh-install initializer. Callers must supply bootstrap fixtures;
+ * ordinary runtime modules do not import or reconcile those definitions.
  */
-export function ensureStrategicPlanConfiguration(
+export function initializeStrategicPlanConfiguration(
+  bootstrap: StrategicConfigurationBootstrapInput,
   actorId: number | null = null,
 ): StrategicConfigurationEnsureResult {
   return transaction(() => {
-    const context = loadCatalogContext();
+    const context = loadCatalogContext(bootstrap);
     const result: StrategicConfigurationEnsureResult = {
       goals: emptyCounts(),
       measurement_configs: emptyCounts(),
@@ -740,14 +803,14 @@ export function ensureStrategicPlanConfiguration(
       targets: emptyCounts(),
     };
     const goals = new Map<string, PersistedStrategicGoal>();
-    for (const definition of STRATEGIC_GOAL_DEFINITIONS) {
+    for (const definition of bootstrap.goals) {
       const priority = context.categories.get(definition.priority_slug)!;
-      const synced = syncGoal(definition, priority, actorId);
+      const synced = syncGoal(definition, priority, bootstrap, actorId);
       goals.set(definition.slug, synced.row);
       increment(result.goals, synced.change);
     }
     const memberOrder = new Map<string, number>();
-    for (const definition of STRATEGIC_KPI_DEFINITIONS) {
+    for (const definition of bootstrap.kpis) {
       const goal = goals.get(definition.goal_slug);
       const kpi = context.kpis.get(definition.kpi_slug);
       if (!goal || !kpi) {
@@ -755,13 +818,13 @@ export function ensureStrategicPlanConfiguration(
           `Could not resolve ${definition.kpi_slug} → ${definition.goal_slug}.`,
         );
       }
-      const config = syncConfig(definition, kpi, goal, actorId);
+      const config = syncConfig(definition, kpi, goal, bootstrap, actorId);
       increment(result.measurement_configs, config.change);
       const displayOrder = memberOrder.get(goal.slug) ?? 0;
       memberOrder.set(goal.slug, displayOrder + 1);
       increment(
         result.memberships,
-        syncMembership(goal, kpi, definition, displayOrder, actorId),
+        syncMembership(goal, kpi, definition, displayOrder, bootstrap, actorId),
       );
       for (const target of definition.targets ?? []) {
         increment(
@@ -771,6 +834,7 @@ export function ensureStrategicPlanConfiguration(
             target,
             kpi.name,
             goal,
+            bootstrap,
             actorId,
           ),
         );
@@ -785,6 +849,7 @@ export function ensureStrategicPlanConfiguration(
           config.row,
           goal,
           index,
+          bootstrap,
           actorId,
         );
         increment(result.components, component.change);
@@ -799,6 +864,7 @@ export function ensureStrategicPlanConfiguration(
               target,
               componentDefinition.label,
               goal,
+              bootstrap,
               actorId,
             ),
           );
@@ -918,7 +984,7 @@ function setArchived(
       previous_value: stableSnapshot(before, fields),
       new_value: stableSnapshot(after, fields),
       actor_id: actorId,
-      source_reference: STRATEGIC_PLAN_SOURCE_REFERENCE,
+      source_reference: String(before.source_reference ?? "Setup"),
     });
   });
 }
@@ -988,7 +1054,7 @@ function updateConfigurationStatus(
       previous_value: { configuration_status: String(before.configuration_status) },
       new_value: { configuration_status: status },
       actor_id: actorId,
-      source_reference: STRATEGIC_PLAN_SOURCE_REFERENCE,
+      source_reference: String(before.source_reference ?? "Setup"),
     });
   });
 }

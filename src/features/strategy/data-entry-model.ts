@@ -7,8 +7,6 @@ import type {
 } from "./types";
 import type { ReportingCycleOption } from "./reporting-cycle";
 
-export const STRATEGIC_DATA_ENTRY_YEARS = [2025, 2026, 2027, 2028, 2029] as const;
-
 interface StrategicDataEntryKpiOption {
   id: number;
   name: string;

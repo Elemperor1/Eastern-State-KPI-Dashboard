@@ -200,12 +200,61 @@ if [ -n "$calculation_dependency_hits" ]; then
   flag_failure "calculation module depends on React, Next.js, or database code" "$calculation_dependency_hits"
 fi
 
+runtime_fixture_import_hits="$(
+  find src/app src/components src/features src/lib -type f \( -name '*.ts' -o -name '*.tsx' \) \
+    ! -name '*.test.ts' ! -name '*.test.tsx' \
+    ! -path 'src/features/catalog/strategic-plan.ts' \
+    ! -path 'src/features/catalog/strategic-config.ts' \
+    -print \
+    | sort \
+    | while IFS= read -r file; do
+        grep -n -E "from ['\"][^'\"]*catalog/(strategic-plan|strategic-config)['\"]|import[[:space:]]*\([[:space:]]*['\"][^'\"]*catalog/(strategic-plan|strategic-config)['\"]" "$file" \
+          | sed "s#^#${file}:#" || true
+      done \
+    | head -40 || true
+)"
+
+if [ -n "$runtime_fixture_import_hits" ]; then
+  flag_failure "runtime source imports the one-time strategic bootstrap fixture" "$runtime_fixture_import_hits"
+fi
+
+runtime_reconciliation_hits="$(
+  find src/app src/components src/features src/lib -type f \( -name '*.ts' -o -name '*.tsx' \) \
+    ! -name '*.test.ts' ! -name '*.test.tsx' \
+    ! -path 'src/features/strategy/migration-reconciliation.ts' \
+    -print \
+    | sort \
+    | while IFS= read -r file; do
+        grep -n -E "migration-reconciliation|reconcileStrategicMigrationData|initializeStrategicPlanConfiguration" "$file" \
+          | grep -v -E '^[0-9]+:export function initializeStrategicPlanConfiguration\(' \
+          | sed "s#^#${file}:#" || true
+      done \
+    | head -40 || true
+)"
+
+if [ -n "$runtime_reconciliation_hits" ]; then
+  flag_failure "runtime source imports or calls migration/bootstrap reconciliation" "$runtime_reconciliation_hits"
+fi
+
+embedded_plan_boundary_hits="$(
+  grep -R -n -E 'STRATEGIC_PLAN_(START|END|REPORTING)_YEAR|STRATEGIC_DATA_ENTRY_YEARS|REPORTING_YEARS' \
+    src/app src/components src/features src/lib \
+    --include='*.ts' --include='*.tsx' \
+    | grep -v -E '\.test\.(ts|tsx):' \
+    | grep -v 'src/features/catalog/strategic-plan.ts' \
+    | head -40 || true
+)"
+
+if [ -n "$embedded_plan_boundary_hits" ]; then
+  flag_failure "runtime source embeds a strategic-plan year boundary" "$embedded_plan_boundary_hits"
+fi
+
 if [ "$FAILED" -eq 0 ]; then
-  echo "✅ Architecture boundary guard passed: server code uses feature calls, app/components avoid low-level DB access, client code avoids server-only imports, cross-feature imports use public surfaces, pure calculations avoid framework/database dependencies, and removed read APIs stay removed."
+  echo "✅ Architecture boundary guard passed: server code uses feature calls, app/components avoid low-level DB access, client code avoids server-only imports, cross-feature imports use public surfaces, pure calculations avoid framework/database dependencies, runtime code avoids bootstrap/reconciliation authority, plan years remain database-backed, and removed read APIs stay removed."
   exit 0
 fi
 
 echo ""
 echo "Architecture boundary guard failed with $FAILED violation(s)."
-echo "Use feature-owned server operations for trusted server reads, keep low-level DB access out of app/components, keep server-only modules out of client components, import other features only through public surfaces, keep calculations framework/database-free, and keep removed read adapters out of src/scripts."
+echo "Use feature-owned server operations for trusted server reads, keep low-level DB access out of app/components, keep server-only modules out of client components, import other features only through public surfaces, keep calculations framework/database-free, keep bootstrap/reconciliation code off runtime paths, load plan years from the active installation, and keep removed read adapters out of src/scripts."
 exit 1

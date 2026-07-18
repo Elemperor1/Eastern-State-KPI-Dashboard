@@ -17,7 +17,6 @@ import {
   GOAL_COMPLETION_RULES,
   GOAL_MANUAL_STATUSES,
   GOAL_MEMBERSHIP_ROLES,
-  STRATEGIC_PLAN_REPORTING_YEARS,
   type BoardStatus,
   type ConfigurationStatus,
   type GoalCompletionRuleName,
@@ -129,11 +128,13 @@ export function StrategicGoalsEditorClient({
   initialGoals,
   initialSelectedGoalId,
   reportingYear,
+  planYears,
   targetData = [],
 }: {
   initialGoals: StrategicGoalEditorRecord[];
   initialSelectedGoalId: number | null;
   reportingYear: number;
+  planYears: number[];
   targetData?: StrategicKpiEditorData[];
 }) {
   const [goalState, setGoalState] = useState({
@@ -422,7 +423,7 @@ export function StrategicGoalsEditorClient({
                   router.push(`/setup?area=goals&year=${Number(event.target.value)}${goal}`);
                 }}
               >
-                {STRATEGIC_PLAN_REPORTING_YEARS.map((year) => <option key={year} value={year}>{year}</option>)}
+                {planYears.map((year) => <option key={year} value={year}>{year}</option>)}
               </Select>
             </FormField>
             <FormField label="Priority" htmlFor="strategic-goal-priority">
@@ -495,6 +496,7 @@ export function StrategicGoalsEditorClient({
                 key={selectedGoal.id}
                 goal={selectedGoal}
                 reportingYear={reportingYear}
+                planYears={planYears}
                 runMutation={runMutation}
                 runMembershipMutation={runMembershipMutation}
                 targetData={targetData}
@@ -513,6 +515,7 @@ export function StrategicGoalsEditorClient({
 export function StrategicGoalSettingsForm({
   goal,
   reportingYear,
+  planYears,
   runMutation,
   runMembershipMutation,
   targetData = [],
@@ -520,6 +523,7 @@ export function StrategicGoalSettingsForm({
 }: {
   goal: StrategicGoalEditorRecord;
   reportingYear: number;
+  planYears: number[];
   runMutation: StrategicGoalMutationRunner;
   runMembershipMutation: StrategicGoalMembershipMutationRunner;
   targetData?: StrategicKpiEditorData[];
@@ -538,6 +542,7 @@ export function StrategicGoalSettingsForm({
   const successorAvailable = canCreateStrategicGoalSuccessor(
     goal,
     reportingYear,
+    planYears.at(-1)!,
   );
 
   useEffect(() => {
@@ -1027,6 +1032,7 @@ export function StrategicGoalSettingsForm({
               <StrategicGoalMembershipForm
                 member={member}
                 reportingYear={reportingYear}
+                planYears={planYears}
                 disabled={archived}
                 runMutation={runMembershipMutation}
               />
@@ -1039,6 +1045,7 @@ export function StrategicGoalSettingsForm({
         <GoalTargets
           data={targetData}
           reportingYear={reportingYear}
+          planEndYear={planYears.at(-1)!}
           runMutation={runTargetMutation}
         />
       ) : null}
@@ -1049,10 +1056,12 @@ export function StrategicGoalSettingsForm({
 function GoalTargets({
   data,
   reportingYear,
+  planEndYear,
   runMutation,
 }: {
   data: StrategicKpiEditorData[];
   reportingYear: number;
+  planEndYear: number;
   runMutation: StrategyEditorMutationRunner;
 }) {
   return (
@@ -1088,9 +1097,11 @@ function GoalTargets({
                 <StrategicTargetEditorCard
                   title={`${reportingYear} target`}
                   description="The result expected this reporting year."
-                  initialDraft={targetDraftForScope(measure.targets, "annual", reportingYear)}
+                  initialDraft={targetDraftForScope(measure.targets, "annual", reportingYear, planEndYear)}
                   kpiId={measure.kpi.id}
                   measurementType={measurementType}
+                  planStartYear={measure.planYears[0]!}
+                  planEndYear={planEndYear}
                   runMutation={runMutation}
                   idPrefix={`goal-kpi-${measure.kpi.id}`}
                   lockedTargetYear={reportingYear}
@@ -1098,9 +1109,11 @@ function GoalTargets({
                 <StrategicTargetEditorCard
                   title="Full plan target"
                   description="The result expected by the end of the plan."
-                  initialDraft={targetDraftForScope(measure.targets, "full_plan", reportingYear)}
+                  initialDraft={targetDraftForScope(measure.targets, "full_plan", reportingYear, planEndYear)}
                   kpiId={measure.kpi.id}
                   measurementType={measurementType}
+                  planStartYear={measure.planYears[0]!}
+                  planEndYear={planEndYear}
                   runMutation={runMutation}
                   idPrefix={`goal-kpi-${measure.kpi.id}`}
                 />
@@ -1113,10 +1126,12 @@ function GoalTargets({
                     <StrategicTargetEditorCard
                       title={`${reportingYear} target`}
                       description="The result expected this reporting year."
-                      initialDraft={targetDraftForScope(component.targets, "annual", reportingYear)}
+                      initialDraft={targetDraftForScope(component.targets, "annual", reportingYear, planEndYear)}
                       kpiId={measure.kpi.id}
                       componentId={component.id}
                       measurementType={component.measurement_type ?? "count"}
+                      planStartYear={measure.planYears[0]!}
+                      planEndYear={planEndYear}
                       runMutation={runMutation}
                       idPrefix={`goal-component-${component.id}`}
                       lockedTargetYear={reportingYear}
@@ -1124,10 +1139,12 @@ function GoalTargets({
                     <StrategicTargetEditorCard
                       title="Full plan target"
                       description="The result expected by the end of the plan."
-                      initialDraft={targetDraftForScope(component.targets, "full_plan", reportingYear)}
+                      initialDraft={targetDraftForScope(component.targets, "full_plan", reportingYear, planEndYear)}
                       kpiId={measure.kpi.id}
                       componentId={component.id}
                       measurementType={component.measurement_type ?? "count"}
+                      planStartYear={measure.planYears[0]!}
+                      planEndYear={planEndYear}
                       runMutation={runMutation}
                       idPrefix={`goal-component-${component.id}`}
                     />
@@ -1145,11 +1162,13 @@ function GoalTargets({
 function StrategicGoalMembershipForm({
   member,
   reportingYear,
+  planYears,
   disabled,
   runMutation,
 }: {
   member: StrategicGoalEditorRecord["members"][number];
   reportingYear: number;
+  planYears: number[];
   disabled: boolean;
   runMutation: StrategicGoalMembershipMutationRunner;
 }) {
@@ -1166,6 +1185,7 @@ function StrategicGoalMembershipForm({
   const successorAvailable = canCreateGoalMembershipSuccessor(
     member,
     reportingYear,
+    planYears.at(-1)!,
   );
 
   useEffect(() => {
@@ -1197,6 +1217,8 @@ function StrategicGoalMembershipForm({
           member.id,
           Number(successorStartYear),
           draft,
+          planYears[0]!,
+          planYears.at(-1)!,
         )
       : buildStrategicGoalMembershipMutation(member.id, draft);
     if (!built.ok) {
@@ -1268,7 +1290,7 @@ function StrategicGoalMembershipForm({
               id={`goal-membership-successor-${member.id}`}
               type="number"
               min={member.effectiveFromYear + 1}
-              max={Math.min(member.effectiveToYear ?? 2029, 2029)}
+              max={Math.min(member.effectiveToYear ?? planYears.at(-1)!, planYears.at(-1)!)}
               value={successorStartYear}
               aria-invalid={Boolean(errors.effective_start_year)}
               onChange={(event) => setSuccessorStartYear(event.target.value)}

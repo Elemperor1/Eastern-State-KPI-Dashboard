@@ -58,11 +58,13 @@ fly secrets set BOOTSTRAP_VIEWER_PASSWORD="$(openssl rand -base64 24)"
 fly deploy
 ```
 
-The deploy runs `scripts/start-production.sh` → `scripts/ensure-seeded.mjs`
-→ `npm run db:seed` only when the mounted DB's schema is missing/stale;
-the seed consumes the `BOOTSTRAP_*_PASSWORD` secrets and provisions the
-accounts. `fly logs` will show only the non-sensitive `[seed]` status
-lines above — never the plaintexts.
+The deploy runs `scripts/start-production.sh` → `scripts/ensure-seeded.mjs`.
+An existing schema-9/10/11 database with business rows is migrated additively
+to schema 12 and is never sent through the destructive seed. `npm run db:seed`
+runs automatically only for a missing or empty database that is safe to
+initialize; it consumes the `BOOTSTRAP_*_PASSWORD` secrets and provisions the
+accounts. `fly logs` will show only non-sensitive `[seed]`/`[migrate]` status
+lines — never the plaintexts.
 
 After deploy, share each bootstrap password with its user **out of band**
 (phone, verified signal, password manager share). The user logs in,

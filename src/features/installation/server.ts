@@ -1,5 +1,8 @@
 import { z } from "@/lib/zod";
 import { getDb, transaction } from "@/lib/db";
+import type { ActiveInstallation, InstallationAuditEvent } from "./types";
+
+export type { ActiveInstallation, InstallationAuditEvent } from "./types";
 
 const SlugSchema = z
   .string()
@@ -68,44 +71,6 @@ export class InstallationValidationError extends Error {
     super(message);
     this.name = "InstallationValidationError";
   }
-}
-
-export interface ActiveInstallation {
-  organization: {
-    id: number;
-    slug: string;
-    name: string;
-    shortName: string;
-    status: "active";
-    updatedAt: string;
-  };
-  plan: {
-    id: number;
-    organizationId: number;
-    slug: string;
-    name: string;
-    description: string | null;
-    startYear: number;
-    endYear: number;
-    status: "active";
-    revision: number;
-    sourceReference: string | null;
-    updatedAt: string;
-  };
-  years: number[];
-}
-
-export interface InstallationAuditEvent {
-  id: number;
-  entityType: "organization" | "strategic_plan";
-  entityId: number;
-  eventType: "create" | "update" | "archive" | "restore";
-  entityDisplayName: string;
-  previousValue: Record<string, unknown> | null;
-  newValue: Record<string, unknown> | null;
-  actorId: number | null;
-  actorEmailSnapshot: string | null;
-  occurredAt: string;
 }
 
 interface InstallationRow extends Record<string, unknown> {
@@ -378,6 +343,14 @@ function assertPlanRangeCanChange(startYear: number, endYear: number): void {
       params: [startYear, endYear],
     },
     {
+      label: "Distribution band effective ranges",
+      query:
+        `SELECT COUNT(*) AS count FROM distribution_bands
+         WHERE effective_from_year < ? OR
+           (effective_to_year IS NOT NULL AND effective_to_year > ?)`,
+      params: [startYear, endYear],
+    },
+    {
       label: "Plan-scoped targets",
       query:
         `SELECT COUNT(*) AS count FROM kpi_targets
@@ -497,17 +470,15 @@ export function updateActiveInstallation(
         parsed.expectedRevision,
       );
     if (result.changes !== 1) throw new InstallationEditConflictError();
-    if (planChanged) {
-      recordInstallationAudit({
-        entityType: "strategic_plan",
-        entityId: current.plan.id,
-        eventType: "update",
-        entityDisplayName: parsed.planName,
-        previousValue: planSnapshot(current),
-        newValue: nextPlan,
-        actorId,
-      });
-    }
+    recordInstallationAudit({
+      entityType: "strategic_plan",
+      entityId: current.plan.id,
+      eventType: "update",
+      entityDisplayName: parsed.planName,
+      previousValue: planSnapshot(current),
+      newValue: nextPlan,
+      actorId,
+    });
     return getActiveInstallation();
   });
 }

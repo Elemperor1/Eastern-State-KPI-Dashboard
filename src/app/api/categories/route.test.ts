@@ -39,6 +39,14 @@ const {
   updateCategoryMock: vi.fn(),
 }));
 
+const { updateActiveInstallationMock } = vi.hoisted(() => ({
+  updateActiveInstallationMock: vi.fn(),
+}));
+
+vi.mock("@/features/installation/server", () => ({
+  updateActiveInstallation: updateActiveInstallationMock,
+}));
+
 vi.mock("@/features/catalog/server", async () => {
   const actual = await vi.importActual<typeof import("@/features/catalog/server")>(
     "@/features/catalog/server",
@@ -101,6 +109,7 @@ beforeEach(() => {
   restoreCategoryMock.mockReset();
   retireOrDeleteCategoryMock.mockReset();
   updateCategoryMock.mockReset();
+  updateActiveInstallationMock.mockReset();
 
   createCategoryMock.mockReturnValue({
     id: 8,
@@ -110,6 +119,11 @@ beforeEach(() => {
   listCategoriesMock.mockReturnValue(REFRESHED_CATEGORIES);
   listKPIsMock.mockReturnValue(REFRESHED_KPIS);
   retireOrDeleteCategoryMock.mockReturnValue("deleted");
+  updateActiveInstallationMock.mockReturnValue({
+    organization: { name: "Example Museum", shortName: "Example" },
+    plan: { name: "Plan 2030", revision: 2, startYear: 2025, endYear: 2030 },
+    years: [2025, 2026, 2027, 2028, 2029, 2030],
+  });
 });
 
 describe("/api/categories refreshed mutation payloads", () => {
@@ -176,6 +190,29 @@ describe("/api/categories refreshed mutation payloads", () => {
     await expect(res.json()).resolves.toMatchObject({
       ok: true,
       lifecycle: "restored",
+    });
+  });
+
+  it("PATCH updates persisted installation settings without adding an auth-matrix route", async () => {
+    const update = {
+      expectedRevision: 1,
+      organizationName: "Example Museum",
+      organizationShortName: "Example",
+      planName: "Plan 2030",
+      planDescription: "Extended plan",
+      startYear: 2025,
+      endYear: 2030,
+      sourceReference: "Board approval",
+    };
+    const res = await PATCH(
+      mutationReq("PATCH", { action: "update_plan", ...update }),
+    );
+
+    expect(res.status).toBe(200);
+    expect(updateActiveInstallationMock).toHaveBeenCalledWith(update, ADMIN.id);
+    await expect(res.json()).resolves.toMatchObject({
+      ok: true,
+      installation: { plan: { revision: 2, endYear: 2030 } },
     });
   });
 

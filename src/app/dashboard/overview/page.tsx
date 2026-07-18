@@ -4,6 +4,7 @@ import { AppShell } from "@/components/AppShell";
 import { ExecutiveOverview } from "./ExecutiveOverview";
 import { loadExecutiveOverviewPageData } from "@/features/reporting/server";
 import { resolveStrategicReportingYear } from "@/features/strategy";
+import { getActiveInstallation } from "@/features/installation/server";
 
 export const dynamic = "force-dynamic";
 
@@ -17,13 +18,15 @@ export default async function DashboardOverviewPage({
   if (!user) redirect("/login");
   if (user.must_change_password) redirect("/setup-password");
 
+  const installation = getActiveInstallation();
   const year = resolveStrategicReportingYear(
     Array.isArray(sp.year) ? sp.year[0] : sp.year,
+    installation.years,
   );
   const data = loadExecutiveOverviewPageData({ year });
 
   return (
-    <AppShell user={user}>
+    <AppShell user={user} organizationShortName={installation.organization.shortName} planName={installation.plan.name}>
       <ExecutiveOverview data={data} />
     </AppShell>
   );

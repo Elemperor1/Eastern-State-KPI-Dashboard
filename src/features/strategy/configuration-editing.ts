@@ -1,5 +1,6 @@
 import { z } from "@/lib/zod";
 import { getDb, transaction } from "@/lib/db";
+import { getActiveInstallation } from "@/features/installation/server";
 import { resolveConfiguredTargetValue } from "./calculations";
 import { recordStrategicAuditEvent } from "./audit";
 import {
@@ -16,8 +17,6 @@ import {
   type PersistedTarget,
 } from "./records";
 import {
-  STRATEGIC_PLAN_END_YEAR,
-  STRATEGIC_PLAN_START_YEAR,
   type ConfigurationStatus,
   type MeasurementType,
   type StrategyJsonValue,
@@ -43,6 +42,14 @@ import {
   type ValidatedStrategicTargetUpdate,
   type ValidatedStrategyComponentUpdate,
 } from "./validation";
+
+function activePlanStartYear(): number {
+  return getActiveInstallation().plan.startYear;
+}
+
+function activePlanEndYear(): number {
+  return getActiveInstallation().plan.endYear;
+}
 
 interface StrategyEditIssue {
   path: string;
@@ -838,8 +845,8 @@ function assertFullPlanTargetConfigurationIntegrity({
 }): void {
   const signatures = new Map<number, string>();
   for (
-    let year = STRATEGIC_PLAN_START_YEAR;
-    year <= STRATEGIC_PLAN_END_YEAR;
+    let year = activePlanStartYear();
+    year <= activePlanEndYear();
     year += 1
   ) {
     const target = selectedFullPlanTarget(targets, year);
@@ -885,8 +892,8 @@ function assertFullPlanTargetConfigurationIntegrity({
     if (!targetCarriesDefinedSemantics(target)) continue;
     const targetYear = Number(target.reporting_year ?? target.target_year);
     const configurationYear = Math.min(
-      Math.max(targetYear, STRATEGIC_PLAN_START_YEAR),
-      STRATEGIC_PLAN_END_YEAR,
+      Math.max(targetYear, activePlanStartYear()),
+      activePlanEndYear(),
     );
     const configuration = effectiveConfigurationFromRows(
       configurations,
@@ -917,9 +924,9 @@ function configurationHasDefinedTarget(
   endYear: number | null,
 ): boolean {
   const targets = activeParentTargetRows(kpiId);
-  const lastYear = Math.min(endYear ?? STRATEGIC_PLAN_END_YEAR, STRATEGIC_PLAN_END_YEAR);
+  const lastYear = Math.min(endYear ?? activePlanEndYear(), activePlanEndYear());
   for (
-    let year = Math.max(startYear, STRATEGIC_PLAN_START_YEAR);
+    let year = Math.max(startYear, activePlanStartYear());
     year <= lastYear;
     year += 1
   ) {
@@ -954,13 +961,13 @@ function assertSuccessorConfigurationCompatibility(
 ): RawRow[] {
   const endYear = successor.effective_end_year;
   if (
-    successor.effective_start_year < STRATEGIC_PLAN_START_YEAR ||
-    successor.effective_start_year > STRATEGIC_PLAN_END_YEAR ||
+    successor.effective_start_year < activePlanStartYear() ||
+    successor.effective_start_year > activePlanEndYear() ||
     endYear === null ||
-    endYear > STRATEGIC_PLAN_END_YEAR
+    endYear > activePlanEndYear()
   ) {
     throw new StrategyEditConflictError(
-      "Successor definitions in this strategic-plan workflow must stay within 2025–2029.",
+      `Successor definitions must stay within ${activePlanStartYear()}–${activePlanEndYear()}.`,
       "successor_outside_plan",
     );
   }
@@ -1378,7 +1385,7 @@ export function createSuccessorMeasurementConfiguration(
     const requiredSuccessorEnd =
       predecessorEnd !== null && successorStart <= predecessorEnd
         ? predecessorEnd
-        : STRATEGIC_PLAN_END_YEAR;
+        : activePlanEndYear();
     if (parsed.successor.effective_end_year !== requiredSuccessorEnd) {
       throw new StrategyEditConflictError(
         `The successor must preserve continuous measurement coverage through ${requiredSuccessorEnd}.`,
@@ -1540,9 +1547,9 @@ export function updateMeasurementConfiguration(
         Math.min(Number(before.effective_from_year), merged.effective_start_year),
         Math.max(
           before.effective_to_year == null
-            ? STRATEGIC_PLAN_END_YEAR
+            ? activePlanEndYear()
             : Number(before.effective_to_year),
-          merged.effective_end_year ?? STRATEGIC_PLAN_END_YEAR,
+          merged.effective_end_year ?? activePlanEndYear(),
         ),
       )
     ) {
@@ -1881,9 +1888,9 @@ export function createSuccessorStrategicGoal(
     const predecessorStart = Number(before.plan_start_year);
     const predecessorEnd = Number(before.plan_end_year);
     const successorStart = parsed.effective_start_year;
-    if (successorStart > STRATEGIC_PLAN_END_YEAR) {
+    if (successorStart > activePlanEndYear()) {
       throw new StrategyEditConflictError(
-        "Successor goals in this strategic-plan workflow must start by 2029.",
+        `Successor goals must start by ${activePlanEndYear()}.`,
         "successor_outside_plan",
       );
     }
@@ -2391,9 +2398,9 @@ export function createSuccessorStrategicGoalMembership(
     const goalEnd = Number(before.goal_plan_end_year);
     const successorStart = parsed.effective_start_year;
     const effectiveEnd = predecessorEnd ?? goalEnd;
-    if (successorStart > STRATEGIC_PLAN_END_YEAR) {
+    if (successorStart > activePlanEndYear()) {
       throw new StrategyEditConflictError(
-        "Successor memberships in this strategic-plan workflow must start by 2029.",
+        `Successor memberships must start by ${activePlanEndYear()}.`,
         "successor_outside_plan",
       );
     }
@@ -2527,8 +2534,8 @@ function targetSubject(
         ? target.reporting_year ?? target.target_year
         : target.target_year;
     const configurationYear = Math.min(
-      Math.max(applicableConfigurationYear, STRATEGIC_PLAN_START_YEAR),
-      STRATEGIC_PLAN_END_YEAR,
+      Math.max(applicableConfigurationYear, activePlanStartYear()),
+      activePlanEndYear(),
     );
     const config = getDb()
       .prepare(
@@ -2566,6 +2573,36 @@ function targetSubject(
     measurement_type: String(component.measurement_type) as MeasurementType,
     archived: component.archived_at != null || configuration.archived_at != null,
   };
+}
+
+function validateTargetPlanRange(
+  target: ValidatedStrategicTargetCreate,
+): void {
+  const startYear = activePlanStartYear();
+  const endYear = activePlanEndYear();
+  const reportingYear = target.reporting_year;
+  if (
+    target.target_scope === "annual" &&
+    (reportingYear === null || reportingYear < startYear || reportingYear > endYear)
+  ) {
+    throw new StrategyEditValidationError("Invalid strategic target.", [
+      {
+        path: "reporting_year",
+        message: `Annual target reporting years must stay within the ${startYear}–${endYear} strategic plan.`,
+      },
+    ]);
+  }
+  if (
+    !target.external_target_year &&
+    (target.target_year < startYear || target.target_year > endYear)
+  ) {
+    throw new StrategyEditValidationError("Invalid strategic target.", [
+      {
+        path: "target_year",
+        message: `Strategic-plan target years must stay within ${startYear}–${endYear}.`,
+      },
+    ]);
+  }
 }
 
 function validateTargetMeasurement(
@@ -2819,6 +2856,7 @@ export function createStrategicTarget(
     "Invalid strategic target.",
   );
   return transaction(() => {
+    validateTargetPlanRange(parsed);
     const subject = targetSubject(parsed);
     validateTargetMeasurement(parsed, subject);
     ensureNoTargetConflict(parsed, null);
@@ -2951,6 +2989,7 @@ export function updateStrategicTarget(
     const before = rawTarget(patch.id);
     requireEditable(before, "target");
     const merged = mergedTarget(before, patch);
+    validateTargetPlanRange(merged);
     const subject = targetSubject(merged);
     validateTargetMeasurement(merged, subject);
     ensureNoTargetConflict(merged, patch.id);
@@ -3187,8 +3226,8 @@ function validateSuccessorComponentSet(
       : {
           ...applicableTarget,
           target_year: Math.min(
-            Math.max(Number(applicableTarget.target_year), STRATEGIC_PLAN_START_YEAR),
-            STRATEGIC_PLAN_END_YEAR,
+            Math.max(Number(applicableTarget.target_year), activePlanStartYear()),
+            activePlanEndYear(),
           ),
         };
     return componentDefinitionInput(component, proposedConfig, validationTarget);

@@ -1,4 +1,5 @@
 import { getDb } from "@/lib/db";
+import { getActiveInstallation } from "@/features/installation/server";
 import type { GoalKpiInput } from "./calculations";
 import {
   calculateStrategicGoalCompletion,
@@ -6,8 +7,6 @@ import {
 } from "./goal-completion";
 import { resolveEffectiveTargetPolicy } from "./target-policy";
 import {
-  STRATEGIC_PLAN_END_YEAR,
-  STRATEGIC_PLAN_START_YEAR,
   type ConfigurationStatus,
   type GoalCompletionRule as GoalCompletionRuleName,
   type GoalManualStatus,
@@ -212,7 +211,8 @@ export function listEffectiveTargetsForKpi(
   year: number,
   options: Pick<StrategyReadOptions, "includeArchived"> = {},
 ): PersistedTarget[] {
-  if (year < STRATEGIC_PLAN_START_YEAR || year > STRATEGIC_PLAN_END_YEAR) {
+  const plan = getActiveInstallation().plan;
+  if (year < plan.startYear || year > plan.endYear) {
     return [];
   }
   const rows = getDb()
@@ -233,7 +233,8 @@ function listEffectiveTargetsForComponent(
   year: number,
   options: Pick<StrategyReadOptions, "includeArchived"> = {},
 ): PersistedTarget[] {
-  if (year < STRATEGIC_PLAN_START_YEAR || year > STRATEGIC_PLAN_END_YEAR) {
+  const plan = getActiveInstallation().plan;
+  if (year < plan.startYear || year > plan.endYear) {
     return [];
   }
   const rows = getDb()

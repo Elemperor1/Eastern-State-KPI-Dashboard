@@ -12,15 +12,10 @@ export {
 } from "./audit";
 
 export {
-  reconcileStrategicMigrationData,
-} from "./migration-reconciliation";
-
-export {
   archiveComponent,
   archiveMeasurementConfig,
   archiveStrategicGoal,
   archiveTarget,
-  ensureStrategicPlanConfiguration,
   restoreComponent,
   restoreMeasurementConfig,
   restoreStrategicGoal,

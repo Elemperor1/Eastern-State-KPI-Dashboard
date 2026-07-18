@@ -34,7 +34,7 @@ describe("production migration entrypoint", () => {
     `);
     before.close();
 
-    const migrated = runTsx("scripts/migrate.ts", databasePath);
+    const migrated = runPendingMigration(databasePath);
     expect(migrated.status, migrated.stderr).toBe(0);
     const verify = new DatabaseSync(databasePath);
     expect(scalarCount(verify, "strategic_goals")).toBe(22);
@@ -44,6 +44,39 @@ describe("production migration entrypoint", () => {
     expect(scalarCount(verify, "kpis")).toBe(legacyCounts.kpis);
     expect(scalarCount(verify, "monthly_entries")).toBe(legacyCounts.monthlyEntries);
     expect(scalarCount(verify, "entry_history")).toBe(legacyCounts.history);
+    expect(verify.prepare("PRAGMA foreign_key_check").all()).toEqual([]);
+    verify.close();
+  });
+
+  it("does not recreate deleted strategic content after schema 12 is initialized", () => {
+    const databasePath = path.join(directory, "initialized-content-remains-deleted.db");
+    expect(runTsx("scripts/seed.ts", databasePath).status).toBe(0);
+    const before = new DatabaseSync(databasePath);
+    before.exec(`
+      DELETE FROM strategic_audit_events;
+      DELETE FROM distribution_values;
+      DELETE FROM distribution_observations;
+      DELETE FROM distribution_bands;
+      DELETE FROM kpi_component_entries;
+      DELETE FROM kpi_targets;
+      DELETE FROM kpi_components;
+      DELETE FROM kpi_observations;
+      DELETE FROM goal_kpis;
+      DELETE FROM strategic_goals;
+      DELETE FROM kpi_measurement_configs;
+    `);
+    before.close();
+
+    const migrated = runTsx("scripts/migrate.ts", databasePath);
+
+    expect(migrated.status, migrated.stderr).toBe(0);
+    expect(migrated.stdout).toContain(
+      "no database-authority content migration is pending",
+    );
+    const verify = new DatabaseSync(databasePath);
+    expect(scalarCount(verify, "strategic_goals")).toBe(0);
+    expect(scalarCount(verify, "kpi_measurement_configs")).toBe(0);
+    expect(scalarCount(verify, "goal_kpis")).toBe(0);
     expect(verify.prepare("PRAGMA foreign_key_check").all()).toEqual([]);
     verify.close();
   });
@@ -115,7 +148,7 @@ describe("production migration entrypoint", () => {
     ).run();
     before.close();
 
-    const migrated = runTsx("scripts/migrate.ts", databasePath);
+    const migrated = runPendingMigration(databasePath);
     expect(migrated.status, migrated.stderr).toBe(0);
     expect(migrated.stdout).toContain(
       "7 goal metadata, 4 memberships, 3 measurement metadata, 1 target contracts repaired",
@@ -178,7 +211,7 @@ describe("production migration entrypoint", () => {
     const repeated = runTsx("scripts/migrate.ts", databasePath);
     expect(repeated.status, repeated.stderr).toBe(0);
     expect(repeated.stdout).toContain(
-      "0 goal metadata, 0 memberships, 0 measurement metadata, 0 target contracts repaired",
+      "no database-authority content migration is pending",
     );
     const repeatedVerify = new DatabaseSync(databasePath);
     expect(scalarCount(repeatedVerify, "strategic_audit_events")).toBe(auditCount);
@@ -212,7 +245,7 @@ describe("production migration entrypoint", () => {
     const auditCount = scalarCount(before, "strategic_audit_events");
     before.close();
 
-    const migrated = runTsx("scripts/migrate.ts", databasePath);
+    const migrated = runPendingMigration(databasePath);
     expect(migrated.status, migrated.stderr).toBe(0);
     const verify = new DatabaseSync(databasePath);
     expect(verify.prepare(
@@ -274,7 +307,7 @@ describe("production migration entrypoint", () => {
     const customized = customizeOperatorOwnedStrategy(before, government.configuration_id);
     before.close();
 
-    const migrated = runTsx("scripts/migrate.ts", databasePath);
+    const migrated = runPendingMigration(databasePath);
     expect(migrated.status, migrated.stderr).toBe(0);
     const verify = new DatabaseSync(databasePath);
     expect(
@@ -344,7 +377,7 @@ describe("production migration entrypoint", () => {
     ).run(government.configuration_id);
     before.close();
 
-    const migrated = runTsx("scripts/migrate.ts", databasePath);
+    const migrated = runPendingMigration(databasePath);
     expect(migrated.status, migrated.stderr).toBe(0);
     const verify = new DatabaseSync(databasePath);
     expect(
@@ -379,7 +412,7 @@ describe("production migration entrypoint", () => {
     ).run(government.kpi_id);
     before.close();
 
-    const migrated = runTsx("scripts/migrate.ts", databasePath);
+    const migrated = runPendingMigration(databasePath);
     expect(migrated.status, migrated.stderr).toBe(0);
     const verify = new DatabaseSync(databasePath);
     expect(
@@ -428,7 +461,7 @@ describe("production migration entrypoint", () => {
     ).run(observationId, bandId);
     before.close();
 
-    const migrated = runTsx("scripts/migrate.ts", databasePath);
+    const migrated = runPendingMigration(databasePath);
     expect(migrated.status, migrated.stderr).toBe(0);
     const verify = new DatabaseSync(databasePath);
     expect(
@@ -493,7 +526,7 @@ describe("production migration entrypoint", () => {
     ).run(city.id);
     before.close();
 
-    const migrated = runTsx("scripts/migrate.ts", databasePath);
+    const migrated = runPendingMigration(databasePath);
     expect(migrated.status, migrated.stderr).toBe(0);
     const verify = new DatabaseSync(databasePath);
     expect(
@@ -607,6 +640,15 @@ function runTsx(script: string, databasePath: string) {
     env: { ...process.env, DATABASE_PATH: databasePath },
     encoding: "utf8",
   });
+}
+
+function runPendingMigration(databasePath: string) {
+  const db = new DatabaseSync(databasePath);
+  db.prepare(
+    "INSERT OR REPLACE INTO meta (key, value) VALUES ('schema_12_content_migration_pending', '1')",
+  ).run();
+  db.close();
+  return runTsx("scripts/migrate.ts", databasePath);
 }
 
 function scalarCount(db: DatabaseSync, table: string): number {

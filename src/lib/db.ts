@@ -755,6 +755,174 @@ function migrateInstallationSchemaV12(raw: DatabaseSync): void {
         BEGIN
           UPDATE categories SET updated_at = datetime('now') WHERE id = NEW.id;
         END;
+
+        DROP INDEX IF EXISTS idx_strategic_goals_priority;
+        DROP INDEX IF EXISTS idx_strategic_goals_configuration;
+
+        CREATE TABLE strategic_goals_v12 (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          priority_id INTEGER NOT NULL REFERENCES categories(id) ON DELETE RESTRICT,
+          slug TEXT UNIQUE NOT NULL,
+          name TEXT NOT NULL,
+          description TEXT,
+          plan_start_year INTEGER NOT NULL
+            CHECK (plan_start_year BETWEEN 1900 AND 2100),
+          plan_end_year INTEGER NOT NULL
+            CHECK (plan_end_year BETWEEN plan_start_year AND 2100),
+          completion_rule TEXT NOT NULL DEFAULT 'all_required_kpis'
+            CHECK (completion_rule IN ('all_required_kpis','weighted_average','threshold_count','manual_status')),
+          threshold_count INTEGER CHECK (threshold_count IS NULL OR threshold_count > 0),
+          threshold_percentage REAL
+            CHECK (threshold_percentage IS NULL OR (threshold_percentage >= 0 AND threshold_percentage <= 100)),
+          manual_status TEXT CHECK (
+            manual_status IS NULL OR manual_status IN ('not_started','in_progress','complete')
+          ),
+          board_level_status TEXT NOT NULL DEFAULT 'not_reported' CHECK (
+            board_level_status IN (
+              'not_reported','not_started','on_track','at_risk','off_track',
+              'complete','exceeded','not_applicable'
+            )
+          ),
+          configuration_status TEXT NOT NULL DEFAULT 'draft'
+            CHECK (configuration_status IN ('draft','needs_definition','needs_target','ready','active','archived')),
+          unresolved_question TEXT,
+          owner TEXT,
+          due_date TEXT,
+          resolution_notes TEXT,
+          source_reference TEXT,
+          last_reviewed_date TEXT,
+          sort_order INTEGER NOT NULL DEFAULT 0,
+          archived_at TEXT,
+          created_by INTEGER REFERENCES users(id) ON DELETE SET NULL,
+          created_at TEXT NOT NULL DEFAULT (datetime('now')),
+          updated_by INTEGER REFERENCES users(id) ON DELETE SET NULL,
+          updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+        );
+
+        INSERT INTO strategic_goals_v12 (
+          id, priority_id, slug, name, description, plan_start_year,
+          plan_end_year, completion_rule, threshold_count,
+          threshold_percentage, manual_status, board_level_status,
+          configuration_status, unresolved_question, owner, due_date,
+          resolution_notes, source_reference, last_reviewed_date, sort_order,
+          archived_at, created_by, created_at, updated_by, updated_at
+        )
+        SELECT id, priority_id, slug, name, description, plan_start_year,
+               plan_end_year, completion_rule, threshold_count,
+               threshold_percentage, manual_status, board_level_status,
+               configuration_status, unresolved_question, owner, due_date,
+               resolution_notes, source_reference, last_reviewed_date, sort_order,
+               archived_at, created_by, created_at, updated_by, updated_at
+        FROM strategic_goals;
+
+        DROP TABLE strategic_goals;
+        ALTER TABLE strategic_goals_v12 RENAME TO strategic_goals;
+        CREATE INDEX idx_strategic_goals_priority
+          ON strategic_goals(priority_id, sort_order);
+        CREATE INDEX idx_strategic_goals_configuration
+          ON strategic_goals(configuration_status, archived_at);
+
+        DROP INDEX IF EXISTS idx_goal_kpis_goal;
+        DROP INDEX IF EXISTS idx_goal_kpis_kpi;
+
+        CREATE TABLE goal_kpis_v12 (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          goal_id INTEGER NOT NULL REFERENCES strategic_goals(id) ON DELETE RESTRICT,
+          kpi_id INTEGER NOT NULL REFERENCES kpis(id) ON DELETE RESTRICT,
+          is_required INTEGER NOT NULL DEFAULT 1 CHECK (is_required IN (0,1)),
+          weight REAL NOT NULL DEFAULT 1 CHECK (weight >= 0),
+          display_order INTEGER NOT NULL DEFAULT 0,
+          effective_from_year INTEGER NOT NULL
+            CHECK (effective_from_year BETWEEN 1900 AND 2100),
+          effective_to_year INTEGER CHECK (
+            effective_to_year IS NULL OR
+            (effective_to_year BETWEEN effective_from_year AND 2100)
+          ),
+          archived_at TEXT,
+          created_by INTEGER REFERENCES users(id) ON DELETE SET NULL,
+          created_at TEXT NOT NULL DEFAULT (datetime('now')),
+          updated_by INTEGER REFERENCES users(id) ON DELETE SET NULL,
+          updated_at TEXT NOT NULL DEFAULT (datetime('now')),
+          UNIQUE (goal_id, kpi_id, effective_from_year)
+        );
+
+        INSERT INTO goal_kpis_v12 (
+          id, goal_id, kpi_id, is_required, weight, display_order,
+          effective_from_year, effective_to_year, archived_at, created_by,
+          created_at, updated_by, updated_at
+        )
+        SELECT id, goal_id, kpi_id, is_required, weight, display_order,
+               effective_from_year, effective_to_year, archived_at, created_by,
+               created_at, updated_by, updated_at
+        FROM goal_kpis;
+
+        DROP TABLE goal_kpis;
+        ALTER TABLE goal_kpis_v12 RENAME TO goal_kpis;
+        CREATE INDEX idx_goal_kpis_goal ON goal_kpis(goal_id, display_order);
+        CREATE INDEX idx_goal_kpis_kpi ON goal_kpis(kpi_id);
+
+        DROP INDEX IF EXISTS idx_kpi_targets_kpi_unique;
+        DROP INDEX IF EXISTS idx_kpi_targets_component_unique;
+        DROP INDEX IF EXISTS idx_kpi_targets_year;
+
+        CREATE TABLE kpi_targets_v12 (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          kpi_id INTEGER REFERENCES kpis(id) ON DELETE RESTRICT,
+          component_id INTEGER REFERENCES kpi_components(id) ON DELETE RESTRICT,
+          target_scope TEXT NOT NULL CHECK (target_scope IN ('annual','full_plan')),
+          reporting_year INTEGER CHECK (reporting_year IS NULL OR reporting_year BETWEEN 1900 AND 2100),
+          target_year INTEGER NOT NULL CHECK (target_year BETWEEN 1900 AND 2100),
+          external_target_year INTEGER NOT NULL DEFAULT 0
+            CHECK (external_target_year IN (0,1)),
+          target_value REAL,
+          structured_target_json TEXT,
+          target_description TEXT,
+          baseline_year INTEGER CHECK (baseline_year IS NULL OR baseline_year BETWEEN 1900 AND 2100),
+          baseline_value REAL,
+          configuration_status TEXT NOT NULL DEFAULT 'draft'
+            CHECK (configuration_status IN ('draft','needs_definition','needs_target','ready','active','archived')),
+          source_reference TEXT,
+          last_reviewed_date TEXT,
+          archived_at TEXT,
+          created_by INTEGER REFERENCES users(id) ON DELETE SET NULL,
+          created_at TEXT NOT NULL DEFAULT (datetime('now')),
+          updated_by INTEGER REFERENCES users(id) ON DELETE SET NULL,
+          updated_at TEXT NOT NULL DEFAULT (datetime('now')),
+          CHECK (
+            (kpi_id IS NOT NULL AND component_id IS NULL) OR
+            (kpi_id IS NULL AND component_id IS NOT NULL)
+          ),
+          CHECK (
+            (target_scope = 'annual' AND reporting_year IS NOT NULL) OR
+            (target_scope = 'full_plan' AND reporting_year IS NULL)
+          ),
+          CHECK (baseline_year IS NULL OR baseline_year < target_year)
+        );
+
+        INSERT INTO kpi_targets_v12 (
+          id, kpi_id, component_id, target_scope, reporting_year, target_year,
+          external_target_year, target_value, structured_target_json,
+          target_description, baseline_year, baseline_value,
+          configuration_status, source_reference, last_reviewed_date,
+          archived_at, created_by, created_at, updated_by, updated_at
+        )
+        SELECT id, kpi_id, component_id, target_scope, reporting_year, target_year,
+               external_target_year, target_value, structured_target_json,
+               target_description, baseline_year, baseline_value,
+               configuration_status, source_reference, last_reviewed_date,
+               archived_at, created_by, created_at, updated_by, updated_at
+        FROM kpi_targets;
+
+        DROP TABLE kpi_targets;
+        ALTER TABLE kpi_targets_v12 RENAME TO kpi_targets;
+        CREATE UNIQUE INDEX idx_kpi_targets_kpi_unique
+          ON kpi_targets(kpi_id, target_scope, COALESCE(reporting_year, -1), target_year)
+          WHERE kpi_id IS NOT NULL;
+        CREATE UNIQUE INDEX idx_kpi_targets_component_unique
+          ON kpi_targets(component_id, target_scope, COALESCE(reporting_year, -1), target_year)
+          WHERE component_id IS NOT NULL;
+        CREATE INDEX idx_kpi_targets_year
+          ON kpi_targets(target_year, reporting_year, configuration_status);
       `);
 
       const violations = raw.prepare("PRAGMA foreign_key_check").all();
@@ -765,6 +933,9 @@ function migrateInstallationSchemaV12(raw: DatabaseSync): void {
       }
       raw.exec(
         "INSERT OR REPLACE INTO meta (key, value) VALUES ('schema_version', '12');",
+      );
+      raw.exec(
+        "INSERT OR REPLACE INTO meta (key, value) VALUES ('schema_12_content_migration_pending', '1');",
       );
       raw.exec("COMMIT;");
     } catch (error) {
@@ -876,9 +1047,9 @@ function initializeStrategicSchema(raw: DatabaseSync): void {
       slug TEXT UNIQUE NOT NULL,
       name TEXT NOT NULL,
       description TEXT,
-      plan_start_year INTEGER NOT NULL DEFAULT 2025
+      plan_start_year INTEGER NOT NULL
         CHECK (plan_start_year BETWEEN 1900 AND 2100),
-      plan_end_year INTEGER NOT NULL DEFAULT 2029
+      plan_end_year INTEGER NOT NULL
         CHECK (plan_end_year BETWEEN plan_start_year AND 2100),
       completion_rule TEXT NOT NULL DEFAULT 'all_required_kpis'
         CHECK (completion_rule IN ('all_required_kpis','weighted_average','threshold_count','manual_status')),
@@ -922,7 +1093,7 @@ function initializeStrategicSchema(raw: DatabaseSync): void {
       is_required INTEGER NOT NULL DEFAULT 1 CHECK (is_required IN (0,1)),
       weight REAL NOT NULL DEFAULT 1 CHECK (weight >= 0),
       display_order INTEGER NOT NULL DEFAULT 0,
-      effective_from_year INTEGER NOT NULL DEFAULT 2025
+      effective_from_year INTEGER NOT NULL
         CHECK (effective_from_year BETWEEN 1900 AND 2100),
       effective_to_year INTEGER CHECK (
         effective_to_year IS NULL OR
@@ -1167,7 +1338,6 @@ function initializeStrategicSchema(raw: DatabaseSync): void {
         (target_scope = 'annual' AND reporting_year IS NOT NULL) OR
         (target_scope = 'full_plan' AND reporting_year IS NULL)
       ),
-      CHECK (external_target_year = 1 OR target_year BETWEEN 2025 AND 2029),
       CHECK (baseline_year IS NULL OR baseline_year < target_year)
     );
 

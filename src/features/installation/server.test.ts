@@ -168,4 +168,43 @@ describe("database-backed installation and plan", () => {
       ]),
     );
   });
+
+  it("audits the plan revision when an organization-only edit advances it", () => {
+    bootstrapInstallation(bootstrap);
+    const actorId = Number(
+      getDb()
+        .prepare(
+          `INSERT INTO users (email, name, password_hash, role)
+           VALUES ('identity-editor@example.org', 'Identity Editor', 'hash', 'admin')`,
+        )
+        .run().lastInsertRowid,
+    );
+    const current = getActiveInstallation();
+
+    const updated = updateActiveInstallation(
+      {
+        expectedRevision: current.plan.revision,
+        organizationName: "Example Museum",
+        organizationShortName: "Museum",
+        planName: current.plan.name,
+        planDescription: current.plan.description,
+        startYear: current.plan.startYear,
+        endYear: current.plan.endYear,
+        sourceReference: current.plan.sourceReference,
+      },
+      actorId,
+    );
+
+    expect(updated.plan.revision).toBe(current.plan.revision + 1);
+    expect(listInstallationAuditEvents()).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          entityType: "strategic_plan",
+          eventType: "update",
+          previousValue: expect.objectContaining({ revision: current.plan.revision }),
+          newValue: expect.objectContaining({ revision: current.plan.revision + 1 }),
+        }),
+      ]),
+    );
+  });
 });

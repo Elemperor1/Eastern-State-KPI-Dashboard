@@ -10,10 +10,11 @@ import {
 
 describe("reporting cycle", () => {
   it("uses a requested plan year or clamps the current year to the plan", () => {
-    expect(resolveStrategicReportingYear("2028", 2026)).toBe(2028);
-    expect(resolveStrategicReportingYear(undefined, 2026)).toBe(2026);
-    expect(resolveStrategicReportingYear("not-a-year", 2024)).toBe(2025);
-    expect(resolveStrategicReportingYear(undefined, 2032)).toBe(2029);
+    const years = [2030, 2031, 2032];
+    expect(resolveStrategicReportingYear("2031", years, 2030)).toBe(2031);
+    expect(resolveStrategicReportingYear(undefined, years, 2031)).toBe(2031);
+    expect(resolveStrategicReportingYear("not-a-year", years, 2024)).toBe(2030);
+    expect(resolveStrategicReportingYear(undefined, years, 2035)).toBe(2032);
   });
 
   it("builds one clear selection list for the frequencies that are due", () => {

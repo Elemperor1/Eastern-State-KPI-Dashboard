@@ -1,9 +1,10 @@
 /** Apply the application's idempotent SQLite migration without seeding data. */
 import { getDb, resetDb, SCHEMA_VERSION } from "../src/lib/db";
 import {
-  ensureStrategicPlanConfiguration,
-  reconcileStrategicMigrationData,
-} from "../src/features/strategy/server";
+  initializeStrategicPlanConfiguration,
+} from "../src/features/strategy/mutations";
+import { reconcileStrategicMigrationData } from "../src/features/strategy/migration-reconciliation";
+import { EASTERN_STATE_STRATEGIC_CONFIGURATION_FIXTURE } from "./bootstrap/strategic-configuration-fixture";
 
 function main(): void {
   const db = getDb();
@@ -16,11 +17,19 @@ function main(): void {
       `Migration stopped at schema ${actual || "missing"}; expected ${SCHEMA_VERSION}.`,
     );
   }
+  const contentMigrationPending =
+    (
+      db
+        .prepare(
+          "SELECT value FROM meta WHERE key = 'schema_12_content_migration_pending'",
+        )
+        .get() as { value?: string } | undefined
+    )?.value === "1";
   const kpiCount = Number(
     (db.prepare("SELECT COUNT(*) AS count FROM kpis").get() as { count: number })
       .count,
   );
-  if (kpiCount > 0) {
+  if (contentMigrationPending && kpiCount > 0) {
     const strategicEntityCount = Number(
       (db.prepare(
         `SELECT
@@ -32,7 +41,9 @@ function main(): void {
       ).get() as { count: number }).count,
     );
     if (strategicEntityCount === 0) {
-      const configured = ensureStrategicPlanConfiguration();
+      const configured = initializeStrategicPlanConfiguration(
+        EASTERN_STATE_STRATEGIC_CONFIGURATION_FIXTURE,
+      );
       console.log(
         `[migrate] initialized strategic configuration (${configured.goals.created} goals, ${configured.measurement_configs.created} KPI configs).`,
       );
@@ -42,6 +53,13 @@ function main(): void {
         `[migrate] preservation-safe strategic reconciliation (${reconciled.governmentSupportRatio} government-support ratio; ${reconciled.canonicalGoalMetadata} goal metadata, ${reconciled.canonicalMemberships} memberships, ${reconciled.canonicalMeasurementMetadata} measurement metadata, ${reconciled.canonicalTargets} target contracts repaired).`,
       );
     }
+  }
+  if (contentMigrationPending) {
+    db.prepare(
+      "DELETE FROM meta WHERE key = 'schema_12_content_migration_pending'",
+    ).run();
+  } else {
+    console.log("[migrate] no database-authority content migration is pending.");
   }
   console.log(`[migrate] schema ${actual} ready; existing data left intact.`);
   resetDb();

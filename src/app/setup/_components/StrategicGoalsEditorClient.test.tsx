@@ -80,6 +80,7 @@ describe("StrategicGoalSettingsForm", () => {
           threshold_count: 2,
         }),
         reportingYear: 2026,
+        planYears: [2025, 2026, 2027, 2028, 2029],
         runMutation,
         runMembershipMutation,
       }),
@@ -103,6 +104,7 @@ describe("StrategicGoalSettingsForm", () => {
           manual_status: "in_progress",
         }),
         reportingYear: 2026,
+        planYears: [2025, 2026, 2027, 2028, 2029],
         runMutation,
         runMembershipMutation,
       }),
@@ -120,6 +122,7 @@ describe("StrategicGoalSettingsForm", () => {
           archived_at: "2026-07-09 12:00:00",
         }),
         reportingYear: 2026,
+        planYears: [2025, 2026, 2027, 2028, 2029],
         runMutation,
         runMembershipMutation,
       }),
@@ -135,6 +138,7 @@ describe("StrategicGoalSettingsForm", () => {
       createElement(StrategicGoalSettingsForm, {
         goal: goal(),
         reportingYear: 2029,
+        planYears: [2025, 2026, 2027, 2028, 2029],
         runMutation,
         runMembershipMutation,
       }),
@@ -154,6 +158,7 @@ describe("StrategicGoalSettingsForm", () => {
         initialGoals: [goal({ id: 99, name: "First visible goal" }), successor],
         initialSelectedGoalId: successor.id,
         reportingYear: 2027,
+        planYears: [2025, 2026, 2027, 2028, 2029],
       }),
     );
     expect(html).toContain('aria-current="page"');
