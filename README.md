@@ -323,8 +323,8 @@ covers — plus mobile rendering at 390 px, exports, forced password rotation,
 and auth API regression coverage — lives at `docs/qa-manual.md`. New engineers should
 walk the checklist end-to-end after their first checkout.
 
-Current schema-11 verification recorded on July 15, 2026: `npm test` passed
-**78 files / 1,185 tests**; `npm run design-system:test` passed its security and
+Current schema-12 verification recorded on July 15, 2026: `npm test` passed
+**82 files / 1,217 tests**; `npm run design-system:test` passed its security and
 architecture guards, typecheck, and production build; the loopback development
 smoke passed **51/51** checks; the credentialed production smoke passed
 **52/52**; and `npm run test:e2e` passed **11/11** serial workflows through a

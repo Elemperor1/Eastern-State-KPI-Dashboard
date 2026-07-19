@@ -1,5 +1,6 @@
 import { z } from "@/lib/zod";
 import { getDb, transaction } from "@/lib/db";
+import { recordStrategicAuditEvent } from "@/features/strategy/server";
 import type { ActiveInstallation, InstallationAuditEvent } from "./types";
 import { PlanSettingsUpdateSchema } from "./validation";
 
@@ -288,16 +289,24 @@ export function bootstrapInstallation(
   });
 }
 
-function assertPlanRangeCanChange(startYear: number, endYear: number): void {
+function assertPlanRangeCanChange(
+  planId: number,
+  startYear: number,
+  endYear: number,
+): void {
   const db = getDb();
   const checks: Array<{ label: string; query: string; params?: unknown[] }> = [
     {
       label: "Strategic Goal effective ranges",
       query:
-        `SELECT COUNT(*) AS count FROM strategic_goals
-         WHERE archived_at IS NULL AND configuration_status <> 'archived'
-           AND (plan_start_year < ? OR plan_end_year > ?)`,
-      params: [startYear, endYear],
+        `SELECT COUNT(*) AS count
+         FROM strategic_goals goal
+         JOIN categories category ON category.id = goal.priority_id
+         WHERE category.plan_id = ?
+           AND goal.archived_at IS NULL
+           AND goal.configuration_status <> 'archived'
+           AND (goal.plan_start_year < ? OR goal.plan_end_year > ?)`,
+      params: [planId, startYear, endYear],
     },
     {
       label: "Goal memberships",
@@ -305,58 +314,103 @@ function assertPlanRangeCanChange(startYear: number, endYear: number): void {
         `SELECT COUNT(*) AS count
          FROM goal_kpis membership
          JOIN strategic_goals goal ON goal.id = membership.goal_id
+         JOIN categories category ON category.id = goal.priority_id
          WHERE membership.archived_at IS NULL
+           AND category.plan_id = ?
            AND goal.archived_at IS NULL
            AND goal.configuration_status <> 'archived'
            AND (membership.effective_from_year < ? OR
                 COALESCE(membership.effective_to_year, ?) > ?)`,
-      params: [startYear, endYear, endYear],
+      params: [planId, startYear, endYear, endYear],
     },
     {
       label: "Measurement configurations",
       query:
-        `SELECT COUNT(*) AS count FROM kpi_measurement_configs
-         WHERE archived_at IS NULL AND configuration_status <> 'archived'
-           AND (effective_from_year < ? OR COALESCE(effective_to_year, ?) > ?)`,
-      params: [startYear, endYear, endYear],
+        `SELECT COUNT(*) AS count
+         FROM kpi_measurement_configs configuration
+         JOIN kpis kpi ON kpi.id = configuration.kpi_id
+         JOIN categories category ON category.id = kpi.category_id
+         WHERE category.plan_id = ?
+           AND configuration.archived_at IS NULL
+           AND configuration.configuration_status <> 'archived'
+           AND (configuration.effective_from_year < ? OR
+                COALESCE(configuration.effective_to_year, ?) > ?)`,
+      params: [planId, startYear, endYear, endYear],
     },
     {
       label: "Strategic observations",
       query:
-        "SELECT COUNT(*) AS count FROM kpi_observations WHERE year < ? OR year > ?",
-      params: [startYear, endYear],
+        `SELECT COUNT(*) AS count
+         FROM kpi_observations observation
+         JOIN kpis kpi ON kpi.id = observation.kpi_id
+         JOIN categories category ON category.id = kpi.category_id
+         WHERE category.plan_id = ?
+           AND (observation.year < ? OR observation.year > ?)`,
+      params: [planId, startYear, endYear],
     },
     {
       label: "Component entries",
       query:
-        "SELECT COUNT(*) AS count FROM kpi_component_entries WHERE year < ? OR year > ?",
-      params: [startYear, endYear],
+        `SELECT COUNT(*) AS count
+         FROM kpi_component_entries entry
+         JOIN kpi_components component ON component.id = entry.component_id
+         JOIN kpis kpi ON kpi.id = component.kpi_id
+         JOIN categories category ON category.id = kpi.category_id
+         WHERE category.plan_id = ?
+           AND (entry.year < ? OR entry.year > ?)`,
+      params: [planId, startYear, endYear],
     },
     {
       label: "Distribution observations",
       query:
-        "SELECT COUNT(*) AS count FROM distribution_observations WHERE year < ? OR year > ?",
-      params: [startYear, endYear],
+        `SELECT COUNT(*) AS count
+         FROM distribution_observations observation
+         JOIN kpis kpi ON kpi.id = observation.kpi_id
+         JOIN categories category ON category.id = kpi.category_id
+         WHERE category.plan_id = ?
+           AND (observation.year < ? OR observation.year > ?)`,
+      params: [planId, startYear, endYear],
     },
     {
       label: "Distribution band effective ranges",
       query:
-        `SELECT COUNT(*) AS count FROM distribution_bands
-         WHERE archived_at IS NULL AND
-           (effective_from_year < ? OR
-            (effective_to_year IS NOT NULL AND effective_to_year > ?))`,
-      params: [startYear, endYear],
+        `SELECT COUNT(*) AS count
+         FROM distribution_bands band
+         JOIN kpis kpi ON kpi.id = band.kpi_id
+         JOIN categories category ON category.id = kpi.category_id
+         WHERE category.plan_id = ?
+           AND band.archived_at IS NULL
+           AND (band.effective_from_year < ? OR
+                (band.effective_to_year IS NOT NULL AND band.effective_to_year > ?))`,
+      params: [planId, startYear, endYear],
     },
     {
       label: "Plan-scoped targets",
       query:
-        `SELECT COUNT(*) AS count FROM kpi_targets
-         WHERE archived_at IS NULL AND configuration_status <> 'archived'
-           AND external_target_year = 0
-           AND (target_year < ? OR target_year > ? OR
-                (reporting_year IS NOT NULL AND
-                 (reporting_year < ? OR reporting_year > ?)))`,
-      params: [startYear, endYear, startYear, endYear],
+        `SELECT COUNT(*) AS count
+         FROM kpi_targets target
+         LEFT JOIN kpi_components component ON component.id = target.component_id
+         JOIN kpis kpi ON kpi.id = COALESCE(target.kpi_id, component.kpi_id)
+         JOIN categories category ON category.id = kpi.category_id
+         WHERE category.plan_id = ?
+           AND target.archived_at IS NULL
+           AND target.configuration_status <> 'archived'
+           AND target.external_target_year = 0
+           AND (target.target_year < ? OR target.target_year > ? OR
+                (target.reporting_year IS NOT NULL AND
+                 (target.reporting_year < ? OR target.reporting_year > ?)) OR
+                (target.baseline_year IS NOT NULL AND
+                 (target.baseline_year < ? OR target.baseline_year > ? OR
+                  target.baseline_year >= target.target_year)))`,
+      params: [
+        planId,
+        startYear,
+        endYear,
+        startYear,
+        endYear,
+        startYear,
+        endYear,
+      ],
     },
   ];
   const conflicts = checks.flatMap((check) => {
@@ -369,6 +423,137 @@ function assertPlanRangeCanChange(startYear: number, endYear: number): void {
     throw new InstallationValidationError(
       `The plan range cannot exclude persisted ${conflicts.join(", ")}.`,
     );
+  }
+}
+
+function extendPlanBoundaryCoverage(
+  current: ActiveInstallation,
+  startYear: number,
+  endYear: number,
+  actorId: number,
+  sourceReference: string | null,
+): void {
+  const extendsStart = startYear < current.plan.startYear;
+  const extendsEnd = endYear > current.plan.endYear;
+  if (!extendsStart && !extendsEnd) return;
+
+  const db = getDb();
+  const goals = db
+    .prepare(
+      `SELECT goal.*, category.name AS priority_name
+       FROM strategic_goals goal
+       JOIN categories category ON category.id = goal.priority_id
+       WHERE category.plan_id = ?
+         AND goal.archived_at IS NULL
+         AND goal.configuration_status <> 'archived'
+       ORDER BY goal.id`,
+    )
+    .all(current.plan.id) as Record<string, unknown>[];
+  const startExtendedGoalIds = new Set<number>();
+  const endExtendedGoalIds = new Set<number>();
+
+  for (const goal of goals) {
+    const goalId = Number(goal.id);
+    const previousStart = Number(goal.plan_start_year);
+    const previousEnd = Number(goal.plan_end_year);
+    const nextStart =
+      extendsStart && previousStart === current.plan.startYear
+        ? startYear
+        : previousStart;
+    const nextEnd =
+      extendsEnd && previousEnd === current.plan.endYear
+        ? endYear
+        : previousEnd;
+    if (nextStart === previousStart && nextEnd === previousEnd) continue;
+
+    db.prepare(
+      `UPDATE strategic_goals
+       SET plan_start_year = ?, plan_end_year = ?, updated_by = ?,
+           updated_at = datetime('now')
+       WHERE id = ?`,
+    ).run(nextStart, nextEnd, actorId, goalId);
+    if (nextStart !== previousStart) startExtendedGoalIds.add(goalId);
+    if (nextEnd !== previousEnd) endExtendedGoalIds.add(goalId);
+    recordStrategicAuditEvent({
+      entity_type: "strategic_goal",
+      entity_id: goalId,
+      event_type: "update",
+      entity_display_name: String(goal.name),
+      parent_priority_name: String(goal.priority_name),
+      previous_value: {
+        plan_start_year: previousStart,
+        plan_end_year: previousEnd,
+      },
+      new_value: {
+        plan_start_year: nextStart,
+        plan_end_year: nextEnd,
+      },
+      actor_id: actorId,
+      source_reference: sourceReference,
+    });
+  }
+
+  if (startExtendedGoalIds.size === 0 && endExtendedGoalIds.size === 0) return;
+  const memberships = db
+    .prepare(
+      `SELECT membership.*, goal.name AS goal_name,
+              category.name AS priority_name, kpi.name AS kpi_name
+       FROM goal_kpis membership
+       JOIN strategic_goals goal ON goal.id = membership.goal_id
+       JOIN categories category ON category.id = goal.priority_id
+       JOIN kpis kpi ON kpi.id = membership.kpi_id
+       WHERE category.plan_id = ?
+         AND membership.archived_at IS NULL
+         AND goal.archived_at IS NULL
+         AND goal.configuration_status <> 'archived'
+       ORDER BY membership.id`,
+    )
+    .all(current.plan.id) as Record<string, unknown>[];
+
+  for (const membership of memberships) {
+    const membershipId = Number(membership.id);
+    const goalId = Number(membership.goal_id);
+    const previousStart = Number(membership.effective_from_year);
+    const previousEnd =
+      membership.effective_to_year === null
+        ? null
+        : Number(membership.effective_to_year);
+    const nextStart =
+      startExtendedGoalIds.has(goalId) &&
+      previousStart === current.plan.startYear
+        ? startYear
+        : previousStart;
+    const nextEnd =
+      endExtendedGoalIds.has(goalId) &&
+      previousEnd === current.plan.endYear
+        ? endYear
+        : previousEnd;
+    if (nextStart === previousStart && nextEnd === previousEnd) continue;
+
+    db.prepare(
+      `UPDATE goal_kpis
+       SET effective_from_year = ?, effective_to_year = ?, updated_by = ?,
+           updated_at = datetime('now')
+       WHERE id = ?`,
+    ).run(nextStart, nextEnd, actorId, membershipId);
+    recordStrategicAuditEvent({
+      entity_type: "goal_membership",
+      entity_id: membershipId,
+      event_type: "update",
+      entity_display_name: `${String(membership.kpi_name)} membership`,
+      parent_priority_name: String(membership.priority_name),
+      parent_goal_name: String(membership.goal_name),
+      previous_value: {
+        effective_from_year: previousStart,
+        effective_to_year: previousEnd,
+      },
+      new_value: {
+        effective_from_year: nextStart,
+        effective_to_year: nextEnd,
+      },
+      actor_id: actorId,
+      source_reference: sourceReference,
+    });
   }
 }
 
@@ -400,7 +585,16 @@ export function updateActiveInstallation(
     if (current.plan.revision !== parsed.expectedRevision) {
       throw new InstallationEditConflictError();
     }
-    assertPlanRangeCanChange(parsed.startYear, parsed.endYear);
+    const rangeChanged =
+      current.plan.startYear !== parsed.startYear ||
+      current.plan.endYear !== parsed.endYear;
+    if (rangeChanged) {
+      assertPlanRangeCanChange(
+        current.plan.id,
+        parsed.startYear,
+        parsed.endYear,
+      );
+    }
 
     const nextOrganization = {
       name: parsed.organizationName,
@@ -424,6 +618,16 @@ export function updateActiveInstallation(
       current.plan.endYear !== parsed.endYear ||
       current.plan.sourceReference !== parsed.sourceReference;
     if (!organizationChanged && !planChanged) return current;
+
+    if (rangeChanged) {
+      extendPlanBoundaryCoverage(
+        current,
+        parsed.startYear,
+        parsed.endYear,
+        actorId,
+        parsed.sourceReference,
+      );
+    }
 
     if (organizationChanged) {
       getDb()
@@ -489,11 +693,19 @@ function parseSnapshot(value: unknown): Record<string, unknown> | null {
     : null;
 }
 
-export function listInstallationAuditEvents(): InstallationAuditEvent[] {
+export function listInstallationAuditEvents(
+  options: { limit?: number; offset?: number } = {},
+): InstallationAuditEvent[] {
+  const limit =
+    options.limit === undefined
+      ? null
+      : Math.min(Math.max(options.limit, 1), 1_000);
+  const offset = Math.max(options.offset ?? 0, 0);
   const rows = getDb()
     .prepare(
       `SELECT * FROM installation_audit_events
-       ORDER BY occurred_at DESC, id DESC`,
+       ORDER BY occurred_at DESC, id DESC
+       ${limit === null ? "" : `LIMIT ${limit} OFFSET ${offset}`}`,
     )
     .all();
   return rows.map((row) => ({

@@ -903,6 +903,30 @@ describe("strategy value-entry persistence", () => {
     ]);
   });
 
+  it("attributes an effective-range end beyond the plan to effective_to_year", () => {
+    const { kpiId } = seedKpi("end-bound-validation", "distribution", "annual");
+
+    try {
+      createStrategyDistributionBand(
+        {
+          kpi_id: kpiId,
+          effective_from_year: 2025,
+          effective_to_year: 2030,
+          slug: "outside-plan-end",
+          label: "Outside plan end",
+          display_order: 0,
+        },
+        null,
+      );
+      expect.unreachable("Expected an out-of-range validation error.");
+    } catch (error) {
+      expect(error).toBeInstanceOf(StrategyValueEntryValidationError);
+      expect((error as StrategyValueEntryValidationError).issues).toEqual([
+        expect.objectContaining({ path: "effective_to_year" }),
+      ]);
+    }
+  });
+
   it("exposes effective bands and supports audited create, update, reorder, archive, and restore", () => {
     const { kpiId } = seedKpi("audience-income-bands", "distribution", "annual");
     const low = createStrategyDistributionBand(

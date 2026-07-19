@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
 import { AppShell } from "@/components/AppShell";
+import type { SetupAuditEvent } from "@/components/StrategicAuditTable";
 import { EmptyState, PageHeader } from "@/components/ui";
 import { HistoryClient } from "./_components/HistoryClient";
 import { KPIManagerClient } from "./_components/KPIManagerClient";
@@ -19,7 +20,10 @@ import {
 import { getCurrentUserReadOnly } from "@/features/auth/session";
 import { getKPI, listCategories, listKPIs } from "@/features/catalog/server";
 import { resolveStrategicReportingYear } from "@/features/strategy";
-import { getActiveInstallation } from "@/features/installation/server";
+import {
+  getActiveInstallation,
+  listInstallationAuditEvents,
+} from "@/features/installation/server";
 import {
   listComponentsForConfiguration,
   listConfigurationGaps,
@@ -219,20 +223,43 @@ function ActivityArea({ params }: { params: Params }) {
     limit: pageSize + 1,
     offset,
   });
-  const strategicPage = listStrategicAuditEvents({
-    limit: pageSize + 1,
-    offset,
+  const setupWindowSize = offset + pageSize + 1;
+  const strategicCandidates = listStrategicAuditEvents({
+    limit: setupWindowSize,
   });
+  const installationCandidates = listInstallationAuditEvents({
+    limit: setupWindowSize,
+  }).map<SetupAuditEvent>((event) => ({
+    id: event.id,
+    entity_type: event.entityType,
+    entity_id: event.entityId,
+    event_type: event.eventType,
+    entity_display_name: event.entityDisplayName,
+    parent_priority_name: null,
+    parent_goal_name: null,
+    previous_value: event.previousValue,
+    new_value: event.newValue,
+    actor_id: event.actorId,
+    actor_email_snapshot: event.actorEmailSnapshot,
+    source_reference: null,
+    occurred_at: event.occurredAt,
+  }));
+  const setupPage = [...strategicCandidates, ...installationCandidates]
+    .sort(
+      (left, right) =>
+        right.occurred_at.localeCompare(left.occurred_at) || right.id - left.id,
+    )
+    .slice(offset, offset + pageSize + 1);
   return (
     <HistoryClient
       history={historyPage.slice(0, pageSize)}
       categories={categories}
       kpis={kpis}
       activeFilter={filter}
-      strategicEvents={strategicPage.slice(0, pageSize)}
+      setupEvents={setupPage.slice(0, pageSize)}
       availableYears={listEntryHistoryYears()}
       page={page}
-      hasOlder={historyPage.length > pageSize || strategicPage.length > pageSize}
+      hasOlder={historyPage.length > pageSize || setupPage.length > pageSize}
     />
   );
 }

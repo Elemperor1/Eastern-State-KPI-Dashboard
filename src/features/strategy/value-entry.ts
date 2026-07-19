@@ -465,16 +465,16 @@ function assertActivePlanYear(year: number, path = "reporting_year"): void {
 
 function assertActivePlanRange(startYear: number, endYear: number | null): void {
   const { plan } = getActiveInstallation();
-  if (
+  const startOutside =
     startYear < plan.startYear ||
-    startYear > plan.endYear ||
-    (endYear !== null && endYear > plan.endYear)
-  ) {
+    startYear > plan.endYear;
+  const endOutside = endYear !== null && endYear > plan.endYear;
+  if (startOutside || endOutside) {
     throw new StrategyValueEntryValidationError(
       "The effective range is outside the active strategic plan.",
       [
         {
-          path: "effective_from_year",
+          path: startOutside ? "effective_from_year" : "effective_to_year",
           message: `Keep the effective range within ${plan.startYear} through ${plan.endYear}.`,
         },
       ],

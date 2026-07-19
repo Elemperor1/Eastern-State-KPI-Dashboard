@@ -335,8 +335,13 @@ export function listStrategicGoals(
   filter: StrategicGoalListFilter = {},
 ): StrategicGoalReadModel[] {
   const year = queryYear(filter.year);
-  const where = ["g.plan_start_year <= ?", "g.plan_end_year >= ?"];
-  const params: Array<string | number> = [year, year];
+  const planId = getActiveInstallation().plan.id;
+  const where = [
+    "g.plan_start_year <= ?",
+    "g.plan_end_year >= ?",
+    "c.plan_id = ?",
+  ];
+  const params: Array<string | number> = [year, year, planId];
   if (!filter.includeArchived) {
     where.push("g.archived_at IS NULL");
     where.push("c.archived_at IS NULL");
@@ -378,12 +383,13 @@ function getStrategicGoal(
   const goal = getStrategicGoalRecord(id);
   if (!goal) return null;
   if (!options.includeArchived && goal.archived_at !== null) return null;
-  if (!options.includeArchived) {
-    const priority = getDb()
-      .prepare("SELECT archived_at FROM categories WHERE id = ?")
-      .get(goal.priority_id) as { archived_at?: string | null } | undefined;
-    if (priority?.archived_at != null) return null;
-  }
+  const priority = getDb()
+    .prepare("SELECT plan_id, archived_at FROM categories WHERE id = ?")
+    .get(goal.priority_id) as
+    | { plan_id: number; archived_at?: string | null }
+    | undefined;
+  if (priority?.plan_id !== getActiveInstallation().plan.id) return null;
+  if (!options.includeArchived && priority.archived_at != null) return null;
   const year = queryYear(options.year);
   if (year < goal.plan_start_year || year > goal.plan_end_year) return null;
   return {

@@ -94,13 +94,15 @@ export function listCategories(
   options: { includeArchived?: boolean } = {},
 ): Category[] {
   const db = getDb();
+  const planId = getActiveInstallation().plan.id;
   const rows = db
     .prepare(
       `SELECT * FROM categories
-       ${options.includeArchived ? "" : "WHERE archived_at IS NULL"}
+       WHERE plan_id = ?
+       ${options.includeArchived ? "" : "AND archived_at IS NULL"}
        ORDER BY sort_order ASC, name ASC`,
     )
-    .all() as Record<string, unknown>[];
+    .all(planId) as Record<string, unknown>[];
   return rows.map(asCategory);
 }
 
@@ -109,12 +111,13 @@ export function getCategory(
   options: { includeArchived?: boolean } = {},
 ): Category | null {
   const db = getDb();
+  const planId = getActiveInstallation().plan.id;
   const row = db
     .prepare(
-      `SELECT * FROM categories WHERE id = ?
+      `SELECT * FROM categories WHERE id = ? AND plan_id = ?
        ${options.includeArchived ? "" : "AND archived_at IS NULL"}`,
     )
-    .get(id) as
+    .get(id, planId) as
     | Record<string, unknown>
     | undefined;
   return row ? asCategory(row) : null;
@@ -125,12 +128,13 @@ export function getCategoryBySlug(
   options: { includeArchived?: boolean } = {},
 ): Category | null {
   const db = getDb();
+  const planId = getActiveInstallation().plan.id;
   const row = db
     .prepare(
-      `SELECT * FROM categories WHERE slug = ?
+      `SELECT * FROM categories WHERE slug = ? AND plan_id = ?
        ${options.includeArchived ? "" : "AND archived_at IS NULL"}`,
     )
-    .get(slug) as
+    .get(slug, planId) as
     | Record<string, unknown>
     | undefined;
   return row ? asCategory(row) : null;
@@ -282,7 +286,8 @@ export function listKPIs(opts?: {
   includeArchived?: boolean;
 }): KPIWithCategory[] {
   const db = getDb();
-  const where: string[] = [];
+  const planId = getActiveInstallation().plan.id;
+  const where: string[] = ["c.plan_id = ?"];
   if (!opts?.includeInactive) where.push("k.is_active = 1");
   if (opts?.parentsOnly) where.push("k.parent_id IS NULL");
   if (!opts?.includeArchived) {
@@ -299,7 +304,7 @@ export function listKPIs(opts?: {
        ${clause}
        ORDER BY c.sort_order ASC, k.sort_order ASC, k.name ASC`,
     )
-    .all() as Record<string, unknown>[];
+    .all(planId) as Record<string, unknown>[];
   return rows.map(asKpiWithCategory);
 }
 
@@ -308,16 +313,17 @@ export function getKPI(
   options: { includeArchived?: boolean } = {},
 ): KPIWithCategory | null {
   const db = getDb();
+  const planId = getActiveInstallation().plan.id;
   const row = db
     .prepare(
       `SELECT k.*, c.name as category_name, c.slug as category_slug,
               c.archived_at as category_archived_at
        FROM kpis k
        JOIN categories c ON c.id = k.category_id
-       WHERE k.id = ?
+       WHERE k.id = ? AND c.plan_id = ?
          ${options.includeArchived ? "" : "AND k.archived_at IS NULL AND c.archived_at IS NULL"}`,
     )
-    .get(id) as Record<string, unknown> | undefined;
+    .get(id, planId) as Record<string, unknown> | undefined;
   return row ? asKpiWithCategory(row) : null;
 }
 

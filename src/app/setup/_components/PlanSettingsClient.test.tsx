@@ -7,6 +7,7 @@ vi.mock("next/navigation", () => ({
   useRouter: () => ({ refresh: vi.fn() }),
 }));
 import { PlanSettingsClient } from "./PlanSettingsClient";
+import { HistoryClient } from "./HistoryClient";
 
 describe("PlanSettingsClient", () => {
   it("renders the persisted organization identity and plan range as supported Setup fields", () => {
@@ -59,5 +60,42 @@ describe("PlanSettingsClient", () => {
     expect(source).toContain("aria-invalid={Boolean(errors.endYear)}");
     expect(source).toContain('variant="primary"');
     expect(source).toContain("isLoading={busy}");
+  });
+});
+
+describe("Activity setup audit feed", () => {
+  it("renders organization and strategic-plan audit events with setup changes", () => {
+    const html = renderToStaticMarkup(
+      createElement(HistoryClient, {
+        history: [],
+        kpis: [],
+        categories: [],
+        activeFilter: {},
+        setupEvents: [
+          {
+            id: 4,
+            entity_type: "strategic_plan",
+            entity_id: 2,
+            event_type: "update",
+            entity_display_name: "Community Plan",
+            parent_priority_name: null,
+            parent_goal_name: null,
+            previous_value: { end_year: 2029 },
+            new_value: { end_year: 2030 },
+            actor_id: 7,
+            actor_email_snapshot: "admin@example.org",
+            source_reference: null,
+            occurred_at: "2026-07-18 12:00:00",
+          },
+        ],
+        availableYears: [],
+        page: 1,
+        hasOlder: false,
+      }),
+    );
+
+    expect(html).toContain("Community Plan");
+    expect(html).toContain("Strategic plan");
+    expect(html).toContain("admin@example.org");
   });
 });

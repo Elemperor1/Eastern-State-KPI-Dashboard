@@ -43,9 +43,15 @@ const { updateActiveInstallationMock } = vi.hoisted(() => ({
   updateActiveInstallationMock: vi.fn(),
 }));
 
-vi.mock("@/features/installation/server", () => ({
-  updateActiveInstallation: updateActiveInstallationMock,
-}));
+vi.mock("@/features/installation/server", async () => {
+  const actual = await vi.importActual<
+    typeof import("@/features/installation/server")
+  >("@/features/installation/server");
+  return {
+    ...actual,
+    updateActiveInstallation: updateActiveInstallationMock,
+  };
+});
 
 vi.mock("@/features/catalog/server", async () => {
   const actual = await vi.importActual<typeof import("@/features/catalog/server")>(
@@ -213,6 +219,62 @@ describe("/api/categories refreshed mutation payloads", () => {
     await expect(res.json()).resolves.toMatchObject({
       ok: true,
       installation: { plan: { revision: 2, endYear: 2030 } },
+    });
+  });
+
+  it("PATCH preserves installation conflict handling through the partial mock", async () => {
+    const { InstallationEditConflictError } = await vi.importActual<
+      typeof import("@/features/installation/server")
+    >("@/features/installation/server");
+    updateActiveInstallationMock.mockImplementation(() => {
+      throw new InstallationEditConflictError();
+    });
+
+    const res = await PATCH(
+      mutationReq("PATCH", {
+        action: "update_plan",
+        expectedRevision: 1,
+        organizationName: "Example Museum",
+        organizationShortName: "Example",
+        planName: "Plan 2030",
+        planDescription: null,
+        startYear: 2025,
+        endYear: 2030,
+        sourceReference: null,
+      }),
+    );
+
+    expect(res.status).toBe(409);
+    await expect(res.json()).resolves.toMatchObject({
+      error: expect.stringMatching(/changed after this form was loaded/i),
+    });
+  });
+
+  it("PATCH preserves installation validation handling through the partial mock", async () => {
+    const { InstallationValidationError } = await vi.importActual<
+      typeof import("@/features/installation/server")
+    >("@/features/installation/server");
+    updateActiveInstallationMock.mockImplementation(() => {
+      throw new InstallationValidationError("The plan range is invalid.");
+    });
+
+    const res = await PATCH(
+      mutationReq("PATCH", {
+        action: "update_plan",
+        expectedRevision: 1,
+        organizationName: "Example Museum",
+        organizationShortName: "Example",
+        planName: "Plan 2030",
+        planDescription: null,
+        startYear: 2025,
+        endYear: 2030,
+        sourceReference: null,
+      }),
+    );
+
+    expect(res.status).toBe(400);
+    await expect(res.json()).resolves.toEqual({
+      error: "The plan range is invalid.",
     });
   });
 
