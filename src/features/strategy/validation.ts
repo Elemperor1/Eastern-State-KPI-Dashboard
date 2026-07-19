@@ -70,6 +70,7 @@ const UnitSchema = z
   .optional()
   .default(null);
 
+/** Implements the nullable text operation. */
 function nullableText(max: number) {
   return z
     .string()
@@ -107,6 +108,7 @@ const EffectiveYearShape = {
   effective_end_year: YearSchema.nullable().optional().default(null),
 };
 
+/** Validates effective year range. */
 function validateEffectiveYearRange(
   value: { effective_start_year: number; effective_end_year: number | null },
   ctx: z.RefinementCtx,
@@ -133,6 +135,7 @@ const ConfigurationGapShape = {
   last_reviewed_date: NullableIsoDateSchema,
 };
 
+/** Validates configuration gap. */
 function validateConfigurationGap(
   value: {
     configuration_status: z.infer<typeof ConfigurationStatusSchema>;
@@ -246,6 +249,7 @@ type MeasurementDefinition = {
   fixed_denominator: number | null;
 };
 
+/** Validates ratio definition. */
 function validateRatioDefinition(
   value: MeasurementDefinition,
   ctx: z.RefinementCtx,
@@ -868,6 +872,7 @@ const StrategyJsonValueSchema: z.ZodType<StrategyJsonValue> = z.lazy(() =>
   ]),
 );
 
+/** Implements the patch nullable text operation. */
 function patchNullableText(max: number) {
   return z
     .string()
@@ -896,6 +901,7 @@ const ConfigurationGapPatchShape = {
   last_reviewed_date: IsoDateSchema.nullable().optional(),
 };
 
+/** Implements the require patch operation. */
 function requirePatch(
   value: Record<string, unknown>,
   ctx: z.RefinementCtx,

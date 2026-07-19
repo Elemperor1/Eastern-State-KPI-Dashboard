@@ -48,6 +48,7 @@ export function calculateStrategyObservation(
   );
 }
 
+/** Calculates strategy distribution. */
 export function calculateStrategyDistribution(
   record: StrategyDistributionRecord,
   precision: number,
@@ -55,6 +56,7 @@ export function calculateStrategyDistribution(
   return calculateMeasurement(distributionMeasurementInput(record, precision));
 }
 
+/** Calculates strategy multi component. */
 export function calculateStrategyMultiComponent({
   configuration,
   components,
@@ -128,6 +130,7 @@ export function calculateStrategyMultiComponent({
   });
 }
 
+/** Implements the distribution measurement input operation. */
 function distributionMeasurementInput(
   record: StrategyDistributionRecord,
   precision: number,
@@ -146,6 +149,7 @@ function distributionMeasurementInput(
   };
 }
 
+/** Implements the to strategic calculated actual operation. */
 export function toStrategicCalculatedActual(
   record: Pick<
     ObservationRecord | StrategyDistributionRecord,
@@ -163,6 +167,7 @@ export function toStrategicCalculatedActual(
   };
 }
 
+/** Implements the observation measurement input operation. */
 function observationMeasurementInput(
   record: ObservationRecord | null,
   definition: StrategicObservationDefinition,

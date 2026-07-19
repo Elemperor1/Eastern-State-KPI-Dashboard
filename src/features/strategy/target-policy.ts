@@ -93,6 +93,7 @@ export function resolveEffectiveTargetPolicy({
   };
 }
 
+/** Retrieves target decision. */
 function resolveTargetDecision(
   target: PersistedTarget | null,
   kind: EffectiveTargetKind,
@@ -128,6 +129,7 @@ function resolveTargetDecision(
   };
 }
 
+/** Implements the target calculation configuration status operation. */
 function targetCalculationConfigurationStatus(
   parentStatus: ConfigurationStatus,
   target: PersistedTarget | null,
@@ -148,6 +150,7 @@ function targetCalculationConfigurationStatus(
   return resolvedValue === null ? "needs_definition" : normalizedParent;
 }
 
+/** Builds configuration status. */
 function normalizeConfigurationStatus(
   status: ConfigurationStatus,
 ): TargetCalculationConfigurationStatus {
@@ -156,6 +159,7 @@ function normalizeConfigurationStatus(
   return "needs_target";
 }
 
+/** Implements the compare target year then id operation. */
 function compareTargetYearThenId(
   left: PersistedTarget,
   right: PersistedTarget,
@@ -163,6 +167,7 @@ function compareTargetYearThenId(
   return left.target_year - right.target_year || left.id - right.id;
 }
 
+/** Implements the compare latest target year then id operation. */
 function compareLatestTargetYearThenId(
   left: PersistedTarget,
   right: PersistedTarget,

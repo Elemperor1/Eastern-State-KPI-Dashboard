@@ -17,6 +17,7 @@ export interface LinkButtonProps extends ComponentProps<typeof Link> {
   fullWidth?: boolean;
 }
 
+/** Renders the link button interface. */
 export function LinkButton({
   children,
   variant = "secondary",

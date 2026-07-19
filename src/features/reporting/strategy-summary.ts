@@ -240,6 +240,7 @@ export function buildStrategicDashboardSummary({
   const goalNames = new Map(
     goalSummaries.map((goal) => [goal.goalId, goal.goalName]),
   );
+  /** Implements the with names operation. */
   const withNames = (
     reasons: Array<{ goalId: string; reasons: string[] }>,
   ) => reasons.map((reason) => ({
@@ -264,6 +265,7 @@ export function buildStrategicDashboardSummary({
   };
 }
 
+/** Implements the pacing elapsed fraction operation. */
 function pacingElapsedFraction(
   reportingFrequency: string | null,
   throughMonth: number,
@@ -274,6 +276,7 @@ function pacingElapsedFraction(
   return Math.min(12, Math.max(0, throughMonth)) / 12;
 }
 
+/** Retrieves component target completion progress. */
 function resolveComponentTargetCompletionProgress({
   member,
   currentCalculation,
@@ -432,6 +435,7 @@ function resolveComponentTargetCompletionProgress({
   return null;
 }
 
+/** Implements the components have compatible units operation. */
 function componentsHaveCompatibleUnits(
   components: StrategicGoalReadModel["members"][number]["components"],
 ): boolean {
@@ -441,6 +445,7 @@ function componentsHaveCompatibleUnits(
   return units.size === 1 && !units.has(null);
 }
 
+/** Determines whether needs definition progress. */
 function needsDefinitionProgress(precision: number): ProgressResult {
   return calculateProgress({
     currentValue: null,
@@ -455,6 +460,7 @@ interface ResolvedActual {
   calculation: MeasurementResult | null;
 }
 
+/** Retrieves actual. */
 function resolveActual({
   kpiId,
   measurementType,
@@ -491,6 +497,7 @@ function resolveActual({
   };
 }
 
+/** Retrieves cumulative actual. */
 function resolveCumulativeActual({
   kpiId,
   measurementType,
@@ -551,6 +558,7 @@ function resolveCumulativeActual({
   }).value;
 }
 
+/** Implements the combine period values operation. */
 function combinePeriodValues(
   rows: Array<{
     periodType?: StrategicActualValue["periodType"];
@@ -585,6 +593,7 @@ function combinePeriodValues(
   return finite.at(-1)?.value ?? null;
 }
 
+/** Implements the period included operation. */
 function periodIncluded(
   period: {
     periodType?: StrategicActualValue["periodType"];
@@ -606,6 +615,7 @@ function periodIncluded(
   return period.periodIndex <= throughMonth;
 }
 
+/** Implements the period sort key operation. */
 function periodSortKey(period: StrategicActualValue): number {
   const rank = {
     monthly: 1,

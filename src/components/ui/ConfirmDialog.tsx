@@ -17,6 +17,7 @@ interface ConfirmDialogProps {
   onClose: () => void;
 }
 
+/** Renders the confirm dialog interface. */
 export function ConfirmDialog({
   open,
   title,
@@ -46,6 +47,7 @@ export function ConfirmDialog({
     closeEnabled: !busy,
   });
 
+  /** Implements the confirm operation. */
   async function confirm() {
     if (busy) return;
     setBusy(true);

@@ -51,6 +51,7 @@ export default function SetupPasswordPage() {
     };
   }, [router]);
 
+  /** Runs the handle submit workflow. */
   async function handleSubmit(event: React.FormEvent) {
     event.preventDefault();
     setError(null);

@@ -20,6 +20,7 @@ import type {
 } from "./strategy-summary";
 import { humanizeReportingReasons } from "./language";
 
+/** Builds strategic board report from summary. */
 export function buildStrategicBoardReportFromSummary({
   summary,
   goals,
@@ -319,6 +320,7 @@ export function buildStrategicBoardReportFromSummary({
   });
 }
 
+/** Determines whether is currency composition. */
 function isCurrencyComposition({
   measurementType,
   configuration,
@@ -346,6 +348,7 @@ function isCurrencyComposition({
   );
 }
 
+/** Implements the currency code operation. */
 function currencyCode(unit: string | null): "USD" | null {
   const normalized = unit?.trim().toLowerCase();
   return normalized === "usd" || normalized === "$" || normalized === "currency"
@@ -353,6 +356,7 @@ function currencyCode(unit: string | null): "USD" | null {
     : null;
 }
 
+/** Implements the revenue share operation. */
 function revenueShare(
   value: number | null,
   total: number | null,
@@ -367,6 +371,7 @@ function revenueShare(
   }).value;
 }
 
+/** Implements the goal completion status operation. */
 function goalCompletionStatus(
   result: StrategicDashboardSummary["goals"][number]["result"],
 ): BoardProgressStatus {
@@ -375,6 +380,7 @@ function goalCompletionStatus(
   return (result.completionPercentage ?? 0) > 0 ? "in_progress" : "not_started";
 }
 
+/** Implements the progress input operation. */
 function progressInput(
   kpi: StrategicKpiProgressSummary,
   scope: "annual" | "full_plan",
@@ -417,6 +423,7 @@ function progressInput(
   };
 }
 
+/** Implements the annual pacing status operation. */
 function annualPacingStatus(
   progress: StrategicKpiProgressSummary["annualPacing"],
 ): BoardProgressStatus {
@@ -430,6 +437,7 @@ function annualPacingStatus(
   return progress.status;
 }
 
+/** Implements the board measurement type operation. */
 function boardMeasurementType(value: unknown): BoardMeasurementType {
   const supported: BoardMeasurementType[] = [
     "binary",
@@ -449,6 +457,7 @@ function boardMeasurementType(value: unknown): BoardMeasurementType {
     : "count";
 }
 
+/** Implements the board reporting frequency operation. */
 function boardReportingFrequency(value: unknown): BoardReportingFrequency {
   const supported: BoardReportingFrequency[] = [
     "monthly",
@@ -463,6 +472,7 @@ function boardReportingFrequency(value: unknown): BoardReportingFrequency {
     : "annual";
 }
 
+/** Implements the board configuration status operation. */
 function boardConfigurationStatus(value: unknown): BoardConfigurationStatus {
   const supported: BoardConfigurationStatus[] = [
     "draft",
@@ -479,6 +489,7 @@ function boardConfigurationStatus(value: unknown): BoardConfigurationStatus {
 
 type BoardResultState = "ok" | "missing" | "invalid";
 
+/** Implements the present board result operation. */
 function presentBoardResult({
   measurementType,
   state,
@@ -527,6 +538,7 @@ function presentBoardResult({
   return formatScalarValue(value, unit, precision);
 }
 
+/** Implements the board result unit operation. */
 function boardResultUnit(
   measurementType: BoardMeasurementType,
   configuredUnit: string | null,
@@ -538,6 +550,7 @@ function boardResultUnit(
   return configuredUnit ?? legacyUnit;
 }
 
+/** Formats scalar value. */
 function formatScalarValue(
   value: number | null,
   unit: string | null,
@@ -556,18 +569,21 @@ function formatScalarValue(
   return unit ? `${formatted} ${unit}` : formatted;
 }
 
+/** Formats number. */
 function formatNumber(value: number, precision: number): string {
   return new Intl.NumberFormat("en-US", {
     maximumFractionDigits: normalizedPrecision(precision),
   }).format(value);
 }
 
+/** Implements the normalized precision operation. */
 function normalizedPrecision(precision: number): number {
   return Number.isInteger(precision) && precision >= 0 && precision <= 20
     ? precision
     : 2;
 }
 
+/** Implements the formula explanation operation. */
 function formulaExplanation(
   measurementType: unknown,
   averageMethod?: AverageMethod,

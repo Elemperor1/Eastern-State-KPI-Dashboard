@@ -18,6 +18,7 @@ import { StrategicTrendsView } from "./StrategicTrendsView";
 
 export const dynamic = "force-dynamic";
 
+/** Renders the reports page interface. */
 export default async function ReportsPage({
   searchParams,
 }: {

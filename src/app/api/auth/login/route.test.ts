@@ -113,6 +113,7 @@ afterEach(() => {
   vi.unstubAllEnvs();
 });
 
+/** Supports the make login request test scenario. */
 function makeLoginRequest(body: object, ip: string): NextRequest {
   const req = new NextRequest(
     new Request("http://localhost/api/auth/login", {
@@ -127,6 +128,7 @@ function makeLoginRequest(body: object, ip: string): NextRequest {
   return req;
 }
 
+/** Supports the make fly login request test scenario. */
 function makeFlyLoginRequest(body: object, flyClientIp: string): NextRequest {
   return new NextRequest(
     new Request("http://localhost/api/auth/login", {

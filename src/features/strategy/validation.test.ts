@@ -33,6 +33,7 @@ const effectiveYears = {
   effective_end_year: 2029,
 };
 
+/** Supports the goal test scenario. */
 function goal(overrides: Record<string, unknown> = {}) {
   return {
     priority_id: 1,
@@ -52,6 +53,7 @@ function goal(overrides: Record<string, unknown> = {}) {
   };
 }
 
+/** Supports the measurement test scenario. */
 function measurement(overrides: Record<string, unknown> = {}) {
   return {
     kpi_id: 10,
@@ -76,6 +78,7 @@ function measurement(overrides: Record<string, unknown> = {}) {
   };
 }
 
+/** Supports the target test scenario. */
 function target(overrides: Record<string, unknown> = {}) {
   return {
     kpi_id: 10,
@@ -91,6 +94,7 @@ function target(overrides: Record<string, unknown> = {}) {
   };
 }
 
+/** Supports the observation test scenario. */
 function observation(overrides: Record<string, unknown> = {}) {
   return {
     kpi_id: 10,
@@ -114,6 +118,7 @@ function observation(overrides: Record<string, unknown> = {}) {
   };
 }
 
+/** Supports the component test scenario. */
 function component(
   overrides: Record<string, unknown> = {},
   parentKpiId = 10,
@@ -142,6 +147,7 @@ function component(
   };
 }
 
+/** Supports the distribution test scenario. */
 function distribution(overrides: Record<string, unknown> = {}) {
   return {
     kpi_id: 10,

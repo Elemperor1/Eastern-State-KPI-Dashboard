@@ -27,6 +27,7 @@ export interface UserCredentialRecord {
   sessions_valid_after: number;
 }
 
+/** Implements the as user row operation. */
 function asUserRow(row: Record<string, unknown> | undefined): UserRow | undefined {
   if (!row) return undefined;
   return {
@@ -42,6 +43,7 @@ function asUserRow(row: Record<string, unknown> | undefined): UserRow | undefine
   };
 }
 
+/** Implements the row to user operation. */
 function rowToUser(row: UserRow): User {
   return {
     id: row.id,
@@ -55,6 +57,7 @@ function rowToUser(row: UserRow): User {
   };
 }
 
+/** Implements the row to credential record operation. */
 function rowToCredentialRecord(row: UserRow): UserCredentialRecord {
   return {
     id: row.id,
@@ -68,10 +71,12 @@ function rowToCredentialRecord(row: UserRow): UserCredentialRecord {
   };
 }
 
+/** Builds email. */
 function normalizeEmail(email: string): string {
   return email.toLowerCase().trim();
 }
 
+/** Retrieves user by email. */
 export function findUserByEmail(email: string): User | null {
   const db = getDb();
   const row = asUserRow(
@@ -89,6 +94,7 @@ export function findUserById(id: number): User | null {
   return row ? rowToUser(row) : null;
 }
 
+/** Retrieves user credential record by email. */
 export function findUserCredentialRecordByEmail(
   email: string,
 ): UserCredentialRecord | null {
@@ -101,6 +107,7 @@ export function findUserCredentialRecordByEmail(
   return row ? rowToCredentialRecord(row) : null;
 }
 
+/** Builds user. */
 export function createUser(input: {
   email: string;
   name: string;
@@ -145,6 +152,7 @@ export function createUser(input: {
   return rowToUser(asUserRow(row)!);
 }
 
+/** Retrieves users. */
 export function listUsers(): User[] {
   const db = getDb();
   const rows = db

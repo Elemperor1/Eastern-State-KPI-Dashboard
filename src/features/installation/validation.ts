@@ -16,6 +16,7 @@ const planSettingsUpdateShape = {
   sourceReference: OptionalTextSchema,
 };
 
+/** Implements the plan ends after it starts operation. */
 function planEndsAfterItStarts(input: { startYear: number; endYear: number }) {
   return input.startYear <= input.endYear;
 }

@@ -37,6 +37,7 @@ const LEGACY_TABLES = [
 
 type TestDb = ReturnType<typeof getDb>;
 
+/** Supports the count rows test scenario. */
 function countRows(db: TestDb, table: string): number {
   return Number(
     (db.prepare(`SELECT COUNT(*) AS count FROM ${table}`).get() as { count: number })
@@ -44,12 +45,14 @@ function countRows(db: TestDb, table: string): number {
   );
 }
 
+/** Supports the column names test scenario. */
 function columnNames(db: TestDb, table: string): string[] {
   return (db.prepare(`PRAGMA table_info(${table})`).all() as { name: string }[]).map(
     (column) => column.name,
   );
 }
 
+/** Supports the schema version test scenario. */
 function schemaVersion(db: TestDb): number {
   return Number(
     (
@@ -60,6 +63,7 @@ function schemaVersion(db: TestDb): number {
   );
 }
 
+/** Supports the seed installation fixture test scenario. */
 function seedInstallationFixture(db: TestDb): number {
   const organizationId = Number(
     db
@@ -80,6 +84,7 @@ function seedInstallationFixture(db: TestDb): number {
   );
 }
 
+/** Supports the downgrade installation ownership to v11 test scenario. */
 function downgradeInstallationOwnershipToV11(db: TestDb): void {
   db.exec(`
     PRAGMA foreign_keys = OFF;
@@ -127,6 +132,7 @@ function downgradeInstallationOwnershipToV11(db: TestDb): void {
   `);
 }
 
+/** Supports the downgrade strategic foundation to v9 test scenario. */
 function downgradeStrategicFoundationToV9(db: TestDb): void {
   downgradeInstallationOwnershipToV11(db);
   // Build an actual v9-shaped copy from the freshly initialized database. All
@@ -160,6 +166,7 @@ function downgradeStrategicFoundationToV9(db: TestDb): void {
   `);
 }
 
+/** Supports the downgrade component identity to v10 test scenario. */
 function downgradeComponentIdentityToV10(db: TestDb): void {
   downgradeInstallationOwnershipToV11(db);
   // Recreate the actual schema-10 component identity on an otherwise-current,
@@ -235,6 +242,7 @@ describe("schema 12 migration", () => {
     fs.rmSync(tmpDir, { recursive: true, force: true });
   });
 
+  /** Supports the seed current fixture test scenario. */
   function seedCurrentFixture() {
     const db = getDb();
     const planId = seedInstallationFixture(db);

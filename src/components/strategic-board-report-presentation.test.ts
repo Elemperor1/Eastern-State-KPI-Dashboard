@@ -14,6 +14,7 @@ import {
   formatBoardReportToken,
 } from "./strategic-board-report-presentation";
 
+/** Supports the kpi test scenario. */
 function kpi(id: string): StrategicBoardKpiViewModel {
   return {
     id,
@@ -41,6 +42,7 @@ function kpi(id: string): StrategicBoardKpiViewModel {
   };
 }
 
+/** Supports the report test scenario. */
 function report(): StrategicBoardReportViewModel {
   return {
     organizationName: "Eastern State",
@@ -113,6 +115,7 @@ function report(): StrategicBoardReportViewModel {
   };
 }
 
+/** Supports the progress test scenario. */
 function progress(
   overrides: Partial<TargetProgressViewModel> = {},
 ): TargetProgressViewModel {

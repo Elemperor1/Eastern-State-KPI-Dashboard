@@ -15,6 +15,7 @@ interface DialogProps {
   onClose: () => void;
 }
 
+/** Renders the dialog interface. */
 export function Dialog({ open, title, description, children, footer, onClose }: DialogProps) {
   const dialogRef = useRef<HTMLDivElement>(null);
   const titleId = useId();

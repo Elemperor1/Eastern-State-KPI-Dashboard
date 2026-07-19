@@ -1,3 +1,4 @@
+/** Implements the slug from label operation. */
 export function slugFromLabel(label: string): string {
   return label
     .normalize("NFKD")

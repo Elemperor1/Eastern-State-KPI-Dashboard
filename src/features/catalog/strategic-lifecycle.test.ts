@@ -33,6 +33,7 @@ import {
   updateKPI,
 } from "./server";
 
+/** Supports the create catalog actor test scenario. */
 function createCatalogActor(): number {
   return Number(
     getDb()
@@ -44,6 +45,7 @@ function createCatalogActor(): number {
   );
 }
 
+/** Supports the seed strategic catalog test scenario. */
 function seedStrategicCatalog() {
   const db = getDb();
   const actorId = createCatalogActor();

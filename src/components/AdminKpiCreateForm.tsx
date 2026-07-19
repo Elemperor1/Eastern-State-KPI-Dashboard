@@ -18,6 +18,7 @@ interface AdminKpiCreateFormProps {
   isSubmitting?: boolean;
 }
 
+/** Renders the admin kpi create form interface. */
 export function AdminKpiCreateForm({
   goals,
   onSubmit,
@@ -81,6 +82,7 @@ export function AdminKpiCreateForm({
   );
 }
 
+/** Implements the measurement type label operation. */
 function measurementTypeLabel(value: string): string {
   const labels: Record<string, string> = {
     binary: "Yes or no",
@@ -98,6 +100,7 @@ function measurementTypeLabel(value: string): string {
   return labels[value] ?? value;
 }
 
+/** Implements the frequency label operation. */
 function frequencyLabel(value: string): string {
   const labels: Record<string, string> = {
     monthly: "Every month",

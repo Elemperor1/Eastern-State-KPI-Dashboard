@@ -30,6 +30,7 @@ const PatchSchema = z.union([
   SuccessorMembershipSchema,
 ]);
 
+/** Implements the patch operation. */
 export async function PATCH(req: NextRequest) {
   let user;
   try {

@@ -16,6 +16,7 @@ describe("auth-flag", () => {
     vi.resetModules();
   });
 
+  /** Supports the load test scenario. */
   async function load() {
     return import("./auth-flag");
   }

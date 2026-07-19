@@ -96,18 +96,22 @@ const INTERNAL_SINGLE_PERIOD_INDEX = 0;
 const FREQUENCY_SET = new Set<string>(STRATEGY_REPORTING_FREQUENCIES);
 const FLEXIBLE_MODE_SET = new Set<string>(FLEXIBLE_PERIOD_MODES);
 
+/** Determines whether is record. */
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
+/** Determines whether is reporting frequency. */
 function isReportingFrequency(value: unknown): value is StrategyReportingFrequency {
   return typeof value === "string" && FREQUENCY_SET.has(value);
 }
 
+/** Determines whether is flexible mode. */
 function isFlexibleMode(value: unknown): value is FlexiblePeriodMode {
   return typeof value === "string" && FLEXIBLE_MODE_SET.has(value);
 }
 
+/** Determines whether is reporting year. */
 function isReportingYear(value: unknown): value is number {
   return (
     typeof value === "number" &&
@@ -117,10 +121,12 @@ function isReportingYear(value: unknown): value is number {
   );
 }
 
+/** Determines whether is supplied. */
 function isSupplied(value: unknown): boolean {
   return value !== undefined && value !== null;
 }
 
+/** Retrieves definition. */
 function resolveDefinition(
   definition: StrategyPeriodDefinition,
 ): ConcreteStrategyReportingFrequency {
@@ -130,6 +136,7 @@ function resolveDefinition(
   return definition.flexibleMode;
 }
 
+/** Validates reporting year. */
 function assertReportingYear(year: number): void {
   if (!isReportingYear(year)) {
     throw new RangeError(
@@ -138,12 +145,14 @@ function assertReportingYear(year: number): void {
   }
 }
 
+/** Validates valid now. */
 function assertValidNow(now: Date): void {
   if (Number.isNaN(now.getTime())) {
     throw new RangeError("The current date must be valid.");
   }
 }
 
+/** Implements the definition from period operation. */
 function definitionFromPeriod(period: StrategyReportingPeriod): StrategyPeriodDefinition {
   return period.reportingFrequency === "flexible"
     ? {

@@ -24,6 +24,7 @@ import {
 import { EASTERN_STATE_INSTALLATION_FIXTURE } from "./bootstrap/installation-fixture";
 import { EASTERN_STATE_STRATEGIC_CONFIGURATION_FIXTURE } from "./bootstrap/strategic-configuration-fixture";
 
+/** Removes or resets strategic plan data. */
 function resetStrategicPlanData(): void {
   const db = getDb();
   // Schema-10 strategy sidecars use RESTRICT foreign keys so no strategic
@@ -53,6 +54,7 @@ function resetStrategicPlanData(): void {
   db.exec("INSERT OR REPLACE INTO meta (key, value) VALUES ('sample_data', '1');");
 }
 
+/** Runs the main workflow. */
 function main(): void {
   console.log("Resetting KPI data...");
   let entryCount = 0;

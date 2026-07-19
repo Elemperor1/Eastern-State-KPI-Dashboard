@@ -4,13 +4,14 @@ import { describe, expect, it, vi } from "vitest";
 import type { StrategicGoalEditorRecord } from "@/components/strategic-goal-editor-model";
 
 const router = vi.hoisted(() => ({ push: vi.fn(), replace: vi.fn(), refresh: vi.fn() }));
-vi.mock("next/navigation", () => ({ useRouter: () => router }));
+vi.mock("next/navigation", () => ({ /** Supports the use router test scenario. */ useRouter: () => router }));
 
 import {
   StrategicGoalsEditorClient,
   StrategicGoalSettingsForm,
 } from "./StrategicGoalsEditorClient";
 
+/** Supports the goal test scenario. */
 function goal(
   overrides: Partial<StrategicGoalEditorRecord> = {},
 ): StrategicGoalEditorRecord {
@@ -68,7 +69,9 @@ function goal(
   };
 }
 
+/** Supports the run mutation test scenario. */
 const runMutation = async () => ({ ok: true, error: null });
+/** Supports the run membership mutation test scenario. */
 const runMembershipMutation = async () => ({ ok: true, error: null });
 
 describe("StrategicGoalSettingsForm", () => {

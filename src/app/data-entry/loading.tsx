@@ -1,5 +1,6 @@
 import { Skeleton } from "@/components/ui";
 
+/** Renders the data entry loading interface. */
 export default function DataEntryLoading() {
   return (
     <div className="page-content page-content-wide" aria-label="Loading data entry">

@@ -25,19 +25,23 @@ let _db: DB | null = null;
 /** Bump when the KPI/category/entry schema changes; old DBs are reset cleanly. */
 export const SCHEMA_VERSION = schemaVersionConfig.schemaVersion;
 
+/** Retrieves db path. */
 function resolveDbPath(): string {
   const fromEnv = process.env.DATABASE_PATH;
   if (fromEnv) return fromEnv;
   return path.resolve(process.cwd(), "data", "kpi.db");
 }
 
+/** Implements the wrap database operation. */
 function wrapDatabase(raw: DatabaseSync): DB {
   const db = raw as unknown as {
     exec(sql: string): void;
     prepare(sql: string): StatementSync;
   };
   return {
+    /** Implements the exec operation. */
     exec: (sql: string) => db.exec(sql),
+    /** Implements the prepare operation. */
     prepare: (sql: string): StatementLike => {
       const stmt = db.prepare(sql);
       const wrapped = stmt as unknown as {
@@ -46,14 +50,17 @@ function wrapDatabase(raw: DatabaseSync): DB {
         run(...params: unknown[]): RunResult;
       };
       return {
+        /** Implements the all operation. */
         all(...params: unknown[]): Record<string, unknown>[] {
           const rows = wrapped.all(...params);
           return rows.map((r) => ({ ...r }));
         },
+        /** Retrieves the requested data. */
         get(...params: unknown[]): Record<string, unknown> | undefined {
           const row = wrapped.get(...params);
           return row ? { ...row } : undefined;
         },
+        /** Runs the run workflow. */
         run(...params: unknown[]): RunResult {
           const result = wrapped.run(...params);
           return {
@@ -66,10 +73,12 @@ function wrapDatabase(raw: DatabaseSync): DB {
         },
       };
     },
+    /** Implements the close operation. */
     close: () => raw.close(),
   };
 }
 
+/** Retrieves db. */
 export function getDb(): DB {
   if (_db) return _db;
   const dbPath = resolveDbPath();
@@ -170,6 +179,7 @@ function ensureUsersTable(raw: DatabaseSync): void {
   }
 }
 
+/** Implements the current schema version operation. */
 function currentSchemaVersion(raw: DatabaseSync): number {
   try {
     const row = raw.prepare("SELECT value FROM meta WHERE key = 'schema_version'").get() as
@@ -181,6 +191,7 @@ function currentSchemaVersion(raw: DatabaseSync): number {
   }
 }
 
+/** Applies the migrate schema operation. */
 function migrateSchema(raw: DatabaseSync): void {
   ensureUsersTable(raw);
   ensureMetaTable(raw);
@@ -253,6 +264,7 @@ function migrateSchema(raw: DatabaseSync): void {
   resetKpiSchema(raw);
 }
 
+/** Removes or resets kpi schema. */
 function resetKpiSchema(raw: DatabaseSync): void {
   raw.exec("BEGIN IMMEDIATE;");
   try {
@@ -358,6 +370,7 @@ function migrateGoalBaselineYear(raw: DatabaseSync): void {
   }
 }
 
+/** Implements the table has column operation. */
 function tableHasColumn(
   raw: DatabaseSync,
   table: "categories" | "kpis" | "distribution_bands",
@@ -572,6 +585,7 @@ function migrateStrategicSchemaV11(raw: DatabaseSync): void {
   }
 }
 
+/** Applies the initialize installation schema operation. */
 function initializeInstallationSchema(raw: DatabaseSync): void {
   raw.exec(`
     CREATE TABLE IF NOT EXISTS organizations (
@@ -997,6 +1011,7 @@ function migrateStrategicSchemaV10(raw: DatabaseSync): void {
   }
 }
 
+/** Implements the ensure meta table operation. */
 function ensureMetaTable(raw: DatabaseSync): void {
   raw.exec(`
     CREATE TABLE IF NOT EXISTS meta (
@@ -1006,6 +1021,7 @@ function ensureMetaTable(raw: DatabaseSync): void {
   `);
 }
 
+/** Applies the initialize strategic schema operation. */
 function initializeStrategicSchema(raw: DatabaseSync): void {
   raw.exec(`
     CREATE INDEX IF NOT EXISTS idx_categories_archived_at ON categories(archived_at);
@@ -1473,6 +1489,7 @@ function initializeStrategicSchema(raw: DatabaseSync): void {
   `);
 }
 
+/** Applies the initialize schema operation. */
 function initializeSchema(raw: DatabaseSync): void {
   initializeInstallationSchema(raw);
   raw.exec(`

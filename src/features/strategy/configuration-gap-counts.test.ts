@@ -49,6 +49,7 @@ interface ComponentTargetFixture {
   componentIds: [number, number];
 }
 
+/** Supports the seed component target fixture test scenario. */
 function seedComponentTargetFixture(
   aggregationMethod: ComponentAggregation,
 ): ComponentTargetFixture {
@@ -135,6 +136,7 @@ function seedComponentTargetFixture(
   };
 }
 
+/** Supports the add component target test scenario. */
 function addComponentTarget(componentId: number, value: number): number {
   return Number(
     getDb()
@@ -148,6 +150,7 @@ function addComponentTarget(componentId: number, value: number): number {
   );
 }
 
+/** Supports the add parent target test scenario. */
 function addParentTarget(kpiId: number, value: number): number {
   return Number(
     getDb()
@@ -161,6 +164,7 @@ function addParentTarget(kpiId: number, value: number): number {
   );
 }
 
+/** Supports the target gap test scenario. */
 function targetGap(kpiId: number, goalId: number) {
   return listConfigurationGaps({ year: 2026, goal_id: goalId }).find(
     (gap) => gap.kpi.id === kpiId,

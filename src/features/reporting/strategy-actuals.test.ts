@@ -365,6 +365,7 @@ describe("first-class strategic actual calculations", () => {
   });
 });
 
+/** Supports the observation test scenario. */
 function observation(
   overrides: Partial<StrategyObservationRecord>,
 ): StrategyObservationRecord {
@@ -399,6 +400,7 @@ function observation(
   };
 }
 
+/** Supports the component entry test scenario. */
 function componentEntry(
   componentId: number,
   value: number,
@@ -410,6 +412,7 @@ function componentEntry(
   };
 }
 
+/** Supports the configuration test scenario. */
 function configuration(
   overrides: Partial<PersistedMeasurementConfig> = {},
 ): PersistedMeasurementConfig {
@@ -445,6 +448,7 @@ function configuration(
   };
 }
 
+/** Supports the component test scenario. */
 function component(
   id: number,
   label: string,
@@ -478,6 +482,7 @@ function component(
   };
 }
 
+/** Supports the target test scenario. */
 function target(overrides: Partial<PersistedTarget> = {}): PersistedTarget {
   return {
     id: 1,
@@ -504,6 +509,7 @@ function target(overrides: Partial<PersistedTarget> = {}): PersistedTarget {
   };
 }
 
+/** Supports the distribution test scenario. */
 function distribution(
   overrides: Partial<StrategyDistributionRecord> = {},
 ): StrategyDistributionRecord {

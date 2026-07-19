@@ -31,6 +31,7 @@ export function ExportPNGButton({
   const [error, setError] = useState<string | null>(null);
   const [status, setStatus] = useState("");
 
+  /** Runs the handle export workflow. */
   async function handleExport() {
     const target = document.getElementById(targetId);
     if (!target) return;

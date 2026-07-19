@@ -8,6 +8,7 @@ import { getActiveInstallation } from "@/features/installation/server";
 
 export const dynamic = "force-dynamic";
 
+/** Renders the dashboard overview page interface. */
 export default async function DashboardOverviewPage({
   searchParams,
 }: {

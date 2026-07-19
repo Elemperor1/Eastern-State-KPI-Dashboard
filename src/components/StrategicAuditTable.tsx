@@ -15,6 +15,7 @@ export type SetupAuditEvent = Omit<
   new_value: unknown;
 };
 
+/** Renders the strategic audit table interface. */
 export function StrategicAuditTable({
   events,
 }: {
@@ -82,6 +83,7 @@ export function StrategicAuditTable({
   );
 }
 
+/** Implements the event type label operation. */
 function eventTypeLabel(value: string): string {
   const labels: Record<string, string> = {
     kpi_observation: "Reported value",
@@ -100,16 +102,19 @@ function eventTypeLabel(value: string): string {
   };
   return labels[value] ?? displayToken(value);
 }
+/** Implements the snapshot operation. */
 function snapshot(value: unknown): string {
   if (value === null) return "—";
   const text = JSON.stringify(value, null, 2);
   return text.length > 900 ? `${text.slice(0, 900)}…` : text;
 }
 
+/** Implements the display token operation. */
 function displayToken(value: string): string {
   return value.replaceAll("_", " ").replace(/^./, (letter) => letter.toUpperCase());
 }
 
+/** Formats date. */
 function formatDate(value: string): string {
   const date = new Date(value.endsWith("Z") ? value : `${value}Z`);
   return Number.isNaN(date.getTime()) ? value : date.toLocaleString();

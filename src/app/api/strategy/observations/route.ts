@@ -13,6 +13,7 @@ import { assertMutationRequest } from "@/lib/request-guard";
 
 const DeleteSchema = z.object({ id: z.number().int().positive() }).strict();
 
+/** Implements the value entry error operation. */
 function valueEntryError(error: unknown): NextResponse | null {
   if (error instanceof StrategyValueEntryNotFoundError) {
     return NextResponse.json({ error: error.message }, { status: 404 });
@@ -26,6 +27,7 @@ function valueEntryError(error: unknown): NextResponse | null {
   return null;
 }
 
+/** Implements the post operation. */
 export async function POST(req: NextRequest) {
   let user;
   try {
@@ -63,6 +65,7 @@ export async function POST(req: NextRequest) {
   }
 }
 
+/** Removes or resets the selected state. */
 export async function DELETE(req: NextRequest) {
   let user;
   try {

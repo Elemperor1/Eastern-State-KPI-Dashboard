@@ -52,6 +52,7 @@ function getBypassUser(): SessionUser {
   };
 }
 
+/** Implements the session options operation. */
 function sessionOptions(): SessionOptions {
   const password = process.env.SESSION_SECRET;
   if (!password || password.length < 32) {
@@ -78,7 +79,9 @@ export async function getSession(): Promise<IronSession<SessionData>> {
   if (AUTH_DISABLED) {
     return {
       user: getBypassUser(),
+      /** Records the supplied data. */
       save: async () => {},
+      /** Implements the destroy operation. */
       destroy: async () => {},
     } as unknown as IronSession<SessionData>;
   }
@@ -250,6 +253,7 @@ export async function requireSession(): Promise<SessionUser> {
   return user;
 }
 
+/** Implements the require admin operation. */
 export async function requireAdmin(): Promise<SessionUser> {
   if (AUTH_DISABLED) return getBypassUser();
   const user = await requireSession();
@@ -260,6 +264,7 @@ export async function requireAdmin(): Promise<SessionUser> {
 }
 
 export class AuthError extends Error {
+  /** Creates a new instance with the supplied state. */
   constructor(message: string, public readonly status: number) {
     super(message);
     this.name = "AuthError";

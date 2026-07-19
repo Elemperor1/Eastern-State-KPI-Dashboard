@@ -24,6 +24,7 @@ interface StrategyValueEntryIssue {
 }
 
 export class StrategyValueEntryValidationError extends Error {
+  /** Creates a new instance with the supplied state. */
   constructor(
     message: string,
     public readonly issues: StrategyValueEntryIssue[] = [],
@@ -34,6 +35,7 @@ export class StrategyValueEntryValidationError extends Error {
 }
 
 export class StrategyValueEntryNotFoundError extends Error {
+  /** Creates a new instance with the supplied state. */
   constructor(
     public readonly entity:
       | "kpi"
@@ -270,6 +272,7 @@ const DistributionBandDefinitionShape = {
   derived_group: z.enum(["white", "non_white"]).nullable().optional().default(null),
 };
 
+/** Validates distribution band definition. */
 function validateDistributionBandDefinition(
   band: {
     effective_from_year: number;
@@ -430,6 +433,7 @@ interface AuditContext {
   goal_name: string | null;
 }
 
+/** Implements the zod issues operation. */
 function zodIssues(error: z.ZodError): StrategyValueEntryIssue[] {
   return error.issues.map((issue) => ({
     path: issue.path.join("."),
@@ -437,6 +441,7 @@ function zodIssues(error: z.ZodError): StrategyValueEntryIssue[] {
   }));
 }
 
+/** Parses payload. */
 function parsePayload<T>(schema: z.ZodType<T>, input: unknown): T {
   const result = schema.safeParse(input);
   if (!result.success) {
@@ -448,6 +453,7 @@ function parsePayload<T>(schema: z.ZodType<T>, input: unknown): T {
   return result.data;
 }
 
+/** Validates active plan year. */
 function assertActivePlanYear(year: number, path = "reporting_year"): void {
   const { plan } = getActiveInstallation();
   if (year < plan.startYear || year > plan.endYear) {
@@ -463,6 +469,7 @@ function assertActivePlanYear(year: number, path = "reporting_year"): void {
   }
 }
 
+/** Validates active plan range. */
 function assertActivePlanRange(startYear: number, endYear: number | null): void {
   const { plan } = getActiveInstallation();
   const startOutside =
@@ -482,14 +489,17 @@ function assertActivePlanRange(startYear: number, endYear: number | null): void 
   }
 }
 
+/** Implements the number or null operation. */
 function numberOrNull(value: unknown): number | null {
   return value === null || value === undefined ? null : Number(value);
 }
 
+/** Implements the string or null operation. */
 function stringOrNull(value: unknown): string | null {
   return value === null || value === undefined ? null : String(value);
 }
 
+/** Retrieves audit context. */
 function loadAuditContext(kpiId: number, year: number): AuditContext {
   const row = getDb()
     .prepare(
@@ -520,6 +530,7 @@ function loadAuditContext(kpiId: number, year: number): AuditContext {
   };
 }
 
+/** Retrieves effective configuration. */
 function loadEffectiveConfiguration(kpiId: number, year: number): EffectiveConfiguration {
   assertActivePlanYear(year);
   const context = loadAuditContext(kpiId, year);
@@ -567,6 +578,7 @@ function loadEffectiveConfiguration(kpiId: number, year: number): EffectiveConfi
   };
 }
 
+/** Retrieves component. */
 function loadComponent(
   componentId: number,
   year: number,
@@ -683,6 +695,7 @@ function loadComponentForHistory(
   };
 }
 
+/** Retrieves period. */
 function resolvePeriod(
   reportingFrequency: StrategyReportingFrequency,
   value: {
@@ -714,6 +727,7 @@ function resolvePeriod(
   };
 }
 
+/** Validates observation. */
 function validateObservation(
   input: ObservationWrite | ComponentEntryWrite,
   configuration: EffectiveConfiguration,
@@ -809,6 +823,7 @@ function validateObservation(
   return { validated: result.data, ...period };
 }
 
+/** Implements the infer average method operation. */
 function inferAverageMethod(row: Record<string, unknown>): AverageInputMethod | null {
   if (row.positive_response_count !== null && row.positive_response_count !== undefined) {
     return "percent_positive";
@@ -822,6 +837,7 @@ function inferAverageMethod(row: Record<string, unknown>): AverageInputMethod | 
   return null;
 }
 
+/** Implements the observation columns operation. */
 function observationColumns(
   validated: ValidatedObservationInput,
 ): {
@@ -864,6 +880,7 @@ function observationColumns(
   };
 }
 
+/** Implements the as observation operation. */
 function asObservation(
   row: Record<string, unknown>,
   measurementType: MeasurementType,
@@ -902,6 +919,7 @@ function asObservation(
   };
 }
 
+/** Implements the observation snapshot operation. */
 function observationSnapshot(
   value: StrategyObservationRecord | StrategyComponentEntryRecord,
 ): Record<string, StrategyJsonValue> {
@@ -937,6 +955,7 @@ function observationSnapshot(
   };
 }
 
+/** Implements the snapshots equal operation. */
 function snapshotsEqual(
   left: Record<string, StrategyJsonValue>,
   right: Record<string, StrategyJsonValue>,
@@ -944,6 +963,7 @@ function snapshotsEqual(
   return JSON.stringify(left) === JSON.stringify(right);
 }
 
+/** Retrieves observation. */
 function readObservation(
   id: number,
   measurementType: MeasurementType,
@@ -1001,6 +1021,7 @@ export function getStrategyObservation(id: number): StrategyObservationRecord {
   );
 }
 
+/** Records observation row. */
 function upsertObservationRow(
   input: ObservationWrite,
   configuration: EffectiveConfiguration,
@@ -1145,6 +1166,7 @@ function upsertObservationRow(
   return after;
 }
 
+/** Records strategy observation. */
 export function upsertStrategyObservation(
   rawInput: unknown,
   actorId: number | null,
@@ -1159,6 +1181,7 @@ export function upsertStrategyObservation(
   });
 }
 
+/** Removes or resets strategy observation. */
 export function deleteStrategyObservation(
   id: number,
   actorId: number | null,
@@ -1195,6 +1218,7 @@ export function deleteStrategyObservation(
   });
 }
 
+/** Implements the as component entry operation. */
 function asComponentEntry(
   row: Record<string, unknown>,
   component: ComponentContext,
@@ -1217,6 +1241,7 @@ function asComponentEntry(
   };
 }
 
+/** Retrieves component entry. */
 function readComponentEntry(
   id: number,
   component: ComponentContext,
@@ -1265,6 +1290,7 @@ export function getStrategyComponentEntry(
   return asComponentEntry(row, component, configuration);
 }
 
+/** Records strategy component entry input. */
 function upsertStrategyComponentEntryInput(
   input: ComponentEntryWrite,
   actorId: number | null,
@@ -1396,6 +1422,7 @@ function upsertStrategyComponentEntryInput(
   return after;
 }
 
+/** Records strategy component entry. */
 export function upsertStrategyComponentEntry(
   rawInput: unknown,
   actorId: number | null,
@@ -1407,6 +1434,7 @@ export function upsertStrategyComponentEntry(
   return transaction(() => upsertStrategyComponentEntryInput(input, actorId));
 }
 
+/** Removes or resets strategy component entry. */
 export function deleteStrategyComponentEntry(
   id: number,
   actorId: number | null,
@@ -1464,6 +1492,7 @@ export function deleteStrategyComponentEntry(
   });
 }
 
+/** Validates distribution. */
 function validateDistribution(
   input: DistributionWrite,
   configuration: EffectiveConfiguration,
@@ -1509,6 +1538,7 @@ function validateDistribution(
   return period;
 }
 
+/** Implements the band snapshot operation. */
 function bandSnapshot(row: Record<string, unknown>): Record<string, StrategyJsonValue> {
   return {
     kpi_id: Number(row.kpi_id),
@@ -1525,6 +1555,7 @@ function bandSnapshot(row: Record<string, unknown>): Record<string, StrategyJson
   };
 }
 
+/** Retrieves band. */
 function findBand(
   input: DistributionBandWrite,
   kpiId: number,
@@ -1572,6 +1603,7 @@ function findBand(
   );
 }
 
+/** Updates distribution band. */
 function syncDistributionBand(
   input: DistributionBandWrite,
   kpiId: number,
@@ -1637,6 +1669,7 @@ function syncDistributionBand(
   return after;
 }
 
+/** Implements the as distribution operation. */
 function asDistribution(
   row: Record<string, unknown>,
   bands: Record<string, unknown>[],
@@ -1673,6 +1706,7 @@ function asDistribution(
   };
 }
 
+/** Retrieves distribution. */
 function readDistribution(id: number): StrategyDistributionRecord {
   const db = getDb();
   const row = db.prepare("SELECT * FROM distribution_observations WHERE id = ?").get(id);
@@ -1743,6 +1777,7 @@ export function getStrategyDistribution(id: number): StrategyDistributionRecord 
   return readDistribution(id);
 }
 
+/** Implements the distribution snapshot operation. */
 function distributionSnapshot(
   value: StrategyDistributionRecord,
 ): Record<string, StrategyJsonValue> {
@@ -1770,6 +1805,7 @@ function distributionSnapshot(
   };
 }
 
+/** Records strategy distribution. */
 export function upsertStrategyDistribution(
   rawInput: unknown,
   actorId: number | null,
@@ -1927,6 +1963,7 @@ export function upsertStrategyDistribution(
   });
 }
 
+/** Records strategy multi component batch. */
 export function upsertStrategyMultiComponentBatch(
   rawInput: unknown,
   actorId: number | null,
@@ -1949,6 +1986,7 @@ export function upsertStrategyMultiComponentBatch(
   );
 }
 
+/** Removes or resets strategy distribution. */
 export function deleteStrategyDistribution(
   id: number,
   actorId: number | null,
@@ -1981,6 +2019,7 @@ export function deleteStrategyDistribution(
   });
 }
 
+/** Implements the as distribution band definition operation. */
 function asDistributionBandDefinition(
   row: Record<string, unknown>,
 ): StrategyDistributionBandDefinition {
@@ -2004,6 +2043,7 @@ function asDistributionBandDefinition(
   };
 }
 
+/** Retrieves distribution band definition. */
 function getDistributionBandDefinition(
   id: number,
 ): StrategyDistributionBandDefinition {
@@ -2012,6 +2052,7 @@ function getDistributionBandDefinition(
   return asDistributionBandDefinition(row);
 }
 
+/** Retrieves overlapping active distribution band. */
 function findOverlappingActiveDistributionBand(
   input: DistributionBandDefinitionWrite,
   excludeId?: number,
@@ -2039,6 +2080,7 @@ function findOverlappingActiveDistributionBand(
     .get(...parameters);
 }
 
+/** Implements the overlapping distribution band error operation. */
 function overlappingDistributionBandError(): StrategyValueEntryValidationError {
   return new StrategyValueEntryValidationError(
     "A distribution band with this slug already overlaps this effective period.",
@@ -2046,6 +2088,7 @@ function overlappingDistributionBandError(): StrategyValueEntryValidationError {
   );
 }
 
+/** Validates distribution band owner. */
 function assertDistributionBandOwner(
   kpiId: number,
   componentId: number | null,
@@ -2112,6 +2155,7 @@ export function listEffectiveDistributionBands(
     .map(asDistributionBandDefinition);
 }
 
+/** Builds strategy distribution band. */
 export function createStrategyDistributionBand(
   rawInput: unknown,
   actorId: number | null,
@@ -2170,6 +2214,7 @@ export function createStrategyDistributionBand(
   });
 }
 
+/** Updates strategy distribution band. */
 export function updateStrategyDistributionBand(
   rawInput: unknown,
   actorId: number | null,
@@ -2280,6 +2325,7 @@ export function updateStrategyDistributionBand(
   });
 }
 
+/** Implements the reorder strategy distribution bands operation. */
 export function reorderStrategyDistributionBands(
   rawInput: unknown,
   actorId: number | null,
@@ -2342,6 +2388,7 @@ export function reorderStrategyDistributionBands(
   });
 }
 
+/** Updates distribution band archived. */
 function setDistributionBandArchived(
   id: number,
   archived: boolean,
@@ -2381,6 +2428,7 @@ function setDistributionBandArchived(
   });
 }
 
+/** Removes or resets strategy distribution band. */
 export function archiveStrategyDistributionBand(
   id: number,
   actorId: number | null,
@@ -2388,6 +2436,7 @@ export function archiveStrategyDistributionBand(
   return setDistributionBandArchived(id, true, actorId);
 }
 
+/** Implements the restore strategy distribution band operation. */
 export function restoreStrategyDistributionBand(
   id: number,
   actorId: number | null,

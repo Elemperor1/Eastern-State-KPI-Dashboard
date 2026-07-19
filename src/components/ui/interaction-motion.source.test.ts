@@ -1,6 +1,7 @@
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 
+/** Supports the source test scenario. */
 function source(path: string): string {
   return readFileSync(new URL(path, import.meta.url), "utf8");
 }

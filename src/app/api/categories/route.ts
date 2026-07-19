@@ -27,6 +27,7 @@ const CreateSchema = z.object({
   sort_order: z.number().int().optional(),
 });
 
+/** Implements the refreshed catalog payload operation. */
 function refreshedCatalogPayload() {
   return {
     kpis: listKPIs({ includeInactive: true, includeArchived: true }),
@@ -34,6 +35,7 @@ function refreshedCatalogPayload() {
   };
 }
 
+/** Implements the post operation. */
 export async function POST(req: NextRequest) {
   let user;
   try {
@@ -77,6 +79,7 @@ const UpdateSchema = z.union([
     .strict(),
 ]);
 
+/** Implements the patch operation. */
 export async function PATCH(req: NextRequest) {
   let user;
   try {
@@ -132,6 +135,7 @@ export async function PATCH(req: NextRequest) {
 
 const DeleteSchema = z.object({ id: z.number().int().positive() });
 
+/** Removes or resets the selected state. */
 export async function DELETE(req: NextRequest) {
   let user;
   try {

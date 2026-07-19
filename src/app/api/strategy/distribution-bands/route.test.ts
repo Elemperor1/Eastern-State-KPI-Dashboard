@@ -12,6 +12,7 @@ const ADMIN = {
 vi.mock("@/features/auth/session", () => ({
   requireAdmin: vi.fn(async () => ADMIN),
   requireSession: vi.fn(async () => ADMIN),
+  /** Supports the auth error response test scenario. */
   authErrorResponse: () => new Response(null, { status: 401 }),
 }));
 
@@ -58,6 +59,7 @@ const BAND = {
   archived_at: null,
 };
 
+/** Supports the mutation test scenario. */
 function mutation(method: "POST" | "PATCH", body: unknown): NextRequest {
   return new NextRequest(
     new Request("http://localhost/api/strategy/distribution-bands", {

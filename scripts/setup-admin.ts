@@ -26,11 +26,13 @@ import { getDb, resetDb } from "../src/lib/db";
 
 const MIN_PASSWORD_LENGTH = 8;
 
+/** Implements the fail operation. */
 function fail(message: string): never {
   console.error(`[setup:admin] ${message}`);
   process.exit(1);
 }
 
+/** Runs the main workflow. */
 function main() {
   const email = (
     process.env.SETUP_ADMIN_EMAIL ?? "kerry@easternstate.org"

@@ -7,6 +7,7 @@ const dbPath = process.env.DATABASE_PATH || path.resolve(process.cwd(), "data", 
 const dbDir = path.dirname(dbPath);
 const schemaVersionPath = path.resolve(process.cwd(), "src", "lib", "schema-version.json");
 
+/** Retrieves schema policy. */
 function readSchemaPolicy() {
   const raw = fs.readFileSync(schemaVersionPath, "utf8");
   const parsed = JSON.parse(raw);
@@ -22,6 +23,7 @@ function readSchemaPolicy() {
 
 const { expectedSchemaVersion, additiveFrom } = readSchemaPolicy();
 
+/** Retrieves existing database. */
 function queryExistingDatabase() {
   if (!fs.existsSync(dbPath)) {
     return {

@@ -2,6 +2,7 @@
 
 import { Skeleton } from "@/components/ui";
 
+/** Renders the auth page skeleton interface. */
 export function AuthPageSkeleton({ fieldCount = 2 }: { fieldCount?: number }) {
   return (
     <main

@@ -101,6 +101,7 @@ export function listCalculatedStrategyActuals({
   );
 }
 
+/** Calculates multi component periods. */
 function calculateMultiComponentPeriods({
   configuration,
   year,
@@ -183,12 +184,14 @@ function calculateMultiComponentPeriods({
     });
 }
 
+/** Implements the period key operation. */
 function periodKey(
   record: Pick<StrategyComponentEntryRecord, "period_type" | "period_index">,
 ): string {
   return `${record.period_type}:${record.period_index}`;
 }
 
+/** Implements the reporting period value key operation. */
 function reportingPeriodValueKey(
   subjectId: number,
   year: number,
@@ -197,6 +200,7 @@ function reportingPeriodValueKey(
   return `${subjectId}:${year}:${periodKey(period)}`;
 }
 
+/** Implements the period rank operation. */
 function periodRank(
   period: StrategicCalculatedActual["periodType"],
 ): number {

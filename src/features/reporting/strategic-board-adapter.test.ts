@@ -579,6 +579,7 @@ describe("strategic board adapter", () => {
   });
 });
 
+/** Supports the summary fixture test scenario. */
 function summaryFixture(): StrategicDashboardSummary {
   const progress = {
     state: "ok" as const,
@@ -675,6 +676,7 @@ function summaryFixture(): StrategicDashboardSummary {
   };
 }
 
+/** Supports the component entry test scenario. */
 function componentEntry(
   overrides: Partial<StrategyComponentEntryRecord> = {},
 ): StrategyComponentEntryRecord {
@@ -711,6 +713,7 @@ function componentEntry(
   };
 }
 
+/** Supports the component definition test scenario. */
 function componentDefinition(
   overrides: Partial<
     StrategicGoalReadModel["members"][number]["components"][number]
@@ -744,6 +747,7 @@ function componentDefinition(
   };
 }
 
+/** Supports the goal fixture test scenario. */
 function goalFixture(): StrategicGoalReadModel {
   return {
     id: 10,

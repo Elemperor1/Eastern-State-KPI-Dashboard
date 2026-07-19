@@ -208,14 +208,17 @@ export interface StrategicAuditEvent {
   occurred_at: string;
 }
 
+/** Implements the number or null operation. */
 function numberOrNull(value: unknown): number | null {
   return value == null ? null : Number(value);
 }
 
+/** Implements the string or null operation. */
 function stringOrNull(value: unknown): string | null {
   return value == null ? null : String(value);
 }
 
+/** Parses json object. */
 function parseJsonObject(value: unknown): Record<string, StrategyJsonValue> | null {
   if (value == null || value === "") return null;
   try {
@@ -228,6 +231,7 @@ function parseJsonObject(value: unknown): Record<string, StrategyJsonValue> | nu
   }
 }
 
+/** Parses json value. */
 function parseJsonValue(value: unknown): StrategyJsonValue | null {
   if (value == null || value === "") return null;
   try {
@@ -237,6 +241,7 @@ function parseJsonValue(value: unknown): StrategyJsonValue | null {
   }
 }
 
+/** Implements the as strategic goal operation. */
 export function asStrategicGoal(row: Record<string, unknown>): PersistedStrategicGoal {
   return {
     id: Number(row.id),
@@ -269,6 +274,7 @@ export function asStrategicGoal(row: Record<string, unknown>): PersistedStrategi
   };
 }
 
+/** Implements the as goal membership operation. */
 export function asGoalMembership(
   row: Record<string, unknown>,
 ): PersistedGoalMembership {
@@ -289,6 +295,7 @@ export function asGoalMembership(
   };
 }
 
+/** Implements the as measurement config operation. */
 export function asMeasurementConfig(
   row: Record<string, unknown>,
 ): PersistedMeasurementConfig {
@@ -325,6 +332,7 @@ export function asMeasurementConfig(
   };
 }
 
+/** Implements the as component operation. */
 export function asComponent(row: Record<string, unknown>): PersistedComponent {
   return {
     id: Number(row.id),
@@ -354,6 +362,7 @@ export function asComponent(row: Record<string, unknown>): PersistedComponent {
   };
 }
 
+/** Implements the as target operation. */
 export function asTarget(row: Record<string, unknown>): PersistedTarget {
   return {
     id: Number(row.id),
@@ -379,6 +388,7 @@ export function asTarget(row: Record<string, unknown>): PersistedTarget {
   };
 }
 
+/** Implements the as kpi identity operation. */
 export function asKpiIdentity(row: Record<string, unknown>): StrategyKpiIdentity {
   return {
     id: Number(row.kpi_id ?? row.id),
@@ -391,6 +401,7 @@ export function asKpiIdentity(row: Record<string, unknown>): StrategyKpiIdentity
   };
 }
 
+/** Implements the as strategic audit event operation. */
 export function asStrategicAuditEvent(
   row: Record<string, unknown>,
 ): StrategicAuditEvent {
@@ -411,6 +422,7 @@ export function asStrategicAuditEvent(
   };
 }
 
+/** Implements the stable snapshot operation. */
 export function stableSnapshot(
   value: Record<string, unknown>,
   fields: readonly string[],

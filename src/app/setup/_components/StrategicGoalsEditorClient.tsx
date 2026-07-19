@@ -77,6 +77,7 @@ const EDITABLE_CONFIGURATION_STATUSES = CONFIGURATION_STATUSES.filter(
   (status): status is EditableGoalConfigurationStatus => status !== "archived",
 );
 
+/** Implements the issue message operation. */
 function issueMessage(value: unknown): string | null {
   if (Array.isArray(value)) {
     for (const item of value) {
@@ -95,6 +96,7 @@ function issueMessage(value: unknown): string | null {
   return null;
 }
 
+/** Implements the status variant operation. */
 function statusVariant(status: ConfigurationStatus) {
   if (status === "active" || status === "ready") return "success" as const;
   if (status === "needs_definition") return "error" as const;
@@ -103,6 +105,7 @@ function statusVariant(status: ConfigurationStatus) {
   return "info" as const;
 }
 
+/** Implements the completion rule label operation. */
 function completionRuleLabel(rule: GoalCompletionRuleName): string {
   if (rule === "all_required_kpis") return "Every required measure";
   if (rule === "weighted_average") return "Weighted progress";
@@ -110,12 +113,14 @@ function completionRuleLabel(rule: GoalCompletionRuleName): string {
   return "Set manually";
 }
 
+/** Implements the setup status label operation. */
 function setupStatusLabel(status: ConfigurationStatus | null): string {
   if (status === "active" || status === "ready") return "Ready";
   if (status === "archived") return "Archived";
   return "Needs attention";
 }
 
+/** Renders the field hint interface. */
 function FieldHint({ error, fallback }: { error?: string; fallback?: string }) {
   return error ? (
     <span className="font-medium text-[var(--color-danger-text)]">{error}</span>
@@ -124,6 +129,7 @@ function FieldHint({ error, fallback }: { error?: string; fallback?: string }) {
   );
 }
 
+/** Renders the strategic goals editor client interface. */
 export function StrategicGoalsEditorClient({
   initialGoals,
   initialSelectedGoalId,
@@ -166,6 +172,7 @@ export function StrategicGoalsEditorClient({
     setGoalState({ source: initialGoals, values: initialGoals });
   }, [initialGoals]);
 
+  /** Updates goals. */
   function updateGoals(update: SetStateAction<StrategicGoalEditorRecord[]>) {
     setGoalState((current) => {
       const currentGoals =
@@ -208,6 +215,7 @@ export function StrategicGoalsEditorClient({
   const selectedGoal =
     visibleGoals.find((goal) => goal.id === selectedGoalId) ?? null;
 
+  /** Retrieves goal. */
   function selectGoal(goalId: number | null) {
     if (goalId === null) {
       setSelectionOverride({
@@ -224,6 +232,7 @@ export function StrategicGoalsEditorClient({
     );
   }
 
+  /** Runs the run mutation workflow. */
   const runMutation: StrategicGoalMutationRunner = async (
     mutation: StrategicGoalMutation,
   ) => {
@@ -294,6 +303,7 @@ export function StrategicGoalsEditorClient({
     }
   };
 
+  /** Runs the run membership mutation workflow. */
   const runMembershipMutation: StrategicGoalMembershipMutationRunner = async (
     mutation: StrategicGoalMembershipMutation,
   ) => {
@@ -354,6 +364,7 @@ export function StrategicGoalsEditorClient({
     }
   };
 
+  /** Runs the run target mutation workflow. */
   const runTargetMutation: StrategyEditorMutationRunner = async (
     mutation: StrategyEditorMutation,
   ) => {
@@ -382,6 +393,7 @@ export function StrategicGoalsEditorClient({
     }
   };
 
+  /** Implements the choose priority operation. */
   function choosePriority(nextPriorityId: number | null) {
     setPriorityId(nextPriorityId);
     const nextGoals = filterStrategicGoals(goals, {
@@ -393,6 +405,7 @@ export function StrategicGoalsEditorClient({
     }
   }
 
+  /** Implements the toggle archived operation. */
   function toggleArchived(nextIncludeArchived: boolean) {
     setIncludeArchived(nextIncludeArchived);
     const nextGoals = filterStrategicGoals(goals, {
@@ -512,6 +525,7 @@ export function StrategicGoalsEditorClient({
   );
 }
 
+/** Renders the strategic goal settings form interface. */
 export function StrategicGoalSettingsForm({
   goal,
   reportingYear,
@@ -555,6 +569,7 @@ export function StrategicGoalSettingsForm({
     );
   }, [goal, reportingYear]);
 
+  /** Updates the current state. */
   function update<K extends keyof StrategicGoalSettingsDraft>(
     key: K,
     value: StrategicGoalSettingsDraft[K],
@@ -568,6 +583,7 @@ export function StrategicGoalSettingsForm({
     });
   }
 
+  /** Runs the submit workflow. */
   async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     setFeedback(null);
@@ -624,6 +640,7 @@ export function StrategicGoalSettingsForm({
     );
   }
 
+  /** Implements the lifecycle operation. */
   async function lifecycle(action: "archive" | "restore") {
     setFeedback(null);
     setBusy(true);
@@ -1053,6 +1070,7 @@ export function StrategicGoalSettingsForm({
   );
 }
 
+/** Renders the goal targets interface. */
 function GoalTargets({
   data,
   reportingYear,
@@ -1159,6 +1177,7 @@ function GoalTargets({
   );
 }
 
+/** Renders the strategic goal membership form interface. */
 function StrategicGoalMembershipForm({
   member,
   reportingYear,
@@ -1197,6 +1216,7 @@ function StrategicGoalMembershipForm({
     );
   }, [member, reportingYear]);
 
+  /** Updates the current state. */
   function update<K extends keyof StrategicGoalMembershipDraft>(
     key: K,
     value: StrategicGoalMembershipDraft[K],
@@ -1209,6 +1229,7 @@ function StrategicGoalMembershipForm({
     });
   }
 
+  /** Runs the submit workflow. */
   async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     setFeedback(null);

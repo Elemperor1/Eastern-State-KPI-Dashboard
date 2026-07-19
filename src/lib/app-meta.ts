@@ -1,5 +1,6 @@
 import { getDb } from "./db";
 
+/** Determines whether is sample data enabled. */
 export function isSampleDataEnabled(): boolean {
   const row = getDb()
     .prepare("SELECT value FROM meta WHERE key = 'sample_data'")

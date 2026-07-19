@@ -9,6 +9,7 @@ import {
 } from "./admin-catalog";
 import type { KPIWithCategory } from "@/lib/types";
 
+/** Supports the kpi test scenario. */
 function kpi(id: number, name: string, categoryId: number, categoryName: string): KPIWithCategory {
   return {
     id,

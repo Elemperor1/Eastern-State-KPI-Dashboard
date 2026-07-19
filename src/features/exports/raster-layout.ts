@@ -10,6 +10,7 @@ export interface RasterKeepTogetherRange {
   end: number;
 }
 
+/** Implements the plan raster pdf pages operation. */
 export function planRasterPdfPages({
   sourceWidth,
   sourceHeight,

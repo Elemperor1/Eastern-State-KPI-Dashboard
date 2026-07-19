@@ -78,6 +78,7 @@ export async function exportElementToPdf({
       width,
       height,
       windowWidth: width,
+      /** Implements the onclone operation. */
       onclone: (clonedDocument) => {
         const clonedTarget = clonedDocument.getElementById(targetId);
         if (!clonedTarget) return;

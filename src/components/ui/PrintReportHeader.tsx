@@ -27,6 +27,7 @@ export interface PrintReportHeaderProps {
   className?: string;
 }
 
+/** Renders the print report header interface. */
 export function PrintReportHeader({
   organizationName = "Organization",
   title,

@@ -6,6 +6,7 @@ export interface ChipProps extends React.ButtonHTMLAttributes<HTMLButtonElement>
   active?: boolean;
 }
 
+/** Renders the chip interface. */
 export function Chip({ children, active, className, ...props }: ChipProps) {
   return (
     <button

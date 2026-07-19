@@ -6,12 +6,14 @@ import { normalizeGoalCompletionViewModel } from "@/components/goal-completion-m
 import type { ExecutiveOverviewPageData } from "@/features/reporting/server";
 import { OverviewYearFilter } from "./OverviewYearFilter";
 
+/** Implements the status for operation. */
 function statusFor(priority: ExecutiveOverviewPageData["summary"]["priorities"][number]) {
   if (priority.excludedGoalsCount > 0) return { label: "Needs attention", variant: "warning" as const };
   if ((priority.completionPercentage ?? 0) >= 100) return { label: "Complete", variant: "success" as const };
   return { label: "In progress", variant: "info" as const };
 }
 
+/** Renders the executive overview interface. */
 export function ExecutiveOverview({ data }: { data: ExecutiveOverviewPageData }) {
   const organization = normalizeGoalCompletionViewModel(data.summary.organization);
   const hasStrategicGoals = data.summary.goals.length > 0;

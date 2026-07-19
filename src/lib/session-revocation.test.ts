@@ -45,14 +45,17 @@ const COOKIE_NAME = "eastern_state_kpi_session";
 
 const { jar, resetSession, cookieStore } = vi.hoisted(() => {
   const jar: Record<string, string> = {};
+  /** Supports the reset session test scenario. */
   function resetSession(): void {
     for (const k of Object.keys(jar)) delete jar[k];
   }
   const cookieStore = {
+    /** Supports the get test scenario. */
     get: (name: string) =>
       jar[name] != null && jar[name] !== ""
         ? { name, value: jar[name] }
         : undefined,
+    /** Supports the set test scenario. */
     set: (nameOrOpts: unknown, value?: string) => {
       if (typeof nameOrOpts === "string") {
         jar[nameOrOpts] = value ?? "";
@@ -66,7 +69,9 @@ const { jar, resetSession, cookieStore } = vi.hoisted(() => {
 });
 
 vi.mock("next/headers", () => ({
+  /** Supports the cookies test scenario. */
   cookies: async () => cookieStore,
+  /** Supports the headers test scenario. */
   headers: async () => new Map<string, string>(),
 }));
 
@@ -95,6 +100,7 @@ let dbPath: string;
 let originalDbPath: string | undefined;
 const originalEnv: Record<string, string | undefined> = {};
 
+/** Supports the json req test scenario. */
 function jsonReq(
   url: string,
   method: "POST" | "PATCH" | "DELETE",
@@ -123,12 +129,14 @@ function jsonReq(
     }),
   );
 }
+/** Supports the login req test scenario. */
 function loginReq(body: unknown, ip = "10.0.0.1"): NextRequest {
   return jsonReq("http://localhost/api/auth/login", "POST", body, {
     "x-forwarded-for": ip,
   });
 }
 
+/** Supports the session cookie test scenario. */
 function sessionCookie(): string | undefined {
   return jar[COOKIE_NAME] || undefined;
 }

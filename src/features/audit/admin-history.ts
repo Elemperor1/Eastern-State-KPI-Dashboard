@@ -15,6 +15,7 @@ export interface ActiveHistoryFilter {
   year?: number;
 }
 
+/** Builds admin history filter state. */
 export function buildAdminHistoryFilterState(filter: ActiveHistoryFilter): AdminHistoryFilterState {
   return {
     categoryId: filter.category_id ? String(filter.category_id) : "",
@@ -23,10 +24,12 @@ export function buildAdminHistoryFilterState(filter: ActiveHistoryFilter): Admin
   };
 }
 
+/** Determines whether has active admin history filter. */
 export function hasActiveAdminHistoryFilter(filter: ActiveHistoryFilter): boolean {
   return Boolean(filter.category_id || filter.kpi_id || filter.year);
 }
 
+/** Implements the filter admin history kpis by category operation. */
 export function filterAdminHistoryKpisByCategory(
   kpis: KPIWithCategory[],
   categoryId: string,
@@ -36,12 +39,14 @@ export function filterAdminHistoryKpisByCategory(
   return kpis.filter((kpi) => kpi.category_id === selectedCategory);
 }
 
+/** Retrieves admin history years. */
 export function listAdminHistoryYears(history: EntryHistoryWithMeta[]): number[] {
   const years = new Set<number>();
   for (const row of history) years.add(row.year);
   return Array.from(years).sort((a, b) => b - a);
 }
 
+/** Builds admin history href. */
 export function buildAdminHistoryHref(
   state: AdminHistoryFilterState,
   patch: AdminHistoryFilterPatch = {},
@@ -56,6 +61,7 @@ export function buildAdminHistoryHref(
   return `/setup?area=activity${suffix}`;
 }
 
+/** Formats admin history changed at. */
 export function formatAdminHistoryChangedAt(changedAt: string): string {
   return new Date(changedAt).toLocaleString("en-US", {
     year: "numeric",
@@ -66,6 +72,7 @@ export function formatAdminHistoryChangedAt(changedAt: string): string {
   });
 }
 
+/** Implements the describe admin history period operation. */
 export function describeAdminHistoryPeriod(row: Pick<EntryHistoryWithMeta, "entry_type" | "month_or_label">): string {
   if (row.entry_type === "breakdown") {
     return describeBreakdownHistoryPeriod(row.month_or_label);
@@ -77,12 +84,14 @@ export function describeAdminHistoryPeriod(row: Pick<EntryHistoryWithMeta, "entr
   return MONTH_LABELS[month - 1] ?? `Month ${month}`;
 }
 
+/** Formats admin history value. */
 export function formatAdminHistoryValue(value: number | null): string {
   if (value === null) return "—";
   if (Number.isInteger(value)) return value.toLocaleString();
   return value.toLocaleString(undefined, { maximumFractionDigits: 2 });
 }
 
+/** Retrieves admin history change label. */
 export function getAdminHistoryChangeLabel(
   row: Pick<EntryHistoryWithMeta, "prev_value" | "new_value">,
 ): "Created" | "Updated" | "Deleted" {
@@ -90,24 +99,29 @@ export function getAdminHistoryChangeLabel(
   return row.prev_value !== row.new_value ? "Updated" : "Created";
 }
 
+/** Retrieves admin history entry type label. */
 export function getAdminHistoryEntryTypeLabel(
   row: Pick<EntryHistoryWithMeta, "entry_type">,
 ): "Monthly" | "Breakdown" {
   return row.entry_type === "monthly" ? "Monthly" : "Breakdown";
 }
 
+/** Retrieves admin history kpi label. */
 export function getAdminHistoryKpiLabel(row: Pick<EntryHistoryWithMeta, "kpi_name">): string {
   return row.kpi_name ?? "Deleted KPI";
 }
 
+/** Retrieves admin history category label. */
 export function getAdminHistoryCategoryLabel(row: Pick<EntryHistoryWithMeta, "category_name">): string {
   return row.category_name ?? "Deleted category";
 }
 
+/** Retrieves admin history actor label. */
 export function getAdminHistoryActorLabel(row: Pick<EntryHistoryWithMeta, "changed_by_email">): string {
   return row.changed_by_email ?? "—";
 }
 
+/** Implements the describe breakdown history period operation. */
 function describeBreakdownHistoryPeriod(monthOrLabel: string): string {
   const separator = monthOrLabel.indexOf("|");
   if (separator === -1) return `Label: ${monthOrLabel}`;

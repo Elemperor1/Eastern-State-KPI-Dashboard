@@ -40,6 +40,7 @@ const metadata = {
   updated_at: "2026-01-01T00:00:00Z",
 };
 
+/** Supports the kpi test scenario. */
 function kpi(): StrategyKpiIdentity {
   return {
     id: 42,
@@ -52,6 +53,7 @@ function kpi(): StrategyKpiIdentity {
   };
 }
 
+/** Supports the configuration test scenario. */
 function configuration(
   overrides: Partial<PersistedMeasurementConfig> = {},
 ): PersistedMeasurementConfig {
@@ -84,6 +86,7 @@ function configuration(
   };
 }
 
+/** Supports the target test scenario. */
 function target(
   overrides: Partial<PersistedTarget> = {},
 ): PersistedTarget {
@@ -109,6 +112,7 @@ function target(
   };
 }
 
+/** Supports the component test scenario. */
 function component(
   overrides: Partial<StrategyComponentWithTargets> = {},
 ): StrategyComponentWithTargets {
@@ -137,6 +141,7 @@ function component(
   };
 }
 
+/** Supports the valid configuration draft test scenario. */
 function validConfigurationDraft(
   overrides: Partial<ConfigurationFormDraft> = {},
 ): ConfigurationFormDraft {
@@ -165,6 +170,7 @@ function validConfigurationDraft(
   };
 }
 
+/** Supports the valid target draft test scenario. */
 function validTargetDraft(
   overrides: Partial<TargetFormDraft> = {},
 ): TargetFormDraft {
@@ -183,6 +189,7 @@ function validTargetDraft(
   };
 }
 
+/** Supports the valid component draft test scenario. */
 function validComponentDraft(
   overrides: Partial<ComponentFormDraft> = {},
 ): ComponentFormDraft {
@@ -206,6 +213,7 @@ function validComponentDraft(
   };
 }
 
+/** Supports the valid band draft test scenario. */
 function validBandDraft(
   overrides: Partial<DistributionBandFormDraft> = {},
 ): DistributionBandFormDraft {

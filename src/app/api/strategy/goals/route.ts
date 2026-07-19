@@ -38,6 +38,7 @@ const PatchSchema = z.discriminatedUnion("action", [
     .strict(),
 ]);
 
+/** Implements the patch operation. */
 export async function PATCH(req: NextRequest) {
   let user;
   try {

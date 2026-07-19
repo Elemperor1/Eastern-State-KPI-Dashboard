@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { FormField, Select } from "@/components/ui";
 import type { ReportingCycleOption } from "@/features/strategy";
 
+/** Renders the report filters interface. */
 export function ReportFilters({
   view,
   year,
@@ -21,6 +22,7 @@ export function ReportFilters({
   const router = useRouter();
   const [isPending, startTransition] = useTransition();
 
+  /** Implements the navigate operation. */
   function navigate(
     nextView: "board" | "trends",
     nextYear: number,

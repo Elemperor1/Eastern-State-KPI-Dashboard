@@ -59,6 +59,7 @@ type PendingSelection = {
   showSaved?: boolean;
 };
 
+/** Implements the issue message operation. */
 function issueMessage(value: unknown): string | null {
   if (typeof value === "string" && value.trim()) return value;
   if (Array.isArray(value)) {
@@ -76,6 +77,7 @@ function issueMessage(value: unknown): string | null {
   return null;
 }
 
+/** Renders the error hint interface. */
 function ErrorHint({ error, fallback }: { error?: string; fallback?: string }) {
   return error ? (
     <span className="font-medium text-[var(--color-danger-text)]">{error}</span>
@@ -84,6 +86,7 @@ function ErrorHint({ error, fallback }: { error?: string; fallback?: string }) {
   );
 }
 
+/** Implements the status variant operation. */
 function statusVariant(status: string | null | undefined) {
   if (status === "active" || status === "ready") return "success" as const;
   if (status === "needs_definition") return "warning" as const;
@@ -91,6 +94,7 @@ function statusVariant(status: string | null | undefined) {
   return "default" as const;
 }
 
+/** Renders the strategic data entry client interface. */
 export function StrategicDataEntryClient({
   data,
   saved = false,
@@ -144,6 +148,7 @@ export function StrategicDataEntryClient({
   }, [saved]);
 
   useEffect(() => {
+    /** Updates connection state. */
     function updateConnectionState() {
       setIsOnline(window.navigator.onLine);
     }
@@ -169,6 +174,7 @@ export function StrategicDataEntryClient({
     });
   }, [data.showSelectedKpi]);
 
+  /** Implements the request selection operation. */
   function requestSelection(selection: PendingSelection) {
     if (isDirty) {
       setPendingSelection(selection);
@@ -177,6 +183,7 @@ export function StrategicDataEntryClient({
     replaceSelection(selection, true);
   }
 
+  /** Implements the replace selection operation. */
   function replaceSelection(
     selection: PendingSelection,
     clearFeedback: boolean,
@@ -191,6 +198,7 @@ export function StrategicDataEntryClient({
     startNavigation(() => router.replace(`/data-entry?${params.toString()}`));
   }
 
+  /** Updates draft. */
   function updateDraft<K extends keyof StrategicDataEntryDraft>(
     draftKey: string,
     key: K,
@@ -208,6 +216,7 @@ export function StrategicDataEntryClient({
     });
   }
 
+  /** Runs the submit workflow. */
   async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     if (!data.selectedKpi) return;
@@ -490,6 +499,7 @@ export function StrategicDataEntryClient({
   );
 }
 
+/** Renders the checklist interface. */
 function Checklist({
   data,
   onSelect,
@@ -552,6 +562,7 @@ function Checklist({
   );
 }
 
+/** Renders the kpi context interface. */
 function KpiContext({
   data,
 }: {
@@ -572,6 +583,7 @@ function KpiContext({
   );
 }
 
+/** Renders the entry form interface. */
 function EntryForm({
   data,
   drafts,
@@ -709,6 +721,7 @@ function EntryForm({
   );
 }
 
+/** Renders the measurement fields interface. */
 function MeasurementFields({
   data,
   draft,
@@ -886,6 +899,7 @@ function MeasurementFields({
   );
 }
 
+/** Renders the average fields interface. */
 function AverageFields({
   draft,
   errors,
@@ -1022,6 +1036,7 @@ function AverageFields({
   );
 }
 
+/** Renders the distribution fields interface. */
 function DistributionFields({
   draft,
   errors,

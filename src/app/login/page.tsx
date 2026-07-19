@@ -7,6 +7,7 @@ import { Alert, BrandMark, Button, FormField, Input } from "@/components/ui";
 import { readJsonObject } from "@/lib/api-client";
 import { runEventHandler } from "@/lib/async-event";
 
+/** Renders the login page interface. */
 export default function LoginPage() {
   const router = useRouter();
   const [email, setEmail] = useState("");
@@ -14,6 +15,7 @@ export default function LoginPage() {
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
 
+  /** Runs the handle submit workflow. */
   async function handleSubmit(event: React.FormEvent) {
     event.preventDefault();
     setLoading(true);

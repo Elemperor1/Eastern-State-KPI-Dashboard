@@ -11,6 +11,7 @@ const GITLEAKS_IMAGE =
   `ghcr.io/gitleaks/gitleaks:v${GITLEAKS_VERSION}@sha256:c00b6bd0aeb3071cbcb79009cb16a60dd9e0a7c60e2be9ab65d25e6bc8abbb7f`;
 const shaPattern = /^[0-9a-f]{7,64}$/u;
 
+/** Implements the scan revision operation. */
 function scanRevision() {
   const explicit = process.env.GITLEAKS_LOG_OPTS;
   if (explicit) {

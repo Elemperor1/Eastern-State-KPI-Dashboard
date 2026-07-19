@@ -2,6 +2,7 @@ const NEEDS_QUOTE = /[",\n\r]/;
 const CRLF = "\r\n";
 const FORMULA_MARKERS = new Set(["=", "+", "-", "@"]);
 
+/** Determines whether is leading whitespace or control. */
 function isLeadingWhitespaceOrControl(char: string): boolean {
   const code = char.charCodeAt(0);
   return /\s/u.test(char) || code <= 0x1f || code === 0x7f;
@@ -63,6 +64,7 @@ export function buildCSV(rows: Record<string, unknown>[], columns: string[]): st
   return body ? `${header}${CRLF}${body}${CRLF}` : `${header}${CRLF}`;
 }
 
+/** Implements the ensure csv ext operation. */
 export function ensureCsvExt(name: string): string {
   return name.toLowerCase().endsWith(".csv") ? name : `${name}.csv`;
 }

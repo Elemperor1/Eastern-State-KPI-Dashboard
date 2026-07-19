@@ -42,6 +42,7 @@ export interface StrategicBoardReportProps {
 
 type BadgeVariant = NonNullable<BadgeProps["variant"]>;
 
+/** Implements the status variant operation. */
 function statusVariant(status: string): BadgeVariant {
   if (["active", "complete", "exceeded", "ok", "on_track"].includes(status)) {
     return "success";
@@ -57,6 +58,7 @@ function statusVariant(status: string): BadgeVariant {
   return "default";
 }
 
+/** Renders the status badge interface. */
 function StatusBadge({ label, value }: { label: string; value: string }) {
   const display = formatBoardReportToken(value);
   return (
@@ -66,6 +68,7 @@ function StatusBadge({ label, value }: { label: string; value: string }) {
   );
 }
 
+/** Renders the summary metric interface. */
 function SummaryMetric({
   label,
   value,
@@ -92,6 +95,7 @@ function SummaryMetric({
   );
 }
 
+/** Renders the reason list interface. */
 function ReasonList({
   reasons,
   emptyLabel,
@@ -115,6 +119,7 @@ function ReasonList({
   );
 }
 
+/** Renders the completion summary interface. */
 function CompletionSummary({
   summary,
   label,
@@ -174,6 +179,7 @@ function CompletionSummary({
   );
 }
 
+/** Renders the strategic board report interface. */
 export function StrategicBoardReport({
   report,
   id = "strategic-board-report",
@@ -300,6 +306,7 @@ export function StrategicBoardReport({
   );
 }
 
+/** Renders the priority section interface. */
 function PrioritySection({
   priority,
   priorityIndex,
@@ -353,6 +360,7 @@ function PrioritySection({
   );
 }
 
+/** Renders the goal section interface. */
 function GoalSection({
   goal,
   goalIndex,
@@ -426,6 +434,7 @@ function GoalSection({
   );
 }
 
+/** Renders the kpi section interface. */
 function KpiSection({
   kpi,
   kpiIndex,
@@ -554,6 +563,7 @@ function KpiSection({
   );
 }
 
+/** Renders the target progress card interface. */
 function TargetProgressCard({
   label,
   progress,
@@ -646,6 +656,7 @@ function TargetProgressCard({
   );
 }
 
+/** Renders the component table interface. */
 function ComponentTable({
   kpiName,
   components,
@@ -733,6 +744,7 @@ function ComponentTable({
   );
 }
 
+/** Renders the demographic table interface. */
 function DemographicTable({
   kpiName,
   demographics,
@@ -850,6 +862,7 @@ function DemographicTable({
   );
 }
 
+/** Renders the revenue table interface. */
 function RevenueTable({
   kpiName,
   revenue,

@@ -8,6 +8,7 @@ interface CheckboxProps extends Omit<React.InputHTMLAttributes<HTMLInputElement>
   description?: React.ReactNode;
 }
 
+/** Renders the checkbox interface. */
 export function Checkbox({ label, description, className, id, ...props }: CheckboxProps) {
   return (
     <label

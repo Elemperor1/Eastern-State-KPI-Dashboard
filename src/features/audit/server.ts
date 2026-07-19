@@ -23,6 +23,7 @@ export interface EntryHistoryFilter {
   offset?: number;
 }
 
+/** Retrieves entry history. */
 export function listEntryHistory(filter?: EntryHistoryFilter): EntryHistoryWithMeta[] {
   const db = getDb();
   const where: string[] = [];
@@ -103,6 +104,7 @@ export function listEntryHistory(filter?: EntryHistoryFilter): EntryHistoryWithM
   }));
 }
 
+/** Retrieves entry history years. */
 export function listEntryHistoryYears(): number[] {
   const rows = getDb()
     .prepare("SELECT DISTINCT year FROM entry_history ORDER BY year DESC")
@@ -110,6 +112,7 @@ export function listEntryHistoryYears(): number[] {
   return rows.map((row) => Number(row.year));
 }
 
+/** Parses audit value. */
 function parseAuditValue(value: unknown): unknown {
   if (value == null || value === "") return null;
   try {
@@ -119,6 +122,7 @@ function parseAuditValue(value: unknown): unknown {
   }
 }
 
+/** Retrieves setup audit events. */
 export function listSetupAuditEvents(
   options: { limit?: number; offset?: number } = {},
 ): SetupAuditEvent[] {
@@ -178,6 +182,7 @@ export function listSetupAuditEvents(
   }));
 }
 
+/** Retrieves deleted history categories. */
 export function listDeletedHistoryCategories(): Category[] {
   const db = getDb();
   const rows = db
@@ -212,6 +217,7 @@ export function listDeletedHistoryCategories(): Category[] {
   }));
 }
 
+/** Retrieves deleted history kpis. */
 export function listDeletedHistoryKpis(): KPIWithCategory[] {
   const db = getDb();
   const rows = db

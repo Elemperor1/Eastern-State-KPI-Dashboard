@@ -22,6 +22,7 @@ const UnitTypeEnum = z.enum(["count", "percent", "currency", "attendance", "note
 const FrequencyEnum = z.enum(["monthly", "annual", "flexible"]);
 const DirectionEnum = z.enum(["higher", "lower", "neutral"]);
 
+/** Implements the refreshed catalog payload operation. */
 function refreshedCatalogPayload() {
   return {
     kpis: listKPIs({ includeInactive: true, includeArchived: true }),
@@ -45,6 +46,7 @@ const CreateSchema = z.object({
   description: z.string().nullable().optional(),
 }).strict();
 
+/** Implements the post operation. */
 export async function POST(req: NextRequest) {
   let user;
   try {
@@ -91,6 +93,7 @@ const UpdateSchema = z.union([
     .strict(),
 ]);
 
+/** Implements the patch operation. */
 export async function PATCH(req: NextRequest) {
   let user;
   try {
@@ -133,6 +136,7 @@ export async function PATCH(req: NextRequest) {
 
 const DeleteSchema = z.object({ id: z.number().int().positive() });
 
+/** Removes or resets the selected state. */
 export async function DELETE(req: NextRequest) {
   let user;
   try {

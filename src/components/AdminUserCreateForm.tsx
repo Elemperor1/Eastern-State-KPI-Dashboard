@@ -11,6 +11,7 @@ interface AdminUserCreateFormProps {
   isSubmitting?: boolean;
 }
 
+/** Renders the admin user create form interface. */
 export function AdminUserCreateForm({
   onSubmit,
   isSubmitting = false,

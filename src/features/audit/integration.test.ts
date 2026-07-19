@@ -61,6 +61,7 @@ describe("read-only legacy Activity archive", () => {
     fs.rmSync(tmpDir, { recursive: true, force: true });
   });
 
+  /** Supports the insert history test scenario. */
   function insertHistory({
     year,
     value,

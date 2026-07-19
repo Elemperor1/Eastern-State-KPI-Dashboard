@@ -7,6 +7,7 @@ export interface CardProps extends React.HTMLAttributes<HTMLDivElement> {
   as?: "div" | "section" | "article";
 }
 
+/** Renders the card interface. */
 export function Card({
   children,
   className,

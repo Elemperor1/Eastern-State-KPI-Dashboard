@@ -38,6 +38,7 @@ interface StrategyReadOptions {
   includeArchived?: boolean;
 }
 
+/** Retrieves year. */
 function queryYear(requested: number | undefined): number {
   if (requested !== undefined) return requested;
   return resolveStrategicReportingYear(undefined, getActiveInstallation().years);
@@ -107,6 +108,7 @@ export function listStrategicAuditIdentitiesForKpi(
   }));
 }
 
+/** Retrieves strategic goal record. */
 export function getStrategicGoalRecord(
   id: number,
 ): PersistedStrategicGoal | null {
@@ -121,6 +123,7 @@ export function getStrategicGoalRecord(
   return row ? asStrategicGoal(row) : null;
 }
 
+/** Retrieves strategic goal record by slug. */
 function getStrategicGoalRecordBySlug(
   slug: string,
 ): PersistedStrategicGoal | null {
@@ -135,6 +138,7 @@ function getStrategicGoalRecordBySlug(
   return row ? asStrategicGoal(row) : null;
 }
 
+/** Retrieves measurement config record. */
 export function getMeasurementConfigRecord(
   id: number,
 ): PersistedMeasurementConfig | null {
@@ -144,6 +148,7 @@ export function getMeasurementConfigRecord(
   return row ? asMeasurementConfig(row) : null;
 }
 
+/** Retrieves component record. */
 export function getComponentRecord(id: number): PersistedComponent | null {
   const row = getDb()
     .prepare("SELECT * FROM kpi_components WHERE id = ?")
@@ -151,6 +156,7 @@ export function getComponentRecord(id: number): PersistedComponent | null {
   return row ? asComponent(row) : null;
 }
 
+/** Retrieves target record. */
 export function getTargetRecord(id: number): PersistedTarget | null {
   const row = getDb()
     .prepare("SELECT * FROM kpi_targets WHERE id = ?")
@@ -158,6 +164,7 @@ export function getTargetRecord(id: number): PersistedTarget | null {
   return row ? asTarget(row) : null;
 }
 
+/** Retrieves effective measurement config. */
 export function getEffectiveMeasurementConfig(
   kpiId: number,
   year: number,
@@ -177,6 +184,7 @@ export function getEffectiveMeasurementConfig(
   return row ? asMeasurementConfig(row) : null;
 }
 
+/** Retrieves effective measurement configs. */
 export function listEffectiveMeasurementConfigs(
   year: number,
   options: Pick<StrategyReadOptions, "includeArchived"> = {},
@@ -205,6 +213,7 @@ export function listEffectiveMeasurementConfigs(
   return rows.map(asMeasurementConfig);
 }
 
+/** Implements the effective target clause operation. */
 function effectiveTargetClause(): string {
   return `(
     (target_scope = 'annual' AND reporting_year = ?) OR
@@ -212,6 +221,7 @@ function effectiveTargetClause(): string {
   )`;
 }
 
+/** Retrieves effective targets for kpi. */
 export function listEffectiveTargetsForKpi(
   kpiId: number,
   year: number,
@@ -234,6 +244,7 @@ export function listEffectiveTargetsForKpi(
   return rows.map(asTarget);
 }
 
+/** Retrieves effective targets for component. */
 function listEffectiveTargetsForComponent(
   componentId: number,
   year: number,
@@ -256,6 +267,7 @@ function listEffectiveTargetsForComponent(
   return rows.map(asTarget);
 }
 
+/** Retrieves components for configuration. */
 export function listComponentsForConfiguration(
   configurationId: number,
   year: number,
@@ -278,6 +290,7 @@ export function listComponentsForConfiguration(
   });
 }
 
+/** Retrieves goal members. */
 function listGoalMembers(
   goalId: number,
   year: number,
@@ -331,6 +344,7 @@ interface StrategicGoalListFilter extends StrategyReadOptions {
   configuration_status?: ConfigurationStatus;
 }
 
+/** Retrieves strategic goals. */
 export function listStrategicGoals(
   filter: StrategicGoalListFilter = {},
 ): StrategicGoalReadModel[] {
@@ -376,6 +390,7 @@ export function listStrategicGoals(
   });
 }
 
+/** Retrieves strategic goal. */
 function getStrategicGoal(
   id: number,
   options: StrategyReadOptions = {},
@@ -398,6 +413,7 @@ function getStrategicGoal(
   };
 }
 
+/** Retrieves strategic goal by slug. */
 export function getStrategicGoalBySlug(
   slug: string,
   options: StrategyReadOptions = {},
@@ -416,6 +432,7 @@ interface ConfigurationGapFilter {
   reporting_frequency?: StrategyReportingFrequency;
 }
 
+/** Implements the missing measurement configuration operation. */
 function missingMeasurementConfiguration(
   kpiId: number,
   year: number,
@@ -474,6 +491,7 @@ interface ConfigurationGapCollection {
   completionRows: ConfigurationGoalCompletionRow[];
 }
 
+/** Determines whether has calculable effective target. */
 function hasCalculableEffectiveTarget({
   targets,
   year,
@@ -499,6 +517,7 @@ function hasCalculableEffectiveTarget({
   );
 }
 
+/** Determines whether has aggregation complete target. */
 function hasAggregationCompleteTarget(
   member: StrategicGoalMemberReadModel,
   config: PersistedMeasurementConfig,
@@ -546,6 +565,7 @@ function hasAggregationCompleteTarget(
   }
 }
 
+/** Implements the all configuration rows operation. */
 function allConfigurationRows(
   filter: ConfigurationGapFilter,
 ): ConfigurationGapCollection {
@@ -686,6 +706,7 @@ function allConfigurationRows(
   return { rows, completionRows };
 }
 
+/** Retrieves configuration gaps. */
 export function listConfigurationGaps(
   filter: ConfigurationGapFilter = {},
 ): ConfigurationGapRow[] {
@@ -694,6 +715,7 @@ export function listConfigurationGaps(
   );
 }
 
+/** Retrieves configuration gap counts. */
 export function getConfigurationGapCounts(
   filter: ConfigurationGapFilter = {},
 ): ConfigurationGapCounts {
@@ -762,6 +784,7 @@ export function getConfigurationGapCounts(
   };
 }
 
+/** Calculates goals excluded by configuration. */
 export function countGoalsExcludedByConfiguration(
   rows: ConfigurationGoalCompletionRow[],
 ): number {
@@ -806,6 +829,7 @@ export function countGoalsExcludedByConfiguration(
   ).length;
 }
 
+/** Implements the gap completion configuration status operation. */
 function gapCompletionConfigurationStatus({
   configurationStatus,
   missingMeasurementType,
@@ -836,6 +860,7 @@ function gapCompletionConfigurationStatus({
   return configurationStatus;
 }
 
+/** Implements the infer completion configuration status operation. */
 function inferCompletionConfigurationStatus(
   reasons: string[],
 ): ConfigurationStatus {

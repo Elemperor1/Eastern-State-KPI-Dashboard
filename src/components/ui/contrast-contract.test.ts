@@ -6,12 +6,14 @@ const css = readFileSync(
   "utf8",
 );
 
+/** Supports the css token test scenario. */
 function cssToken(name: string): string {
   const match = css.match(new RegExp(`--${name}:\\s*(#[0-9a-fA-F]{6})`));
   if (!match) throw new Error(`Missing CSS color token --${name}`);
   return match[1];
 }
 
+/** Supports the luminance test scenario. */
 function luminance(hex: string): number {
   const channels = hex
     .slice(1)
@@ -25,6 +27,7 @@ function luminance(hex: string): number {
   return 0.2126 * channels[0] + 0.7152 * channels[1] + 0.0722 * channels[2];
 }
 
+/** Supports the contrast test scenario. */
 function contrast(first: string, second: string): number {
   const [lighter, darker] = [luminance(first), luminance(second)].sort(
     (a, b) => b - a,

@@ -2,6 +2,7 @@ type MaybeAsyncHandler<Args extends unknown[]> = (
   ...args: Args
 ) => void | Promise<void>;
 
+/** Implements the report unhandled event failure operation. */
 function reportUnhandledEventFailure(): void {
   // Do not log the rejection object: UI errors can contain response details.
   console.error("An async UI action failed unexpectedly.");

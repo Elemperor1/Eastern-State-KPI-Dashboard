@@ -39,6 +39,7 @@ const BootstrapSchema = z.object({
 });
 
 export class InstallationNotConfiguredError extends Error {
+  /** Creates a new instance with the supplied state. */
   constructor(message = "The active installation and strategic plan are not configured.") {
     super(message);
     this.name = "InstallationNotConfiguredError";
@@ -46,6 +47,7 @@ export class InstallationNotConfiguredError extends Error {
 }
 
 export class InstallationEditConflictError extends Error {
+  /** Creates a new instance with the supplied state. */
   constructor() {
     super("The strategic plan changed after this form was loaded. Refresh and try again.");
     this.name = "InstallationEditConflictError";
@@ -53,6 +55,7 @@ export class InstallationEditConflictError extends Error {
 }
 
 export class InstallationValidationError extends Error {
+  /** Creates a new instance with the supplied state. */
   constructor(message: string) {
     super(message);
     this.name = "InstallationValidationError";
@@ -79,6 +82,7 @@ interface InstallationRow extends Record<string, unknown> {
   plan_updated_at: string;
 }
 
+/** Implements the reporting years operation. */
 function reportingYears(startYear: number, endYear: number): number[] {
   return Array.from(
     { length: endYear - startYear + 1 },
@@ -86,6 +90,7 @@ function reportingYears(startYear: number, endYear: number): number[] {
   );
 }
 
+/** Builds installation. */
 function mapInstallation(row: InstallationRow): ActiveInstallation {
   return {
     organization: {
@@ -120,6 +125,7 @@ function mapInstallation(row: InstallationRow): ActiveInstallation {
   };
 }
 
+/** Implements the active installation rows operation. */
 function activeInstallationRows(): InstallationRow[] {
   return getDb()
     .prepare(
@@ -150,6 +156,7 @@ function activeInstallationRows(): InstallationRow[] {
     .all() as InstallationRow[];
 }
 
+/** Retrieves active installation. */
 export function getActiveInstallation(): ActiveInstallation {
   const rows = activeInstallationRows();
   if (rows.length !== 1) {
@@ -162,10 +169,12 @@ export function getActiveInstallation(): ActiveInstallation {
   return mapInstallation(rows[0]);
 }
 
+/** Implements the audit snapshot operation. */
 function auditSnapshot(value: Record<string, unknown>): string {
   return JSON.stringify(value);
 }
 
+/** Implements the actor email operation. */
 function actorEmail(actorId: number | null): string | null {
   if (actorId === null) return null;
   const row = getDb().prepare("SELECT email FROM users WHERE id = ?").get(actorId) as
@@ -174,6 +183,7 @@ function actorEmail(actorId: number | null): string | null {
   return row?.email ? String(row.email) : null;
 }
 
+/** Records installation audit. */
 function recordInstallationAudit(input: {
   entityType: "organization" | "strategic_plan";
   entityId: number;
@@ -202,6 +212,7 @@ function recordInstallationAudit(input: {
     );
 }
 
+/** Seeds installation. */
 export function bootstrapInstallation(
   input: z.input<typeof BootstrapSchema>,
 ): { created: boolean; installation: ActiveInstallation } {
@@ -289,6 +300,7 @@ export function bootstrapInstallation(
   });
 }
 
+/** Validates plan range can change. */
 function assertPlanRangeCanChange(
   planId: number,
   startYear: number,
@@ -426,6 +438,7 @@ function assertPlanRangeCanChange(
   }
 }
 
+/** Implements the extend plan boundary coverage operation. */
 function extendPlanBoundaryCoverage(
   current: ActiveInstallation,
   startYear: number,
@@ -557,6 +570,7 @@ function extendPlanBoundaryCoverage(
   }
 }
 
+/** Implements the organization snapshot operation. */
 function organizationSnapshot(installation: ActiveInstallation) {
   return {
     name: installation.organization.name,
@@ -564,6 +578,7 @@ function organizationSnapshot(installation: ActiveInstallation) {
   };
 }
 
+/** Implements the plan snapshot operation. */
 function planSnapshot(installation: ActiveInstallation) {
   return {
     name: installation.plan.name,
@@ -575,6 +590,7 @@ function planSnapshot(installation: ActiveInstallation) {
   };
 }
 
+/** Updates active installation. */
 export function updateActiveInstallation(
   input: z.input<typeof PlanSettingsUpdateSchema>,
   actorId: number,
@@ -685,6 +701,7 @@ export function updateActiveInstallation(
   });
 }
 
+/** Parses snapshot. */
 function parseSnapshot(value: unknown): Record<string, unknown> | null {
   if (value === null || typeof value !== "string") return null;
   const parsed = JSON.parse(value) as unknown;
@@ -693,6 +710,7 @@ function parseSnapshot(value: unknown): Record<string, unknown> | null {
     : null;
 }
 
+/** Retrieves installation audit events. */
 export function listInstallationAuditEvents(
   options: { limit?: number; offset?: number } = {},
 ): InstallationAuditEvent[] {

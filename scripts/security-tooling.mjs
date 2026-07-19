@@ -4,6 +4,7 @@ import { spawnSync } from "node:child_process";
 
 const repositoryRoot = process.cwd();
 
+/** Retrieves executable. */
 export function findExecutable(name) {
   const localExecutable = join(repositoryRoot, "node_modules", ".bin", name);
   if (isExecutable(localExecutable)) return localExecutable;
@@ -16,6 +17,7 @@ export function findExecutable(name) {
   return null;
 }
 
+/** Determines whether is executable. */
 function isExecutable(path) {
   if (!existsSync(path)) return false;
   try {
@@ -26,6 +28,7 @@ function isExecutable(path) {
   }
 }
 
+/** Runs the run workflow. */
 export function run(command, args, options = {}) {
   const result = spawnSync(command, args, {
     cwd: repositoryRoot,
@@ -38,6 +41,7 @@ export function run(command, args, options = {}) {
   }
 }
 
+/** Implements the docker args operation. */
 export function dockerArgs(image, toolArgs, { network = true } = {}) {
   return [
     "run",
@@ -52,6 +56,7 @@ export function dockerArgs(image, toolArgs, { network = true } = {}) {
   ];
 }
 
+/** Implements the require docker operation. */
 export function requireDocker() {
   const docker = findExecutable("docker");
   if (!docker) {
@@ -64,6 +69,7 @@ export function requireDocker() {
   return docker;
 }
 
+/** Implements the fail operation. */
 export function fail(error, installHint) {
   const message = error instanceof Error ? error.message : String(error);
   console.error(`Security gate failed: ${message}`);

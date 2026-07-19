@@ -30,12 +30,14 @@ export function PrintButton({
 }: PrintButtonProps) {
   const statusId = useId();
   const [announcement, setAnnouncement] = useState({ message: "", sequence: 0 });
+  /** Implements the announce operation. */
   function announce(message: string) {
     setAnnouncement((current) => ({
       message,
       sequence: current.sequence + 1,
     }));
   }
+  /** Runs the handle click workflow. */
   function handleClick() {
     if (onPrint) {
       onPrint();

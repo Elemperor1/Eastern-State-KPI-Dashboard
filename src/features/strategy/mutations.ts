@@ -98,6 +98,7 @@ export interface StrategicConfigurationBootstrapInput {
 }
 
 export class StrategyEntityNotFoundError extends Error {
+  /** Creates a new instance with the supplied state. */
   constructor(
     public readonly entity: "goal" | "measurement_config" | "component" | "target",
     public readonly id: number,
@@ -108,6 +109,7 @@ export class StrategyEntityNotFoundError extends Error {
 }
 
 export class StrategyConfigurationError extends Error {
+  /** Creates a new instance with the supplied state. */
   constructor(message: string) {
     super(message);
     this.name = "StrategyConfigurationError";
@@ -130,14 +132,17 @@ interface StrategicConfigurationEnsureResult {
 
 type Change = keyof ChangeCounts;
 
+/** Implements the empty counts operation. */
 function emptyCounts(): ChangeCounts {
   return { created: 0, updated: 0, unchanged: 0 };
 }
 
+/** Implements the increment operation. */
 function increment(counts: ChangeCounts, change: Change): void {
   counts[change] += 1;
 }
 
+/** Implements the unresolved question for operation. */
 function unresolvedQuestionFor(
   status: ConfigurationStatus,
   explicit: string | undefined,
@@ -152,6 +157,7 @@ function unresolvedQuestionFor(
     : `Define the source measurement configuration for ${displayName}.`;
 }
 
+/** Implements the same managed values operation. */
 function sameManagedValues(
   row: Record<string, unknown>,
   expected: Record<string, unknown>,
@@ -163,6 +169,7 @@ function sameManagedValues(
   });
 }
 
+/** Implements the snapshot operation. */
 function snapshot(
   row: Record<string, unknown>,
   expected: Record<string, unknown>,
@@ -178,6 +185,7 @@ interface CatalogContext {
   >;
 }
 
+/** Retrieves catalog context. */
 function loadCatalogContext(
   bootstrap: StrategicConfigurationBootstrapInput,
 ): CatalogContext {
@@ -229,12 +237,14 @@ function loadCatalogContext(
   return { categories, kpis };
 }
 
+/** Retrieves goal raw. */
 function readGoalRaw(slug: string): Record<string, unknown> | undefined {
   return getDb().prepare("SELECT * FROM strategic_goals WHERE slug = ?").get(slug) as
     | Record<string, unknown>
     | undefined;
 }
 
+/** Updates goal. */
 function syncGoal(
   definition: StrategicGoalBootstrapDefinition,
   priority: { id: number; name: string },
@@ -354,6 +364,7 @@ function syncGoal(
   };
 }
 
+/** Updates config. */
 function syncConfig(
   definition: StrategicKpiBootstrapDefinition,
   kpi: { id: number; name: string; unit: string },
@@ -467,6 +478,7 @@ function syncConfig(
   return { row: asMeasurementConfig(after), change };
 }
 
+/** Updates membership. */
 function syncMembership(
   goal: PersistedStrategicGoal,
   kpi: { id: number; name: string },
@@ -549,6 +561,7 @@ function syncMembership(
   return change;
 }
 
+/** Updates component. */
 function syncComponent(
   definition: StrategicComponentBootstrapDefinition,
   parentDefinition: StrategicKpiBootstrapDefinition,
@@ -670,6 +683,7 @@ function syncComponent(
   return { row: asComponent(after), change };
 }
 
+/** Implements the target lookup operation. */
 function targetLookup(
   subject: { kpiId?: number; componentId?: number },
   target: StrategicTargetBootstrapDefinition,
@@ -688,6 +702,7 @@ function targetLookup(
     | undefined;
 }
 
+/** Updates target. */
 function syncTarget(
   subject: { kpiId?: number; componentId?: number; measurementType: MeasurementType },
   definition: StrategicTargetBootstrapDefinition,
@@ -887,6 +902,7 @@ const ARCHIVABLE = {
   target: { table: "kpi_targets", entityType: "target" },
 } as const;
 
+/** Implements the archivable context operation. */
 function archivableContext(kind: ArchivableKind, row: Record<string, unknown>) {
   const db = getDb();
   if (kind === "goal") {
@@ -937,6 +953,7 @@ function archivableContext(kind: ArchivableKind, row: Record<string, unknown>) {
   };
 }
 
+/** Updates archived. */
 function setArchived(
   kind: ArchivableKind,
   id: number,
@@ -989,31 +1006,40 @@ function setArchived(
   });
 }
 
+/** Removes or resets strategic goal. */
 export function archiveStrategicGoal(id: number, actorId: number | null = null): void {
   setArchived("goal", id, true, actorId);
 }
+/** Implements the restore strategic goal operation. */
 export function restoreStrategicGoal(id: number, actorId: number | null = null): void {
   setArchived("goal", id, false, actorId);
 }
+/** Removes or resets measurement config. */
 export function archiveMeasurementConfig(id: number, actorId: number | null = null): void {
   setArchived("measurement_config", id, true, actorId);
 }
+/** Implements the restore measurement config operation. */
 export function restoreMeasurementConfig(id: number, actorId: number | null = null): void {
   setArchived("measurement_config", id, false, actorId);
 }
+/** Removes or resets component. */
 export function archiveComponent(id: number, actorId: number | null = null): void {
   setArchived("component", id, true, actorId);
 }
+/** Implements the restore component operation. */
 export function restoreComponent(id: number, actorId: number | null = null): void {
   setArchived("component", id, false, actorId);
 }
+/** Removes or resets target. */
 export function archiveTarget(id: number, actorId: number | null = null): void {
   setArchived("target", id, true, actorId);
 }
+/** Implements the restore target operation. */
 export function restoreTarget(id: number, actorId: number | null = null): void {
   setArchived("target", id, false, actorId);
 }
 
+/** Updates configuration status. */
 function updateConfigurationStatus(
   kind: ArchivableKind,
   id: number,
@@ -1059,6 +1085,7 @@ function updateConfigurationStatus(
   });
 }
 
+/** Updates measurement configuration status. */
 export function updateMeasurementConfigurationStatus(
   id: number,
   status: ConfigurationStatus,

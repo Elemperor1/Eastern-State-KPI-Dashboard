@@ -53,12 +53,14 @@ const EDITABLE_CONFIGURATION_STATUSES = CONFIGURATION_STATUSES.filter(
   (status) => status !== "archived",
 );
 
+/** Implements the display label operation. */
 function displayLabel(value: string): string {
   return value
     .replaceAll("_", " ")
     .replace(/^./, (first) => first.toLocaleUpperCase());
 }
 
+/** Implements the measurement label operation. */
 function measurementLabel(value: MeasurementType): string {
   const labels: Record<MeasurementType, string> = {
     binary: "Yes or no",
@@ -76,6 +78,7 @@ function measurementLabel(value: MeasurementType): string {
   return labels[value];
 }
 
+/** Implements the frequency label operation. */
 function frequencyLabel(value: StrategyReportingFrequency): string {
   if (value === "annual") return "Yearly";
   if (value === "one_time") return "One time";
@@ -84,6 +87,7 @@ function frequencyLabel(value: StrategyReportingFrequency): string {
   return displayLabel(value);
 }
 
+/** Implements the aggregation label operation. */
 function aggregationLabel(value: AggregationMethod): string {
   const labels: Record<AggregationMethod, string> = {
     none: "Keep separate",
@@ -96,6 +100,7 @@ function aggregationLabel(value: AggregationMethod): string {
   return labels[value];
 }
 
+/** Implements the issue message operation. */
 function issueMessage(value: unknown): string | null {
   if (typeof value === "string" && value.trim()) return value;
   if (Array.isArray(value)) {
@@ -115,11 +120,13 @@ function issueMessage(value: unknown): string | null {
   return null;
 }
 
+/** Renders the error hint interface. */
 function ErrorHint({ error, fallback }: { error?: string; fallback?: string }) {
   if (error) return <span className="font-medium text-[var(--color-danger-text)]">{error}</span>;
   return fallback ?? null;
 }
 
+/** Renders the strategic kpi editor client interface. */
 export function StrategicKpiEditorClient({ data }: { data: StrategicKpiEditorData }) {
   const router = useRouter();
 
@@ -250,6 +257,7 @@ export function StrategicKpiEditorClient({ data }: { data: StrategicKpiEditorDat
   );
 }
 
+/** Renders the distribution editors interface. */
 function DistributionEditors({
   data,
   runMutation,
@@ -311,6 +319,7 @@ function DistributionEditors({
   );
 }
 
+/** Renders the configuration editor interface. */
 function ConfigurationEditor({
   data,
   runMutation,
@@ -341,6 +350,7 @@ function ConfigurationEditor({
     );
   }, [data.configuration, data.kpi, data.reportingYear]);
 
+  /** Updates the current state. */
   function update<K extends keyof ConfigurationFormDraft>(
     key: K,
     value: ConfigurationFormDraft[K],
@@ -354,6 +364,7 @@ function ConfigurationEditor({
     });
   }
 
+  /** Runs the submit workflow. */
   async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     setFeedback(null);

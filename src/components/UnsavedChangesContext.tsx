@@ -14,9 +14,11 @@ export interface UnsavedChangesContextValue {
 
 export const UnsavedChangesContext = createContext<UnsavedChangesContextValue>({
   state: { dirty: false, busy: false },
+  /** Updates state. */
   setState: () => undefined,
 });
 
+/** Implements the use unsaved changes operation. */
 export function useUnsavedChanges(): UnsavedChangesContextValue {
   return useContext(UnsavedChangesContext);
 }

@@ -12,6 +12,7 @@ interface ChartContainerProps {
   bodyClassName?: string;
 }
 
+/** Renders the chart container interface. */
 export function ChartContainer({
   eyebrow,
   title,

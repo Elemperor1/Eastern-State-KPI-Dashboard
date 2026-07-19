@@ -9,6 +9,7 @@ const { requireAdminMock, updateMembershipMock, successorMembershipMock } = vi.h
 
 vi.mock("@/features/auth/session", () => ({
   requireAdmin: requireAdminMock,
+  /** Supports the auth error response test scenario. */
   authErrorResponse: (error: { status?: number }) =>
     Response.json(
       { error: error.status === 403 ? "Forbidden" : "Unauthorized" },
@@ -31,6 +32,7 @@ import { PATCH } from "./route";
 
 const TOKEN = "test-csrf-token-0123456789abcdef";
 
+/** Supports the request test scenario. */
 function request(
   body: Record<string, unknown>,
   options: { origin?: string; csrf?: boolean } = {},

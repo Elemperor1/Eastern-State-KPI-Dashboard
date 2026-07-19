@@ -13,6 +13,7 @@ const {
 
 vi.mock("@/features/auth/session", () => ({
   requireSession: requireSessionMock,
+  /** Supports the auth error response test scenario. */
   authErrorResponse: (error: { status?: number }) =>
     Response.json(
       { error: error.status === 403 ? "Forbidden" : "Unauthorized" },
@@ -23,6 +24,7 @@ vi.mock("@/features/auth/session", () => ({
 vi.mock("@/features/reporting/server", () => ({
   listStrategicReportingPeriods: listStrategicReportingPeriodsMock,
   loadBoardReportPageData: loadBoardReportPageDataMock,
+  /** Supports the reporting cycle through month test scenario. */
   reportingCycleThroughMonth: (period: { periodType: string; periodIndex: number }) =>
     period.periodType === "quarterly" ? period.periodIndex * 3 : period.periodIndex,
 }));

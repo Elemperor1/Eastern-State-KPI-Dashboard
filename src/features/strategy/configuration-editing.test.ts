@@ -42,6 +42,7 @@ import {
 } from "./queries";
 import { resolveEffectiveTargetPolicy } from "./target-policy";
 
+/** Supports the configuration test scenario. */
 function configuration(kpiId: number, overrides: Record<string, unknown> = {}) {
   return {
     kpi_id: kpiId,
@@ -69,6 +70,7 @@ function configuration(kpiId: number, overrides: Record<string, unknown> = {}) {
   };
 }
 
+/** Supports the expect historical semantics conflict test scenario. */
 function expectHistoricalSemanticsConflict(operation: () => unknown): void {
   try {
     operation();
@@ -80,6 +82,7 @@ function expectHistoricalSemanticsConflict(operation: () => unknown): void {
   throw new Error("Expected a historical semantics conflict.");
 }
 
+/** Supports the get measurement range test scenario. */
 function getMeasurementRange(id: number) {
   return getDb()
     .prepare(

@@ -12,11 +12,13 @@ export interface RouteErrorStateProps {
   reset: () => void;
 }
 
+/** Renders the route error state interface. */
 export function RouteErrorState({ title, reset }: RouteErrorStateProps) {
   const router = useRouter();
   const headingRef = useRef<HTMLHeadingElement>(null);
   const [isRetrying, startRetry] = useTransition();
 
+  /** Implements the retry operation. */
   function retry() {
     window.sessionStorage.setItem(ROUTE_RECOVERY_FOCUS_KEY, "main");
     startRetry(() => {

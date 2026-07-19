@@ -20,6 +20,7 @@ const variants = {
   accent: "bg-accent-300 text-ink-950",
 };
 
+/** Renders the badge interface. */
 export function Badge({ children, variant = "default", icon: Icon, label, className, ...props }: BadgeProps) {
   return (
     <span

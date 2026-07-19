@@ -43,6 +43,7 @@ export function calculateStrategicGoalCompletion({
   });
 }
 
+/** Implements the to goal rule operation. */
 function toGoalRule(goal: StrategicGoalCompletionDefinition): GoalCompletionRule {
   switch (goal.completion_rule) {
     case "weighted_average":
@@ -75,6 +76,7 @@ function toGoalRule(goal: StrategicGoalCompletionDefinition): GoalCompletionRule
   }
 }
 
+/** Implements the excluded goal result operation. */
 function excludedGoalResult(
   goal: StrategicGoalCompletionDefinition,
   kpis: GoalKpiInput[],
@@ -108,6 +110,7 @@ function excludedGoalResult(
   };
 }
 
+/** Implements the goal exclusion reason operation. */
 function goalExclusionReason(
   status: StrategicGoalCompletionDefinition["configuration_status"],
 ): GoalKpiExclusionReason {

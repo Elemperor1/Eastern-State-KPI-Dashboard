@@ -15,6 +15,7 @@ import {
   listAdminHistoryYears,
 } from "./admin-history";
 
+/** Supports the history test scenario. */
 function history(overrides: Partial<EntryHistoryWithMeta>): EntryHistoryWithMeta {
   return {
     id: 1,
@@ -46,6 +47,7 @@ function history(overrides: Partial<EntryHistoryWithMeta>): EntryHistoryWithMeta
   };
 }
 
+/** Supports the kpi test scenario. */
 function kpi(id: number, categoryId: number): KPIWithCategory {
   return {
     id,

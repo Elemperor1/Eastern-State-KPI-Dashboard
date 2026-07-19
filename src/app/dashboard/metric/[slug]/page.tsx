@@ -22,10 +22,12 @@ import { getActiveInstallation } from "@/features/installation/server";
 
 export const dynamic = "force-dynamic";
 
+/** Implements the first value operation. */
 function firstValue(value: string | string[] | undefined): string | undefined {
   return Array.isArray(value) ? value[0] : value;
 }
 
+/** Implements the status variant operation. */
 function statusVariant(status: string) {
   if (["complete", "exceeded", "on_track", "active"].includes(status)) return "success" as const;
   if (["needs_target", "target_not_finalized"].includes(status)) return "incomplete" as const;
@@ -34,6 +36,7 @@ function statusVariant(status: string) {
   return "info" as const;
 }
 
+/** Implements the reported period label operation. */
 function reportedPeriodLabel({
   year,
   periodType,
@@ -54,6 +57,7 @@ function reportedPeriodLabel({
   return `One-time result (${year})`;
 }
 
+/** Renders the progress summary interface. */
 function ProgressSummary({
   label,
   progress,
@@ -92,6 +96,7 @@ function ProgressSummary({
   );
 }
 
+/** Renders the strategic measure page interface. */
 export default async function StrategicMeasurePage({
   params,
   searchParams,

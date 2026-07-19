@@ -9,6 +9,7 @@ export interface StrategicBoardReportStructureCounts {
   kpis: number;
 }
 
+/** Calculates strategic board report structure. */
 export function countStrategicBoardReportStructure(
   report: StrategicBoardReportViewModel,
 ): StrategicBoardReportStructureCounts {
@@ -21,6 +22,7 @@ export function countStrategicBoardReportStructure(
   return { priorities: report.priorities.length, goals, kpis };
 }
 
+/** Formats board report token. */
 export function formatBoardReportToken(value: string): string {
   return value
     .trim()
@@ -28,6 +30,7 @@ export function formatBoardReportToken(value: string): string {
     .replace(/^./, (first) => first.toLocaleUpperCase());
 }
 
+/** Formats board report number. */
 export function formatBoardReportNumber(value: number | null): string {
   if (value === null) return "Not reported";
   return new Intl.NumberFormat("en-US", {
@@ -35,11 +38,13 @@ export function formatBoardReportNumber(value: number | null): string {
   }).format(value);
 }
 
+/** Formats board report percentage. */
 export function formatBoardReportPercentage(value: number | null): string {
   if (value === null) return "Not reported";
   return `${formatBoardReportNumber(value)}%`;
 }
 
+/** Formats board report currency. */
 export function formatBoardReportCurrency(value: number | null): string {
   if (value === null) return "Not reported";
   return new Intl.NumberFormat("en-US", {
@@ -49,6 +54,7 @@ export function formatBoardReportCurrency(value: number | null): string {
   }).format(value);
 }
 
+/** Formats board report metric value. */
 export function formatBoardReportMetricValue(
   value: number | null,
   unit: string | null,
@@ -65,6 +71,7 @@ export function formatBoardReportMetricValue(
   return unit?.trim() ? `${number} ${unit.trim()}` : number;
 }
 
+/** Formats board report target. */
 export function formatBoardReportTarget(
   progress: TargetProgressViewModel | null,
   unit: string | null,
@@ -74,6 +81,7 @@ export function formatBoardReportTarget(
   return formatBoardReportMetricValue(progress.targetValue, unit);
 }
 
+/** Implements the board report progress aria text operation. */
 export function boardReportProgressAriaText(
   progress: TargetProgressViewModel,
 ): string {

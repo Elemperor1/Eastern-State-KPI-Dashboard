@@ -45,6 +45,7 @@ function readCsrfToken(): string | null {
   return null;
 }
 
+/** Implements the ensure csrf token operation. */
 async function ensureCsrfToken(credentials: RequestCredentials): Promise<string | null> {
   const existing = readCsrfToken();
   if (existing) return existing;

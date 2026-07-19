@@ -4,6 +4,7 @@ import { describe, expect, it } from "vitest";
 
 const root = process.cwd();
 
+/** Supports the read test scenario. */
 function read(relativePath: string): string {
   return fs.readFileSync(path.join(root, relativePath), "utf8");
 }

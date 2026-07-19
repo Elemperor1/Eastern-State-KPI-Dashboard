@@ -103,12 +103,14 @@ export function buildStrategicDataEntryRequests(
   return mutations;
 }
 
+/** Implements the display strategy label operation. */
 export function displayStrategyLabel(value: string): string {
   return value
     .replaceAll("_", " ")
     .replace(/^./, (first) => first.toLocaleUpperCase());
 }
 
+/** Implements the configured frequency operation. */
 function configuredFrequency(
   selectedKpi: StrategicDataEntrySelectedKpi,
   draft: StrategicDataEntryDraft,
@@ -118,6 +120,7 @@ function configuredFrequency(
     : selectedKpi.reportingFrequency;
 }
 
+/** Implements the selected entry component operation. */
 export function selectedEntryComponent(
   selectedKpi: StrategicDataEntrySelectedKpi,
   draft: StrategicDataEntryDraft,
@@ -127,6 +130,7 @@ export function selectedEntryComponent(
   return selectedKpi.components.find((component) => component.id === id) ?? null;
 }
 
+/** Implements the selected entry measurement type operation. */
 export function selectedEntryMeasurementType(
   selectedKpi: StrategicDataEntrySelectedKpi,
   draft: StrategicDataEntryDraft,
@@ -135,6 +139,7 @@ export function selectedEntryMeasurementType(
     selectedKpi.measurementType;
 }
 
+/** Implements the selected entry unit operation. */
 export function selectedEntryUnit(
   selectedKpi: StrategicDataEntrySelectedKpi,
   draft: StrategicDataEntryDraft,
@@ -142,6 +147,7 @@ export function selectedEntryUnit(
   return selectedEntryComponent(selectedKpi, draft)?.unit ?? selectedKpi.unit;
 }
 
+/** Implements the active bands for draft operation. */
 export function activeBandsForDraft(
   selectedKpi: StrategicDataEntrySelectedKpi,
   draft: StrategicDataEntryDraft,
@@ -152,6 +158,7 @@ export function activeBandsForDraft(
     .sort((left, right) => left.displayOrder - right.displayOrder || left.id - right.id);
 }
 
+/** Implements the entry period options operation. */
 export function entryPeriodOptions(
   selectedKpi: StrategicDataEntrySelectedKpi,
   draft: StrategicDataEntryDraft,
@@ -167,6 +174,7 @@ export function entryPeriodOptions(
   return strategyPeriods.allowedReportingPeriodOptions(definition, reportingYear);
 }
 
+/** Implements the empty strategic data entry draft operation. */
 export function emptyStrategicDataEntryDraft(
   selectedKpi: StrategicDataEntrySelectedKpi,
   reportingYear: number,
@@ -212,6 +220,7 @@ export function emptyStrategicDataEntryDraft(
   };
 }
 
+/** Builds for reporting cycle. */
 function draftForReportingCycle(
   selectedKpi: StrategicDataEntrySelectedKpi,
   reportingYear: number,
@@ -270,6 +279,7 @@ export function initialStrategicDataEntryDrafts(
   );
 }
 
+/** Retrieves number. */
 function readNumber(
   value: string,
   field: string,
@@ -300,6 +310,7 @@ function readNumber(
   return parsed;
 }
 
+/** Implements the optional number operation. */
 function optionalNumber(
   value: string,
   field: string,
@@ -310,6 +321,7 @@ function optionalNumber(
   return readNumber(value, field, errors, options);
 }
 
+/** Implements the period payload operation. */
 function periodPayload(
   selectedKpi: StrategicDataEntrySelectedKpi,
   draft: StrategicDataEntryDraft,
@@ -338,6 +350,7 @@ function periodPayload(
   return payload;
 }
 
+/** Implements the common payload operation. */
 function commonPayload(draft: StrategicDataEntryDraft) {
   return {
     notes: draft.notes.trim() || null,
@@ -345,6 +358,7 @@ function commonPayload(draft: StrategicDataEntryDraft) {
   };
 }
 
+/** Builds strategic data entry mutation. */
 export function buildStrategicDataEntryMutation(
   selectedKpi: StrategicDataEntrySelectedKpi,
   reportingYear: number,
@@ -554,10 +568,12 @@ export function buildStrategicDataEntryMutation(
   };
 }
 
+/** Implements the value string operation. */
 function valueString(value: number | null): string {
   return value === null ? "" : String(value);
 }
 
+/** Builds from strategic data entry record. */
 export function draftFromStrategicDataEntryRecord(
   selectedKpi: StrategicDataEntrySelectedKpi,
   record: StrategicDataEntryRecord,
@@ -600,6 +616,7 @@ export function draftFromStrategicDataEntryRecord(
   };
 }
 
+/** Implements the strategic data entry period label operation. */
 export function strategicDataEntryPeriodLabel(
   record: StrategicDataEntryRecord,
 ): string {
@@ -616,6 +633,7 @@ export function strategicDataEntryPeriodLabel(
   });
 }
 
+/** Implements the strategic data entry raw value label operation. */
 export function strategicDataEntryRawValueLabel(
   record: StrategicDataEntryRecord,
   unit: string | null,
@@ -647,6 +665,7 @@ export function strategicDataEntryRawValueLabel(
   return `${record.scalarValue ?? "—"}${unit ? ` ${unit}` : ""}`;
 }
 
+/** Removes or resets endpoint for record. */
 export function deleteEndpointForRecord(
   record: StrategicDataEntryRecord,
 ): StrategicDataEntryMutation["endpoint"] {

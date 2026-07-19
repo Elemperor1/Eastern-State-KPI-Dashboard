@@ -11,6 +11,7 @@ const ADMIN = {
 
 vi.mock("@/features/auth/session", () => ({
   requireAdmin: vi.fn(async () => ADMIN),
+  /** Supports the auth error response test scenario. */
   authErrorResponse: (err: { status?: number }) => {
     const status = err?.status ?? 401;
     return new Response(JSON.stringify({ error: "Unauthorized" }), {
@@ -61,6 +62,7 @@ const REFRESHED_USERS = [
   },
 ];
 
+/** Supports the mutation req test scenario. */
 function mutationReq(method: "POST" | "PATCH" | "DELETE", body: object): NextRequest {
   return new NextRequest(
     new Request("http://localhost/api/users", {

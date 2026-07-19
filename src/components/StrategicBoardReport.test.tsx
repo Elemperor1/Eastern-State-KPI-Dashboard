@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 import type { StrategicBoardReportViewModel } from "@/features/reporting/strategic-board-report";
 import { StrategicBoardReport } from "./StrategicBoardReport";
 
+/** Supports the empty report test scenario. */
 function emptyReport(): StrategicBoardReportViewModel {
   return {
     organizationName: "Eastern State Penitentiary Historic Site",

@@ -23,6 +23,7 @@ export interface E2EDatabaseRun {
   databaseInode: number;
 }
 
+/** Implements the e2e database run from metadata operation. */
 export function e2eDatabaseRunFromMetadata(
   metadata: unknown,
 ): E2EDatabaseRun {
@@ -98,6 +99,7 @@ export function createE2EDatabaseRun({
   }
 }
 
+/** Retrieves explicit e2 edatabase path. */
 function resolveExplicitE2EDatabasePath(
   explicitPath: string,
   temporaryDirectory: string,
@@ -152,14 +154,17 @@ function resolveExplicitE2EDatabasePath(
   }
 }
 
+/** Implements the e2e database files operation. */
 export function e2eDatabaseFiles(databasePath: string): string[] {
   return [databasePath, `${databasePath}-wal`, `${databasePath}-shm`];
 }
 
+/** Implements the owned by current user operation. */
 function ownedByCurrentUser(stat: fs.Stats): boolean {
   return typeof process.getuid !== "function" || stat.uid === process.getuid();
 }
 
+/** Implements the lstat if present operation. */
 async function lstatIfPresent(file: string): Promise<fs.Stats | null> {
   try {
     return await fsPromises.lstat(file);

@@ -31,6 +31,7 @@ const EDITABLE_CONFIGURATION_STATUSES = CONFIGURATION_STATUSES.filter(
   (status) => status !== "archived",
 );
 
+/** Renders the strategic target editor card interface. */
 export function StrategicTargetEditorCard({
   title,
   description,
@@ -73,6 +74,7 @@ export function StrategicTargetEditorCard({
     setFeedback(null);
   }, [initialDraftSignature]);
 
+  /** Updates the current state. */
   function update<K extends keyof TargetFormDraft>(
     key: K,
     value: TargetFormDraft[K],
@@ -81,6 +83,7 @@ export function StrategicTargetEditorCard({
     setErrors({});
   }
 
+  /** Runs the submit workflow. */
   async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     setFeedback(null);
@@ -117,6 +120,7 @@ export function StrategicTargetEditorCard({
     );
   }
 
+  /** Implements the field id operation. */
   const fieldId = (suffix: string) => `${idPrefix}-${draft.scope}-${suffix}`;
   return (
     <Card as="section" className="p-5 lg:p-6">
@@ -267,6 +271,7 @@ export function StrategicTargetEditorCard({
   );
 }
 
+/** Implements the display label operation. */
 function displayLabel(value: string): string {
   return value
     .replaceAll("_", " ")

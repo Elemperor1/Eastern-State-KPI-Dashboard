@@ -27,6 +27,7 @@ import {
 import type { SessionUser } from "@/lib/types";
 import { ROUTE_RECOVERY_FOCUS_KEY } from "@/lib/route-recovery-focus";
 
+/** Determines whether has unsaved history marker. */
 function hasUnsavedHistoryMarker(state: unknown): boolean {
   return (
     typeof state === "object" &&
@@ -66,12 +67,14 @@ const NAV = [
   },
 ];
 
+/** Implements the nav item is active operation. */
 function navItemIsActive(item: (typeof NAV)[number], pathname: string): boolean {
   return item.matches.some(
     (route) => pathname === route || pathname.startsWith(`${route}/`),
   );
 }
 
+/** Renders the nav item interface. */
 function NavItem({
   item,
   active,
@@ -95,6 +98,7 @@ function NavItem({
   );
 }
 
+/** Renders the shell navigation interface. */
 function ShellNavigation({
   user,
   pathname,
@@ -122,6 +126,7 @@ function ShellNavigation({
   );
 }
 
+/** Renders the account block interface. */
 function AccountBlock({ user }: { user: SessionUser }) {
   const authDisabled = user.email === "auth-disabled@local";
   if (authDisabled) return null;
@@ -149,6 +154,7 @@ function AccountBlock({ user }: { user: SessionUser }) {
   );
 }
 
+/** Renders the app shell interface. */
 export function AppShell({
   user,
   children,
@@ -183,6 +189,7 @@ export function AppShell({
     open: mobileOpen,
     containerRef: mobileDrawerRef,
     initialFocusRef: mobileCloseRef,
+    /** Implements the on close operation. */
     onClose: () => setMobileOpen(false),
     closeEnabled: pendingNavigation === null,
     inertBackground: false,
@@ -190,6 +197,7 @@ export function AppShell({
 
   useEffect(() => {
     const desktopQuery = window.matchMedia("(min-width: 1024px)");
+    /** Implements the close drawer at desktop operation. */
     function closeDrawerAtDesktop(event: MediaQueryListEvent) {
       if (event.matches) setMobileOpen(false);
     }
@@ -208,6 +216,7 @@ export function AppShell({
   }, []);
 
   useEffect(() => {
+    /** Implements the warn before unload operation. */
     function warnBeforeUnload(event: BeforeUnloadEvent) {
       if (!unsaved.dirty) return;
       event.preventDefault();
@@ -239,6 +248,7 @@ export function AppShell({
     }
 
     armHistoryGuard();
+    /** Implements the guard history navigation operation. */
     function guardHistoryNavigation() {
       if (!historyGuardArmed.current) return;
       historyGuardArmed.current = false;
@@ -248,6 +258,7 @@ export function AppShell({
     return () => window.removeEventListener("popstate", guardHistoryNavigation);
   }, [armHistoryGuard, unsaved.dirty]);
 
+  /** Implements the guard link navigation operation. */
   function guardLinkNavigation(event: ReactMouseEvent<HTMLDivElement>) {
     if (!unsaved.dirty || event.defaultPrevented) return;
     if (event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) {

@@ -36,6 +36,7 @@ const PatchSchema = z.discriminatedUnion("action", [
     .strict(),
 ]);
 
+/** Implements the authorize operation. */
 async function authorize(req: NextRequest) {
   try {
     const user = await requireAdmin();
@@ -44,6 +45,7 @@ async function authorize(req: NextRequest) {
     return { user: null, response: authErrorResponse(error) } as const;
   }
 }
+/** Implements the post operation. */
 export async function POST(req: NextRequest) {
   const auth = await authorize(req);
   if (auth.response) return auth.response;
@@ -63,6 +65,7 @@ export async function POST(req: NextRequest) {
   }
 }
 
+/** Implements the patch operation. */
 export async function PATCH(req: NextRequest) {
   const auth = await authorize(req);
   if (auth.response) return auth.response;

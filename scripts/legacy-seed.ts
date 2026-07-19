@@ -23,6 +23,7 @@ export function seedLegacyScalar(input: {
   ).run(input.kpiId, input.year, input.value, input.notes ?? null);
 }
 
+/** Seeds legacy breakdown. */
 export function seedLegacyBreakdown(input: {
   kpiId: number;
   year: number;
@@ -50,6 +51,7 @@ export function seedLegacyBreakdown(input: {
   );
 }
 
+/** Seeds legacy goal. */
 export function seedLegacyGoal(input: {
   kpiId: number;
   targetYear: number;

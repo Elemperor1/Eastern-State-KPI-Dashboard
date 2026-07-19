@@ -487,6 +487,7 @@ describe("strategic dashboard summary", () => {
   });
 });
 
+/** Supports the catalog kpi test scenario. */
 function catalogKpi(id: number, slug: string, name: string): KPIWithCategory {
   return {
     id,
@@ -507,6 +508,7 @@ function catalogKpi(id: number, slug: string, name: string): KPIWithCategory {
   };
 }
 
+/** Supports the scalar actual test scenario. */
 function scalarActual(
   kpiId: number,
   year: number,
@@ -524,6 +526,7 @@ function scalarActual(
   };
 }
 
+/** Supports the goal test scenario. */
 function goal(
   overrides: Partial<StrategicGoalReadModel> = {},
 ): StrategicGoalReadModel {
@@ -560,6 +563,7 @@ function goal(
   };
 }
 
+/** Supports the member test scenario. */
 function member(
   kpiId: number,
   configuredTarget:
@@ -626,6 +630,7 @@ function member(
   };
 }
 
+/** Supports the target test scenario. */
 function target(value: number, targetYear: number) {
   return {
     id: 1,
@@ -651,6 +656,7 @@ function target(value: number, targetYear: number) {
   };
 }
 
+/** Supports the annual target test scenario. */
 function annualTarget(value: number, reportingYear: number) {
   return {
     ...target(value, reportingYear),
@@ -660,6 +666,7 @@ function annualTarget(value: number, reportingYear: number) {
   };
 }
 
+/** Supports the scalar calculation test scenario. */
 function scalarCalculation(value: number): MeasurementResult {
   return {
     state: "ok",
@@ -674,6 +681,7 @@ function scalarCalculation(value: number): MeasurementResult {
   };
 }
 
+/** Supports the parentless component member test scenario. */
 function parentlessComponentMember({
   aggregationMethod,
   targetValues,
@@ -724,6 +732,7 @@ function parentlessComponentMember({
   return configuredMember;
 }
 
+/** Supports the multi component actual test scenario. */
 function multiComponentActual({
   member: configuredMember,
   aggregationMethod,

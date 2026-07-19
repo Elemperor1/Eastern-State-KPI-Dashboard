@@ -50,6 +50,7 @@ const store = new Map<string, ThrottleEntry>();
 const evictionCandidates = new Map<string, true>();
 const PRUNE_BATCH_SIZE = 64;
 
+/** Retrieves number. */
 function readNumber(
   name: string,
   fallback: number,
@@ -94,10 +95,12 @@ export function throttleConfig() {
   return resolvedConfig();
 }
 
+/** Implements the fresh entry operation. */
 function freshEntry(): ThrottleEntry {
   return { failures: 0, windowStart: 0, lockedUntil: 0 };
 }
 
+/** Updates eviction candidate. */
 function refreshEvictionCandidate(
   key: string,
   entry: ThrottleEntry,
@@ -107,6 +110,7 @@ function refreshEvictionCandidate(
   if (entry.lockedUntil <= now) evictionCandidates.set(key, true);
 }
 
+/** Implements the evict oldest unlocked operation. */
 function evictOldestUnlocked(now: number): boolean {
   while (evictionCandidates.size > 0) {
     const key = evictionCandidates.keys().next().value as string | undefined;

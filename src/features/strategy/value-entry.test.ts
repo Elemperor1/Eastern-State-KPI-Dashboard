@@ -36,6 +36,7 @@ interface SeededKpi {
   configurationId: number;
 }
 
+/** Supports the seed kpi test scenario. */
 function seedKpi(
   slug: string,
   measurementType: MeasurementType,
@@ -83,6 +84,7 @@ function seedKpi(
   return { kpiId, configurationId };
 }
 
+/** Supports the seed component test scenario. */
 function seedComponent(
   configuration: SeededKpi,
   measurementType: MeasurementType,
