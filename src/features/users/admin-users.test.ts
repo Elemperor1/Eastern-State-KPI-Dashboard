@@ -11,6 +11,7 @@ import {
   isCurrentAdminUser,
 } from "./admin-users";
 
+/** Supports the form data test scenario. */
 function formData(values: Record<string, string>) {
   const form = new FormData();
   for (const [key, value] of Object.entries(values)) form.set(key, value);

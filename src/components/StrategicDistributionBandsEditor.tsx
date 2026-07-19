@@ -31,6 +31,7 @@ import {
 
 type Feedback = { variant: "success" | "error"; message: string } | null;
 
+/** Renders the error hint interface. */
 function ErrorHint({ error, fallback }: { error?: string; fallback?: string }) {
   return error ? (
     <span className="font-medium text-[var(--color-danger-text)]">{error}</span>
@@ -39,6 +40,7 @@ function ErrorHint({ error, fallback }: { error?: string; fallback?: string }) {
   );
 }
 
+/** Renders the strategic distribution bands editor interface. */
 export function StrategicDistributionBandsEditor({
   kpiId,
   componentId = null,
@@ -88,6 +90,7 @@ export function StrategicDistributionBandsEditor({
     );
   }
 
+  /** Implements the lifecycle operation. */
   async function lifecycle(id: number, action: "archive" | "restore") {
     setBusyId(id);
     setFeedback(null);
@@ -111,6 +114,7 @@ export function StrategicDistributionBandsEditor({
     );
   }
 
+  /** Implements the reorder operation. */
   async function reorder(id: number, direction: "up" | "down") {
     const next = moveId(active, id, direction);
     if (next === active) return;
@@ -262,6 +266,7 @@ export function StrategicDistributionBandsEditor({
   );
 }
 
+/** Renders the distribution band form card interface. */
 function DistributionBandFormCard({
   title,
   description,
@@ -289,6 +294,7 @@ function DistributionBandFormCard({
   const [busy, setBusy] = useState(false);
   const prefix = idPrefix;
 
+  /** Updates the current state. */
   function update<K extends keyof DistributionBandFormDraft>(
     key: K,
     value: DistributionBandFormDraft[K],
@@ -297,6 +303,7 @@ function DistributionBandFormCard({
     setErrors({});
   }
 
+  /** Runs the submit workflow. */
   async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     setFeedback(null);

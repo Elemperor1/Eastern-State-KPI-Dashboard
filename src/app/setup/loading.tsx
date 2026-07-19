@@ -1,5 +1,6 @@
 import { Skeleton } from "@/components/ui";
 
+/** Renders the setup loading interface. */
 export default function SetupLoading() {
   return (
     <div className="page-content page-content-wide" aria-label="Loading setup">

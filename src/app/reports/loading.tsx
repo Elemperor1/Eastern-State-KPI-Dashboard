@@ -1,5 +1,6 @@
 import { Skeleton } from "@/components/ui";
 
+/** Renders the reports loading interface. */
 export default function ReportsLoading() {
   return (
     <div className="page-content page-content-wide" aria-label="Loading reports">

@@ -13,6 +13,7 @@ type SmokeCatalogIds = {
   strategyPercentageYear: number;
 };
 
+/** Implements the fixture ids operation. */
 function fixtureIds(): SmokeCatalogIds {
   return {
     entryKpi: 1,
@@ -24,8 +25,10 @@ function fixtureIds(): SmokeCatalogIds {
   };
 }
 
+/** Implements the real ids operation. */
 function realIds(): SmokeCatalogIds {
   const bySlug = new Map(listKPIs().map((kpi) => [kpi.slug, kpi.id]));
+  /** Implements the id for operation. */
   const idFor = (slug: string): number => {
     const id = bySlug.get(slug);
     if (id == null) {

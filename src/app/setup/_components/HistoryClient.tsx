@@ -61,10 +61,12 @@ export function HistoryClient({
     return filterAdminHistoryKpisByCategory(kpis, categoryId);
   }, [kpis, categoryId]);
 
+  /** Implements the apply filters operation. */
   function applyFilters(next: { categoryId?: string; kpiId?: string; year?: string }) {
     router.replace(buildAdminHistoryHref({ categoryId, kpiId, year }, next), { scroll: false });
   }
 
+  /** Removes or resets filters. */
   function clearFilters() {
     setCategoryId("");
     setKpiId("");
@@ -72,6 +74,7 @@ export function HistoryClient({
     router.replace("/setup?area=activity", { scroll: false });
   }
 
+  /** Implements the go to page operation. */
   function goToPage(nextPage: number) {
     const base = buildAdminHistoryHref({ categoryId, kpiId, year });
     router.replace(`${base}&page=${nextPage}`, { scroll: false });

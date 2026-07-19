@@ -19,6 +19,7 @@ import {
   type StrategicDataEntrySelectedKpi,
 } from "./strategic-data-entry-model";
 
+/** Supports the selected test scenario. */
 function selected(
   measurementType: MeasurementType,
   overrides: Partial<StrategicDataEntrySelectedKpi> = {},
@@ -48,6 +49,7 @@ function selected(
   };
 }
 
+/** Supports the draft for test scenario. */
 function draftFor(
   kpi: StrategicDataEntrySelectedKpi,
   overrides: Partial<StrategicDataEntryDraft> = {},
@@ -62,6 +64,7 @@ function draftFor(
   };
 }
 
+/** Supports the record test scenario. */
 function record(
   overrides: Partial<StrategicDataEntryRecord> = {},
 ): StrategicDataEntryRecord {

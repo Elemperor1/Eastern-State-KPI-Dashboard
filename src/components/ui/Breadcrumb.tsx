@@ -10,6 +10,7 @@ export interface BreadcrumbProps {
   className?: string;
 }
 
+/** Renders the breadcrumb interface. */
 export function Breadcrumb({ href, label, className }: BreadcrumbProps) {
   return (
     <div className={cn("mb-4 no-print", className)}>

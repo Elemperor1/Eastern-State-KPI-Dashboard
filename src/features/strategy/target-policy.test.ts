@@ -123,6 +123,7 @@ describe("effective Target policy", () => {
   });
 });
 
+/** Supports the target test scenario. */
 function target(overrides: Partial<PersistedTarget> = {}): PersistedTarget {
   return {
     id: 1,

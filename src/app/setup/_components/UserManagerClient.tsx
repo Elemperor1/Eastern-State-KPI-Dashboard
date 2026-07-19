@@ -24,6 +24,7 @@ interface UserMutationPayload {
   error?: string;
 }
 
+/** Renders the user manager client interface. */
 export function UserManagerClient({
   users: initialUsers,
   currentUserId,
@@ -50,10 +51,12 @@ export function UserManagerClient({
     requestAnimationFrame(() => document.getElementById(target)?.focus());
   }, [selection]);
 
+  /** Implements the apply users payload operation. */
   function applyUsersPayload(data: UserMutationPayload) {
     if (data.users) setUsers(data.users);
   }
 
+  /** Builds user. */
   async function createUser(form: FormData) {
     const res = await apiFetch("/api/users", {
       method: "POST",
@@ -69,6 +72,7 @@ export function UserManagerClient({
     if (data.user) setSelection(data.user.id);
   }
 
+  /** Removes or resets password. */
   async function resetPassword(id: number, password: string) {
     setResetting(true);
     try {
@@ -90,6 +94,7 @@ export function UserManagerClient({
     }
   }
 
+  /** Removes or resets user. */
   async function deleteUser(id: number): Promise<boolean> {
     try {
       const res = await apiFetch("/api/users", {
@@ -146,18 +151,22 @@ export function UserManagerClient({
     }
   }
 
+  /** Implements the change role operation. */
   async function changeRole(id: number, role: Role, name: string) {
     await patchAccount(id, { role }, buildRoleChangeSuccessMessage(name, role));
   }
 
+  /** Implements the disable user operation. */
   async function disableUser(id: number, name: string): Promise<boolean> {
     return patchAccount(id, { disabled: true }, buildDisableUserSuccessMessage(name));
   }
 
+  /** Implements the enable user operation. */
   async function enableUser(id: number, name: string) {
     await patchAccount(id, { disabled: false }, buildEnableUserSuccessMessage(name));
   }
 
+  /** Implements the close reset dialog operation. */
   function closeResetDialog() {
     if (resetting) return;
     setResetTarget(null);

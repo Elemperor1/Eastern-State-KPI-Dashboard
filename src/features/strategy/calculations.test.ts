@@ -13,6 +13,7 @@ import {
   type ProgressResult,
 } from "./calculations";
 
+/** Supports the progress test scenario. */
 function progress(currentValue: number, targetValue = 100): ProgressResult {
   return calculateProgress({ currentValue, targetValue, precision: 1 });
 }
@@ -442,6 +443,7 @@ describe("strategy calculation kernel", () => {
   });
 
   describe("multi-component aggregation", () => {
+    /** Supports the count component test scenario. */
     const countComponent = (id: string, value: number, weight?: number) => ({
       id,
       label: id,
@@ -688,6 +690,7 @@ describe("strategy calculation kernel", () => {
   });
 
   describe("priority and organization rollups", () => {
+    /** Supports the result test scenario. */
     function result(goalId: string, complete: boolean): GoalCompletionResult {
       return calculateGoalCompletion({
         goalId,

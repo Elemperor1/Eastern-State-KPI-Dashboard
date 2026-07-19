@@ -20,6 +20,7 @@ export interface ButtonProps extends Omit<React.ButtonHTMLAttributes<HTMLButtonE
 export type ButtonVariant = "primary" | "inverted" | "secondary" | "ghost" | "darkGhost" | "danger";
 export type ButtonSize = "sm" | "md" | "lg";
 
+/** Implements the button class name operation. */
 export function buttonClassName({
   variant,
   size,
@@ -53,6 +54,7 @@ export function buttonClassName({
   );
 }
 
+/** Renders the shared application button control. */
 export const Button = forwardRef<HTMLButtonElement, ButtonProps>(function Button({
   children,
   variant = "secondary",

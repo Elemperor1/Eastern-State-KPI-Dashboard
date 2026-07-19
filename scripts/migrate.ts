@@ -6,6 +6,7 @@ import {
 import { reconcileStrategicMigrationData } from "../src/features/strategy/migration-reconciliation";
 import { EASTERN_STATE_STRATEGIC_CONFIGURATION_FIXTURE } from "./bootstrap/strategic-configuration-fixture";
 
+/** Runs the main workflow. */
 function main(): void {
   const db = getDb();
   const row = db

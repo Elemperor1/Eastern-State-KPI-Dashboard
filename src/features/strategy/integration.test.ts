@@ -35,6 +35,7 @@ import {
 } from "./queries";
 import { listStrategicAuditEvents } from "./audit";
 
+/** Supports the seed canonical catalog test scenario. */
 function seedCanonicalCatalog(): void {
   const db = getDb();
   const insertCategory = db.prepare(
@@ -83,10 +84,12 @@ function seedCanonicalCatalog(): void {
   }
 }
 
+/** Supports the scalar test scenario. */
 function scalar(sql: string): number {
   return Number((getDb().prepare(sql).get() as { count: number }).count);
 }
 
+/** Supports the ensure strategic plan configuration test scenario. */
 const ensureStrategicPlanConfiguration = () =>
   initializeStrategicPlanConfiguration(
     EASTERN_STATE_STRATEGIC_CONFIGURATION_FIXTURE,

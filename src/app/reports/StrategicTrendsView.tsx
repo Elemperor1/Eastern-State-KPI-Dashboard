@@ -20,6 +20,7 @@ import {
 } from "@/components/ui";
 import type { StrategicTrendReportData } from "@/features/reporting/types";
 
+/** Retrieves strategic trend selection. */
 export function resolveStrategicTrendSelection(
   series: Array<{
     kpiId: number;
@@ -33,6 +34,7 @@ export function resolveStrategicTrendSelection(
   )?.kpiId ?? series[0]?.kpiId ?? 0;
 }
 
+/** Renders the strategic trends view interface. */
 export function StrategicTrendsView({
   data,
   reportingPeriod,

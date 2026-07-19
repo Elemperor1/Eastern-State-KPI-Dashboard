@@ -12,6 +12,7 @@ const EXPORT_TIMEOUT = 60_000;
 
 test.describe.configure({ mode: "serial" });
 
+/** Supports the collect browser errors test scenario. */
 function collectBrowserErrors(page: Page): string[] {
   const errors: string[] = [];
   page.on("pageerror", (error) => errors.push(error.message));
@@ -21,6 +22,7 @@ function collectBrowserErrors(page: Page): string[] {
   return errors;
 }
 
+/** Supports the downloaded bytes test scenario. */
 async function downloadedBytes(
   download: Download,
   extension: "csv" | "png" | "pdf",
@@ -42,6 +44,7 @@ async function downloadedBytes(
   return bytes;
 }
 
+/** Supports the open checklist item test scenario. */
 async function openChecklistItem(
   page: Page,
   measureName: string,
@@ -59,6 +62,7 @@ async function openChecklistItem(
   return `${selectedUrl.pathname}${selectedUrl.search}`;
 }
 
+/** Supports the set measure lifecycle test scenario. */
 async function setMeasureLifecycle(
   page: Page,
   id: number,

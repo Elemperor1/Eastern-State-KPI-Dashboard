@@ -27,6 +27,7 @@ const FREQUENCY_ORDER: ReportingCyclePeriodType[] = [
   "one_time",
 ];
 
+/** Retrieves strategic reporting year. */
 export function resolveStrategicReportingYear(
   requested: string | number | null | undefined,
   planYears: readonly number[],
@@ -42,6 +43,7 @@ export function resolveStrategicReportingYear(
   return Math.max(planYears[0]!, Math.min(currentYear, planYears.at(-1)!));
 }
 
+/** Implements the option operation. */
 function option(
   periodType: ReportingCyclePeriodType,
   periodIndex: number,
@@ -90,6 +92,7 @@ export function buildReportingCycleOptions(
   });
 }
 
+/** Implements the reporting cycle for selection operation. */
 export function reportingCycleForSelection(
   selection: string | null | undefined,
   options: ReportingCycleOption[],
@@ -101,6 +104,7 @@ export function reportingCycleForSelection(
     option("annual", 0, "Full year");
 }
 
+/** Implements the reporting cycle matches frequency operation. */
 export function reportingCycleMatchesFrequency(
   frequency: StrategyReportingFrequency | null,
   cycleType: ReportingCyclePeriodType,
@@ -112,6 +116,7 @@ export function reportingCycleMatchesFrequency(
   return frequency === cycleType;
 }
 
+/** Implements the reporting record matches cycle operation. */
 export function reportingRecordMatchesCycle(
   record: ReportingCycleRecord,
   cycle: ReportingCycleOption,
@@ -120,6 +125,7 @@ export function reportingRecordMatchesCycle(
     record.period_index === cycle.periodIndex;
 }
 
+/** Determines whether is reporting item complete. */
 export function isReportingItemComplete({
   measurementType,
   cycle,

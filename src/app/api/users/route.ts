@@ -9,6 +9,7 @@ import {
   updateUserPassword,
 } from "@/features/users/server";
 
+/** Implements the refreshed users payload operation. */
 function refreshedUsersPayload() {
   return { users: listUsers() };
 }
@@ -20,6 +21,7 @@ const CreateSchema = z.object({
   role: z.enum(["admin", "viewer"]),
 });
 
+/** Implements the post operation. */
 export async function POST(req: NextRequest) {
   try {
     await requireAdmin();
@@ -46,6 +48,7 @@ const UpdatePasswordSchema = z.object({
   password: z.string().min(8),
 });
 
+/** Implements the patch operation. */
 export async function PATCH(req: NextRequest) {
   try {
     await requireAdmin();
@@ -68,6 +71,7 @@ export async function PATCH(req: NextRequest) {
 
 const DeleteSchema = z.object({ id: z.number().int().positive() });
 
+/** Removes or resets the selected state. */
 export async function DELETE(req: NextRequest) {
   try {
     await requireAdmin();

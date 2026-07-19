@@ -356,27 +356,32 @@ const PROGRESS_STATUSES = new Set<BoardProgressStatus>([
   "not_applicable",
 ]);
 
+/** Implements the finite number operation. */
 function finiteNumber(value: unknown): number | null {
   if (typeof value !== "number" || !Number.isFinite(value)) return null;
   return Object.is(value, -0) ? 0 : value;
 }
 
+/** Implements the non negative integer operation. */
 function nonNegativeInteger(value: unknown): number {
   const finite = finiteNumber(value);
   return finite === null ? 0 : Math.max(0, Math.round(finite));
 }
 
+/** Implements the non negative integer or null operation. */
 function nonNegativeIntegerOrNull(value: unknown): number | null {
   const finite = finiteNumber(value);
   return finite === null ? null : Math.max(0, Math.round(finite));
 }
 
+/** Implements the percentage operation. */
 function percentage(value: unknown, capDisplay = true): number | null {
   const finite = finiteNumber(value);
   if (finite === null) return null;
   return capDisplay ? Math.max(0, Math.min(100, finite)) : finite;
 }
 
+/** Implements the optional text operation. */
 function optionalText(value: unknown): string | null {
   if (typeof value !== "string") return null;
   const normalized = value
@@ -386,10 +391,12 @@ function optionalText(value: unknown): string | null {
   return normalized.length > 0 ? normalized : null;
 }
 
+/** Implements the required text operation. */
 function requiredText(value: unknown, fallback: string): string {
   return optionalText(value) ?? fallback;
 }
 
+/** Implements the filename slug operation. */
 function filenameSlug(value: unknown, fallback: string): string {
   const source = optionalText(value) ?? fallback;
   const slug = source
@@ -400,6 +407,7 @@ function filenameSlug(value: unknown, fallback: string): string {
   return slug || "organization";
 }
 
+/** Implements the year operation. */
 function year(value: unknown): number | null {
   const finite = finiteNumber(value);
   if (finite === null || !Number.isInteger(finite) || finite < 1900 || finite > 2100) {
@@ -408,6 +416,7 @@ function year(value: unknown): number | null {
   return finite;
 }
 
+/** Implements the clean reasons operation. */
 function cleanReasons(value: unknown): string[] {
   if (!Array.isArray(value)) return [];
   const result: string[] = [];
@@ -422,42 +431,49 @@ function cleanReasons(value: unknown): string[] {
   return result;
 }
 
+/** Implements the measurement type operation. */
 function measurementType(value: unknown): BoardMeasurementType | "unknown" {
   return MEASUREMENT_TYPES.has(value as BoardMeasurementType)
     ? (value as BoardMeasurementType)
     : "unknown";
 }
 
+/** Implements the reporting frequency operation. */
 function reportingFrequency(value: unknown): BoardReportingFrequency | "unknown" {
   return REPORTING_FREQUENCIES.has(value as BoardReportingFrequency)
     ? (value as BoardReportingFrequency)
     : "unknown";
 }
 
+/** Implements the board status operation. */
 function boardStatus(value: unknown): BoardStatus {
   return BOARD_STATUSES.has(value as BoardStatus)
     ? (value as BoardStatus)
     : "not_reported";
 }
 
+/** Implements the configuration status operation. */
 function configurationStatus(value: unknown): BoardConfigurationStatus {
   return CONFIGURATION_STATUSES.has(value as BoardConfigurationStatus)
     ? (value as BoardConfigurationStatus)
     : "draft";
 }
 
+/** Implements the calculation state operation. */
 function calculationState(value: unknown): BoardCalculationState {
   return CALCULATION_STATES.has(value as BoardCalculationState)
     ? (value as BoardCalculationState)
     : "missing";
 }
 
+/** Implements the progress status operation. */
 function progressStatus(value: unknown): BoardProgressStatus {
   return PROGRESS_STATUSES.has(value as BoardProgressStatus)
     ? (value as BoardProgressStatus)
     : "not_reported";
 }
 
+/** Implements the sanitize goal summary operation. */
 function sanitizeGoalSummary(
   input: GoalCompletionSummaryInput | null | undefined,
 ): GoalCompletionSummaryViewModel {
@@ -473,6 +489,7 @@ function sanitizeGoalSummary(
   };
 }
 
+/** Implements the sanitize result operation. */
 function sanitizeResult(input: CalculatedResultInput | null | undefined): CalculatedResultViewModel {
   const value = finiteNumber(input?.value);
   return {
@@ -491,6 +508,7 @@ function sanitizeResult(input: CalculatedResultInput | null | undefined): Calcul
   };
 }
 
+/** Implements the sanitize progress operation. */
 function sanitizeProgress(
   input: TargetProgressInput | null | undefined,
   configStatus: BoardConfigurationStatus,
@@ -533,6 +551,7 @@ function sanitizeProgress(
   };
 }
 
+/** Implements the sanitize components operation. */
 function sanitizeComponents(value: unknown): BoardComponentViewModel[] {
   if (!Array.isArray(value)) return [];
   return value.map((candidate, index) => {
@@ -551,6 +570,7 @@ function sanitizeComponents(value: unknown): BoardComponentViewModel[] {
   });
 }
 
+/** Implements the sanitize demographics operation. */
 function sanitizeDemographics(value: unknown): DemographicDistributionViewModel | null {
   if (value === null || value === undefined || typeof value !== "object") return null;
   const input = value as Partial<DemographicDistributionInput>;
@@ -589,6 +609,7 @@ function sanitizeDemographics(value: unknown): DemographicDistributionViewModel 
   };
 }
 
+/** Implements the sanitize revenue operation. */
 function sanitizeRevenue(value: unknown): RevenueBreakdownViewModel | null {
   if (value === null || value === undefined || typeof value !== "object") return null;
   const input = value as Partial<RevenueBreakdownInput>;
@@ -608,6 +629,7 @@ function sanitizeRevenue(value: unknown): RevenueBreakdownViewModel | null {
   };
 }
 
+/** Implements the sanitize kpis operation. */
 function sanitizeKpis(value: unknown): StrategicBoardKpiViewModel[] {
   if (!Array.isArray(value)) return [];
   return value.map((candidate, index) => {
@@ -632,6 +654,7 @@ function sanitizeKpis(value: unknown): StrategicBoardKpiViewModel[] {
   });
 }
 
+/** Implements the sanitize goals operation. */
 function sanitizeGoals(value: unknown): StrategicBoardGoalViewModel[] {
   if (!Array.isArray(value)) return [];
   return value.map((candidate, index) => {
@@ -655,6 +678,7 @@ function sanitizeGoals(value: unknown): StrategicBoardGoalViewModel[] {
   });
 }
 
+/** Implements the sanitize priorities operation. */
 function sanitizePriorities(value: unknown): StrategicBoardPriorityViewModel[] {
   if (!Array.isArray(value)) return [];
   return value.map((candidate, index) => {
@@ -674,6 +698,7 @@ export function buildStrategicBoardReport(
 ): StrategicBoardReportViewModel {
   const priorities = sanitizePriorities(input?.priorities);
   const unresolvedReasons = new Set<string>();
+  /** Implements the add reasons operation. */
   const addReasons = (reasons: string[]) => reasons.forEach((reason) => unresolvedReasons.add(reason));
   const organizationGoalCompletion = sanitizeGoalSummary(
     input?.organizationGoalCompletion,
@@ -800,6 +825,7 @@ type DetailRow =
       revenue: RevenueBreakdownViewModel;
     };
 
+/** Implements the progress value operation. */
 function progressValue(
   progress: TargetProgressViewModel | null,
   key: keyof TargetProgressViewModel,
@@ -814,6 +840,7 @@ function progressValue(
     : null;
 }
 
+/** Implements the details for kpi operation. */
 function detailsForKpi(kpi: StrategicBoardKpiViewModel): DetailRow[] {
   const details: DetailRow[] = [];
   for (const component of kpi.components) {
@@ -975,6 +1002,7 @@ export interface StrategicBoardCsvExport {
   filename: string;
 }
 
+/** Builds strategic board csv export. */
 export function buildStrategicBoardCsvExport(
   report: StrategicBoardReportViewModel,
 ): StrategicBoardCsvExport {

@@ -14,6 +14,7 @@ interface IconButtonProps extends Omit<React.ButtonHTMLAttributes<HTMLButtonElem
   ) => void | Promise<void>;
 }
 
+/** Renders the icon button interface. */
 export function IconButton({
   icon: Icon,
   label,

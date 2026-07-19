@@ -15,6 +15,7 @@ const ExportQuerySchema = z.object({
   format: z.enum(["json", "csv"]).default("json"),
 });
 
+/** Retrieves the requested data. */
 export async function GET(req: NextRequest) {
   try {
     await requireSession();

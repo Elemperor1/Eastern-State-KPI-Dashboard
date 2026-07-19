@@ -1,5 +1,6 @@
 import { z } from "zod";
 
+/** Implements the parsed type operation. */
 function parsedType(value: unknown): string {
   if (value === undefined) return "undefined";
   if (value === null) return "null";
@@ -20,12 +21,14 @@ function parsedType(value: unknown): string {
   return typeof value === "object" ? "object" : typeof value;
 }
 
+/** Implements the joined values operation. */
 function joinedValues(values: readonly unknown[], separator = " | "): string {
   return values
     .map((value) => (typeof value === "string" ? `'${value}'` : String(value)))
     .join(separator);
 }
 
+/** Implements the literal value operation. */
 function literalValue(value: unknown): string {
   return JSON.stringify(value, (_key, candidate: unknown) =>
     typeof candidate === "bigint" ? candidate.toString() : candidate,

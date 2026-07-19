@@ -37,6 +37,7 @@
 
 const LOOPBACK_HOSTS = new Set(["127.0.0.1", "::1", "localhost"]);
 
+/** Implements the env flag is set operation. */
 function envFlagIsSet(raw: string | undefined): boolean {
   if (raw === undefined) return false;
   const normalized = raw.trim().toLowerCase();

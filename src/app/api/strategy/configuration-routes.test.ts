@@ -15,6 +15,7 @@ const { requireAdminMock } = vi.hoisted(() => ({
 
 vi.mock("@/features/auth/session", () => ({
   requireAdmin: requireAdminMock,
+  /** Supports the auth error response test scenario. */
   authErrorResponse: (error: { status?: number }) =>
     Response.json(
       { error: error.status === 403 ? "Forbidden" : "Unauthorized" },
@@ -74,6 +75,7 @@ import { PATCH as patchGoals } from "./goals/route";
 
 const CSRF_TOKEN = "test-csrf-token-0123456789abcdef";
 
+/** Supports the request test scenario. */
 function request(
   path: string,
   method: "POST" | "PATCH",
@@ -98,6 +100,7 @@ function request(
   );
 }
 
+/** Supports the configuration body test scenario. */
 function configurationBody() {
   return {
     kpi_id: 12,

@@ -17,6 +17,7 @@ const FOCUSABLE_SELECTOR = [
   '[tabindex]:not([tabindex="-1"])',
 ].join(", ");
 
+/** Implements the use presence operation. */
 export function usePresence(open: boolean, exitMs = 180) {
   const [rendered, setRendered] = useState(open);
   const [visible, setVisible] = useState(open);
@@ -40,6 +41,7 @@ export function usePresence(open: boolean, exitMs = 180) {
   return { rendered, visible };
 }
 
+/** Implements the use modal focus operation. */
 export function useModalFocus({
   open,
   containerRef,
@@ -82,6 +84,7 @@ export function useModalFocus({
       (initialFocusRef?.current ?? firstField ?? firstFocusable ?? container)?.focus();
     });
 
+    /** Runs the handle key down workflow. */
     function handleKeyDown(event: KeyboardEvent) {
       if (event.key === "Escape" && closeEnabledRef.current) {
         event.preventDefault();

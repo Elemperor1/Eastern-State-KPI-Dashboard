@@ -43,10 +43,12 @@ import {
   type ValidatedStrategyComponentUpdate,
 } from "./validation";
 
+/** Implements the active plan start year operation. */
 function activePlanStartYear(): number {
   return getActiveInstallation().plan.startYear;
 }
 
+/** Implements the active plan end year operation. */
 function activePlanEndYear(): number {
   return getActiveInstallation().plan.endYear;
 }
@@ -57,6 +59,7 @@ interface StrategyEditIssue {
 }
 
 export class StrategyEditValidationError extends Error {
+  /** Creates a new instance with the supplied state. */
   constructor(
     message: string,
     public readonly issues: StrategyEditIssue[] = [],
@@ -67,6 +70,7 @@ export class StrategyEditValidationError extends Error {
 }
 
 export class StrategyEditConflictError extends Error {
+  /** Creates a new instance with the supplied state. */
   constructor(
     message: string,
     public readonly code: string,
@@ -77,6 +81,7 @@ export class StrategyEditConflictError extends Error {
 }
 
 export class StrategyEditNotFoundError extends Error {
+  /** Creates a new instance with the supplied state. */
   constructor(
     public readonly entity:
       | "kpi"
@@ -108,6 +113,7 @@ interface TargetSubject {
   archived: boolean;
 }
 
+/** Implements the issues operation. */
 function issues(error: z.ZodError): StrategyEditIssue[] {
   return error.issues.map((issue) => ({
     path: issue.path.join("."),
@@ -115,6 +121,7 @@ function issues(error: z.ZodError): StrategyEditIssue[] {
   }));
 }
 
+/** Parses the supplied value. */
 function parse<Schema extends z.ZodType>(
   schema: Schema,
   value: unknown,
@@ -127,11 +134,14 @@ function parse<Schema extends z.ZodType>(
   return result.data as z.output<Schema>;
 }
 
+/** Implements the same operation. */
 function same(left: unknown, right: unknown): boolean {
+  /** Builds the requested value. */
   const normalize = (value: unknown) => (value === undefined ? null : value);
   return JSON.stringify(normalize(left)) === JSON.stringify(normalize(right));
 }
 
+/** Implements the row changed operation. */
 function rowChanged(
   before: RawRow,
   values: Record<string, unknown>,
@@ -139,6 +149,7 @@ function rowChanged(
   return Object.entries(values).some(([field, value]) => !same(before[field], value));
 }
 
+/** Implements the audit context for kpi operation. */
 function auditContextForKpi(kpiId: number): AuditContext {
   const row = getDb()
     .prepare(
@@ -161,6 +172,7 @@ function auditContextForKpi(kpiId: number): AuditContext {
   return row;
 }
 
+/** Implements the raw configuration operation. */
 function rawConfiguration(id: number): RawRow {
   const row = getDb()
     .prepare("SELECT * FROM kpi_measurement_configs WHERE id = ?")
@@ -169,6 +181,7 @@ function rawConfiguration(id: number): RawRow {
   return row;
 }
 
+/** Implements the raw goal operation. */
 function rawGoal(id: number): RawRow {
   const row = getDb()
     .prepare(
@@ -183,6 +196,7 @@ function rawGoal(id: number): RawRow {
   return row;
 }
 
+/** Implements the raw goal membership operation. */
 function rawGoalMembership(id: number): RawRow {
   const row = getDb()
     .prepare(
@@ -205,6 +219,7 @@ function rawGoalMembership(id: number): RawRow {
   return row;
 }
 
+/** Implements the raw component operation. */
 function rawComponent(id: number): RawRow {
   const row = getDb()
     .prepare("SELECT * FROM kpi_components WHERE id = ?")
@@ -213,6 +228,7 @@ function rawComponent(id: number): RawRow {
   return row;
 }
 
+/** Implements the raw target operation. */
 function rawTarget(id: number): RawRow {
   const row = getDb()
     .prepare("SELECT * FROM kpi_targets WHERE id = ?")
@@ -221,6 +237,7 @@ function rawTarget(id: number): RawRow {
   return row;
 }
 
+/** Implements the require editable operation. */
 function requireEditable(row: RawRow, entity: string): void {
   if (row.archived_at != null || row.configuration_status === "archived") {
     throw new StrategyEditConflictError(
@@ -230,6 +247,7 @@ function requireEditable(row: RawRow, entity: string): void {
   }
 }
 
+/** Implements the ensure no configuration overlap operation. */
 function ensureNoConfigurationOverlap(
   kpiId: number,
   startYear: number,
@@ -256,6 +274,7 @@ function ensureNoConfigurationOverlap(
   }
 }
 
+/** Implements the ensure configuration history fits operation. */
 function ensureConfigurationHistoryFits(
   id: number,
   startYear: number,
@@ -345,6 +364,7 @@ function ensureConfigurationHistoryFits(
       "legacy_range_adoption_conflict",
     );
   }
+  /** Implements the history falls outside operation. */
   const historyFallsOutside = (range: {
     min_year: number | null;
     max_year: number | null;
@@ -363,6 +383,7 @@ function ensureConfigurationHistoryFits(
   }
 }
 
+/** Implements the configuration has historical values in range operation. */
 function configurationHasHistoricalValuesInRange(
   id: number,
   startYear: number,
@@ -410,6 +431,7 @@ function configurationHasHistoricalValuesInRange(
   );
 }
 
+/** Implements the kpi has historical values in range operation. */
 function kpiHasHistoricalValuesInRange(
   kpiId: number,
   startYear: number,
@@ -455,6 +477,7 @@ function kpiHasHistoricalValuesInRange(
   );
 }
 
+/** Implements the fields changed operation. */
 function fieldsChanged(
   before: RawRow,
   values: Record<string, unknown>,
@@ -463,12 +486,14 @@ function fieldsChanged(
   return fields.some((field) => !same(before[field], values[field]));
 }
 
+/** Implements the calculation status meaning operation. */
 function calculationStatusMeaning(value: unknown): string {
   return value === "ready" || value === "active"
     ? "calculation_ready"
     : String(value ?? "");
 }
 
+/** Implements the calculation status meaning changed operation. */
 function calculationStatusMeaningChanged(
   before: RawRow,
   values: Record<string, unknown>,
@@ -479,6 +504,7 @@ function calculationStatusMeaningChanged(
   );
 }
 
+/** Implements the reject historical semantic edit operation. */
 function rejectHistoricalSemanticEdit(
   message: string,
 ): never {
@@ -524,6 +550,7 @@ const CONFIG_CALCULATION_SEMANTIC_FIELDS = [
   "allow_score_over_max",
 ] as const;
 
+/** Implements the configuration values operation. */
 function configurationValues(
   input: ValidatedMeasurementConfigurationCreate,
 ): Record<(typeof CONFIG_FIELDS)[number], unknown> {
@@ -551,6 +578,7 @@ function configurationValues(
   };
 }
 
+/** Validates configuration transition. */
 function validateConfigurationTransition(
   before: RawRow | null,
   input: ValidatedMeasurementConfigurationCreate,
@@ -574,6 +602,7 @@ function validateConfigurationTransition(
   }
 }
 
+/** Builds measurement configuration. */
 export function createMeasurementConfiguration(
   input: unknown,
   actorId: number | null = null,
@@ -648,6 +677,7 @@ interface SuccessorMeasurementConfigurationResult {
   successor: PersistedMeasurementConfig;
 }
 
+/** Implements the successor target applies operation. */
 function successorTargetApplies(
   row: RawRow,
   targets: RawRow[],
@@ -666,6 +696,7 @@ function successorTargetApplies(
   return false;
 }
 
+/** Implements the target incompatibility operation. */
 function targetIncompatibility(
   row: RawRow,
   measurementType: MeasurementType,
@@ -725,6 +756,7 @@ function targetIncompatibility(
   return null;
 }
 
+/** Implements the active configuration rows operation. */
 function activeConfigurationRows(kpiId: number): RawRow[] {
   return getDb()
     .prepare(
@@ -735,6 +767,7 @@ function activeConfigurationRows(kpiId: number): RawRow[] {
     .all(kpiId) as RawRow[];
 }
 
+/** Implements the active parent target rows operation. */
 function activeParentTargetRows(kpiId: number): RawRow[] {
   return getDb()
     .prepare(
@@ -745,6 +778,7 @@ function activeParentTargetRows(kpiId: number): RawRow[] {
     .all(kpiId) as RawRow[];
 }
 
+/** Implements the effective configuration from rows operation. */
 function effectiveConfigurationFromRows(
   configurations: RawRow[],
   year: number,
@@ -763,6 +797,7 @@ function effectiveConfigurationFromRows(
     )[0] ?? null;
 }
 
+/** Implements the selected full plan target operation. */
 function selectedFullPlanTarget(
   targets: RawRow[],
   year: number,
@@ -787,6 +822,7 @@ function selectedFullPlanTarget(
     )[0] ?? null;
 }
 
+/** Implements the configuration semantic signature operation. */
 function configurationSemanticSignature(configuration: RawRow): string {
   const componentSemantics =
     configuration.measurement_type === "multi_component"
@@ -817,6 +853,7 @@ function configurationSemanticSignature(configuration: RawRow): string {
   );
 }
 
+/** Implements the target carries defined semantics operation. */
 function targetCarriesDefinedSemantics(target: RawRow): boolean {
   return (
     target.target_value != null ||
@@ -918,6 +955,7 @@ function assertFullPlanTargetConfigurationIntegrity({
   }
 }
 
+/** Implements the configuration has defined target operation. */
 function configurationHasDefinedTarget(
   kpiId: number,
   startYear: number,
@@ -944,6 +982,7 @@ function configurationHasDefinedTarget(
   return false;
 }
 
+/** Implements the active components for configuration operation. */
 function activeComponentsForConfiguration(configurationId: number): RawRow[] {
   return getDb()
     .prepare(
@@ -955,6 +994,7 @@ function activeComponentsForConfiguration(configurationId: number): RawRow[] {
     .all(configurationId) as RawRow[];
 }
 
+/** Validates successor configuration compatibility. */
 function assertSuccessorConfigurationCompatibility(
   predecessor: RawRow,
   successor: ValidatedMeasurementConfigurationCreate,
@@ -1163,6 +1203,7 @@ const SUCCESSOR_TARGET_CLONE_FIELDS = [
   "last_reviewed_date",
 ] as const;
 
+/** Implements the clone successor components operation. */
 function cloneSuccessorComponents(
   components: RawRow[],
   successor: PersistedMeasurementConfig,
@@ -1441,6 +1482,7 @@ export function createSuccessorMeasurementConfiguration(
   });
 }
 
+/** Implements the merged configuration operation. */
 function mergedConfiguration(
   row: RawRow,
   patch: ValidatedMeasurementConfigurationUpdate,
@@ -1508,6 +1550,7 @@ function mergedConfiguration(
   );
 }
 
+/** Updates measurement configuration. */
 export function updateMeasurementConfiguration(
   input: unknown,
   actorId: number | null = null,
@@ -1629,6 +1672,7 @@ const GOAL_COMPLETION_SEMANTIC_FIELDS = [
   "threshold_percentage",
 ] as const;
 
+/** Implements the goal has historical values in range operation. */
 function goalHasHistoricalValuesInRange(
   goal: RawRow,
   requestedStart: number,
@@ -1660,6 +1704,7 @@ function goalHasHistoricalValuesInRange(
   });
 }
 
+/** Implements the goal has historical values operation. */
 function goalHasHistoricalValues(goal: RawRow): boolean {
   return goalHasHistoricalValuesInRange(
     goal,
@@ -1668,6 +1713,7 @@ function goalHasHistoricalValues(goal: RawRow): boolean {
   );
 }
 
+/** Implements the snapshot contains manual goal result operation. */
 function snapshotContainsManualGoalResult(value: string | null): boolean {
   if (!value) return false;
   try {
@@ -1713,6 +1759,7 @@ function goalHasRecordedManualResult(goal: RawRow): boolean {
   );
 }
 
+/** Implements the merged strategic goal operation. */
 function mergedStrategicGoal(
   before: RawRow,
   patch: z.output<typeof StrategicGoalSettingsUpdateSchema>,
@@ -1767,6 +1814,7 @@ function mergedStrategicGoal(
   );
 }
 
+/** Updates strategic goal settings. */
 export function updateStrategicGoalSettings(
   input: unknown,
   actorId: number | null = null,
@@ -1851,6 +1899,7 @@ const GOAL_VERSION_FIELDS = [
   ...GOAL_SETTING_FIELDS,
 ] as const;
 
+/** Implements the available successor goal slug operation. */
 function availableSuccessorGoalSlug(baseSlug: string, startYear: number): string {
   const stem = `${baseSlug.slice(0, 80)}-from-${startYear}`;
   let candidate = stem;
@@ -2244,6 +2293,7 @@ export function appendStrategicGoalMembership(
   });
 }
 
+/** Implements the membership has historical values operation. */
 function membershipHasHistoricalValues(membership: RawRow): boolean {
   const startYear = Math.max(
     Number(membership.effective_from_year),
@@ -2367,6 +2417,7 @@ interface SuccessorStrategicGoalMembershipResult {
   successor: PersistedGoalMembership;
 }
 
+/** Builds successor strategic goal membership. */
 export function createSuccessorStrategicGoalMembership(
   input: unknown,
   actorId: number | null = null,
@@ -2517,6 +2568,7 @@ export function createSuccessorStrategicGoalMembership(
   });
 }
 
+/** Implements the target subject operation. */
 function targetSubject(
   target: Pick<
     ValidatedStrategicTargetCreate,
@@ -2575,6 +2627,7 @@ function targetSubject(
   };
 }
 
+/** Validates target plan range. */
 function validateTargetPlanRange(
   target: ValidatedStrategicTargetCreate,
 ): void {
@@ -2605,6 +2658,7 @@ function validateTargetPlanRange(
   }
 }
 
+/** Validates target measurement. */
 function validateTargetMeasurement(
   target: ValidatedStrategicTargetCreate,
   subject: TargetSubject,
@@ -2777,6 +2831,7 @@ export function assertStrategyEntityRestoreIntegrity(
   }
 }
 
+/** Implements the ensure no target conflict operation. */
 function ensureNoTargetConflict(
   target: ValidatedStrategicTargetCreate,
   excludingId: number | null,
@@ -2824,6 +2879,7 @@ const TARGET_FIELDS = [
   "last_reviewed_date",
 ] as const;
 
+/** Implements the target values operation. */
 function targetValues(
   target: ValidatedStrategicTargetCreate,
 ): Record<(typeof TARGET_FIELDS)[number], unknown> {
@@ -2846,6 +2902,7 @@ function targetValues(
   };
 }
 
+/** Builds strategic target. */
 export function createStrategicTarget(
   input: unknown,
   actorId: number | null = null,
@@ -2907,6 +2964,7 @@ export function createStrategicTarget(
   });
 }
 
+/** Parses structured. */
 function parseStructured(value: unknown): Record<string, StrategyJsonValue> | null {
   if (value == null || value === "") return null;
   try {
@@ -2916,6 +2974,7 @@ function parseStructured(value: unknown): Record<string, StrategyJsonValue> | nu
   }
 }
 
+/** Implements the merged target operation. */
 function mergedTarget(
   row: RawRow,
   patch: ValidatedStrategicTargetUpdate,
@@ -2976,6 +3035,7 @@ function mergedTarget(
   );
 }
 
+/** Updates strategic target. */
 export function updateStrategicTarget(
   input: unknown,
   actorId: number | null = null,
@@ -3071,6 +3131,7 @@ const COMPONENT_CALCULATION_SEMANTIC_FIELDS = [
   "weight",
 ] as const;
 
+/** Implements the component has historical values operation. */
 function componentHasHistoricalValues(id: number): boolean {
   return Boolean(
     getDb()
@@ -3104,6 +3165,7 @@ function componentHasHistoricalValues(id: number): boolean {
   );
 }
 
+/** Implements the configuration for component operation. */
 function configurationForComponent(id: number): RawRow {
   const config = rawConfiguration(id);
   requireEditable(config, "measurement configuration");
@@ -3116,6 +3178,7 @@ function configurationForComponent(id: number): RawRow {
   return config;
 }
 
+/** Implements the ensure component order available operation. */
 function ensureComponentOrderAvailable(
   configurationId: number,
   order: number,
@@ -3139,6 +3202,7 @@ function ensureComponentOrderAvailable(
   }
 }
 
+/** Validates component definition. */
 function validateComponentDefinition(
   component: Record<string, unknown>,
   config: RawRow,
@@ -3163,6 +3227,7 @@ function validateComponentDefinition(
   );
 }
 
+/** Implements the component definition input operation. */
 function componentDefinitionInput(
   component: Record<string, unknown>,
   config: RawRow,
@@ -3195,6 +3260,7 @@ function componentDefinitionInput(
   };
 }
 
+/** Validates successor component set. */
 function validateSuccessorComponentSet(
   components: RawRow[],
   successor: ValidatedMeasurementConfigurationCreate,
@@ -3245,6 +3311,7 @@ function validateSuccessorComponentSet(
   }
 }
 
+/** Implements the component target operation. */
 function componentTarget(componentId: number): RawRow | null {
   return (
     (getDb()
@@ -3257,6 +3324,7 @@ function componentTarget(componentId: number): RawRow | null {
   );
 }
 
+/** Implements the configuration has any defined component target operation. */
 function configurationHasAnyDefinedComponentTarget(
   configurationId: number,
 ): boolean {
@@ -3271,6 +3339,7 @@ function configurationHasAnyDefinedComponentTarget(
     .all(configurationId) as RawRow[]).some(targetCarriesDefinedSemantics);
 }
 
+/** Implements the component parent has defined target operation. */
 function componentParentHasDefinedTarget(component: RawRow): boolean {
   const config = rawConfiguration(Number(component.configuration_id));
   return configurationHasDefinedTarget(
@@ -3282,6 +3351,7 @@ function componentParentHasDefinedTarget(component: RawRow): boolean {
   );
 }
 
+/** Validates component target semantics mutable. */
 function assertComponentTargetSemanticsMutable(component: RawRow): void {
   if (
     componentParentHasDefinedTarget(component) ||
@@ -3296,6 +3366,7 @@ function assertComponentTargetSemanticsMutable(component: RawRow): void {
   }
 }
 
+/** Builds strategy component. */
 export function createStrategyComponent(
   input: unknown,
   actorId: number | null = null,
@@ -3396,10 +3467,12 @@ export function createStrategyComponent(
   });
 }
 
+/** Implements the merged component operation. */
 function mergedComponent(
   row: RawRow,
   patch: ValidatedStrategyComponentUpdate,
 ): Record<string, unknown> {
+  /** Implements the value operation. */
   const value = (key: keyof ValidatedStrategyComponentUpdate) =>
     patch[key] === undefined ? row[key] ?? null : patch[key];
   return {
@@ -3423,6 +3496,7 @@ function mergedComponent(
   };
 }
 
+/** Updates strategy component. */
 export function updateStrategyComponent(
   input: unknown,
   actorId: number | null = null,
@@ -3528,6 +3602,7 @@ export function updateStrategyComponent(
   });
 }
 
+/** Implements the reorder strategy components operation. */
 export function reorderStrategyComponents(
   input: unknown,
   actorId: number | null = null,

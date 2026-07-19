@@ -5,6 +5,7 @@ import {
   type GoalCompletionViewModel,
 } from "./goal-completion-model";
 
+/** Supports the model test scenario. */
 function model(
   overrides: Partial<GoalCompletionViewModel> = {},
 ): GoalCompletionViewModel {

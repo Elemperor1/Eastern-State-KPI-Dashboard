@@ -34,6 +34,7 @@ import { getDb, resetDb } from "./db";
 
 const REPO_ROOT = path.resolve(__dirname, "..", "..");
 
+/** Supports the make temp dir test scenario. */
 function makeTempDir(prefix: string): string {
   return fs.mkdtempSync(path.join(os.tmpdir(), prefix));
 }
@@ -310,6 +311,7 @@ describe("ensureSeedAdmin credential secrecy (end-to-end child process)", () => 
     fs.rmSync(dbPath, { force: true });
   });
 
+  /** Supports the child env test scenario. */
   function childEnv(overrides: Record<string, string>): NodeJS.ProcessEnv {
     const env: NodeJS.ProcessEnv = { ...process.env };
     // Strip any pre-existing bootstrap/setup secrets from the ambient

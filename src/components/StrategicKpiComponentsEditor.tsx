@@ -39,12 +39,14 @@ import {
 
 type Feedback = { variant: "success" | "error"; message: string } | null;
 
+/** Implements the display label operation. */
 function displayLabel(value: string): string {
   return value
     .replaceAll("_", " ")
     .replace(/^./, (first) => first.toLocaleUpperCase());
 }
 
+/** Implements the measurement label operation. */
 function measurementLabel(value: MeasurementType): string {
   const labels: Record<MeasurementType, string> = {
     binary: "Yes or no",
@@ -62,6 +64,7 @@ function measurementLabel(value: MeasurementType): string {
   return labels[value];
 }
 
+/** Renders the error hint interface. */
 function ErrorHint({ error, fallback }: { error?: string; fallback?: string }) {
   return error ? (
     <span className="font-medium text-[var(--color-danger-text)]">{error}</span>
@@ -70,6 +73,7 @@ function ErrorHint({ error, fallback }: { error?: string; fallback?: string }) {
   );
 }
 
+/** Renders the strategic kpi components editor interface. */
 export function StrategicKpiComponentsEditor({
   configuration,
   components: initialComponents,
@@ -109,6 +113,7 @@ export function StrategicKpiComponentsEditor({
   }
   const configurationId = configuration.id;
 
+  /** Implements the lifecycle operation. */
   async function lifecycle(id: number, action: "archive" | "restore") {
     setBusyId(id);
     setFeedback(null);
@@ -127,6 +132,7 @@ export function StrategicKpiComponentsEditor({
     );
   }
 
+  /** Implements the reorder operation. */
   async function reorder(id: number, direction: "up" | "down") {
     const nextActive = moveId(active, id, direction);
     if (nextActive === active) return;
@@ -272,6 +278,7 @@ export function StrategicKpiComponentsEditor({
   );
 }
 
+/** Renders the component form card interface. */
 function ComponentFormCard({
   title,
   description,
@@ -295,6 +302,7 @@ function ComponentFormCard({
   const [busy, setBusy] = useState(false);
   const prefix = isCreate ? "new-component" : `component-${draft.id}`;
 
+  /** Updates the current state. */
   function update<K extends keyof ComponentFormDraft>(
     key: K,
     value: ComponentFormDraft[K],
@@ -303,6 +311,7 @@ function ComponentFormCard({
     setErrors({});
   }
 
+  /** Runs the submit workflow. */
   async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     setFeedback(null);

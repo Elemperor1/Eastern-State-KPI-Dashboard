@@ -101,6 +101,7 @@ export interface StrategicGoalFilters {
   includeArchived: boolean;
 }
 
+/** Determines whether can create strategic goal successor. */
 export function canCreateStrategicGoalSuccessor(
   goal: Pick<StrategicGoalEditorRecord, "plan_start_year" | "plan_end_year">,
   reportingYear: number,
@@ -113,6 +114,7 @@ export function canCreateStrategicGoalSuccessor(
   );
 }
 
+/** Determines whether can create goal membership successor. */
 export function canCreateGoalMembershipSuccessor(
   membership: Pick<
     StrategicGoalMemberSummary,
@@ -131,6 +133,7 @@ export function canCreateGoalMembershipSuccessor(
   );
 }
 
+/** Retrieves strategic goal selection. */
 export function resolveStrategicGoalSelection(
   goals: StrategicGoalEditorRecord[],
   requestedGoalId: number | null,
@@ -146,17 +149,20 @@ export function resolveStrategicGoalSelection(
   );
 }
 
+/** Implements the strategic goal successor path operation. */
 export function strategicGoalSuccessorPath(
   successor: Pick<PersistedStrategicGoal, "id" | "plan_start_year">,
 ): string {
   return `/setup?area=goals&year=${successor.plan_start_year}&goal=${successor.id}`;
 }
 
+/** Implements the optional text operation. */
 function optionalText(value: string): string | null {
   const trimmed = value.trim();
   return trimmed ? trimmed : null;
 }
 
+/** Implements the errors from issues operation. */
 function errorsFromIssues(
   issues: Array<{ path: PropertyKey[]; message: string }>,
 ): StrategicGoalFormErrors {
@@ -168,6 +174,7 @@ function errorsFromIssues(
   return errors;
 }
 
+/** Implements the strategic goal membership draft from data operation. */
 export function strategicGoalMembershipDraftFromData(
   membership: StrategicGoalMemberSummary,
 ): StrategicGoalMembershipDraft {
@@ -178,6 +185,7 @@ export function strategicGoalMembershipDraftFromData(
   };
 }
 
+/** Builds strategic goal membership mutation. */
 export function buildStrategicGoalMembershipMutation(
   membershipId: number,
   draft: StrategicGoalMembershipDraft,
@@ -217,6 +225,7 @@ export function buildStrategicGoalMembershipMutation(
   };
 }
 
+/** Builds strategic goal membership successor mutation. */
 export function buildStrategicGoalMembershipSuccessorMutation(
   membershipId: number,
   effectiveStartYear: number,
@@ -262,6 +271,7 @@ export function buildStrategicGoalMembershipSuccessorMutation(
   };
 }
 
+/** Implements the strategic goal draft from data operation. */
 export function strategicGoalDraftFromData(
   goal: StrategicGoalEditorRecord,
 ): StrategicGoalSettingsDraft {
@@ -290,6 +300,7 @@ export function strategicGoalDraftFromData(
   };
 }
 
+/** Builds strategic goal settings payload. */
 export function buildStrategicGoalSettingsPayload(
   goal: StrategicGoalEditorRecord,
   draft: StrategicGoalSettingsDraft,
@@ -357,6 +368,7 @@ export function buildStrategicGoalSettingsPayload(
   };
 }
 
+/** Builds strategic goal update mutation. */
 export function buildStrategicGoalUpdateMutation(
   payload: Record<string, unknown>,
 ): StrategicGoalMutation {
@@ -367,6 +379,7 @@ export function buildStrategicGoalUpdateMutation(
   };
 }
 
+/** Builds strategic goal successor mutation. */
 export function buildStrategicGoalSuccessorMutation(
   predecessorId: number,
   effectiveStartYear: number,
@@ -384,6 +397,7 @@ export function buildStrategicGoalSuccessorMutation(
   };
 }
 
+/** Builds strategic goal lifecycle mutation. */
 export function buildStrategicGoalLifecycleMutation(
   id: number,
   action: "archive" | "restore",
@@ -395,6 +409,7 @@ export function buildStrategicGoalLifecycleMutation(
   };
 }
 
+/** Implements the filter strategic goals operation. */
 export function filterStrategicGoals(
   goals: StrategicGoalEditorRecord[],
   filters: StrategicGoalFilters,
@@ -406,6 +421,7 @@ export function filterStrategicGoals(
   );
 }
 
+/** Implements the strategic goal priority options operation. */
 export function strategicGoalPriorityOptions(
   goals: StrategicGoalEditorRecord[],
 ): Array<{ id: number; name: string }> {
@@ -419,6 +435,7 @@ export function strategicGoalPriorityOptions(
   ).sort((left, right) => left.name.localeCompare(right.name));
 }
 
+/** Formats strategic goal label. */
 export function formatStrategicGoalLabel(value: string): string {
   return value
     .replaceAll("_", " ")

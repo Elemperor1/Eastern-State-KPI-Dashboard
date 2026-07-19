@@ -31,6 +31,7 @@ vi.mock("@/features/strategy/server", () => ({
 }));
 
 vi.mock("@/features/installation/server", () => ({
+  /** Supports the get active installation test scenario. */
   getActiveInstallation: () => ({
     plan: { startYear: 2025, endYear: 2029 },
     years: [2025, 2026, 2027, 2028, 2029],
@@ -295,6 +296,7 @@ describe("strategy actual server adapter", () => {
   });
 });
 
+/** Supports the configuration test scenario. */
 function configuration(
   overrides: Partial<PersistedMeasurementConfig> = {},
 ): PersistedMeasurementConfig {
@@ -330,6 +332,7 @@ function configuration(
   };
 }
 
+/** Supports the observation test scenario. */
 function observation(
   overrides: Partial<StrategyObservationRecord> = {},
 ): StrategyObservationRecord {
@@ -364,6 +367,7 @@ function observation(
   };
 }
 
+/** Supports the component test scenario. */
 function component(
   overrides: Partial<StrategyComponentWithTargets> = {},
 ): StrategyComponentWithTargets {
@@ -395,6 +399,7 @@ function component(
   };
 }
 
+/** Supports the component entry test scenario. */
 function componentEntry(
   overrides: Partial<StrategyComponentEntryRecord> = {},
 ): StrategyComponentEntryRecord {

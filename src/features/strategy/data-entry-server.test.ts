@@ -23,6 +23,7 @@ vi.mock("./server", () => ({
 }));
 
 vi.mock("@/features/installation/server", () => ({
+  /** Supports the get active installation test scenario. */
   getActiveInstallation: () => ({
     plan: { startYear: 2025, endYear: 2029 },
     years: [2025, 2026, 2027, 2028, 2029],
@@ -31,6 +32,7 @@ vi.mock("@/features/installation/server", () => ({
 
 import { loadStrategicDataEntryPageData } from "./data-entry-server";
 
+/** Supports the ready goal test scenario. */
 function readyGoal() {
   return {
     id: 1,
@@ -61,6 +63,7 @@ function readyGoal() {
   };
 }
 
+/** Supports the annual observation test scenario. */
 function annualObservation() {
   return {
     id: 9,

@@ -22,6 +22,7 @@ const icons = {
   neutral: Info,
 };
 
+/** Renders the status banner interface. */
 export function StatusBanner({ variant = "neutral", children, onDismiss, className }: StatusBannerProps) {
   const Icon = icons[variant];
   return (

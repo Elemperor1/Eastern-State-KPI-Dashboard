@@ -3,6 +3,7 @@
 import { useRouter } from "next/navigation";
 import { FormField, Select } from "@/components/ui";
 
+/** Renders the reporting year filter interface. */
 export function ReportingYearFilter({
   path,
   year,

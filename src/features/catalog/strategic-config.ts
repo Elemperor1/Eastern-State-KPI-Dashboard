@@ -66,6 +66,7 @@ export interface StrategicKpiDefinition {
   components?: StrategicComponentDefinition[];
 }
 
+/** Implements the full plan operation. */
 const fullPlan = (
   targetYear: number,
   targetValue: number | null,
@@ -79,6 +80,7 @@ const fullPlan = (
   configuration_status: configurationStatus,
 });
 
+/** Implements the annual operation. */
 const annual = (
   reportingYear: number,
   targetValue: number | null,

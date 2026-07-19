@@ -37,10 +37,12 @@ const AccountSchema = z
     error: "Provide either a role or a disabled flag.",
   });
 
+/** Implements the refreshed users payload operation. */
 function refreshedUsersPayload() {
   return { users: listUsers() };
 }
 
+/** Implements the patch operation. */
 export async function PATCH(req: NextRequest) {
   let actor;
   try {

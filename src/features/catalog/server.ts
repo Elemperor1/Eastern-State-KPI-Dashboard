@@ -46,6 +46,7 @@ interface KPIRow {
   archived_at: string | null;
 }
 
+/** Implements the as category operation. */
 function asCategory(row: Record<string, unknown>): CategoryRow {
   return {
     id: Number(row.id),
@@ -58,6 +59,7 @@ function asCategory(row: Record<string, unknown>): CategoryRow {
   };
 }
 
+/** Implements the as kpi operation. */
 function asKpi(row: Record<string, unknown>): KPIRow {
   return {
     id: Number(row.id),
@@ -77,6 +79,7 @@ function asKpi(row: Record<string, unknown>): KPIRow {
   };
 }
 
+/** Implements the as kpi with category operation. */
 function asKpiWithCategory(row: Record<string, unknown>): KPIWithCategory {
   const kpi = asKpi(row);
   return {
@@ -90,6 +93,7 @@ function asKpiWithCategory(row: Record<string, unknown>): KPIWithCategory {
   };
 }
 
+/** Retrieves categories. */
 export function listCategories(
   options: { includeArchived?: boolean } = {},
 ): Category[] {
@@ -106,6 +110,7 @@ export function listCategories(
   return rows.map(asCategory);
 }
 
+/** Retrieves category. */
 export function getCategory(
   id: number,
   options: { includeArchived?: boolean } = {},
@@ -123,6 +128,7 @@ export function getCategory(
   return row ? asCategory(row) : null;
 }
 
+/** Retrieves category by slug. */
 export function getCategoryBySlug(
   slug: string,
   options: { includeArchived?: boolean } = {},
@@ -140,6 +146,7 @@ export function getCategoryBySlug(
   return row ? asCategory(row) : null;
 }
 
+/** Builds category. */
 export function createCategory(
   input: {
     slug: string;
@@ -166,6 +173,7 @@ export function createCategory(
   });
 }
 
+/** Updates category. */
 export function updateCategory(
   id: number,
   patch: Partial<Pick<Category, "name" | "description" | "sort_order">>,
@@ -214,6 +222,7 @@ export class DependentEntriesError extends Error {
   readonly dependency: "kpi" | "category";
   readonly dependents: number;
 
+  /** Creates a new instance with the supplied state. */
   constructor(dependency: "kpi" | "category", dependents: number) {
     const what = dependency === "kpi" ? "KPI" : "category";
     super(
@@ -271,6 +280,7 @@ export function countCategoryDependents(id: number): number {
   return Number(row.n);
 }
 
+/** Removes or resets category. */
 function deleteCategory(id: number): void {
   const dependents = countCategoryDependents(id);
   if (dependents > 0) {
@@ -280,6 +290,7 @@ function deleteCategory(id: number): void {
   db.prepare("DELETE FROM categories WHERE id = ?").run(id);
 }
 
+/** Retrieves kpis. */
 export function listKPIs(opts?: {
   includeInactive?: boolean;
   parentsOnly?: boolean;
@@ -308,6 +319,7 @@ export function listKPIs(opts?: {
   return rows.map(asKpiWithCategory);
 }
 
+/** Retrieves kpi. */
 export function getKPI(
   id: number,
   options: { includeArchived?: boolean } = {},
@@ -327,6 +339,7 @@ export function getKPI(
   return row ? asKpiWithCategory(row) : null;
 }
 
+/** Builds kpi. */
 export function createKPI(
   input: {
     category_id: number;
@@ -381,6 +394,7 @@ export interface CreateStrategicMeasureInput {
   description?: string | null;
 }
 
+/** Implements the legacy unit type for measurement operation. */
 function legacyUnitTypeForMeasurement(
   measurementType: MeasurementType,
 ): UnitType {
@@ -403,6 +417,7 @@ function legacyUnitTypeForMeasurement(
   return "count";
 }
 
+/** Implements the legacy frequency for strategy operation. */
 function legacyFrequencyForStrategy(
   frequency: ExplicitStrategyReportingFrequency,
 ): ReportingFrequency {
@@ -507,6 +522,7 @@ export function createStrategicMeasure(
   });
 }
 
+/** Updates kpi. */
 export function updateKPI(
   id: number,
   patch: Partial<{
@@ -545,6 +561,7 @@ export function updateKPI(
   });
 }
 
+/** Removes or resets kpi. */
 function deleteKPI(id: number): void {
   const dependents = countKPIDependents(id);
   if (dependents > 0) {
@@ -559,12 +576,14 @@ export type CatalogLifecycleResult = "archived" | "deleted";
 export class CatalogEntityNotFoundError extends Error {
   readonly code = "CATALOG_ENTITY_NOT_FOUND" as const;
 
+  /** Creates a new instance with the supplied state. */
   constructor(kind: "KPI" | "category", id: number) {
     super(`${kind} ${id} was not found.`);
     this.name = "CatalogEntityNotFoundError";
   }
 }
 
+/** Implements the raw category operation. */
 function rawCategory(id: number): Record<string, unknown> {
   const row = getDb()
     .prepare("SELECT * FROM categories WHERE id = ?")
@@ -573,6 +592,7 @@ function rawCategory(id: number): Record<string, unknown> {
   return row;
 }
 
+/** Implements the legacy category snapshot operation. */
 function legacyCategorySnapshot(row: Record<string, unknown>) {
   return {
     id: Number(row.id),
@@ -584,6 +604,7 @@ function legacyCategorySnapshot(row: Record<string, unknown>) {
   };
 }
 
+/** Implements the same snapshot operation. */
 function sameSnapshot(
   before: Record<string, unknown>,
   after: Record<string, unknown>,
@@ -591,6 +612,7 @@ function sameSnapshot(
   return JSON.stringify(before) === JSON.stringify(after);
 }
 
+/** Records legacy category event. */
 function recordLegacyCategoryEvent(
   before: Record<string, unknown> | null,
   after: Record<string, unknown> | null,
@@ -612,6 +634,7 @@ function recordLegacyCategoryEvent(
   });
 }
 
+/** Implements the raw kpi with context operation. */
 function rawKpiWithContext(id: number): Record<string, unknown> {
   const row = getDb()
     .prepare(
@@ -635,6 +658,7 @@ function rawKpiWithContext(id: number): Record<string, unknown> {
   return row;
 }
 
+/** Implements the legacy kpi snapshot operation. */
 function legacyKpiSnapshot(row: Record<string, unknown>) {
   return {
     id: Number(row.id),
@@ -655,6 +679,7 @@ function legacyKpiSnapshot(row: Record<string, unknown>) {
   };
 }
 
+/** Records legacy kpi event. */
 function recordLegacyKpiEvent(
   before: Record<string, unknown> | null,
   after: Record<string, unknown> | null,
@@ -678,6 +703,7 @@ function recordLegacyKpiEvent(
   });
 }
 
+/** Implements the raw kpis in category with context operation. */
 function rawKpisInCategoryWithContext(
   categoryId: number,
 ): Record<string, unknown>[] {
@@ -696,6 +722,7 @@ function rawKpisInCategoryWithContext(
   return ids.map(({ id }) => rawKpiWithContext(Number(id)));
 }
 
+/** Implements the raw kpi tree with context operation. */
 function rawKpiTreeWithContext(kpiId: number): Record<string, unknown>[] {
   const ids = getDb()
     .prepare(
@@ -713,6 +740,7 @@ function rawKpiTreeWithContext(kpiId: number): Record<string, unknown>[] {
   return ids.map(({ id }) => rawKpiWithContext(Number(id)));
 }
 
+/** Determines whether is strategic kpi. */
 export function isStrategicKPI(id: number): boolean {
   const row = getDb()
     .prepare(
@@ -735,6 +763,7 @@ export function isStrategicKPI(id: number): boolean {
   return Number(row.strategic) === 1;
 }
 
+/** Determines whether is strategic category. */
 export function isStrategicCategory(id: number): boolean {
   const row = getDb()
     .prepare(
@@ -759,6 +788,7 @@ export function isStrategicCategory(id: number): boolean {
   return Number(row.strategic) === 1;
 }
 
+/** Implements the previous kpi active state operation. */
 function previousKpiActiveState(id: number): number {
   const row = getDb()
     .prepare(
@@ -778,6 +808,7 @@ function previousKpiActiveState(id: number): number {
   }
 }
 
+/** Removes or resets kpi. */
 export function archiveKPI(id: number, actorId: number | null = null): void {
   transaction(() => {
     const before = rawKpiWithContext(id);
@@ -811,6 +842,7 @@ export function archiveKPI(id: number, actorId: number | null = null): void {
   });
 }
 
+/** Implements the restore kpi operation. */
 export function restoreKPI(id: number, actorId: number | null = null): void {
   transaction(() => {
     const before = rawKpiWithContext(id);
@@ -844,6 +876,7 @@ export function restoreKPI(id: number, actorId: number | null = null): void {
   });
 }
 
+/** Removes or resets category. */
 export function archiveCategory(
   id: number,
   actorId: number | null = null,
@@ -877,6 +910,7 @@ export function archiveCategory(
   });
 }
 
+/** Implements the restore category operation. */
 export function restoreCategory(
   id: number,
   actorId: number | null = null,

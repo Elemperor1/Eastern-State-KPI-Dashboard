@@ -11,6 +11,7 @@ const ADMIN = {
 
 vi.mock("@/features/auth/session", () => ({
   requireAdmin: vi.fn(async () => ADMIN),
+  /** Supports the auth error response test scenario. */
   authErrorResponse: () => new Response(null, { status: 401 }),
 }));
 
@@ -38,6 +39,7 @@ import { DELETE, POST } from "./route";
 
 const TOKEN = "test-csrf-token-0123456789abcdef";
 
+/** Supports the request test scenario. */
 function request(method: "POST" | "DELETE", body: unknown): NextRequest {
   return new NextRequest(
     new Request("http://localhost/api/strategy/component-entries", {

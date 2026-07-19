@@ -39,6 +39,7 @@ export interface CreateKpiPayload extends Record<string, unknown> {
   description: string | null;
 }
 
+/** Implements the filter catalog kpis operation. */
 export function filterCatalogKpis(
   kpis: KPIWithCategory[],
   filters: CatalogFilters,
@@ -56,12 +57,14 @@ export function filterCatalogKpis(
   });
 }
 
+/** Formats catalog direction. */
 export function formatCatalogDirection(direction: Direction): string {
   if (direction === "higher") return "higher is better";
   if (direction === "lower") return "lower is better";
   return "neutral";
 }
 
+/** Builds create kpi payload. */
 export function buildCreateKpiPayload(form: FormData): CreateKpiPayload {
   const name = String(form.get("name") || "");
   return {

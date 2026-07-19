@@ -11,6 +11,7 @@ interface EmptyStateProps {
   className?: string;
 }
 
+/** Renders the empty state interface. */
 export function EmptyState({ icon: Icon = FileQuestion, title, description, action, className }: EmptyStateProps) {
   return (
     <div className={cn("flex-1 flex items-center justify-center", className)}>

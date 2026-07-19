@@ -367,6 +367,7 @@ export interface StrategyRollups {
 const DEFAULT_PRECISION = 2;
 const MAX_PRECISION = 10;
 
+/** Determines whether is measurement type. */
 export function isMeasurementType(value: unknown): value is MeasurementType {
   return typeof value === "string" && (MEASUREMENT_TYPES as readonly string[]).includes(value);
 }
@@ -382,6 +383,7 @@ export function roundFinite(
   return Object.is(rounded, -0) ? 0 : rounded;
 }
 
+/** Calculates measurement. */
 export function calculateMeasurement(
   input: MeasurementInput | Record<string, unknown>,
 ): MeasurementResult {
@@ -429,6 +431,7 @@ export function calculateMeasurement(
   }
 }
 
+/** Calculates progress. */
 export function calculateProgress(input: ProgressInput): ProgressResult {
   const precisionResult = resolvePrecision(input.precision);
   if (precisionResult.issue) {
@@ -600,6 +603,7 @@ export function calculateProgress(input: ProgressInput): ProgressResult {
   });
 }
 
+/** Calculates annual and plan progress. */
 export function calculateAnnualAndPlanProgress(
   input: AnnualAndPlanProgressInput,
 ): AnnualAndPlanProgressResult {
@@ -702,6 +706,7 @@ export function calculateAnnualAndPlanProgress(
   };
 }
 
+/** Calculates goal completion. */
 export function calculateGoalCompletion(
   input: GoalCompletionInput,
 ): GoalCompletionResult {
@@ -884,6 +889,7 @@ export function calculateGoalCompletion(
   });
 }
 
+/** Implements the rollup goal completions operation. */
 export function rollupGoalCompletions(
   goals: Array<Pick<GoalRollupInput, "goalId" | "result">>,
   precision: number = DEFAULT_PRECISION,
@@ -907,6 +913,7 @@ export function rollupGoalCompletions(
   };
 }
 
+/** Calculates strategy rollups. */
 export function calculateStrategyRollups(
   goals: GoalRollupInput[],
   precision: number = DEFAULT_PRECISION,
@@ -929,6 +936,7 @@ export function calculateStrategyRollups(
   };
 }
 
+/** Calculates binary. */
 function calculateBinary(input: BinaryMeasurementInput, precision: number): MeasurementResult {
   if (input.completed === null || input.completed === undefined) {
     return result({
@@ -955,6 +963,7 @@ function calculateBinary(input: BinaryMeasurementInput, precision: number): Meas
   });
 }
 
+/** Calculates milestone. */
 function calculateMilestone(input: MilestoneMeasurementInput, precision: number): MeasurementResult {
   const hasBoolean = input.completed !== null && input.completed !== undefined;
   const hasCounts =
@@ -1025,6 +1034,7 @@ function calculateMilestone(input: MilestoneMeasurementInput, precision: number)
   });
 }
 
+/** Calculates scalar. */
 function calculateScalar(input: ScalarMeasurementInput, precision: number): MeasurementResult {
   const value = readFinite(input.value, "value");
   if (value.issue) {
@@ -1043,6 +1053,7 @@ function calculateScalar(input: ScalarMeasurementInput, precision: number): Meas
   });
 }
 
+/** Calculates percentage. */
 function calculatePercentage(input: PercentageMeasurementInput, precision: number): MeasurementResult {
   const fraction = calculateFractionInputs(input, precision, 100);
   return result({
@@ -1053,6 +1064,7 @@ function calculatePercentage(input: PercentageMeasurementInput, precision: numbe
   });
 }
 
+/** Calculates ratio. */
 function calculateRatio(input: RatioMeasurementInput, precision: number): MeasurementResult {
   const scale = input.scale ?? 1;
   if (!Number.isFinite(scale)) {
@@ -1072,7 +1084,9 @@ function calculateRatio(input: RatioMeasurementInput, precision: number): Measur
   });
 }
 
+/** Calculates average. */
 function calculateAverage(input: AverageMeasurementInput, precision: number): MeasurementResult {
+  /** Calculates result. */
   const averageResult = (overrides: Partial<MeasurementResult>) => result({
     ...overrides,
     averageMethod: input.method,
@@ -1184,6 +1198,7 @@ function calculateAverage(input: AverageMeasurementInput, precision: number): Me
   });
 }
 
+/** Calculates year over year. */
 function calculateYearOverYear(input: YearOverYearMeasurementInput, precision: number): MeasurementResult {
   const current = readFinite(input.currentValue, "currentValue");
   const previous = readFinite(input.previousPeriodValue, "previousPeriodValue");
@@ -1217,6 +1232,7 @@ function calculateYearOverYear(input: YearOverYearMeasurementInput, precision: n
   });
 }
 
+/** Calculates distribution. */
 function calculateDistribution(
   input: DistributionMeasurementInput,
   precision: number,
@@ -1330,6 +1346,7 @@ function calculateDistribution(
   });
 }
 
+/** Implements the derive non white percentage operation. */
 function deriveNonWhitePercentage(
   categories: DistributionCategoryResult[],
   respondentTotal: number,
@@ -1346,6 +1363,7 @@ function deriveNonWhitePercentage(
   );
 }
 
+/** Calculates multi component. */
 function calculateMultiComponent(
   input: MultiComponentMeasurementInput,
   precision: number,
@@ -1631,6 +1649,7 @@ interface NumericCheck {
   issue: CalculationIssue | null;
 }
 
+/** Calculates fraction inputs. */
 function calculateFractionInputs(
   input: PercentageMeasurementInput | RatioMeasurementInput,
   precision: number,
@@ -1685,6 +1704,7 @@ function calculateFractionInputs(
   };
 }
 
+/** Implements the result operation. */
 function result(overrides: Partial<MeasurementResult>): MeasurementResult {
   return {
     state: overrides.state ?? "invalid",
@@ -1708,6 +1728,7 @@ function result(overrides: Partial<MeasurementResult>): MeasurementResult {
   };
 }
 
+/** Implements the progress result operation. */
 function progressResult(overrides: Partial<ProgressResult>): ProgressResult {
   return {
     state: overrides.state ?? "invalid",
@@ -1723,6 +1744,7 @@ function progressResult(overrides: Partial<ProgressResult>): ProgressResult {
   };
 }
 
+/** Implements the goal result operation. */
 function goalResult(
   input: GoalCompletionInput,
   overrides: Partial<GoalCompletionResult>,
@@ -1744,6 +1766,7 @@ function goalResult(
   };
 }
 
+/** Builds goal kpi progress. */
 function normalizeGoalKpiProgress(progress: GoalKpiInput["progress"]): {
   state: CalculationState;
   progress: number | null;
@@ -1793,6 +1816,7 @@ function normalizeGoalKpiProgress(progress: GoalKpiInput["progress"]): {
   };
 }
 
+/** Retrieves threshold count. */
 function resolveThresholdCount(
   rule: Extract<GoalCompletionRule, { type: "threshold_count" }>,
   eligibleCount: number,
@@ -1825,6 +1849,7 @@ function resolveThresholdCount(
   return { count: Math.ceil((eligibleCount * percentage) / 100), issue: null };
 }
 
+/** Retrieves precision. */
 function resolvePrecision(value: unknown): {
   precision: number;
   issue: CalculationIssue | null;
@@ -1839,10 +1864,12 @@ function resolvePrecision(value: unknown): {
   return { precision: value, issue: null };
 }
 
+/** Determines whether is valid precision. */
 function isValidPrecision(value: number): boolean {
   return Number.isInteger(value) && value >= 0 && value <= MAX_PRECISION;
 }
 
+/** Retrieves finite. */
 function readFinite(value: unknown, field: string): NumericCheck {
   if (value === null || value === undefined) {
     return { value: null, issue: missing("MISSING_VALUE", `${field} is required.`, field) };
@@ -1853,27 +1880,32 @@ function readFinite(value: unknown, field: string): NumericCheck {
   return { value, issue: null };
 }
 
+/** Retrieves optional finite. */
 function readOptionalFinite(value: unknown, field: string): NumericCheck {
   if (value === null || value === undefined) return { value: null, issue: null };
   return readFinite(value, field);
 }
 
+/** Implements the finite or null operation. */
 function finiteOrNull(value: unknown): number | null {
   return typeof value === "number" && Number.isFinite(value) ? value : null;
 }
 
+/** Implements the state from checks operation. */
 function stateFromChecks(checks: NumericCheck[]): CalculationState {
   if (checks.some((check) => check.issue?.kind === "invalid")) return "invalid";
   if (checks.some((check) => check.issue?.kind === "missing")) return "missing";
   return "ok";
 }
 
+/** Implements the combine states operation. */
 function combineStates(states: CalculationState[]): CalculationState {
   if (states.includes("invalid")) return "invalid";
   if (states.includes("missing")) return "missing";
   return "ok";
 }
 
+/** Implements the prorate baseline operation. */
 function prorateBaseline(
   value: number | null | undefined,
   fraction: number,
@@ -1884,16 +1916,19 @@ function prorateBaseline(
   return roundFinite(value * fraction, precision);
 }
 
+/** Implements the rounded average operation. */
 function roundedAverage(values: number[], precision: number): number | null {
   if (values.length === 0 || values.some((value) => !Number.isFinite(value))) return null;
   return roundFinite(values.reduce((sum, value) => sum + value, 0) / values.length, precision);
 }
 
+/** Implements the safe percentage operation. */
 function safePercentage(numerator: number, denominator: number, precision: number): number | null {
   if (!Number.isFinite(numerator) || !Number.isFinite(denominator) || denominator === 0) return null;
   return roundFinite((numerator / denominator) * 100, precision);
 }
 
+/** Implements the default unit key operation. */
 function defaultUnitKey(type: MeasurementType): string {
   if (type === "percentage" || type === "average" || type === "year_over_year") return "percent";
   if (type === "currency") return "currency";
@@ -1901,22 +1936,27 @@ function defaultUnitKey(type: MeasurementType): string {
   return type;
 }
 
+/** Implements the missing operation. */
 function missing(code: string, message: string, field?: string): CalculationIssue {
   return { kind: "missing", code, message, ...(field ? { field } : {}) };
 }
 
+/** Implements the invalid operation. */
 function invalid(code: string, message: string, field?: string): CalculationIssue {
   return { kind: "invalid", code, message, ...(field ? { field } : {}) };
 }
 
+/** Determines whether is issue. */
 function isIssue(value: CalculationIssue | null | undefined): value is CalculationIssue {
   return value !== null && value !== undefined;
 }
 
+/** Determines whether is number. */
 function isNumber(value: number | null): value is number {
   return typeof value === "number" && Number.isFinite(value);
 }
 
+/** Implements the unique operation. */
 function unique(values: string[]): string[] {
   return Array.from(new Set(values));
 }

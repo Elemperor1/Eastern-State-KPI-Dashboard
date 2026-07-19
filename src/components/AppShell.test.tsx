@@ -4,10 +4,13 @@ import type { SessionUser } from "@/lib/types";
 import { AppShell } from "./AppShell";
 
 vi.mock("next/navigation", () => ({
+  /** Supports the use pathname test scenario. */
   usePathname: () => "/dashboard/overview",
+  /** Supports the use router test scenario. */
   useRouter: () => ({ push: vi.fn(), replace: vi.fn() }),
 }));
 
+/** Supports the user test scenario. */
 function user(role: SessionUser["role"]): SessionUser {
   return {
     id: role === "admin" ? 1 : 2,

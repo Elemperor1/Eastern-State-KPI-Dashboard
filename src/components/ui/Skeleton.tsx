@@ -8,6 +8,7 @@ interface SkeletonProps {
   rounded?: "sm" | "md" | "lg" | "xl" | "full";
 }
 
+/** Renders the skeleton interface. */
 export function Skeleton({ className, rounded = "md" }: SkeletonProps) {
   return (
     <div
@@ -26,6 +27,7 @@ export function Skeleton({ className, rounded = "md" }: SkeletonProps) {
   );
 }
 
+/** Renders the skeleton card interface. */
 export function SkeletonCard() {
   return (
     <Card className="p-5">
@@ -46,6 +48,7 @@ export function SkeletonCard() {
   );
 }
 
+/** Renders the skeleton table interface. */
 export function SkeletonTable({ rows = 4 }: { rows?: number }) {
   return (
     <div className="space-y-3">

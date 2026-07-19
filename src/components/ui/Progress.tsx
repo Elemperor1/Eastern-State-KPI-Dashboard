@@ -9,6 +9,7 @@ export interface ProgressProps extends React.HTMLAttributes<HTMLDivElement> {
   color?: string;
 }
 
+/** Renders the progress interface. */
 export function Progress({ value, max = 100, color, className, ...props }: ProgressProps) {
   const normalized = normalizeProgressValue(value, max);
   return (

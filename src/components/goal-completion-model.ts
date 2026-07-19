@@ -45,6 +45,7 @@ export interface NormalizedPriorityGoalCompletionViewModel
   priorityName: string;
 }
 
+/** Builds goal completion view model. */
 export function normalizeGoalCompletionViewModel(
   input: GoalCompletionViewModel,
 ): NormalizedGoalCompletionViewModel {
@@ -96,6 +97,7 @@ export function normalizeGoalCompletionViewModel(
   };
 }
 
+/** Builds priority goal completion view model. */
 export function normalizePriorityGoalCompletionViewModel(
   input: PriorityGoalCompletionViewModel,
 ): NormalizedPriorityGoalCompletionViewModel {
@@ -106,6 +108,7 @@ export function normalizePriorityGoalCompletionViewModel(
   };
 }
 
+/** Builds exclusion reasons. */
 function normalizeExclusionReasons(
   reasons: GoalExclusionReasonViewModel[] | null | undefined,
 ): NormalizedGoalExclusionReason[] {
@@ -129,16 +132,19 @@ function normalizeExclusionReasons(
   });
 }
 
+/** Implements the non negative integer operation. */
 function nonNegativeInteger(value: number): number {
   return typeof value === "number" && Number.isFinite(value)
     ? Math.max(0, Math.floor(value))
     : 0;
 }
 
+/** Implements the finite or null operation. */
 function finiteOrNull(value: number | null): number | null {
   return typeof value === "number" && Number.isFinite(value) ? value : null;
 }
 
+/** Implements the safe text operation. */
 function safeText(value: string | null | undefined): string | null {
   if (typeof value !== "string") return null;
   const trimmed = value.trim();
@@ -148,20 +154,24 @@ function safeText(value: string | null | undefined): string | null {
   return trimmed;
 }
 
+/** Formats percentage. */
 function formatPercentage(value: number): string {
   return new Intl.NumberFormat("en-US", {
     maximumFractionDigits: 1,
   }).format(value);
 }
 
+/** Implements the pluralize operation. */
 function pluralize(noun: string, count: number): string {
   return count === 1 ? noun : `${noun}s`;
 }
 
+/** Implements the clamp operation. */
 function clamp(value: number, minimum: number, maximum: number): number {
   return Math.max(minimum, Math.min(maximum, value));
 }
 
+/** Implements the unique operation. */
 function unique(values: string[]): string[] {
   return Array.from(new Set(values));
 }

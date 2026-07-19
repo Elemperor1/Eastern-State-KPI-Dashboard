@@ -19,6 +19,7 @@ interface AdminHistoryFiltersProps {
   onClear: () => void;
 }
 
+/** Renders the admin history filters interface. */
 export function AdminHistoryFilters({
   categories,
   kpis,

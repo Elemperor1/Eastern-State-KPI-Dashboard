@@ -12,6 +12,7 @@ interface AdminPasswordResetDialogProps {
   onConfirm: () => void | Promise<void>;
 }
 
+/** Renders the admin password reset dialog interface. */
 export function AdminPasswordResetDialog({
   target,
   password,

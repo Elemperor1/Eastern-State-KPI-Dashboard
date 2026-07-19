@@ -144,6 +144,7 @@ const GOAL_METADATA_REPAIRS: GoalMetadataRepair[] = [
   },
 ];
 
+/** Implements the repair canonical goal metadata operation. */
 function repairCanonicalGoalMetadata(): number {
   const db = getDb();
   let repaired = 0;
@@ -241,6 +242,7 @@ const MEMBERSHIP_REPAIRS: MembershipRepair[] = [
   },
 ];
 
+/** Implements the repair canonical memberships operation. */
 function repairCanonicalMemberships(): number {
   const db = getDb();
   let repaired = 0;
@@ -345,6 +347,7 @@ const MEASUREMENT_METADATA_REPAIRS: MeasurementMetadataRepair[] = [
   },
 ];
 
+/** Implements the repair canonical measurement metadata operation. */
 function repairCanonicalMeasurementMetadata(): number {
   const db = getDb();
   let repaired = 0;
@@ -405,6 +408,7 @@ function repairCanonicalMeasurementMetadata(): number {
   return repaired;
 }
 
+/** Implements the repair canonical preservation target operation. */
 function repairCanonicalPreservationTarget(): number {
   const db = getDb();
   const row = db.prepare(
@@ -485,6 +489,7 @@ function repairCanonicalPreservationTarget(): number {
   return 1;
 }
 
+/** Implements the repair legacy government support ratio operation. */
 function repairLegacyGovernmentSupportRatio(): GovernmentSupportRatioRepair {
   const db = getDb();
   const configs = db.prepare(
@@ -610,6 +615,7 @@ function repairLegacyGovernmentSupportRatio(): GovernmentSupportRatioRepair {
   return "repaired";
 }
 
+/** Determines whether is current government ratio. */
 function isCurrentGovernmentRatio(
   config: GovernmentConfigRow,
   components: ComponentRow[],
@@ -625,6 +631,7 @@ function isCurrentGovernmentRatio(
     roles.get("contributed-revenue") === "denominator";
 }
 
+/** Determines whether is exact legacy government signature. */
 function isExactLegacyGovernmentSignature(
   config: GovernmentConfigRow,
   components: ComponentRow[],
@@ -669,6 +676,7 @@ function isExactLegacyGovernmentSignature(
   });
 }
 
+/** Implements the matches legacy component operation. */
 function matchesLegacyComponent(
   component: ComponentRow | undefined,
   expected: { slug: string; label: string; displayOrder: number },
@@ -691,6 +699,7 @@ function matchesLegacyComponent(
     component.archived_at === null;
 }
 
+/** Determines whether has first class government data. */
 function hasFirstClassGovernmentData(
   config: GovernmentConfigRow,
   components: ComponentRow[],

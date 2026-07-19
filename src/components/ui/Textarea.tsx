@@ -4,6 +4,7 @@ import { cn } from "@/lib/utils";
 
 export type TextareaProps = React.TextareaHTMLAttributes<HTMLTextAreaElement>;
 
+/** Renders the textarea interface. */
 export function Textarea({ className, ...props }: TextareaProps) {
   return (
     <textarea

@@ -7,6 +7,7 @@ import {
   StrategyEntityNotFoundError,
 } from "@/features/strategy/server";
 
+/** Implements the strategy edit error response operation. */
 export function strategyEditErrorResponse(error: unknown): NextResponse | null {
   if (error instanceof StrategyEditValidationError) {
     return NextResponse.json(
@@ -36,6 +37,7 @@ export function strategyEditErrorResponse(error: unknown): NextResponse | null {
   }
   return null;
 }
+/** Implements the invalid strategy input operation. */
 export function invalidStrategyInput(issues: unknown): NextResponse {
   return NextResponse.json(
     { error: "Invalid input", issues },

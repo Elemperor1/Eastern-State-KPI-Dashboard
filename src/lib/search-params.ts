@@ -1,3 +1,4 @@
+/** Implements the first search param operation. */
 export function firstSearchParam(
   value: string | string[] | undefined,
 ): string | undefined {

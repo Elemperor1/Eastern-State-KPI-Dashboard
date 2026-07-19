@@ -64,6 +64,7 @@ export type CsrfFailReason =
   | "csrf-cookie-missing"
   | "csrf-token-mismatch";
 
+/** Implements the log csrf operation. */
 function logCsrf(reason: CsrfFailReason, req: NextRequest): void {
   // Structured, server-side only. No cookie values, no auth details.
   // The request URL is safe (it is the app's own route) and helps
@@ -117,6 +118,7 @@ function parseOrigin(value: string): string | null {
   }
 }
 
+/** Implements the same origin operation. */
 function sameOrigin(origin: string, allowed: string[]): boolean {
   const o = origin.toLowerCase();
   return allowed.some((a) => a === o);

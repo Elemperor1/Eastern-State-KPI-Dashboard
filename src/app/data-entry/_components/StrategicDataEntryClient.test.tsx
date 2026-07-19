@@ -5,9 +5,11 @@ import type { StrategicDataEntryPageData } from "@/features/strategy";
 import { StrategicDataEntryClient } from "./StrategicDataEntryClient";
 
 vi.mock("next/navigation", () => ({
+  /** Supports the use router test scenario. */
   useRouter: () => ({ replace: vi.fn(), refresh: vi.fn() }),
 }));
 
+/** Supports the page data test scenario. */
 function pageData(): StrategicDataEntryPageData {
   return {
     reportingYear: 2027,

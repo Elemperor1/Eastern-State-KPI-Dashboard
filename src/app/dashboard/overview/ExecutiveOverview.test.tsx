@@ -4,9 +4,11 @@ import type { ExecutiveOverviewPageData } from "@/features/reporting/server";
 import { ExecutiveOverview } from "./ExecutiveOverview";
 
 vi.mock("next/navigation", () => ({
+  /** Supports the use router test scenario. */
   useRouter: () => ({ replace: vi.fn() }),
 }));
 
+/** Supports the overview data test scenario. */
 function overviewData(): ExecutiveOverviewPageData {
   return {
     years: [2025, 2026, 2027, 2028, 2029],

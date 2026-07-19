@@ -25,7 +25,9 @@ vi.mock("jspdf", () => ({
   default: class MockJsPdf {
     internal = {
       pageSize: {
+        /** Supports the get width test scenario. */
         getWidth: () => 792,
+        /** Supports the get height test scenario. */
         getHeight: () => 612,
       },
     };
@@ -36,6 +38,7 @@ vi.mock("jspdf", () => ({
   },
 }));
 vi.mock("./dom-capture", () => ({
+  /** Supports the get page background test scenario. */
   getPageBackground: () => "white",
   prepareRasterExportTarget: prepareRasterExportTargetMock,
   resolveRasterCaptureScale: resolveRasterCaptureScaleMock,
@@ -43,6 +46,7 @@ vi.mock("./dom-capture", () => ({
 
 import { exportElementToPdf } from "./legacy-pdf-export";
 
+/** Supports the install document test scenario. */
 function installDocument({
   target,
 }: {
@@ -53,7 +57,9 @@ function installDocument({
     createElement: vi.fn(() => ({
       width: 0,
       height: 0,
+      /** Supports the get context test scenario. */
       getContext: () => ({ drawImage: drawImageMock }),
+      /** Supports the to data url test scenario. */
       toDataURL: () => "data:image/png;base64,slice",
     })),
   });
@@ -80,6 +86,7 @@ describe("legacy raster PDF adapter", () => {
   it("renders every tall-canvas slice in order and restores the target", async () => {
     let rasterized = false;
     const keepTogether = {
+      /** Supports the get bounding client rect test scenario. */
       getBoundingClientRect: () => ({
         top: 650,
         height: 250,
@@ -87,29 +94,35 @@ describe("legacy raster PDF adapter", () => {
     };
     const clonedTarget = {
       scrollHeight: 2000,
+      /** Supports the get bounding client rect test scenario. */
       getBoundingClientRect: () => ({
         top: 0,
         height: 2000,
       }),
+      /** Supports the query selector all test scenario. */
       querySelectorAll: () => [keepTogether],
     } as unknown as HTMLElement;
     const target = {
       scrollWidth: 1000,
       scrollHeight: 2000,
+      /** Supports the get bounding client rect test scenario. */
       getBoundingClientRect: () => ({
         top: 0,
         height: rasterized ? 1000 : 2000,
       }),
+      /** Supports the query selector all test scenario. */
       querySelectorAll: () => [keepTogether],
     } as unknown as HTMLElement;
     const sourceCanvas = {
       width: 1000,
       height: 2000,
+      /** Supports the to data url test scenario. */
       toDataURL: () => "data:image/png;base64,source",
     };
     html2canvasMock.mockImplementation(async (_target, options) => {
       rasterized = true;
       options.onclone({
+        /** Supports the get element by id test scenario. */
         getElementById: () => clonedTarget,
       });
       return sourceCanvas;
@@ -148,6 +161,7 @@ describe("legacy raster PDF adapter", () => {
 
   it("restores report chrome when rasterization fails", async () => {
     const target = {
+      /** Supports the query selector all test scenario. */
       querySelectorAll: () => [],
       scrollWidth: 1000,
       scrollHeight: 500,
@@ -164,6 +178,7 @@ describe("legacy raster PDF adapter", () => {
 
   it("rejects an oversized raster target before the browser creates a blank canvas", async () => {
     const target = {
+      /** Supports the query selector all test scenario. */
       querySelectorAll: () => [],
       scrollWidth: 1440,
       scrollHeight: 50_000,

@@ -33,6 +33,7 @@ const sizeMap = {
   lg: { px: 56, className: "size-14" },
 } as const;
 
+/** Renders the brand mark interface. */
 export function BrandMark({
   size = "md",
   className,

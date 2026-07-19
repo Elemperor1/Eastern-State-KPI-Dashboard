@@ -15,6 +15,7 @@ import {
 
 const NOW = new Date(2027, 6, 15, 12, 0, 0);
 
+/** Supports the valid test scenario. */
 function valid(input: unknown): StrategyReportingPeriod {
   const result = validateReportingPeriod(input);
   expect(result.success, JSON.stringify(result.issues)).toBe(true);
@@ -22,6 +23,7 @@ function valid(input: unknown): StrategyReportingPeriod {
   return result.period;
 }
 
+/** Supports the issue codes test scenario. */
 function issueCodes(input: unknown): string[] {
   const result = validateReportingPeriod(input);
   expect(result.success).toBe(false);

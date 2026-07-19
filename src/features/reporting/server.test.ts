@@ -150,6 +150,7 @@ const goal: StrategicGoalReadModel = {
   }],
 };
 
+/** Supports the actual test scenario. */
 function actual(year: number, periodType: StrategicCalculatedActual["periodType"], periodIndex: number, value: number): StrategicCalculatedActual {
   return {
     kpiId: metric.id,

@@ -62,6 +62,7 @@ const profiles = [
   },
 ];
 
+/** Implements the authenticated state operation. */
 async function authenticatedState(browser) {
   const context = await browser.newContext({ viewport: { width: 1280, height: 900 } });
   let me = await context.request.get(`${base}/api/auth/me`);
@@ -87,6 +88,7 @@ async function authenticatedState(browser) {
   return state;
 }
 
+/** Implements the apply profile operation. */
 async function applyProfile(page, profile) {
   const cdp = await page.context().newCDPSession(page);
   await cdp.send("Network.enable");
@@ -97,6 +99,7 @@ async function applyProfile(page, profile) {
   return cdp;
 }
 
+/** Implements the start trace operation. */
 async function startTrace(cdp) {
   await cdp.send("Tracing.start", {
     categories: [
@@ -116,6 +119,7 @@ async function startTrace(cdp) {
   });
 }
 
+/** Implements the stop trace operation. */
 async function stopTrace(cdp, tracePath) {
   const complete = new Promise((resolveComplete) => {
     cdp.once("Tracing.tracingComplete", resolveComplete);
@@ -140,6 +144,7 @@ async function stopTrace(cdp, tracePath) {
   await writeFile(tracePath, await gzipAsync(Buffer.concat(chunks), { level: 9 }));
 }
 
+/** Implements the measure operation. */
 async function measure(browser, storageState, profile, destination, path) {
   const context = await browser.newContext({ ...profile.context, storageState });
   const page = await context.newPage();

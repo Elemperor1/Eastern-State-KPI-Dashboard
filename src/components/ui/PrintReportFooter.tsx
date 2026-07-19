@@ -15,6 +15,7 @@ export interface PrintReportFooterProps {
   className?: string;
 }
 
+/** Renders the print report footer interface. */
 export function PrintReportFooter({
   notice = "Internal strategic plan report · For internal use only",
   className,

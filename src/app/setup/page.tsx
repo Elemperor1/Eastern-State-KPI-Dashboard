@@ -39,6 +39,7 @@ export const dynamic = "force-dynamic";
 type SetupArea = "measures" | "goals" | "people" | "activity";
 type Params = Record<string, string | string[] | undefined>;
 
+/** Implements the setup area operation. */
 function setupArea(value: string | undefined): SetupArea {
   return value === "goals" || value === "people" || value === "activity"
     ? value
@@ -52,6 +53,7 @@ const AREAS: Array<{ value: SetupArea; label: string }> = [
   { value: "activity", label: "Activity" },
 ];
 
+/** Renders the setup page interface. */
 export default async function SetupPage({ searchParams }: { searchParams: Promise<Params> }) {
   const user = await getCurrentUserReadOnly();
   if (!user) redirect("/login");
@@ -99,6 +101,7 @@ export default async function SetupPage({ searchParams }: { searchParams: Promis
   );
 }
 
+/** Renders the measures area interface. */
 function MeasuresArea({ params, year }: { params: Params; year: number }) {
   const itemId = Number(firstSearchParam(params.item));
   const focusId = Number(firstSearchParam(params.focus));
@@ -158,6 +161,7 @@ function MeasuresArea({ params, year }: { params: Params; year: number }) {
   );
 }
 
+/** Renders the goals area interface. */
 function GoalsArea({ params, year }: { params: Params; year: number }) {
   const installation = getActiveInstallation();
   const goals = listStrategicGoals({ year, includeArchived: true });
@@ -195,6 +199,7 @@ function GoalsArea({ params, year }: { params: Params; year: number }) {
   );
 }
 
+/** Renders the activity area interface. */
 function ActivityArea({ params }: { params: Params }) {
   const requestedPage = Number(firstSearchParam(params.page));
   const page = Number.isSafeInteger(requestedPage) && requestedPage > 0
@@ -237,6 +242,7 @@ function ActivityArea({ params }: { params: Params }) {
   );
 }
 
+/** Retrieves kpi editor data. */
 function loadKpiEditorData(kpiId: number, reportingYear: number): StrategicKpiEditorData | null {
   const catalogKpi = getKPI(kpiId, { includeArchived: true });
   if (!catalogKpi) return null;

@@ -6,6 +6,7 @@ export interface TableProps extends React.TableHTMLAttributes<HTMLTableElement> 
   minWidth?: string;
 }
 
+/** Renders the table interface. */
 export function Table({ children, className, minWidth, ...props }: TableProps) {
   return (
     <div className="scroll-hint">

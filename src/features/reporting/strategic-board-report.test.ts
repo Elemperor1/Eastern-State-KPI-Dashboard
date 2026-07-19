@@ -10,6 +10,7 @@ import {
   type StrategicBoardReportViewModel,
 } from "./strategic-board-report";
 
+/** Supports the kpi test scenario. */
 function kpi(
   overrides: Partial<StrategicBoardKpiInput> &
     Pick<StrategicBoardKpiInput, "id" | "name" | "measurementType">,
@@ -30,6 +31,7 @@ function kpi(
   };
 }
 
+/** Supports the representative input test scenario. */
 function representativeInput(): StrategicBoardReportInput {
   const resolvedKpis: StrategicBoardKpiInput[] = [
     kpi({
@@ -344,12 +346,14 @@ function representativeInput(): StrategicBoardReportInput {
   };
 }
 
+/** Supports the all kpis test scenario. */
 function allKpis(report: StrategicBoardReportViewModel) {
   return report.priorities.flatMap((priority) =>
     priority.goals.flatMap((goal) => goal.kpis),
   );
 }
 
+/** Supports the assert deep serializable test scenario. */
 function assertDeepSerializable(value: unknown): void {
   expect(value).not.toBeUndefined();
   if (typeof value === "number") {

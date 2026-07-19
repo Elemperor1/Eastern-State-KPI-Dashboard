@@ -1,3 +1,4 @@
+/** Builds progress value. */
 export function normalizeProgressValue(value: number, max = 100): {
   value: number;
   max: number;

@@ -25,10 +25,12 @@ import {
   type StrategicDashboardSummary,
 } from "./strategy-summary";
 
+/** Retrieves dashboard years. */
 export function listDashboardYears(): number[] {
   return [...getActiveInstallation().years];
 }
 
+/** Implements the unique kpi ids operation. */
 function uniqueKpiIds(
   goals: ReturnType<typeof listStrategicGoals>,
 ): number[] {
@@ -37,6 +39,7 @@ function uniqueKpiIds(
   );
 }
 
+/** Retrieves strategic report model. */
 function loadStrategicReportModel({
   year,
   throughMonth = 12,
@@ -82,6 +85,7 @@ function loadStrategicReportModel({
   };
 }
 
+/** Retrieves strategic reporting periods. */
 export function listStrategicReportingPeriods(year: number): ReportingCycleOption[] {
   const goals = listStrategicGoals({ year });
   return buildReportingCycleOptions(
@@ -92,6 +96,7 @@ export function listStrategicReportingPeriods(year: number): ReportingCycleOptio
   );
 }
 
+/** Implements the reporting cycle through month operation. */
 export function reportingCycleThroughMonth(period: ReportingCycleOption): number {
   if (period.periodType === "monthly") return period.periodIndex;
   if (period.periodType === "quarterly") return period.periodIndex * 3;
@@ -165,6 +170,7 @@ export function loadBoardReportPageData({
   };
 }
 
+/** Retrieves strategic priority page data. */
 export function loadStrategicPriorityPageData(
   prioritySlug: string,
   { year, throughMonth = 12 }: { year: number; throughMonth?: number },
@@ -195,6 +201,7 @@ export function loadStrategicPriorityPageData(
   };
 }
 
+/** Retrieves strategic metric page data. */
 export function loadStrategicMetricPageData(
   kpiSlug: string,
   {
@@ -235,6 +242,7 @@ export function loadStrategicMetricPageData(
   };
 }
 
+/** Implements the period included operation. */
 function periodIncluded(
   actual: StrategicCalculatedActual,
   throughMonth: number,
@@ -246,6 +254,7 @@ function periodIncluded(
   return true;
 }
 
+/** Implements the actual included in reporting cycle operation. */
 function actualIncludedInReportingCycle(
   actual: StrategicCalculatedActual,
   reportingPeriod: ReportingCycleOption,

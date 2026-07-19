@@ -19,6 +19,7 @@ const MAX_RASTER_PIXELS = 24_000_000;
 const MIN_RASTER_OUTPUT_WIDTH = 512;
 const MIN_RASTER_SCALE = 0.25;
 
+/** Retrieves raster capture scale. */
 export function resolveRasterCaptureScale({
   width,
   height,
@@ -78,6 +79,7 @@ interface StyleSnapshot {
   }>;
 }
 
+/** Updates temporary styles. */
 function setTemporaryStyles(
   elements: Iterable<HTMLElement>,
   properties: Record<string, string>,
@@ -114,6 +116,7 @@ function setTemporaryStyles(
   };
 }
 
+/** Updates temporary display. */
 function setTemporaryDisplay(
   elements: Iterable<HTMLElement>,
   display: string,
@@ -121,6 +124,7 @@ function setTemporaryDisplay(
   return setTemporaryStyles(elements, { display });
 }
 
+/** Implements the widen configured raster target operation. */
 function widenConfiguredRasterTarget(target: HTMLElement): () => void {
   const configuredWidth = Number.parseInt(
     target.getAttribute(EXPORT_MIN_WIDTH_ATTRIBUTE) ?? "",
@@ -136,6 +140,7 @@ function widenConfiguredRasterTarget(target: HTMLElement): () => void {
   });
 }
 
+/** Implements the show export only operation. */
 export function showExportOnly(target: HTMLElement): () => void {
   return setTemporaryDisplay(
     target.querySelectorAll<HTMLElement>(EXPORT_ONLY_SELECTOR),
@@ -143,6 +148,7 @@ export function showExportOnly(target: HTMLElement): () => void {
   );
 }
 
+/** Implements the hide actions for export operation. */
 export function hideActionsForExport(target: HTMLElement): () => void {
   return setTemporaryDisplay(
     target.querySelectorAll<HTMLElement>(EXPORT_ACTIONS_SELECTOR),
@@ -150,6 +156,7 @@ export function hideActionsForExport(target: HTMLElement): () => void {
   );
 }
 
+/** Implements the relax text for export operation. */
 export function relaxTextForExport(target: HTMLElement): () => void {
   return setTemporaryStyles(
     target.querySelectorAll<HTMLElement>(EXPORT_TEXT_SELECTOR),
@@ -163,6 +170,7 @@ export function relaxTextForExport(target: HTMLElement): () => void {
   );
 }
 
+/** Implements the reveal deferred for export operation. */
 export function revealDeferredForExport(target: HTMLElement): () => void {
   return setTemporaryStyles(
     target.querySelectorAll<HTMLElement>(EXPORT_DEFERRED_SELECTOR),
@@ -173,6 +181,7 @@ export function revealDeferredForExport(target: HTMLElement): () => void {
   );
 }
 
+/** Implements the prepare raster export target operation. */
 export function prepareRasterExportTarget(target: HTMLElement): () => void {
   const restoreExportOnly = showExportOnly(target);
   const restoreActions = hideActionsForExport(target);
@@ -189,6 +198,7 @@ export function prepareRasterExportTarget(target: HTMLElement): () => void {
   };
 }
 
+/** Retrieves page background. */
 export function getPageBackground(): string {
   if (typeof document === "undefined") return "white";
   return (

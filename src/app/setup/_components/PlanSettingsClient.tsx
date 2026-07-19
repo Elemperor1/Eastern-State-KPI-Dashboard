@@ -31,6 +31,7 @@ interface PlanSettingsDraft {
 
 type PlanSettingsErrors = Partial<Record<keyof PlanSettingsDraft, string>>;
 
+/** Builds from installation. */
 function draftFromInstallation(installation: ActiveInstallation): PlanSettingsDraft {
   return {
     organizationName: installation.organization.name,
@@ -43,6 +44,7 @@ function draftFromInstallation(installation: ActiveInstallation): PlanSettingsDr
   };
 }
 
+/** Builds from draft. */
 function payloadFromDraft(
   draft: PlanSettingsDraft,
   expectedRevision: number,
@@ -59,6 +61,7 @@ function payloadFromDraft(
   };
 }
 
+/** Implements the error hint operation. */
 function errorHint(error: string | undefined, fallback?: ReactNode): ReactNode {
   return error ? (
     <span className="font-medium text-[var(--color-danger-text)]">{error}</span>
@@ -67,6 +70,7 @@ function errorHint(error: string | undefined, fallback?: ReactNode): ReactNode {
   );
 }
 
+/** Renders the plan settings client interface. */
 export function PlanSettingsClient({
   installation,
 }: {
@@ -98,6 +102,7 @@ export function PlanSettingsClient({
     return () => setUnsavedState({ dirty: false, busy: false });
   }, [busy, isDirty, setUnsavedState]);
 
+  /** Updates the current state. */
   function update(key: keyof PlanSettingsDraft, value: string) {
     setDraft((current) => ({ ...current, [key]: value }));
     setErrors((current) => {
@@ -108,6 +113,7 @@ export function PlanSettingsClient({
     setFeedback(null);
   }
 
+  /** Implements the focus first invalid field operation. */
   function focusFirstInvalidField() {
     window.requestAnimationFrame(() =>
       formRef.current
@@ -116,6 +122,7 @@ export function PlanSettingsClient({
     );
   }
 
+  /** Runs the submit workflow. */
   async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     const parsed = PlanSettingsUpdateSchema.safeParse(

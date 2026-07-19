@@ -37,6 +37,7 @@ const PatchSchema = z.discriminatedUnion("action", [
   z.object({ action: z.literal("restore"), id: z.number().int().positive() }).strict(),
 ]);
 
+/** Implements the value entry error operation. */
 function valueEntryError(error: unknown): NextResponse | null {
   if (error instanceof StrategyValueEntryNotFoundError) {
     return NextResponse.json({ error: error.message }, { status: 404 });
@@ -50,6 +51,7 @@ function valueEntryError(error: unknown): NextResponse | null {
   return null;
 }
 
+/** Retrieves the requested data. */
 export async function GET(req: NextRequest) {
   try {
     await requireSession();
@@ -78,6 +80,7 @@ export async function GET(req: NextRequest) {
   }
 }
 
+/** Implements the post operation. */
 export async function POST(req: NextRequest) {
   let user;
   try {
@@ -100,6 +103,7 @@ export async function POST(req: NextRequest) {
   }
 }
 
+/** Implements the patch operation. */
 export async function PATCH(req: NextRequest) {
   let user;
   try {

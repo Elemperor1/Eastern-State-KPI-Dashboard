@@ -23,6 +23,7 @@ interface StrategicAuditWriteInput {
   source_reference?: string | null;
 }
 
+/** Retrieves actor email. */
 function resolveActorEmail(
   actorId: number | null,
   explicit: string | null | undefined,
@@ -35,10 +36,12 @@ function resolveActorEmail(
   return row?.email == null ? null : String(row.email);
 }
 
+/** Formats the supplied value. */
 function encode(value: StrategyJsonValue | null | undefined): string | null {
   return value == null ? null : JSON.stringify(value);
 }
 
+/** Validates complete audit input. */
 function assertCompleteAuditInput(input: StrategicAuditWriteInput): void {
   if (!Number.isInteger(input.entity_id) || input.entity_id < 1) {
     throw new Error("Strategic audit events require a positive entity id.");
@@ -122,6 +125,7 @@ interface StrategicAuditFilter {
   offset?: number;
 }
 
+/** Retrieves strategic audit events. */
 export function listStrategicAuditEvents(
   filter: StrategicAuditFilter = {},
 ): StrategicAuditEvent[] {

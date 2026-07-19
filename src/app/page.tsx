@@ -6,6 +6,7 @@ import { AUTH_DISABLED } from "@/lib/auth-flag";
 // Run once at module load to make sure an admin can always log in.
 ensureSeedAdmin();
 
+/** Renders the home page interface. */
 export default async function HomePage() {
   if (AUTH_DISABLED) {
     redirect("/dashboard/overview");

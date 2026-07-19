@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { z } from "./zod";
 
+/** Supports the messages test scenario. */
 function messages(schema: z.ZodType, input: unknown): string[] {
   const result = schema.safeParse(input);
   expect(result.success).toBe(false);

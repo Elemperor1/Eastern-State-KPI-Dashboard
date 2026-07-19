@@ -18,35 +18,42 @@ class FakeStyle {
   private values = new Map<string, string>();
   private priorities = new Map<string, string>();
 
+  /** Creates a new instance with the supplied state. */
   constructor(display?: string, priority = "") {
     if (display !== undefined) {
       this.setProperty("display", display, priority);
     }
   }
 
+  /** Supports the get property value test scenario. */
   getPropertyValue(name: string): string {
     return this.values.get(name) ?? "";
   }
 
+  /** Supports the get property priority test scenario. */
   getPropertyPriority(name: string): string {
     return this.priorities.get(name) ?? "";
   }
 
+  /** Supports the set property test scenario. */
   setProperty(name: string, value: string, priority = ""): void {
     this.values.set(name, value);
     this.priorities.set(name, priority);
   }
 
+  /** Supports the remove property test scenario. */
   removeProperty(name: string): void {
     this.values.delete(name);
     this.priorities.delete(name);
   }
 }
 
+/** Supports the element test scenario. */
 function element(display?: string, priority?: string): HTMLElement {
   return { style: new FakeStyle(display, priority) } as unknown as HTMLElement;
 }
 
+/** Supports the target test scenario. */
 function target({
   exportOnly = [],
   actions = [],
@@ -65,9 +72,11 @@ function target({
   return {
     style: new FakeStyle(),
     scrollWidth,
+    /** Supports the get attribute test scenario. */
     getAttribute(name: string) {
       return name === EXPORT_MIN_WIDTH_ATTRIBUTE ? rasterMinWidth ?? null : null;
     },
+    /** Supports the query selector all test scenario. */
     querySelectorAll(selector: string) {
       if (selector === EXPORT_ONLY_SELECTOR) return exportOnly;
       if (selector === EXPORT_ACTIONS_SELECTOR) return actions;

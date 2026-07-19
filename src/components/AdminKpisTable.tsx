@@ -16,6 +16,7 @@ interface AdminKpisTableProps {
   reportingYear?: number;
 }
 
+/** Renders the admin kpis table interface. */
 export function AdminKpisTable({
   kpis,
   totalKpis,
@@ -25,6 +26,7 @@ export function AdminKpisTable({
   focusKpiId = null,
   reportingYear,
 }: AdminKpisTableProps) {
+  /** Implements the href for operation. */
   const hrefFor = (id: number) =>
     `/setup?area=measures&item=${id}${reportingYear ? `&year=${reportingYear}` : ""}`;
 

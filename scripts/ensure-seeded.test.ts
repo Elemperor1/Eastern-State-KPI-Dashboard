@@ -66,12 +66,14 @@ describe("ensure-seeded destructive reset guard", () => {
   });
 });
 
+/** Supports the temp database test scenario. */
 function tempDatabase(): string {
   const directory = fs.mkdtempSync(path.join(os.tmpdir(), "ensure-seeded-"));
   tempDirectories.push(directory);
   return path.join(directory, "kpi.db");
 }
 
+/** Supports the run ensure seeded test scenario. */
 function runEnsureSeeded(databasePath: string) {
   return spawnSync(process.execPath, ["scripts/ensure-seeded.mjs"], {
     cwd: process.cwd(),

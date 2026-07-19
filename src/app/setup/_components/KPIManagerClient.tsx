@@ -19,6 +19,7 @@ interface CatalogMutationPayload {
   error?: string;
 }
 
+/** Renders the kpimanager client interface. */
 export function KPIManagerClient({
   kpis: initialKpis,
   goals,
@@ -48,10 +49,12 @@ export function KPIManagerClient({
     [kpis, query],
   );
 
+  /** Implements the apply payload operation. */
   function applyPayload(data: CatalogMutationPayload) {
     if (data.kpis) setKpis(data.kpis);
   }
 
+  /** Builds measure. */
   async function createMeasure(form: FormData): Promise<number | null> {
     form.set("reporting_year", String(reportingYear));
     const response = await apiFetch("/api/kpis", {
@@ -73,6 +76,7 @@ export function KPIManagerClient({
     return createdId;
   }
 
+  /** Runs the handle create workflow. */
   async function handleCreate(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     const form = event.currentTarget;

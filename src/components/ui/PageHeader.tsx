@@ -11,6 +11,7 @@ interface PageHeaderProps {
   children?: React.ReactNode;
 }
 
+/** Renders the page header interface. */
 export function PageHeader({ eyebrow, title, subtitle, actions, className, children }: PageHeaderProps) {
   return (
     <header className={cn("mb-8 flex flex-wrap items-start justify-between gap-5", className)}>

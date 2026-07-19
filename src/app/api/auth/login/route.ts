@@ -48,6 +48,7 @@ function clientIp(req: NextRequest): string {
   return "unknown";
 }
 
+/** Implements the post operation. */
 export async function POST(req: NextRequest) {
   // Sweep stale entries opportunistically. The map stays bounded
   // under sustained probing without needing a long-lived timer.

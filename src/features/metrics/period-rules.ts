@@ -35,22 +35,27 @@ export const MONTH_FULL = [
 
 export type CalendarMonth = (typeof MONTH_NUMBERS)[number];
 
+/** Determines whether is annual reporting frequency. */
 export function isAnnualReportingFrequency(reportingFrequency: ReportingFrequency): boolean {
   return reportingFrequency !== "monthly";
 }
 
+/** Determines whether is monthly reporting frequency. */
 export function isMonthlyReportingFrequency(reportingFrequency: ReportingFrequency): boolean {
   return reportingFrequency === "monthly";
 }
 
+/** Determines whether is annual entry month. */
 export function isAnnualEntryMonth(month: number): boolean {
   return month === ANNUAL_ENTRY_MONTH;
 }
 
+/** Determines whether is monthly entry month. */
 export function isMonthlyEntryMonth(month: number): month is CalendarMonth {
   return month >= FIRST_MONTH && month <= LAST_MONTH;
 }
 
+/** Determines whether is monthly entry through. */
 export function isMonthlyEntryThrough(month: number, throughMonth: number): boolean {
   return isMonthlyEntryMonth(month) && month <= throughMonth;
 }

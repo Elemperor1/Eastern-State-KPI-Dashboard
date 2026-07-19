@@ -33,10 +33,12 @@ const RESERVED_EMAILS: ReadonlySet<string> = new Set(
 /** Public for callers that need to detect the bypass identity (UI, session, tests). */
 export const BYPASS_USER_EMAIL = "auth-disabled@local";
 
+/** Determines whether is reserved email. */
 function isReservedEmail(email: string): boolean {
   return RESERVED_EMAILS.has(email.toLowerCase().trim());
 }
 
+/** Validates credentials. */
 export async function verifyCredentials(
   email: string,
   password: string,
@@ -156,6 +158,7 @@ function resolveBootstrapPassword(envVar: string): {
   return { password: generateSeedPassword(), source: "random temporary credential" };
 }
 
+/** Implements the ensure seed admin operation. */
 export function ensureSeedAdmin(): void {
   const db = getDb();
 

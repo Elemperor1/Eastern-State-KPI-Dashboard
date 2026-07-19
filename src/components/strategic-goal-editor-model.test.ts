@@ -19,6 +19,7 @@ import {
   type StrategicGoalEditorRecord,
 } from "./strategic-goal-editor-model";
 
+/** Supports the goal test scenario. */
 function goal(
   overrides: Partial<StrategicGoalEditorRecord> = {},
 ): StrategicGoalEditorRecord {

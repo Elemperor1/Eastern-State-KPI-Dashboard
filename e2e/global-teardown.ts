@@ -4,6 +4,7 @@ import {
   e2eDatabaseRunFromMetadata,
 } from "../scripts/e2e-database";
 
+/** Implements the global teardown operation. */
 export default async function globalTeardown(
   config: FullConfig,
 ): Promise<void> {

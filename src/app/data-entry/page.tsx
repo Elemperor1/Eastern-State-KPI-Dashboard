@@ -21,6 +21,7 @@ type SearchParams = Promise<{
   saved?: string | string[];
 }>;
 
+/** Renders the unified data entry page interface. */
 export default async function UnifiedDataEntryPage({
   searchParams,
 }: {

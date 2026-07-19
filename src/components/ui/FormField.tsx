@@ -10,6 +10,7 @@ export interface FormFieldProps extends React.HTMLAttributes<HTMLDivElement> {
   children: React.ReactNode;
 }
 
+/** Renders the form field interface. */
 export function FormField({ label, htmlFor, hint, children, className, ...props }: FormFieldProps) {
   const hintId = hint && htmlFor ? `${htmlFor}-hint` : undefined;
   const describedChildren = hintId

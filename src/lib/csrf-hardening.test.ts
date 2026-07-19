@@ -36,6 +36,7 @@ vi.mock("@/features/auth/session", () => ({
     destroy: vi.fn(async () => {}),
     save: vi.fn(async () => {}),
   })),
+  /** Supports the auth error response test scenario. */
   authErrorResponse: (err: { status?: number }) => {
     const status = err?.status === 403 ? 403 : 401;
     return new Response(JSON.stringify({ error: status === 403 ? "Forbidden" : "Unauthorized" }), {
@@ -44,6 +45,7 @@ vi.mock("@/features/auth/session", () => ({
     });
   },
   AuthError: class AuthError extends Error {
+    /** Creates a new instance with the supplied state. */
     constructor(message: string, public status: number) {
       super(message);
       this.name = "AuthError";
@@ -377,6 +379,7 @@ describe("D8AD-CAN-004 shared request guard — guard unit functions", () => {
 
   it("checkJsonContentType rejects parameters-bearing types only by media type", async () => {
     const { checkJsonContentType } = await import("@/lib/request-guard");
+    /** Supports the mk test scenario. */
     const mk = (ct: string) =>
       new NextRequest("http://localhost/api/users", {
         method: "POST",
@@ -392,6 +395,7 @@ describe("D8AD-CAN-004 shared request guard — guard unit functions", () => {
 
   it("checkCsrfToken reports the specific failure reason", async () => {
     const { checkCsrfToken } = await import("@/lib/request-guard");
+    /** Supports the mk test scenario. */
     const mk = (token?: string, cookie?: string) => {
       const h: Record<string, string> = {};
       if (token !== undefined) h["x-csrf-token"] = token;

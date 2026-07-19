@@ -26,6 +26,7 @@ type Goal = ReturnType<typeof listStrategicGoals>[number];
 type Member = Goal["members"][number];
 type Context = { goal: Goal; member: Member };
 
+/** Implements the observation record operation. */
 function observationRecord(
   observation: ReturnType<typeof listStrategyObservations>[number],
 ): StrategicDataEntryRecord {
@@ -60,6 +61,7 @@ function observationRecord(
   };
 }
 
+/** Implements the component entry record operation. */
 function componentEntryRecord(
   entry: ReturnType<typeof listStrategyComponentEntries>[number],
   componentLabel: string,
@@ -72,6 +74,7 @@ function componentEntryRecord(
   };
 }
 
+/** Implements the distribution record operation. */
 function distributionRecord(
   distribution: ReturnType<typeof listStrategyDistributions>[number],
   measurementType: MeasurementType,
@@ -119,6 +122,7 @@ function distributionRecord(
   };
 }
 
+/** Implements the active components operation. */
 function activeComponents(member: Member) {
   return member.components.filter(
     (component): component is typeof component & { measurement_type: MeasurementType } =>
@@ -126,6 +130,7 @@ function activeComponents(member: Member) {
   );
 }
 
+/** Determines whether needs attention. */
 function needsAttention(member: Member): boolean {
   const configuration = member.configuration;
   return !configuration?.measurement_type ||
@@ -136,6 +141,7 @@ function needsAttention(member: Member): boolean {
       activeComponents(member).length === 0);
 }
 
+/** Retrieves context records. */
 function loadContextRecords(context: Context, reportingYear: number) {
   const configuration = context.member.configuration;
   if (!configuration?.measurement_type || !configuration.reporting_frequency) {
@@ -197,6 +203,7 @@ function loadContextRecords(context: Context, reportingYear: number) {
   return records;
 }
 
+/** Implements the empty page data operation. */
 function emptyPageData(
   reportingYear: number,
   years: number[],
@@ -254,6 +261,7 @@ export function loadStrategicDataEntryPageData({
     ),
   );
   const recordCache = new Map<number, StrategicDataEntryRecord[]>();
+  /** Implements the records for operation. */
   const recordsFor = (context: Context) => {
     const cached = recordCache.get(context.member.kpi.id);
     if (cached) return cached;

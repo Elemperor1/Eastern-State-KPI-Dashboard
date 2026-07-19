@@ -11,6 +11,7 @@ import type {
   StrategyEditorMutationRunner,
 } from "./strategic-kpi-editor-model";
 
+/** Supports the run mutation test scenario. */
 const runMutation: StrategyEditorMutationRunner = async () => ({
   ok: true,
   error: null,
@@ -62,6 +63,7 @@ describe("strategic definition editors", () => {
   });
 });
 
+/** Supports the configuration test scenario. */
 function configuration(): PersistedMeasurementConfig {
   return {
     id: 7,
@@ -94,6 +96,7 @@ function configuration(): PersistedMeasurementConfig {
   };
 }
 
+/** Supports the component test scenario. */
 function component(): StrategyComponentWithTargets {
   return {
     id: 20,
@@ -122,6 +125,7 @@ function component(): StrategyComponentWithTargets {
   };
 }
 
+/** Supports the band test scenario. */
 function band(
   overrides: Partial<StrategicDistributionBandEditorRecord>,
 ): StrategicDistributionBandEditorRecord {

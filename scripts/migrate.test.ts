@@ -557,6 +557,7 @@ interface OperatorOwnedSnapshot {
   target: Record<string, unknown>;
 }
 
+/** Supports the customize operator owned strategy test scenario. */
 function customizeOperatorOwnedStrategy(
   db: DatabaseSync,
   excludedConfigurationId: number,
@@ -607,6 +608,7 @@ function customizeOperatorOwnedStrategy(
   };
 }
 
+/** Supports the read operator owned strategy test scenario. */
 function readOperatorOwnedStrategy(
   db: DatabaseSync,
   snapshot: OperatorOwnedSnapshot,
@@ -625,6 +627,7 @@ function readOperatorOwnedStrategy(
   };
 }
 
+/** Supports the read by id test scenario. */
 function readById(
   db: DatabaseSync,
   table: string,
@@ -634,6 +637,7 @@ function readById(
   return db.prepare(`SELECT ${columns} FROM ${table} WHERE id = ?`).get(id) as Record<string, unknown>;
 }
 
+/** Supports the run tsx test scenario. */
 function runTsx(script: string, databasePath: string) {
   return spawnSync(path.join(process.cwd(), "node_modules", ".bin", "tsx"), [script], {
     cwd: process.cwd(),
@@ -642,6 +646,7 @@ function runTsx(script: string, databasePath: string) {
   });
 }
 
+/** Supports the run pending migration test scenario. */
 function runPendingMigration(databasePath: string) {
   const db = new DatabaseSync(databasePath);
   db.prepare(
@@ -651,10 +656,12 @@ function runPendingMigration(databasePath: string) {
   return runTsx("scripts/migrate.ts", databasePath);
 }
 
+/** Supports the scalar count test scenario. */
 function scalarCount(db: DatabaseSync, table: string): number {
   return Number((db.prepare(`SELECT COUNT(*) AS count FROM ${table}`).get() as { count: number }).count);
 }
 
+/** Supports the government configuration test scenario. */
 function governmentConfiguration(db: DatabaseSync): {
   kpi_id: number;
   configuration_id: number;
@@ -667,6 +674,7 @@ function governmentConfiguration(db: DatabaseSync): {
   ).get() as { kpi_id: number; configuration_id: number };
 }
 
+/** Supports the restore legacy government signature test scenario. */
 function restoreLegacyGovernmentSignature(
   db: DatabaseSync,
   configurationId: number,

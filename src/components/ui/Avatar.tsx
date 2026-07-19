@@ -19,6 +19,7 @@ const variants = {
   neutral: "bg-brand-50 text-brand-800",
 };
 
+/** Renders the avatar interface. */
 export function Avatar({ initials, size = "md", variant = "neutral", className, ...props }: AvatarProps) {
   return (
     <div

@@ -147,20 +147,24 @@ export type StrategyEditorMutationRunner = (
   mutation: StrategyEditorMutation,
 ) => Promise<StrategyEditorMutationResult>;
 
+/** Implements the optional text operation. */
 function optionalText(value: string): string | null {
   const trimmed = value.trim();
   return trimmed ? trimmed : null;
 }
 
+/** Implements the optional number operation. */
 function optionalNumber(value: string): number | null {
   if (!value.trim()) return null;
   return Number(value);
 }
 
+/** Implements the required number operation. */
 function requiredNumber(value: string): number {
   return value.trim() ? Number(value) : Number.NaN;
 }
 
+/** Implements the errors from issues operation. */
 function errorsFromIssues(
   issues: Array<{ path: PropertyKey[]; message: string }>,
 ): StrategyEditorFormErrors {
@@ -172,6 +176,7 @@ function errorsFromIssues(
   return errors;
 }
 
+/** Parses with schema. */
 function parseWithSchema(
   schema: { safeParse: (value: unknown) => { success: true; data: unknown } | { success: false; error: { issues: Array<{ path: PropertyKey[]; message: string }> } } },
   payload: Record<string, unknown>,
@@ -182,6 +187,7 @@ function parseWithSchema(
     : { ok: false, errors: errorsFromIssues(parsed.error.issues) };
 }
 
+/** Implements the configuration draft from data operation. */
 export function configurationDraftFromData(
   configuration: PersistedMeasurementConfig | null,
   kpi: StrategyKpiIdentity,
@@ -223,6 +229,7 @@ export function configurationDraftFromData(
   };
 }
 
+/** Builds configuration form payload. */
 export function buildConfigurationFormPayload(
   draft: ConfigurationFormDraft,
   kpiId: number,
@@ -261,6 +268,7 @@ export function buildConfigurationFormPayload(
   });
 }
 
+/** Builds configuration mutation. */
 export function buildConfigurationMutation(
   payload: Record<string, unknown>,
   isCreate: boolean,
@@ -278,6 +286,7 @@ export function buildConfigurationMutation(
       };
 }
 
+/** Implements the successor configuration draft from data operation. */
 export function successorConfigurationDraftFromData(
   configuration: PersistedMeasurementConfig,
   kpi: StrategyKpiIdentity,
@@ -298,6 +307,7 @@ export function successorConfigurationDraftFromData(
   };
 }
 
+/** Determines whether can create measurement successor. */
 export function canCreateMeasurementSuccessor(
   configuration: PersistedMeasurementConfig,
   reportingYear: number,
@@ -314,6 +324,7 @@ export function canCreateMeasurementSuccessor(
   );
 }
 
+/** Builds successor configuration mutation. */
 export function buildSuccessorConfigurationMutation(
   predecessorId: number,
   payload: Record<string, unknown>,
@@ -329,6 +340,7 @@ export function buildSuccessorConfigurationMutation(
   };
 }
 
+/** Implements the target draft for scope operation. */
 export function targetDraftForScope(
   targets: PersistedTarget[],
   scope: TargetScope,
@@ -367,6 +379,7 @@ export function targetDraftForScope(
   };
 }
 
+/** Builds target form payload. */
 export function buildTargetFormPayload(
   draft: TargetFormDraft,
   kpiId: number,
@@ -450,6 +463,7 @@ export function buildTargetFormPayload(
   });
 }
 
+/** Builds target mutation. */
 export function buildTargetMutation(
   payload: Record<string, unknown>,
   isCreate: boolean,
@@ -463,6 +477,7 @@ export function buildTargetMutation(
       };
 }
 
+/** Implements the component draft from data operation. */
 export function componentDraftFromData(
   component: StrategyComponentWithTargets | null,
   displayOrder: number,
@@ -497,6 +512,7 @@ export function componentDraftFromData(
   };
 }
 
+/** Builds component form payload. */
 export function buildComponentFormPayload(
   draft: ComponentFormDraft,
   configurationId: number,
@@ -565,6 +581,7 @@ export function buildComponentFormPayload(
   });
 }
 
+/** Builds component mutation. */
 export function buildComponentMutation(
   payload: Record<string, unknown>,
   isCreate: boolean,
@@ -582,6 +599,7 @@ export function buildComponentMutation(
       };
 }
 
+/** Builds component lifecycle mutation. */
 export function buildComponentLifecycleMutation(
   id: number,
   action: "archive" | "restore",
@@ -593,6 +611,7 @@ export function buildComponentLifecycleMutation(
   };
 }
 
+/** Builds component reorder mutation. */
 export function buildComponentReorderMutation(
   configurationId: number,
   orderedComponentIds: number[],
@@ -610,6 +629,7 @@ export function buildComponentReorderMutation(
   };
 }
 
+/** Implements the distribution band draft from data operation. */
 export function distributionBandDraftFromData(
   band: StrategicDistributionBandEditorRecord | null,
   reportingYear: number,
@@ -631,6 +651,7 @@ export function distributionBandDraftFromData(
   };
 }
 
+/** Builds distribution band payload. */
 export function buildDistributionBandPayload(
   draft: DistributionBandFormDraft,
   kpiId: number,
@@ -678,6 +699,7 @@ export function buildDistributionBandPayload(
   };
 }
 
+/** Builds distribution band mutation. */
 export function buildDistributionBandMutation(
   payload: Record<string, unknown>,
   isCreate: boolean,
@@ -695,6 +717,7 @@ export function buildDistributionBandMutation(
       };
 }
 
+/** Builds distribution band lifecycle mutation. */
 export function buildDistributionBandLifecycleMutation(
   id: number,
   action: "archive" | "restore",
@@ -706,6 +729,7 @@ export function buildDistributionBandLifecycleMutation(
   };
 }
 
+/** Builds distribution band reorder mutation. */
 export function buildDistributionBandReorderMutation(
   kpiId: number,
   reportingYear: number,
@@ -727,6 +751,7 @@ export function buildDistributionBandReorderMutation(
   };
 }
 
+/** Implements the move id operation. */
 export function moveId<T extends { id: number }>(
   rows: T[],
   id: number,
@@ -740,6 +765,7 @@ export function moveId<T extends { id: number }>(
   return copy;
 }
 
+/** Implements the first form error operation. */
 export function firstFormError(errors: StrategyEditorFormErrors): string | null {
   return Object.values(errors)[0] ?? null;
 }

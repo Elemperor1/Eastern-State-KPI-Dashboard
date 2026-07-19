@@ -17,6 +17,7 @@ const REPORTING_REASON_LABELS: Record<string, string> = {
   informational: "This measure provides context and does not count toward completion",
 };
 
+/** Implements the humanize code operation. */
 function humanizeCode(value: string): string {
   const known = REPORTING_REASON_LABELS[value];
   if (known) return known;
@@ -48,6 +49,7 @@ export function humanizeReportingReason(reason: string): string {
     .join("; ");
 }
 
+/** Implements the humanize reporting reasons operation. */
 export function humanizeReportingReasons(reasons: string[]): string[] {
   return Array.from(
     new Set(reasons.map(humanizeReportingReason).filter(Boolean)),

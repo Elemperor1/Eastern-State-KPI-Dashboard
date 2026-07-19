@@ -18,6 +18,7 @@ interface AdminHistoryTableProps {
   history: EntryHistoryWithMeta[];
 }
 
+/** Renders the admin history table interface. */
 export function AdminHistoryTable({ history }: AdminHistoryTableProps) {
   return (
     <div className="overflow-hidden border-y border-ink-200">
@@ -89,6 +90,7 @@ export function AdminHistoryTable({ history }: AdminHistoryTableProps) {
   );
 }
 
+/** Renders the history change badge interface. */
 function HistoryChangeBadge({ label }: { label: "Created" | "Updated" | "Deleted" }) {
   if (label === "Deleted") {
     return <Badge variant="error" className="mt-1">Deleted</Badge>;

@@ -2,6 +2,7 @@
 
 import { Skeleton, SkeletonCard } from "@/components/ui";
 
+/** Renders the loading interface. */
 export default function Loading() {
   return (
     <div className="page-content page-content-wide">

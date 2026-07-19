@@ -7,6 +7,7 @@ import { ExportCSVButton, ExportPNGButton, PrintButton } from "@/components/ui";
 import { buildStrategicBoardCsvExport } from "@/features/reporting/strategic-board-report";
 import type { BoardReportPageData } from "@/features/reporting/types";
 
+/** Renders the board report view interface. */
 export function BoardReportView({ data }: { data: BoardReportPageData }) {
   const csv = buildStrategicBoardCsvExport(data.report);
   const targetId = "board-report-root";
