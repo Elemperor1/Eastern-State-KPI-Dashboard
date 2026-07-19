@@ -1,4 +1,6 @@
 import { getDb } from "@/lib/db";
+import { getActiveInstallation } from "@/features/installation/server";
+import { resolveStrategicReportingYear } from "./reporting-cycle";
 import type { GoalKpiInput } from "./calculations";
 import {
   calculateStrategicGoalCompletion,
@@ -6,8 +8,6 @@ import {
 } from "./goal-completion";
 import { resolveEffectiveTargetPolicy } from "./target-policy";
 import {
-  STRATEGIC_PLAN_END_YEAR,
-  STRATEGIC_PLAN_START_YEAR,
   type ConfigurationStatus,
   type GoalCompletionRule as GoalCompletionRuleName,
   type GoalManualStatus,
@@ -36,6 +36,11 @@ import {
 interface StrategyReadOptions {
   year?: number;
   includeArchived?: boolean;
+}
+
+function queryYear(requested: number | undefined): number {
+  if (requested !== undefined) return requested;
+  return resolveStrategicReportingYear(undefined, getActiveInstallation().years);
 }
 
 interface StrategicAuditIdentity {
@@ -212,7 +217,8 @@ export function listEffectiveTargetsForKpi(
   year: number,
   options: Pick<StrategyReadOptions, "includeArchived"> = {},
 ): PersistedTarget[] {
-  if (year < STRATEGIC_PLAN_START_YEAR || year > STRATEGIC_PLAN_END_YEAR) {
+  const plan = getActiveInstallation().plan;
+  if (year < plan.startYear || year > plan.endYear) {
     return [];
   }
   const rows = getDb()
@@ -233,7 +239,8 @@ function listEffectiveTargetsForComponent(
   year: number,
   options: Pick<StrategyReadOptions, "includeArchived"> = {},
 ): PersistedTarget[] {
-  if (year < STRATEGIC_PLAN_START_YEAR || year > STRATEGIC_PLAN_END_YEAR) {
+  const plan = getActiveInstallation().plan;
+  if (year < plan.startYear || year > plan.endYear) {
     return [];
   }
   const rows = getDb()
@@ -327,9 +334,14 @@ interface StrategicGoalListFilter extends StrategyReadOptions {
 export function listStrategicGoals(
   filter: StrategicGoalListFilter = {},
 ): StrategicGoalReadModel[] {
-  const year = filter.year ?? 2026;
-  const where = ["g.plan_start_year <= ?", "g.plan_end_year >= ?"];
-  const params: Array<string | number> = [year, year];
+  const year = queryYear(filter.year);
+  const planId = getActiveInstallation().plan.id;
+  const where = [
+    "g.plan_start_year <= ?",
+    "g.plan_end_year >= ?",
+    "c.plan_id = ?",
+  ];
+  const params: Array<string | number> = [year, year, planId];
   if (!filter.includeArchived) {
     where.push("g.archived_at IS NULL");
     where.push("c.archived_at IS NULL");
@@ -371,13 +383,14 @@ function getStrategicGoal(
   const goal = getStrategicGoalRecord(id);
   if (!goal) return null;
   if (!options.includeArchived && goal.archived_at !== null) return null;
-  if (!options.includeArchived) {
-    const priority = getDb()
-      .prepare("SELECT archived_at FROM categories WHERE id = ?")
-      .get(goal.priority_id) as { archived_at?: string | null } | undefined;
-    if (priority?.archived_at != null) return null;
-  }
-  const year = options.year ?? 2026;
+  const priority = getDb()
+    .prepare("SELECT plan_id, archived_at FROM categories WHERE id = ?")
+    .get(goal.priority_id) as
+    | { plan_id: number; archived_at?: string | null }
+    | undefined;
+  if (priority?.plan_id !== getActiveInstallation().plan.id) return null;
+  if (!options.includeArchived && priority.archived_at != null) return null;
+  const year = queryYear(options.year);
   if (year < goal.plan_start_year || year > goal.plan_end_year) return null;
   return {
     ...goal,
@@ -536,7 +549,7 @@ function hasAggregationCompleteTarget(
 function allConfigurationRows(
   filter: ConfigurationGapFilter,
 ): ConfigurationGapCollection {
-  const year = filter.year ?? 2026;
+  const year = queryYear(filter.year);
   const goals = listStrategicGoals({
     year,
     ...(filter.priority_id === undefined
@@ -686,7 +699,7 @@ export function getConfigurationGapCounts(
 ): ConfigurationGapCounts {
   const { rows: all, completionRows } = allConfigurationRows(filter);
   const excludedGoals = countGoalsExcludedByConfiguration(completionRows);
-  const year = filter.year ?? 2026;
+  const year = queryYear(filter.year);
   const archivedParams: Array<string | number> = [year, year];
   const archivedWhere = [
     "config.effective_from_year <= ?",

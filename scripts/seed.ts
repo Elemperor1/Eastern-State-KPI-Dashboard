@@ -3,6 +3,7 @@
  * Users are preserved; audit history is reset with the replaced sample rows.
  */
 import { ensureSeedAdmin } from "../src/features/auth/server";
+import { bootstrapInstallation } from "../src/features/installation/server";
 import {
   createCategory,
   createKPI,
@@ -14,12 +15,14 @@ import {
   STRATEGIC_PLAN_YEARS,
 } from "../src/features/catalog/strategic-plan";
 import { getDb, transaction } from "../src/lib/db";
-import { ensureStrategicPlanConfiguration } from "../src/features/strategy/server";
+import { initializeStrategicPlanConfiguration } from "../src/features/strategy/mutations";
 import {
   seedLegacyBreakdown,
   seedLegacyGoal,
   seedLegacyScalar,
 } from "./legacy-seed";
+import { EASTERN_STATE_INSTALLATION_FIXTURE } from "./bootstrap/installation-fixture";
+import { EASTERN_STATE_STRATEGIC_CONFIGURATION_FIXTURE } from "./bootstrap/strategic-configuration-fixture";
 
 function resetStrategicPlanData(): void {
   const db = getDb();
@@ -44,6 +47,9 @@ function resetStrategicPlanData(): void {
   db.exec("DELETE FROM kpi_goals;");
   db.exec("DELETE FROM kpis;");
   db.exec("DELETE FROM categories;");
+  db.exec("DELETE FROM installation_audit_events;");
+  db.exec("DELETE FROM strategic_plans;");
+  db.exec("DELETE FROM organizations;");
   db.exec("INSERT OR REPLACE INTO meta (key, value) VALUES ('sample_data', '1');");
 }
 
@@ -54,6 +60,7 @@ function main(): void {
 
   transaction(() => {
     resetStrategicPlanData();
+    bootstrapInstallation(EASTERN_STATE_INSTALLATION_FIXTURE);
 
     for (const category of STRATEGIC_PLAN_CATEGORIES) {
       const created = createCategory({
@@ -131,7 +138,9 @@ function main(): void {
     }
   });
 
-  const strategicConfiguration = ensureStrategicPlanConfiguration();
+  const strategicConfiguration = initializeStrategicPlanConfiguration(
+    EASTERN_STATE_STRATEGIC_CONFIGURATION_FIXTURE,
+  );
   ensureSeedAdmin();
   const kpis = listKPIs();
   console.log(

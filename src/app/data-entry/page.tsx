@@ -10,6 +10,7 @@ import {
 import {
   loadStrategicDataEntryPageData,
 } from "@/features/strategy/data-entry-server";
+import { getActiveInstallation } from "@/features/installation/server";
 
 export const dynamic = "force-dynamic";
 
@@ -31,8 +32,10 @@ export default async function UnifiedDataEntryPage({
   if (user.role !== "admin") redirect("/dashboard/overview");
 
   const params = await searchParams;
+  const installation = getActiveInstallation();
   const reportingYear = resolveStrategicReportingYear(
     firstSearchParam(params.year),
+    installation.years,
   );
   const reportingPeriod = firstSearchParam(params.period);
   const rawKpiId = Number(firstSearchParam(params.kpi));
@@ -45,7 +48,7 @@ export default async function UnifiedDataEntryPage({
   });
 
   return (
-    <AppShell user={user}>
+    <AppShell user={user} organizationShortName={installation.organization.shortName} planName={installation.plan.name}>
       <StrategicDataEntryClient data={data} saved={firstSearchParam(params.saved) === "1"} />
     </AppShell>
   );

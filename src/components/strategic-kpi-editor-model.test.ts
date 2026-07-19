@@ -311,12 +311,13 @@ describe("strategic KPI editor form model", () => {
   });
 
   it("does not offer an inaccessible successor after the final plan year", () => {
-    expect(canCreateMeasurementSuccessor(configuration(), 2028)).toBe(true);
-    expect(canCreateMeasurementSuccessor(configuration(), 2029)).toBe(false);
+    expect(canCreateMeasurementSuccessor(configuration(), 2028, 2029)).toBe(true);
+    expect(canCreateMeasurementSuccessor(configuration(), 2029, 2029)).toBe(false);
     expect(
       canCreateMeasurementSuccessor(
         configuration({ effective_to_year: 2027 }),
         2027,
+        2029,
       ),
     ).toBe(false);
   });
@@ -333,8 +334,8 @@ describe("strategic KPI editor form model", () => {
       }),
       target({ id: 4, archived_at: "2026-01-01T00:00:00Z" }),
     ];
-    expect(targetDraftForScope(targets, "annual", 2026).id).toBe(2);
-    expect(targetDraftForScope(targets, "full_plan", 2026).id).toBe(3);
+    expect(targetDraftForScope(targets, "annual", 2026, 2029).id).toBe(2);
+    expect(targetDraftForScope(targets, "full_plan", 2026, 2029).id).toBe(3);
   });
 
   it("edits the nearest-future then latest-past full-plan boundary target", () => {
@@ -352,9 +353,9 @@ describe("strategic KPI editor form model", () => {
         target_year: 2029,
       }),
     ];
-    expect(targetDraftForScope(targets, "full_plan", 2025).id).toBe(26);
-    expect(targetDraftForScope(targets, "full_plan", 2027).id).toBe(29);
-    expect(targetDraftForScope(targets, "full_plan", 2030).id).toBe(29);
+    expect(targetDraftForScope(targets, "full_plan", 2025, 2029).id).toBe(26);
+    expect(targetDraftForScope(targets, "full_plan", 2027, 2029).id).toBe(29);
+    expect(targetDraftForScope(targets, "full_plan", 2030, 2029).id).toBe(29);
   });
 
   it("round-trips a future annual target draft for the selected reporting year", () => {
@@ -364,13 +365,13 @@ describe("strategic KPI editor form model", () => {
       target_year: 2028,
       target_value: 24,
     });
-    const reloaded = targetDraftForScope([future], "annual", 2028);
+    const reloaded = targetDraftForScope([future], "annual", 2028, 2029);
     expect(reloaded).toMatchObject({
       id: 28,
       targetYear: "2028",
       targetValue: "24",
     });
-    const built = buildTargetFormPayload(reloaded, 42, "count");
+    const built = buildTargetFormPayload(reloaded, 42, "count", 2025, 2029);
     expect(built).toMatchObject({
       ok: true,
       payload: {
@@ -383,7 +384,7 @@ describe("strategic KPI editor form model", () => {
   });
 
   it("preserves zero targets and rejects missing or invalid percentage targets", () => {
-    const zero = buildTargetFormPayload(validTargetDraft(), 42, "count");
+    const zero = buildTargetFormPayload(validTargetDraft(), 42, "count", 2025, 2029);
     expect(zero.ok).toBe(true);
     if (zero.ok) expect(zero.payload.target_value).toBe(0);
 
@@ -392,6 +393,8 @@ describe("strategic KPI editor form model", () => {
         validTargetDraft({ targetValue: "", structuredTarget: "", targetDescription: "" }),
         42,
         "count",
+        2025,
+        2029,
       ),
     ).toMatchObject({ ok: false, errors: { target_value: expect.any(String) } });
     expect(
@@ -399,6 +402,8 @@ describe("strategic KPI editor form model", () => {
         validTargetDraft({ targetValue: "101" }),
         42,
         "percentage",
+        2025,
+        2029,
       ),
     ).toMatchObject({ ok: false, errors: { target_value: expect.any(String) } });
   });
@@ -411,6 +416,8 @@ describe("strategic KPI editor form model", () => {
       }),
       42,
       "binary",
+      2025,
+      2029,
       20,
     );
     expect(structured.ok).toBe(true);
@@ -427,6 +434,8 @@ describe("strategic KPI editor form model", () => {
         validTargetDraft({ targetValue: "", structuredTarget: "[1,2]" }),
         42,
         "count",
+        2025,
+        2029,
       ),
     ).toMatchObject({
       ok: false,
@@ -435,7 +444,7 @@ describe("strategic KPI editor form model", () => {
   });
 
   it("keeps target request envelopes scope-specific", () => {
-    const annual = buildTargetFormPayload(validTargetDraft(), 42, "count");
+    const annual = buildTargetFormPayload(validTargetDraft(), 42, "count", 2025, 2029);
     expect(annual.ok).toBe(true);
     if (!annual.ok) return;
     expect(annual.payload).toMatchObject({
@@ -456,6 +465,8 @@ describe("strategic KPI editor form model", () => {
         validTargetDraft({ targetYear: "2031" }),
         42,
         "count",
+        2025,
+        2029,
       ),
     ).toMatchObject({ ok: false, errors: { target_year: expect.any(String) } });
     const external = buildTargetFormPayload(
@@ -466,6 +477,8 @@ describe("strategic KPI editor form model", () => {
       }),
       42,
       "count",
+      2025,
+      2029,
     );
     expect(external.ok).toBe(true);
     if (external.ok) {

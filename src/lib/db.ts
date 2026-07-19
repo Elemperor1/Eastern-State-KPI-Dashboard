@@ -190,6 +190,14 @@ function migrateSchema(raw: DatabaseSync): void {
     return;
   }
 
+  // v11 -> v12 adds the durable installation/plan owner and attaches every
+  // existing Strategic Priority to that plan without changing a business id.
+  if (version === 11) {
+    ensureStrategicSchemaV10Columns(raw);
+    migrateInstallationSchemaV12(raw);
+    return;
+  }
+
   // v10 → v11 keeps every strategic row and id while narrowing component
   // slug uniqueness to the effective measurement configuration that owns it
   // and adding explicit numerator/denominator roles for ratio aggregation.
@@ -198,6 +206,7 @@ function migrateSchema(raw: DatabaseSync): void {
   if (version === 10) {
     ensureStrategicSchemaV10Columns(raw);
     migrateStrategicSchemaV11(raw);
+    migrateInstallationSchemaV12(raw);
     return;
   }
 
@@ -206,6 +215,8 @@ function migrateSchema(raw: DatabaseSync): void {
   // planning sidecars used by the next dashboard model.
   if (version === 9) {
     migrateStrategicSchemaV10(raw);
+    migrateStrategicSchemaV11(raw);
+    migrateInstallationSchemaV12(raw);
     return;
   }
 
@@ -222,6 +233,8 @@ function migrateSchema(raw: DatabaseSync): void {
       "INSERT OR REPLACE INTO meta (key, value) VALUES ('schema_version', '9');",
     );
     migrateStrategicSchemaV10(raw);
+    migrateStrategicSchemaV11(raw);
+    migrateInstallationSchemaV12(raw);
     return;
   }
 
@@ -543,7 +556,386 @@ function migrateStrategicSchemaV11(raw: DatabaseSync): void {
         );
       }
       raw.exec(
-        `INSERT OR REPLACE INTO meta (key, value) VALUES ('schema_version', ${SCHEMA_VERSION});`,
+        "INSERT OR REPLACE INTO meta (key, value) VALUES ('schema_version', '11');",
+      );
+      raw.exec("COMMIT;");
+    } catch (error) {
+      try {
+        raw.exec("ROLLBACK;");
+      } catch {
+        // Surface the migration error.
+      }
+      throw error;
+    }
+  } finally {
+    if (foreignKeysEnabled) raw.exec("PRAGMA foreign_keys = ON;");
+  }
+}
+
+function initializeInstallationSchema(raw: DatabaseSync): void {
+  raw.exec(`
+    CREATE TABLE IF NOT EXISTS organizations (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      slug TEXT UNIQUE NOT NULL,
+      name TEXT NOT NULL,
+      short_name TEXT NOT NULL,
+      status TEXT NOT NULL DEFAULT 'active'
+        CHECK (status IN ('active','archived')),
+      archived_at TEXT,
+      created_by INTEGER REFERENCES users(id) ON DELETE SET NULL,
+      created_at TEXT NOT NULL DEFAULT (datetime('now')),
+      updated_by INTEGER REFERENCES users(id) ON DELETE SET NULL,
+      updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+    );
+
+    CREATE UNIQUE INDEX IF NOT EXISTS idx_organizations_single_active
+      ON organizations((1))
+      WHERE status = 'active' AND archived_at IS NULL;
+
+    CREATE TABLE IF NOT EXISTS strategic_plans (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      organization_id INTEGER NOT NULL
+        REFERENCES organizations(id) ON DELETE RESTRICT,
+      slug TEXT NOT NULL,
+      name TEXT NOT NULL,
+      description TEXT,
+      start_year INTEGER NOT NULL CHECK (start_year BETWEEN 1900 AND 2100),
+      end_year INTEGER NOT NULL CHECK (end_year BETWEEN start_year AND 2100),
+      status TEXT NOT NULL DEFAULT 'draft'
+        CHECK (status IN ('draft','active','archived')),
+      revision INTEGER NOT NULL DEFAULT 1 CHECK (revision > 0),
+      source_reference TEXT,
+      archived_at TEXT,
+      created_by INTEGER REFERENCES users(id) ON DELETE SET NULL,
+      created_at TEXT NOT NULL DEFAULT (datetime('now')),
+      updated_by INTEGER REFERENCES users(id) ON DELETE SET NULL,
+      updated_at TEXT NOT NULL DEFAULT (datetime('now')),
+      UNIQUE (organization_id, slug)
+    );
+
+    CREATE UNIQUE INDEX IF NOT EXISTS idx_strategic_plans_active_organization
+      ON strategic_plans(organization_id)
+      WHERE status = 'active' AND archived_at IS NULL;
+    CREATE INDEX IF NOT EXISTS idx_strategic_plans_status
+      ON strategic_plans(status, archived_at);
+
+    CREATE TABLE IF NOT EXISTS installation_audit_events (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      entity_type TEXT NOT NULL CHECK (entity_type IN ('organization','strategic_plan')),
+      entity_id INTEGER NOT NULL,
+      event_type TEXT NOT NULL CHECK (event_type IN ('create','update','archive','restore')),
+      entity_display_name TEXT NOT NULL,
+      previous_value_json TEXT,
+      new_value_json TEXT,
+      actor_id INTEGER REFERENCES users(id) ON DELETE SET NULL,
+      actor_email_snapshot TEXT,
+      occurred_at TEXT NOT NULL DEFAULT (datetime('now'))
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_installation_audit_entity
+      ON installation_audit_events(entity_type, entity_id, occurred_at);
+    CREATE INDEX IF NOT EXISTS idx_installation_audit_occurred
+      ON installation_audit_events(occurred_at, id);
+  `);
+}
+
+/**
+ * v11 -> v12 database-authority migration.
+ *
+ * The embedded values below are a one-time historical migration input. After
+ * schema 12 is recorded, ordinary startup never compares or reconciles these
+ * values with persisted installation content.
+ */
+function migrateInstallationSchemaV12(raw: DatabaseSync): void {
+  const foreignKeysEnabled = Number(
+    (
+      raw.prepare("PRAGMA foreign_keys").get() as
+        | { foreign_keys?: number | bigint }
+        | undefined
+    )?.foreign_keys ?? 0,
+  ) === 1;
+
+  if (foreignKeysEnabled) raw.exec("PRAGMA foreign_keys = OFF;");
+  try {
+    raw.exec("BEGIN IMMEDIATE;");
+    try {
+      initializeInstallationSchema(raw);
+      const organization = raw.prepare(
+        `INSERT INTO organizations (slug, name, short_name, status)
+         VALUES ('eastern-state-penitentiary-historic-site',
+                 'Eastern State Penitentiary Historic Site',
+                 'Eastern State', 'active')
+         RETURNING id`,
+      ).get() as { id: number };
+      const plan = raw.prepare(
+        `INSERT INTO strategic_plans (
+           organization_id, slug, name, start_year, end_year, status,
+           source_reference
+         ) VALUES (?, 'strategic-plan-2025-2029', 'Strategic Plan',
+                   2025, 2029, 'active',
+                   'Eastern State Strategic Dashboard 2025-2029 (8.1.25)')
+         RETURNING id`,
+      ).get(Number(organization.id)) as { id: number };
+      raw.prepare(
+        `INSERT INTO installation_audit_events (
+           entity_type, entity_id, event_type, entity_display_name,
+           previous_value_json, new_value_json
+         ) VALUES ('organization', ?, 'create', ?, NULL, ?)`,
+      ).run(
+        Number(organization.id),
+        "Eastern State Penitentiary Historic Site",
+        JSON.stringify({
+          slug: "eastern-state-penitentiary-historic-site",
+          name: "Eastern State Penitentiary Historic Site",
+          short_name: "Eastern State",
+          status: "active",
+        }),
+      );
+      raw.prepare(
+        `INSERT INTO installation_audit_events (
+           entity_type, entity_id, event_type, entity_display_name,
+           previous_value_json, new_value_json
+         ) VALUES ('strategic_plan', ?, 'create', ?, NULL, ?)`,
+      ).run(
+        Number(plan.id),
+        "Strategic Plan",
+        JSON.stringify({
+          organization_id: Number(organization.id),
+          slug: "strategic-plan-2025-2029",
+          name: "Strategic Plan",
+          start_year: 2025,
+          end_year: 2029,
+          status: "active",
+          source_reference:
+            "Eastern State Strategic Dashboard 2025-2029 (8.1.25)",
+        }),
+      );
+
+      raw.exec(`
+        DROP TRIGGER IF EXISTS categories_set_updated_at_after_insert;
+        DROP TRIGGER IF EXISTS categories_set_updated_at_after_update;
+        DROP INDEX IF EXISTS idx_categories_archived_at;
+
+        CREATE TABLE categories_v12 (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          plan_id INTEGER NOT NULL REFERENCES strategic_plans(id) ON DELETE RESTRICT,
+          slug TEXT UNIQUE NOT NULL,
+          name TEXT NOT NULL,
+          description TEXT,
+          sort_order INTEGER NOT NULL DEFAULT 0,
+          archived_at TEXT,
+          updated_at TEXT
+        );
+      `);
+      raw.prepare(
+        `INSERT INTO categories_v12 (
+           id, plan_id, slug, name, description, sort_order, archived_at,
+           updated_at
+         )
+         SELECT id, ?, slug, name, description, sort_order, archived_at,
+                updated_at
+         FROM categories`,
+      ).run(Number(plan.id));
+      raw.exec(`
+        DROP TABLE categories;
+        ALTER TABLE categories_v12 RENAME TO categories;
+        CREATE INDEX idx_categories_archived_at ON categories(archived_at);
+
+        CREATE TRIGGER categories_set_updated_at_after_insert
+        AFTER INSERT ON categories
+        FOR EACH ROW WHEN NEW.updated_at IS NULL
+        BEGIN
+          UPDATE categories SET updated_at = datetime('now') WHERE id = NEW.id;
+        END;
+
+        CREATE TRIGGER categories_set_updated_at_after_update
+        AFTER UPDATE OF plan_id, slug, name, description, sort_order, archived_at
+        ON categories
+        FOR EACH ROW WHEN NEW.updated_at IS OLD.updated_at
+        BEGIN
+          UPDATE categories SET updated_at = datetime('now') WHERE id = NEW.id;
+        END;
+
+        DROP INDEX IF EXISTS idx_strategic_goals_priority;
+        DROP INDEX IF EXISTS idx_strategic_goals_configuration;
+
+        CREATE TABLE strategic_goals_v12 (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          priority_id INTEGER NOT NULL REFERENCES categories(id) ON DELETE RESTRICT,
+          slug TEXT UNIQUE NOT NULL,
+          name TEXT NOT NULL,
+          description TEXT,
+          plan_start_year INTEGER NOT NULL
+            CHECK (plan_start_year BETWEEN 1900 AND 2100),
+          plan_end_year INTEGER NOT NULL
+            CHECK (plan_end_year BETWEEN plan_start_year AND 2100),
+          completion_rule TEXT NOT NULL DEFAULT 'all_required_kpis'
+            CHECK (completion_rule IN ('all_required_kpis','weighted_average','threshold_count','manual_status')),
+          threshold_count INTEGER CHECK (threshold_count IS NULL OR threshold_count > 0),
+          threshold_percentage REAL
+            CHECK (threshold_percentage IS NULL OR (threshold_percentage >= 0 AND threshold_percentage <= 100)),
+          manual_status TEXT CHECK (
+            manual_status IS NULL OR manual_status IN ('not_started','in_progress','complete')
+          ),
+          board_level_status TEXT NOT NULL DEFAULT 'not_reported' CHECK (
+            board_level_status IN (
+              'not_reported','not_started','on_track','at_risk','off_track',
+              'complete','exceeded','not_applicable'
+            )
+          ),
+          configuration_status TEXT NOT NULL DEFAULT 'draft'
+            CHECK (configuration_status IN ('draft','needs_definition','needs_target','ready','active','archived')),
+          unresolved_question TEXT,
+          owner TEXT,
+          due_date TEXT,
+          resolution_notes TEXT,
+          source_reference TEXT,
+          last_reviewed_date TEXT,
+          sort_order INTEGER NOT NULL DEFAULT 0,
+          archived_at TEXT,
+          created_by INTEGER REFERENCES users(id) ON DELETE SET NULL,
+          created_at TEXT NOT NULL DEFAULT (datetime('now')),
+          updated_by INTEGER REFERENCES users(id) ON DELETE SET NULL,
+          updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+        );
+
+        INSERT INTO strategic_goals_v12 (
+          id, priority_id, slug, name, description, plan_start_year,
+          plan_end_year, completion_rule, threshold_count,
+          threshold_percentage, manual_status, board_level_status,
+          configuration_status, unresolved_question, owner, due_date,
+          resolution_notes, source_reference, last_reviewed_date, sort_order,
+          archived_at, created_by, created_at, updated_by, updated_at
+        )
+        SELECT id, priority_id, slug, name, description, plan_start_year,
+               plan_end_year, completion_rule, threshold_count,
+               threshold_percentage, manual_status, board_level_status,
+               configuration_status, unresolved_question, owner, due_date,
+               resolution_notes, source_reference, last_reviewed_date, sort_order,
+               archived_at, created_by, created_at, updated_by, updated_at
+        FROM strategic_goals;
+
+        DROP TABLE strategic_goals;
+        ALTER TABLE strategic_goals_v12 RENAME TO strategic_goals;
+        CREATE INDEX idx_strategic_goals_priority
+          ON strategic_goals(priority_id, sort_order);
+        CREATE INDEX idx_strategic_goals_configuration
+          ON strategic_goals(configuration_status, archived_at);
+
+        DROP INDEX IF EXISTS idx_goal_kpis_goal;
+        DROP INDEX IF EXISTS idx_goal_kpis_kpi;
+
+        CREATE TABLE goal_kpis_v12 (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          goal_id INTEGER NOT NULL REFERENCES strategic_goals(id) ON DELETE RESTRICT,
+          kpi_id INTEGER NOT NULL REFERENCES kpis(id) ON DELETE RESTRICT,
+          is_required INTEGER NOT NULL DEFAULT 1 CHECK (is_required IN (0,1)),
+          weight REAL NOT NULL DEFAULT 1 CHECK (weight >= 0),
+          display_order INTEGER NOT NULL DEFAULT 0,
+          effective_from_year INTEGER NOT NULL
+            CHECK (effective_from_year BETWEEN 1900 AND 2100),
+          effective_to_year INTEGER CHECK (
+            effective_to_year IS NULL OR
+            (effective_to_year BETWEEN effective_from_year AND 2100)
+          ),
+          archived_at TEXT,
+          created_by INTEGER REFERENCES users(id) ON DELETE SET NULL,
+          created_at TEXT NOT NULL DEFAULT (datetime('now')),
+          updated_by INTEGER REFERENCES users(id) ON DELETE SET NULL,
+          updated_at TEXT NOT NULL DEFAULT (datetime('now')),
+          UNIQUE (goal_id, kpi_id, effective_from_year)
+        );
+
+        INSERT INTO goal_kpis_v12 (
+          id, goal_id, kpi_id, is_required, weight, display_order,
+          effective_from_year, effective_to_year, archived_at, created_by,
+          created_at, updated_by, updated_at
+        )
+        SELECT id, goal_id, kpi_id, is_required, weight, display_order,
+               effective_from_year, effective_to_year, archived_at, created_by,
+               created_at, updated_by, updated_at
+        FROM goal_kpis;
+
+        DROP TABLE goal_kpis;
+        ALTER TABLE goal_kpis_v12 RENAME TO goal_kpis;
+        CREATE INDEX idx_goal_kpis_goal ON goal_kpis(goal_id, display_order);
+        CREATE INDEX idx_goal_kpis_kpi ON goal_kpis(kpi_id);
+
+        DROP INDEX IF EXISTS idx_kpi_targets_kpi_unique;
+        DROP INDEX IF EXISTS idx_kpi_targets_component_unique;
+        DROP INDEX IF EXISTS idx_kpi_targets_year;
+
+        CREATE TABLE kpi_targets_v12 (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          kpi_id INTEGER REFERENCES kpis(id) ON DELETE RESTRICT,
+          component_id INTEGER REFERENCES kpi_components(id) ON DELETE RESTRICT,
+          target_scope TEXT NOT NULL CHECK (target_scope IN ('annual','full_plan')),
+          reporting_year INTEGER CHECK (reporting_year IS NULL OR reporting_year BETWEEN 1900 AND 2100),
+          target_year INTEGER NOT NULL CHECK (target_year BETWEEN 1900 AND 2100),
+          external_target_year INTEGER NOT NULL DEFAULT 0
+            CHECK (external_target_year IN (0,1)),
+          target_value REAL,
+          structured_target_json TEXT,
+          target_description TEXT,
+          baseline_year INTEGER CHECK (baseline_year IS NULL OR baseline_year BETWEEN 1900 AND 2100),
+          baseline_value REAL,
+          configuration_status TEXT NOT NULL DEFAULT 'draft'
+            CHECK (configuration_status IN ('draft','needs_definition','needs_target','ready','active','archived')),
+          source_reference TEXT,
+          last_reviewed_date TEXT,
+          archived_at TEXT,
+          created_by INTEGER REFERENCES users(id) ON DELETE SET NULL,
+          created_at TEXT NOT NULL DEFAULT (datetime('now')),
+          updated_by INTEGER REFERENCES users(id) ON DELETE SET NULL,
+          updated_at TEXT NOT NULL DEFAULT (datetime('now')),
+          CHECK (
+            (kpi_id IS NOT NULL AND component_id IS NULL) OR
+            (kpi_id IS NULL AND component_id IS NOT NULL)
+          ),
+          CHECK (
+            (target_scope = 'annual' AND reporting_year IS NOT NULL) OR
+            (target_scope = 'full_plan' AND reporting_year IS NULL)
+          ),
+          CHECK (baseline_year IS NULL OR baseline_year < target_year)
+        );
+
+        INSERT INTO kpi_targets_v12 (
+          id, kpi_id, component_id, target_scope, reporting_year, target_year,
+          external_target_year, target_value, structured_target_json,
+          target_description, baseline_year, baseline_value,
+          configuration_status, source_reference, last_reviewed_date,
+          archived_at, created_by, created_at, updated_by, updated_at
+        )
+        SELECT id, kpi_id, component_id, target_scope, reporting_year, target_year,
+               external_target_year, target_value, structured_target_json,
+               target_description, baseline_year, baseline_value,
+               configuration_status, source_reference, last_reviewed_date,
+               archived_at, created_by, created_at, updated_by, updated_at
+        FROM kpi_targets;
+
+        DROP TABLE kpi_targets;
+        ALTER TABLE kpi_targets_v12 RENAME TO kpi_targets;
+        CREATE UNIQUE INDEX idx_kpi_targets_kpi_unique
+          ON kpi_targets(kpi_id, target_scope, COALESCE(reporting_year, -1), target_year)
+          WHERE kpi_id IS NOT NULL;
+        CREATE UNIQUE INDEX idx_kpi_targets_component_unique
+          ON kpi_targets(component_id, target_scope, COALESCE(reporting_year, -1), target_year)
+          WHERE component_id IS NOT NULL;
+        CREATE INDEX idx_kpi_targets_year
+          ON kpi_targets(target_year, reporting_year, configuration_status);
+      `);
+
+      const violations = raw.prepare("PRAGMA foreign_key_check").all();
+      if (violations.length > 0) {
+        throw new Error(
+          `Schema 12 installation migration produced ${violations.length} foreign-key violation(s).`,
+        );
+      }
+      raw.exec(
+        "INSERT OR REPLACE INTO meta (key, value) VALUES ('schema_version', '12');",
+      );
+      raw.exec(
+        "INSERT OR REPLACE INTO meta (key, value) VALUES ('schema_12_content_migration_pending', '1');",
       );
       raw.exec("COMMIT;");
     } catch (error) {
@@ -592,7 +984,7 @@ function migrateStrategicSchemaV10(raw: DatabaseSync): void {
 
     initializeStrategicSchema(raw);
     raw.exec(
-      `INSERT OR REPLACE INTO meta (key, value) VALUES ('schema_version', ${SCHEMA_VERSION});`,
+      "INSERT OR REPLACE INTO meta (key, value) VALUES ('schema_version', '10');",
     );
     raw.exec("COMMIT;");
   } catch (error) {
@@ -655,9 +1047,9 @@ function initializeStrategicSchema(raw: DatabaseSync): void {
       slug TEXT UNIQUE NOT NULL,
       name TEXT NOT NULL,
       description TEXT,
-      plan_start_year INTEGER NOT NULL DEFAULT 2025
+      plan_start_year INTEGER NOT NULL
         CHECK (plan_start_year BETWEEN 1900 AND 2100),
-      plan_end_year INTEGER NOT NULL DEFAULT 2029
+      plan_end_year INTEGER NOT NULL
         CHECK (plan_end_year BETWEEN plan_start_year AND 2100),
       completion_rule TEXT NOT NULL DEFAULT 'all_required_kpis'
         CHECK (completion_rule IN ('all_required_kpis','weighted_average','threshold_count','manual_status')),
@@ -701,7 +1093,7 @@ function initializeStrategicSchema(raw: DatabaseSync): void {
       is_required INTEGER NOT NULL DEFAULT 1 CHECK (is_required IN (0,1)),
       weight REAL NOT NULL DEFAULT 1 CHECK (weight >= 0),
       display_order INTEGER NOT NULL DEFAULT 0,
-      effective_from_year INTEGER NOT NULL DEFAULT 2025
+      effective_from_year INTEGER NOT NULL
         CHECK (effective_from_year BETWEEN 1900 AND 2100),
       effective_to_year INTEGER CHECK (
         effective_to_year IS NULL OR
@@ -946,7 +1338,6 @@ function initializeStrategicSchema(raw: DatabaseSync): void {
         (target_scope = 'annual' AND reporting_year IS NOT NULL) OR
         (target_scope = 'full_plan' AND reporting_year IS NULL)
       ),
-      CHECK (external_target_year = 1 OR target_year BETWEEN 2025 AND 2029),
       CHECK (baseline_year IS NULL OR baseline_year < target_year)
     );
 
@@ -1083,9 +1474,11 @@ function initializeStrategicSchema(raw: DatabaseSync): void {
 }
 
 function initializeSchema(raw: DatabaseSync): void {
+  initializeInstallationSchema(raw);
   raw.exec(`
     CREATE TABLE IF NOT EXISTS categories (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
+      plan_id INTEGER NOT NULL REFERENCES strategic_plans(id) ON DELETE RESTRICT,
       slug TEXT UNIQUE NOT NULL,
       name TEXT NOT NULL,
       description TEXT,

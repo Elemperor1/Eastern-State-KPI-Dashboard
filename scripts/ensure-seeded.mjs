@@ -44,6 +44,9 @@ function queryExistingDatabase() {
     const schemaVersion = Number(schemaRow?.value ?? 0);
     const categoryCount = Number(categoryRow?.count ?? 0);
     const businessTables = [
+      "organizations",
+      "strategic_plans",
+      "installation_audit_events",
       "categories",
       "kpis",
       "monthly_entries",

@@ -6,11 +6,13 @@ import { cn } from "@/lib/utils";
  * A professional report header for print, PDF, and PNG exports.
  *
  * Hidden on screen (`export-only`); visible only when the page is printed
- * or rasterized. It renders the Eastern State brand bar, a report title,
+ * or rasterized. It renders the installation brand bar, a report title,
  * the active filter context (years, month, category/metric), and the
  * generated date so a printed page is self-describing and board-ready.
  */
 export interface PrintReportHeaderProps {
+  /** Persisted installation display name. */
+  organizationName?: string;
   /** The report title, e.g. "Organizational Performance" or the KPI name. */
   title: string;
   /** Optional eyebrow label above the title, e.g. the category name. */
@@ -26,6 +28,7 @@ export interface PrintReportHeaderProps {
 }
 
 export function PrintReportHeader({
+  organizationName = "Organization",
   title,
   eyebrow,
   subtitle,
@@ -46,7 +49,7 @@ export function PrintReportHeader({
       {/* Brand bar — the navy→teal gradient strip with the org name. */}
       <div className="print-report-brand-bar">
         <div className="print-report-brand-text">
-          <span className="print-report-brand-name">Eastern State Penitentiary</span>
+          <span className="print-report-brand-name">{organizationName}</span>
           <span className="print-report-brand-sub">Strategic Plan</span>
         </div>
         <span className="print-report-date" suppressHydrationWarning>

@@ -13,6 +13,12 @@ import {
   retireOrDeleteCategory,
   updateCategory,
 } from "@/features/catalog/server";
+import {
+  InstallationEditConflictError,
+  InstallationValidationError,
+  updateActiveInstallation,
+} from "@/features/installation/server";
+import { PlanSettingsUpdateActionSchema } from "@/features/installation/validation";
 
 const CreateSchema = z.object({
   slug: z.string().min(1).regex(/^[a-z0-9-]+$/),
@@ -54,6 +60,7 @@ export async function POST(req: NextRequest) {
 }
 
 const UpdateSchema = z.union([
+  PlanSettingsUpdateActionSchema,
   z
     .object({
       action: z.enum(["archive", "restore"]),
@@ -85,6 +92,13 @@ export async function PATCH(req: NextRequest) {
   }
   try {
     if ("action" in parsed.data) {
+      if (parsed.data.action === "update_plan") {
+        const { action: _action, ...update } = parsed.data;
+        return NextResponse.json({
+          ok: true,
+          installation: updateActiveInstallation(update, user.id),
+        });
+      }
       if (parsed.data.action === "archive") {
         archiveCategory(parsed.data.id, user.id);
       } else {
@@ -100,6 +114,12 @@ export async function PATCH(req: NextRequest) {
     updateCategory(id, patch, user.id);
     return NextResponse.json({ ok: true, ...refreshedCatalogPayload() });
   } catch (err) {
+    if (err instanceof InstallationEditConflictError) {
+      return NextResponse.json({ error: err.message }, { status: 409 });
+    }
+    if (err instanceof InstallationValidationError) {
+      return NextResponse.json({ error: err.message }, { status: 400 });
+    }
     if (err instanceof CatalogEntityNotFoundError) {
       return NextResponse.json(
         { error: err.message, code: err.code },

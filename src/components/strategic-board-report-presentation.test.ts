@@ -43,9 +43,10 @@ function kpi(id: string): StrategicBoardKpiViewModel {
 
 function report(): StrategicBoardReportViewModel {
   return {
-  organizationName: "Eastern State",
-  selectedYear: 2027,
-  reportingPeriod: "Full year",
+    organizationName: "Eastern State",
+    organizationSlug: "eastern-state",
+    selectedYear: 2027,
+    reportingPeriod: "Full year",
     organizationGoalCompletion: {
       completedGoalsCount: 1,
       totalEligibleGoalsCount: 2,

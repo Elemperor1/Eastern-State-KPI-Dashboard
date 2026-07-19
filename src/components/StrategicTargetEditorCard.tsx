@@ -38,6 +38,8 @@ export function StrategicTargetEditorCard({
   kpiId,
   componentId = null,
   measurementType,
+  planStartYear,
+  planEndYear,
   runMutation,
   idPrefix,
   lockedTargetYear,
@@ -48,6 +50,8 @@ export function StrategicTargetEditorCard({
   kpiId: number;
   componentId?: number | null;
   measurementType: MeasurementType;
+  planStartYear: number;
+  planEndYear: number;
   runMutation: StrategyEditorMutationRunner;
   idPrefix: string;
   lockedTargetYear?: number;
@@ -84,6 +88,8 @@ export function StrategicTargetEditorCard({
       draft,
       kpiId,
       measurementType,
+      planStartYear,
+      planEndYear,
       componentId,
     );
     if (!built.ok) {
@@ -137,15 +143,15 @@ export function StrategicTargetEditorCard({
             hint={
               errors.target_year ??
               (lockedTargetYear === undefined
-                ? "Choose a year from 2025 through 2029."
+                ? `Choose a year from ${planStartYear} through ${planEndYear}.`
                 : "Change the reporting year above to edit another target.")
             }
           >
             <Input
               id={fieldId("year")}
               type="number"
-              min={draft.externalTargetYear ? 1900 : 2025}
-              max={draft.externalTargetYear ? 2100 : 2029}
+              min={draft.externalTargetYear ? 1900 : planStartYear}
+              max={draft.externalTargetYear ? 2100 : planEndYear}
               value={draft.targetYear}
               disabled={lockedTargetYear !== undefined}
               aria-invalid={Boolean(errors.target_year)}
@@ -161,7 +167,7 @@ export function StrategicTargetEditorCard({
                   update("externalTargetYear", event.target.checked)
                 }
                 label="Use a year outside the plan"
-                description="Turn this on only when the approved target is outside 2025–2029."
+                description={`Turn this on only when the approved target is outside ${planStartYear}–${planEndYear}.`}
               />
             </div>
           ) : (

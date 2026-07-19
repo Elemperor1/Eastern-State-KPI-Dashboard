@@ -3,10 +3,22 @@
 import { Badge, EmptyState, Table } from "@/components/ui";
 import type { StrategicAuditEvent } from "@/features/strategy";
 
+export type SetupAuditEvent = Omit<
+  StrategicAuditEvent,
+  "entity_type" | "previous_value" | "new_value"
+> & {
+  entity_type:
+    | StrategicAuditEvent["entity_type"]
+    | "organization"
+    | "strategic_plan";
+  previous_value: unknown;
+  new_value: unknown;
+};
+
 export function StrategicAuditTable({
   events,
 }: {
-  events: StrategicAuditEvent[];
+  events: SetupAuditEvent[];
 }) {
   return (
     <div className="overflow-hidden border-y border-ink-200">
@@ -14,7 +26,7 @@ export function StrategicAuditTable({
         <div className="py-12">
           <EmptyState
             title="No setup changes recorded"
-            description="Changes to measures, goals, and targets will appear here."
+            description="Changes to organization, plan, measures, goals, and targets will appear here."
           />
         </div>
       ) : (
@@ -31,7 +43,7 @@ export function StrategicAuditTable({
           </thead>
           <tbody>
             {events.map((event) => (
-              <tr key={event.id} className="align-top">
+              <tr key={`${event.entity_type}-${event.id}`} className="align-top">
                 <td className="whitespace-nowrap text-xs tabular-nums text-ink-500">
                   {formatDate(event.occurred_at)}
                 </td>
@@ -83,10 +95,12 @@ function eventTypeLabel(value: string): string {
     goal_membership: "Goal measure",
     kpi: "Measure",
     category: "Priority",
+    organization: "Organization",
+    strategic_plan: "Strategic plan",
   };
   return labels[value] ?? displayToken(value);
 }
-function snapshot(value: StrategicAuditEvent["previous_value"]): string {
+function snapshot(value: unknown): string {
   if (value === null) return "—";
   const text = JSON.stringify(value, null, 2);
   return text.length > 900 ? `${text.slice(0, 900)}…` : text;

@@ -113,7 +113,7 @@ describe("strategic goal editor model", () => {
         role: "informational",
         weight: "2.5",
         displayOrder: "4",
-      }),
+      }, 2025, 2029),
     ).toEqual({
       ok: true,
       errors: {},
@@ -252,9 +252,9 @@ describe("strategic goal editor model", () => {
     expect(strategicGoalSuccessorPath(successor)).toBe(
       "/setup?area=goals&year=2027&goal=52",
     );
-    expect(canCreateStrategicGoalSuccessor(goal(), 2028)).toBe(true);
-    expect(canCreateStrategicGoalSuccessor(goal(), 2029)).toBe(false);
-    expect(canCreateGoalMembershipSuccessor(goal().members[0]!, 2029)).toBe(
+    expect(canCreateStrategicGoalSuccessor(goal(), 2028, 2029)).toBe(true);
+    expect(canCreateStrategicGoalSuccessor(goal(), 2029, 2029)).toBe(false);
+    expect(canCreateGoalMembershipSuccessor(goal().members[0]!, 2029, 2029)).toBe(
       false,
     );
   });

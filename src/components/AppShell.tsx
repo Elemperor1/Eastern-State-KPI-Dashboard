@@ -149,7 +149,17 @@ function AccountBlock({ user }: { user: SessionUser }) {
   );
 }
 
-export function AppShell({ user, children }: { user: SessionUser; children: React.ReactNode }) {
+export function AppShell({
+  user,
+  children,
+  organizationShortName = "Organization",
+  planName = "Strategic Plan",
+}: {
+  user: SessionUser;
+  children: React.ReactNode;
+  organizationShortName?: string;
+  planName?: string;
+}) {
   const pathname = usePathname();
   const router = useRouter();
   const [mobileOpen, setMobileOpen] = useState(false);
@@ -280,11 +290,11 @@ export function AppShell({ user, children }: { user: SessionUser; children: Reac
         className="fixed inset-x-0 top-0 z-40 flex h-16 items-center justify-between bg-ink-900 px-4 text-white lg:hidden"
         inert={mobileOpen}
       >
-        <Link href="/dashboard/overview" className="flex min-h-11 items-center gap-3" aria-label="Eastern State home">
+        <Link href="/dashboard/overview" className="flex min-h-11 min-w-0 items-center gap-3" aria-label={`${organizationShortName} home`}>
           <BrandMark size="sm" />
-          <div>
-            <span className="block text-sm font-semibold leading-tight">Eastern State</span>
-            <span className="block text-[10px] uppercase tracking-[0.1em] text-white/50">Strategic Plan</span>
+          <div className="min-w-0">
+            <span className="block break-words text-sm font-semibold leading-tight">{organizationShortName}</span>
+            <span className="block break-words text-[10px] uppercase tracking-[0.1em] text-white/50">{planName}</span>
           </div>
         </Link>
         <Button
@@ -301,12 +311,12 @@ export function AppShell({ user, children }: { user: SessionUser; children: Reac
       </header>
 
       <aside className="fixed inset-y-0 left-0 hidden w-60 flex-col bg-ink-900 text-white lg:flex">
-        <Link href="/dashboard/overview" className="mx-4 mb-8 mt-5 flex items-center gap-3" aria-label="Eastern State home">
+        <Link href="/dashboard/overview" className="mx-4 mb-8 mt-5 flex items-center gap-3" aria-label={`${organizationShortName} home`}>
             <BrandMark size="md" />
           <div className="min-w-0">
-            <span className="block truncate text-sm font-semibold leading-tight">Eastern State</span>
-            <span className="mt-1 block truncate text-[10px] uppercase tracking-[0.1em] text-white/50">
-              Strategic Plan
+            <span className="block break-words text-sm font-semibold leading-tight">{organizationShortName}</span>
+            <span className="mt-1 block break-words text-[10px] uppercase tracking-[0.1em] text-white/50">
+              {planName}
             </span>
           </div>
         </Link>
@@ -335,13 +345,13 @@ export function AppShell({ user, children }: { user: SessionUser; children: Reac
             <div className="mb-8 flex items-center justify-between px-4 pt-5">
               <Link
                 href="/dashboard/overview"
-                className="flex items-center gap-3"
+                className="flex min-w-0 items-center gap-3"
                 onClick={() => setMobileOpen(false)}
               >
                 <BrandMark size="md" />
-                <div>
-                  <span className="block text-sm font-semibold">Eastern State</span>
-                  <span className="block text-[10px] uppercase tracking-[0.1em] text-white/50">Strategic Plan</span>
+                <div className="min-w-0">
+                  <span className="block break-words text-sm font-semibold">{organizationShortName}</span>
+                  <span className="block break-words text-[10px] uppercase tracking-[0.1em] text-white/50">{planName}</span>
                 </div>
               </Link>
               <Button

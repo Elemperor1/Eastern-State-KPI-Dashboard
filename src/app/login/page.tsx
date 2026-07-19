@@ -56,7 +56,7 @@ export default function LoginPage() {
         <div className="relative z-10 flex items-center gap-3">
           <BrandMark size="md" />
           <div>
-            <p className="text-sm font-semibold">Eastern State</p>
+            <p className="text-sm font-semibold">Strategic Plan</p>
             <p className="text-[10px] uppercase tracking-[0.12em] text-white/55">Strategic Plan</p>
           </div>
         </div>
@@ -69,7 +69,7 @@ export default function LoginPage() {
             See the work with more clarity.
           </p>
           <p className="mt-8 max-w-lg text-base leading-8 text-white/70 text-pretty">
-            A focused view of the measures that help Eastern State’s leadership understand reach, stewardship, and impact.
+            A focused view of the measures that help leadership understand reach, stewardship, and impact.
           </p>
         </div>
 
@@ -83,7 +83,7 @@ export default function LoginPage() {
           <div className="mb-10 flex items-center gap-3 lg:hidden">
             <BrandMark size="md" />
             <div>
-              <p className="text-sm font-semibold text-ink-900">Eastern State</p>
+              <p className="text-sm font-semibold text-ink-900">Strategic Plan</p>
               <p className="text-[10px] uppercase tracking-[0.12em] text-ink-500">Strategic Plan</p>
             </div>
           </div>
@@ -94,7 +94,7 @@ export default function LoginPage() {
               Welcome back
             </h1>
             <p className="mt-3 text-base leading-6 text-ink-600 text-pretty">
-              Sign in with your Eastern State account to continue.
+              Sign in with your organization account to continue.
             </p>
           </div>
 
@@ -108,7 +108,7 @@ export default function LoginPage() {
                 type="email"
                 autoComplete="email"
                 required
-                placeholder="you@easternstate.org"
+                placeholder="you@example.org"
                 value={email}
                 onChange={(event) => setEmail(event.target.value)}
               />

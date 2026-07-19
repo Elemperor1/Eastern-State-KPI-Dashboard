@@ -3,6 +3,7 @@ import os from "node:os";
 import path from "node:path";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { getDb, resetDb } from "@/lib/db";
+import { bootstrapTestInstallation } from "@/features/installation/test-fixture";
 import { listStrategicAuditEvents, recordStrategicAuditEvent } from "./audit";
 
 describe("strategic audit deletion lifecycle", () => {
@@ -18,6 +19,7 @@ describe("strategic audit deletion lifecycle", () => {
   beforeEach(() => {
     resetDb();
     process.env.DATABASE_PATH = path.join(tmpDir, `audit-${databaseIndex++}.db`);
+    bootstrapTestInstallation();
   });
 
   afterAll(() => {
@@ -40,8 +42,9 @@ describe("strategic audit deletion lifecycle", () => {
     const priorityId = Number(
       db
         .prepare(
-          `INSERT INTO categories (slug, name, sort_order)
-           VALUES ('visitor-experience', 'Visitor Experience', 1)`,
+          `INSERT INTO categories (plan_id, slug, name, sort_order)
+           VALUES ((SELECT id FROM strategic_plans WHERE status = 'active'),
+                   'visitor-experience', 'Visitor Experience', 1)`,
         )
         .run().lastInsertRowid,
     );

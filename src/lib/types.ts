@@ -37,6 +37,8 @@ export interface SessionUser {
 
 export interface Category {
   id: number;
+  /** Schema-12 owner. Present for live priorities; historical tombstones may omit it. */
+  plan_id?: number;
   slug: string;
   name: string;
   description: string | null;

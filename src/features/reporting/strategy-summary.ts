@@ -1,5 +1,4 @@
 import {
-  STRATEGIC_PLAN_START_YEAR,
   calculateAnnualAndPlanProgress,
   calculateProgress,
   calculateStrategicGoalCompletion,
@@ -54,6 +53,7 @@ interface StrategicGoalProgressSummary {
 
 export interface StrategicDashboardSummary {
   selectedYear: number;
+  planStartYear?: number;
   organization: Omit<StrategyRollups["organization"], "excludedGoalReasons"> & {
     excludedGoalReasons: Array<{
       goalId: string;
@@ -78,6 +78,8 @@ export interface BuildStrategicDashboardSummaryInput {
   goals: StrategicGoalReadModel[];
   kpis: KPIWithCategory[];
   selectedYear: number;
+  /** Persisted active-plan boundary. Tests may derive it from goal fixtures. */
+  planStartYear?: number;
   throughMonth?: number;
   actuals?: StrategicActualValue[];
 }
@@ -92,9 +94,14 @@ export function buildStrategicDashboardSummary({
   goals,
   kpis,
   selectedYear,
+  planStartYear,
   throughMonth = 12,
   actuals = [],
 }: BuildStrategicDashboardSummaryInput): StrategicDashboardSummary {
+  const effectivePlanStartYear = planStartYear ?? Math.min(
+    selectedYear,
+    ...goals.map((goal) => goal.plan_start_year),
+  );
   const legacyById = new Map(kpis.map((kpi) => [kpi.id, kpi]));
 
   const goalSummaries = goals.map((goal): StrategicGoalProgressSummary => {
@@ -116,6 +123,7 @@ export function buildStrategicDashboardSummary({
         measurementType,
         reportingFrequency: config?.reporting_frequency ?? null,
         selectedYear,
+        planStartYear: effectivePlanStartYear,
         throughMonth,
         firstClassActuals: actuals,
       });
@@ -488,6 +496,7 @@ function resolveCumulativeActual({
   measurementType,
   reportingFrequency,
   selectedYear,
+  planStartYear,
   throughMonth,
   firstClassActuals,
 }: {
@@ -495,11 +504,12 @@ function resolveCumulativeActual({
   measurementType: MeasurementType | null;
   reportingFrequency: string | null;
   selectedYear: number;
+  planStartYear: number;
   throughMonth: number;
   firstClassActuals: StrategicActualValue[];
 }): number | null {
   if (reportingFrequency === "cumulative" || reportingFrequency === "one_time") {
-    for (let year = selectedYear; year >= STRATEGIC_PLAN_START_YEAR; year -= 1) {
+    for (let year = selectedYear; year >= planStartYear; year -= 1) {
       const value = resolveActual({
         kpiId,
         measurementType,
@@ -515,7 +525,7 @@ function resolveCumulativeActual({
 
   if (measurementType === "cumulative" && reportingFrequency === "annual") {
     const values: number[] = [];
-    for (let year = STRATEGIC_PLAN_START_YEAR; year <= selectedYear; year += 1) {
+    for (let year = planStartYear; year <= selectedYear; year += 1) {
       const value = resolveActual({
         kpiId,
         measurementType,

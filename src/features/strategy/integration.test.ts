@@ -5,15 +5,16 @@ import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import {
   STRATEGIC_GOAL_DEFINITIONS,
   STRATEGIC_KPI_DEFINITIONS,
-} from "@/features/catalog";
+} from "@/features/catalog/strategic-config";
 import { STRATEGIC_PLAN_CATEGORIES } from "@/features/catalog/strategic-plan";
 import { getDb, resetDb } from "@/lib/db";
+import { bootstrapTestInstallation } from "@/features/installation/test-fixture";
 import {
   archiveComponent,
   archiveMeasurementConfig,
   archiveStrategicGoal,
   archiveTarget,
-  ensureStrategicPlanConfiguration,
+  initializeStrategicPlanConfiguration,
   restoreComponent,
   restoreMeasurementConfig,
   restoreStrategicGoal,
@@ -22,6 +23,7 @@ import {
   StrategyEntityNotFoundError,
   updateMeasurementConfigurationStatus,
 } from "./mutations";
+import { EASTERN_STATE_STRATEGIC_CONFIGURATION_FIXTURE } from "../../../scripts/bootstrap/strategic-configuration-fixture";
 import {
   getConfigurationGapCounts,
   getEffectiveMeasurementConfig,
@@ -36,8 +38,8 @@ import { listStrategicAuditEvents } from "./audit";
 function seedCanonicalCatalog(): void {
   const db = getDb();
   const insertCategory = db.prepare(
-    `INSERT INTO categories (slug, name, description, sort_order)
-     VALUES (?, ?, ?, ?)`,
+    `INSERT INTO categories (plan_id, slug, name, description, sort_order)
+     VALUES ((SELECT id FROM strategic_plans WHERE status = 'active'), ?, ?, ?, ?)`,
   );
   const insertKpi = db.prepare(
     `INSERT INTO kpis (
@@ -85,6 +87,11 @@ function scalar(sql: string): number {
   return Number((getDb().prepare(sql).get() as { count: number }).count);
 }
 
+const ensureStrategicPlanConfiguration = () =>
+  initializeStrategicPlanConfiguration(
+    EASTERN_STATE_STRATEGIC_CONFIGURATION_FIXTURE,
+  );
+
 describe("strategy persistence integration", () => {
   let tmpDir: string;
   let originalDbPath: string | undefined;
@@ -101,6 +108,7 @@ describe("strategy persistence integration", () => {
       tmpDir,
       `strategy-${databaseIndex++}.db`,
     );
+    bootstrapTestInstallation();
     seedCanonicalCatalog();
   });
 

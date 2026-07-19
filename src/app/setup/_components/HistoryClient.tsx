@@ -4,7 +4,10 @@ import { useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { AdminHistoryFilters } from "@/components/AdminHistoryFilters";
 import { AdminHistoryTable } from "@/components/AdminHistoryTable";
-import { StrategicAuditTable } from "@/components/StrategicAuditTable";
+import {
+  StrategicAuditTable,
+  type SetupAuditEvent,
+} from "@/components/StrategicAuditTable";
 import { Button } from "@/components/ui";
 import {
   buildAdminHistoryFilterState,
@@ -17,8 +20,6 @@ import type {
   EntryHistoryWithMeta,
   KPIWithCategory,
 } from "@/lib/types";
-import type { StrategicAuditEvent } from "@/features/strategy";
-
 interface HistoryClientProps {
   history: EntryHistoryWithMeta[];
   kpis: KPIWithCategory[];
@@ -28,7 +29,7 @@ interface HistoryClientProps {
     category_id?: number;
     year?: number;
   };
-  strategicEvents: StrategicAuditEvent[];
+  setupEvents: SetupAuditEvent[];
   availableYears: number[];
   page: number;
   hasOlder: boolean;
@@ -45,7 +46,7 @@ export function HistoryClient({
   kpis,
   categories,
   activeFilter,
-  strategicEvents,
+  setupEvents,
   availableYears,
   page,
   hasOlder,
@@ -118,11 +119,11 @@ export function HistoryClient({
         <div className="mb-5 flex flex-wrap items-end justify-between gap-3 border-b border-ink-200 pb-4">
           <div>
             <h2 id="setup-changes-heading" className="text-xl font-semibold text-ink-950">Setup changes</h2>
-            <p className="mt-1 text-sm text-ink-600">Recent changes to results, measures, goals, and targets.</p>
+            <p className="mt-1 text-sm text-ink-600">Recent changes to organization, plan, measures, goals, and targets.</p>
           </div>
-          <span className="text-sm font-medium text-ink-600">{strategicEvents.length} shown</span>
+          <span className="text-sm font-medium text-ink-600">{setupEvents.length} shown</span>
         </div>
-        <StrategicAuditTable events={strategicEvents} />
+        <StrategicAuditTable events={setupEvents} />
       </section>
 
       <nav aria-label="Activity pages" className="mt-8 flex items-center justify-between gap-4 border-t border-ink-200 pt-5">

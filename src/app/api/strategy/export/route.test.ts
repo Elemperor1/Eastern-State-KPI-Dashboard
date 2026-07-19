@@ -31,6 +31,7 @@ import { GET } from "./route";
 
 const REPORT = {
   organizationName: "Eastern State",
+  organizationSlug: "eastern-state",
   selectedYear: 2026,
   organizationGoalCompletion: {
     completedGoalsCount: 1,

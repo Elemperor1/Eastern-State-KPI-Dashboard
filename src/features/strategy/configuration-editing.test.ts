@@ -3,6 +3,11 @@ import os from "node:os";
 import path from "node:path";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { getDb, resetDb } from "@/lib/db";
+import { bootstrapTestInstallation } from "@/features/installation/test-fixture";
+import {
+  getActiveInstallation,
+  updateActiveInstallation,
+} from "@/features/installation/server";
 import {
   createMeasurementConfiguration,
   createSuccessorMeasurementConfiguration,
@@ -103,6 +108,7 @@ describe("strategic configuration editing repository", () => {
   beforeEach(() => {
     resetDb();
     process.env.DATABASE_PATH = path.join(tmpDir, `edit-${databaseIndex++}.db`);
+    bootstrapTestInstallation();
     const db = getDb();
     actorId = Number(
       db
@@ -115,8 +121,9 @@ describe("strategic configuration editing repository", () => {
     categoryId = Number(
       db
         .prepare(
-          `INSERT INTO categories (slug, name, sort_order)
-           VALUES ('visitor-experience', 'Visitor Experience', 1)`,
+          `INSERT INTO categories (plan_id, slug, name, sort_order)
+           VALUES ((SELECT id FROM strategic_plans WHERE status = 'active'),
+                   'visitor-experience', 'Visitor Experience', 1)`,
         )
         .run().lastInsertRowid,
     );
@@ -915,6 +922,43 @@ describe("strategic configuration editing repository", () => {
     );
   });
 
+  it("accepts a successor in a newly persisted plan year", () => {
+    const plan = getActiveInstallation();
+    updateActiveInstallation(
+      {
+        expectedRevision: plan.plan.revision,
+        organizationName: plan.organization.name,
+        organizationShortName: plan.organization.shortName,
+        planName: plan.plan.name,
+        planDescription: plan.plan.description,
+        startYear: plan.plan.startYear,
+        endYear: 2030,
+        sourceReference: plan.plan.sourceReference,
+      },
+      actorId,
+    );
+    const predecessor = createMeasurementConfiguration(
+      configuration(countKpiId),
+      actorId,
+    );
+
+    const successor = createSuccessorMeasurementConfiguration(
+      {
+        predecessor_id: predecessor.id,
+        successor: configuration(countKpiId, {
+          effective_start_year: 2030,
+          effective_end_year: 2030,
+        }),
+      },
+      actorId,
+    );
+
+    expect(successor.successor).toMatchObject({
+      effective_from_year: 2030,
+      effective_to_year: 2030,
+    });
+  });
+
   it("rejects a successor that leaves the predecessor tail uncovered", () => {
     const predecessor = createMeasurementConfiguration(
       configuration(countKpiId),
@@ -972,6 +1016,7 @@ describe("strategic configuration editing repository", () => {
 
     resetDb();
     process.env.DATABASE_PATH = path.join(tmpDir, `edit-${databaseIndex++}.db`);
+    bootstrapTestInstallation();
     const db = getDb();
     const localActor = Number(
       db
@@ -984,8 +1029,9 @@ describe("strategic configuration editing repository", () => {
     const localCategory = Number(
       db
         .prepare(
-          `INSERT INTO categories (slug, name, sort_order)
-           VALUES ('successor-test', 'Successor Test', 1)`,
+          `INSERT INTO categories (plan_id, slug, name, sort_order)
+           VALUES ((SELECT id FROM strategic_plans WHERE status = 'active'),
+                   'successor-test', 'Successor Test', 1)`,
         )
         .run().lastInsertRowid,
     );

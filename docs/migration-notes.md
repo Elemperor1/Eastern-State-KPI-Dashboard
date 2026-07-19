@@ -1,6 +1,18 @@
-# Schema 11 Migration Notes
+# Schema 12 Migration Notes
 
 ## Summary
+
+Schema 12 makes the initialized database authoritative for installation and
+strategic-plan content. It adds `organizations`, `strategic_plans`, and
+`installation_audit_events`; assigns every existing priority (`categories`)
+to the active plan through a required `RESTRICT` foreign key; replaces
+plan-specific 2025/2029 defaults and target checks with generic storage bounds;
+and preserves every existing priority, KPI, goal, membership, configuration,
+component, target, observation, distribution, user, and audit ID/value.
+
+The active plan's persisted start/end years now drive pages, reporting,
+exports, Setup editors, and transaction-aware strategic writes. The embedded
+Eastern State snapshot is explicit seed/migration input only. See ADR 0023.
 
 Schema 10 remains the non-destructive strategic-dashboard foundation: it keeps
 schema-9 categories, KPIs, scalar/breakdown values, legacy targets, users, IDs,
@@ -15,7 +27,7 @@ an additive integrity migration over that foundation. It:
   `(city support + state support) / contributed revenue × 100` without
   inventing a target.
 
-Both `9 -> 10` and `10 -> 11` run transactionally and never enter
+The `9 -> 10`, `10 -> 11`, and `11 -> 12` transitions run transactionally and never enter
 `resetKpiSchema`.
 
 ## Issue 42 application boundary
@@ -59,10 +71,12 @@ succeeds. Child observation, component-entry, target, distribution, and audit
 tables are not rebuilt; their foreign keys continue to reference the preserved
 IDs, so existing values retain their original identity.
 
-`scripts/migrate.ts` performs the full canonical initialization only when a
-populated legacy KPI catalog has no strategic sidecar rows at all. Once
-strategic rows exist, it never reapplies the seed wholesale. It may repair a
-small set of superseded canonical contracts only when every affected row still
+`scripts/migrate.ts` performs initial strategic configuration only when the
+11→12 migration's one-time content marker is present and a populated legacy
+KPI catalog has no strategic sidecar rows at all. Once that explicit upgrade
+pass succeeds, the marker is removed and later migration runs never initialize
+or reconcile content. During the marked pass it may repair a small set of
+superseded canonical contracts only when every affected row still
 matches its exact prior system-owned fingerprint (`updated_by IS NULL` plus the
 expected values and lineage). The current reconciliation covers seven goal
 metadata rows, four KPI memberships, three measurement metadata rows, and one
@@ -76,11 +90,12 @@ expected active/unarchived KPI, priority, goal, and membership lineage, and
 have no first-class observations, component entries, targets, distribution
 observations, or distribution bands. Any operator-modified,
 inactive/archived, differently linked, or historically used definition is left
-unchanged for human review. Re-running the command makes no further changes.
+unchanged for human review. An initialized schema-12 database is never
+repopulated from the fixture merely because strategic rows are absent.
 
 ## Startup safety
 
-`src/lib/schema-version.json` declares schemas 9 and 10 as additive
+`src/lib/schema-version.json` declares schemas 9, 10, and 11 as additive
 predecessors. `scripts/ensure-seeded.mjs` runs `npm run db:migrate` first for
 either version, rechecks the database, and refuses destructive reseeding if the
 migration does not produce a ready database. A production schema mismatch
@@ -91,7 +106,7 @@ therefore cannot fall through to the sample seed.
 1. Stop application writes.
 2. Back up SQLite consistently (database plus WAL/SHM while stopped, or the
    SQLite backup API).
-3. Record schema version and row counts for users, categories, KPIs, entries,
+3. Record schema version and row counts for users, organizations, strategic plans, categories, KPIs, entries,
    breakdowns, legacy targets, history, strategic configurations, components,
    and component entries.
 4. Deploy and run `DATABASE_PATH=/absolute/path/to/kpi.db npm run db:migrate`.
@@ -107,12 +122,14 @@ therefore cannot fall through to the sample seed.
 
 Automated tests cover:
 
-- clean schema-11 initialization;
+- clean schema-12 initialization with empty installation rows until explicit bootstrap;
+- populated schema-11 ownership migration with stable descendant IDs;
 - a real schema-9-shaped database with preserved legacy rows, IDs, and history;
 - the prior schema-8 goal-baseline migration followed by schemas 10 and 11;
 - schema-10 component/entry preservation through the table rebuild;
 - later effective configurations reusing a component slug safely;
-- public `scripts/migrate.ts` initialization when strategic sidecars are empty;
+- one-time public `scripts/migrate.ts` initialization when an upgraded legacy catalog has empty strategic sidecars;
+- proof that later schema-12 migration runs do not recreate deleted strategic content;
 - preservation of customized goals, memberships, configurations, components,
   and targets on an already-populated database;
 - government-support ratio repair only for the exact old canonical signature,
@@ -140,8 +157,8 @@ operator-owned customization preservation.
 
 ## Rollback
 
-The safest rollback is to stop the app, restore the pre-migration schema-10
-backup (or the schema-9 backup when crossing both versions), and deploy the
+The safest rollback is to stop the app, restore the pre-migration schema-11
+backup (or the schema-9/10 backup when crossing several versions), and deploy the
 matching prior application. Do not attempt an in-place downgrade by dropping
 columns or reconstructing strategic tables in production.
 
@@ -149,6 +166,7 @@ columns or reconstructing strategic tables in production.
 
 `npm run db:seed` remains an explicitly destructive sample-data reset. It is
 appropriate for disposable development/test databases, never for production
-migration. The seed owns the canonical fixture; the production migration does
-not. Preservation-safe reconciliation is idempotent, does not delete legacy
-data, and does not invent unresolved targets.
+migration. The seed owns an initial fixture, not live authority. The one-time
+production upgrade may consume the same explicit input only for a genuinely
+empty strategic sidecar; after initialization, operator-managed database rows
+remain authoritative.

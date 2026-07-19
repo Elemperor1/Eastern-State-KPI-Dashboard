@@ -1,9 +1,9 @@
 import { listKPIs } from "@/features/catalog/server";
 import {
-  STRATEGIC_PLAN_REPORTING_YEARS,
   buildReportingCycleOptions,
   type ReportingCycleOption,
 } from "@/features/strategy";
+import { getActiveInstallation } from "@/features/installation/server";
 import {
   listStrategicAuditEvents,
   listStrategicAuditIdentitiesForKpi,
@@ -26,7 +26,7 @@ import {
 } from "./strategy-summary";
 
 export function listDashboardYears(): number[] {
-  return [...STRATEGIC_PLAN_REPORTING_YEARS];
+  return [...getActiveInstallation().years];
 }
 
 function uniqueKpiIds(
@@ -48,6 +48,7 @@ function loadStrategicReportModel({
   priorityId?: number;
   reportingPeriod?: ReportingCycleOption;
 }) {
+  const installation = getActiveInstallation();
   const goals = listStrategicGoals({
     year,
     ...(priorityId === undefined ? {} : { priority_id: priorityId }),
@@ -63,6 +64,7 @@ function loadStrategicReportModel({
     goals,
     kpis: listKPIs(),
     selectedYear: year,
+    planStartYear: installation.plan.startYear,
     throughMonth,
     actuals: scopedActuals,
   });
@@ -73,6 +75,8 @@ function loadStrategicReportModel({
     report: buildStrategicBoardReportFromSummary({
       summary,
       goals,
+      organizationName: installation.organization.name,
+      organizationSlug: installation.organization.slug,
       reportingPeriod: reportingPeriod?.label,
     }),
   };
@@ -266,7 +270,7 @@ const PERIOD_RANK: Record<StrategicCalculatedActual["periodType"], number> = {
 
 /** Trends use only strategic calculated results and honor the selected cutoff. */
 export function loadStrategicTrendReportData({
-  year = Math.max(...STRATEGIC_PLAN_REPORTING_YEARS),
+  year = getActiveInstallation().plan.endYear,
   throughMonth = 12,
   reportingPeriod,
 }: {
@@ -274,7 +278,7 @@ export function loadStrategicTrendReportData({
   throughMonth?: number;
   reportingPeriod?: ReportingCycleOption;
 } = {}): StrategicTrendReportData {
-  const years = STRATEGIC_PLAN_REPORTING_YEARS.filter(
+  const years = getActiveInstallation().years.filter(
     (candidate) => candidate <= year,
   );
   const goals = listStrategicGoals({ year });
@@ -291,6 +295,7 @@ export function loadStrategicTrendReportData({
   });
 
   return {
+    organizationSlug: getActiveInstallation().organization.slug,
     years,
     series: members
       .map(({ goal, member }) => ({

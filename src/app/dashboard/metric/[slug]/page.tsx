@@ -18,6 +18,7 @@ import {
   formatBoardReportPercentage,
   formatBoardReportToken,
 } from "@/components/strategic-board-report-presentation";
+import { getActiveInstallation } from "@/features/installation/server";
 
 export const dynamic = "force-dynamic";
 
@@ -107,13 +108,14 @@ export default async function StrategicMeasurePage({
   if (user.must_change_password) redirect("/setup-password");
 
   const years = listDashboardYears();
+  const installation = getActiveInstallation();
   const requestedYear = Number(firstValue(query.year));
   const selectedYear = years.includes(requestedYear) ? requestedYear : Math.max(...years);
   const data = loadStrategicMetricPageData(slug, { year: selectedYear });
   if (!data) redirect("/dashboard/overview");
 
   return (
-    <AppShell user={user}>
+    <AppShell user={user} organizationShortName={installation.organization.shortName} planName={installation.plan.name}>
       <div className="page-content page-enter">
         <Breadcrumb
           href={`/dashboard/category/${data.prioritySlug}?year=${data.selectedYear}`}

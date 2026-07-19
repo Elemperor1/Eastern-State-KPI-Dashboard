@@ -169,6 +169,7 @@ interface StrategicBoardPriorityInput {
 
 export interface StrategicBoardReportInput {
   organizationName?: string | null;
+  organizationSlug?: string | null;
   selectedYear?: number | null;
   reportingPeriod?: string | null;
   organizationGoalCompletion?: GoalCompletionSummaryInput | null;
@@ -289,6 +290,7 @@ export interface StrategicBoardPriorityViewModel {
 
 export interface StrategicBoardReportViewModel {
   organizationName: string;
+  organizationSlug: string;
   selectedYear: number | null;
   reportingPeriod: string;
   organizationGoalCompletion: GoalCompletionSummaryViewModel;
@@ -386,6 +388,16 @@ function optionalText(value: unknown): string | null {
 
 function requiredText(value: unknown, fallback: string): string {
   return optionalText(value) ?? fallback;
+}
+
+function filenameSlug(value: unknown, fallback: string): string {
+  const source = optionalText(value) ?? fallback;
+  const slug = source
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "")
+    .slice(0, 120);
+  return slug || "organization";
 }
 
 function year(value: unknown): number | null {
@@ -677,8 +689,10 @@ export function buildStrategicBoardReport(
       }
     }
   }
+  const organizationName = requiredText(input?.organizationName, "Organization");
   return {
-    organizationName: requiredText(input?.organizationName, "Eastern State"),
+    organizationName,
+    organizationSlug: filenameSlug(input?.organizationSlug, organizationName),
     selectedYear: year(input?.selectedYear),
     reportingPeriod: requiredText(input?.reportingPeriod, "Full year"),
     organizationGoalCompletion,
@@ -967,7 +981,7 @@ export function buildStrategicBoardCsvExport(
   return {
     columns: STRATEGIC_BOARD_CSV_COLUMNS,
     rows: buildStrategicBoardCsvRows(report),
-    filename: `eastern-state-strategic-board-${report.selectedYear ?? "unselected"}.csv`,
+    filename: `${report.organizationSlug}-strategic-board-${report.selectedYear ?? "unselected"}.csv`,
   };
 }
 

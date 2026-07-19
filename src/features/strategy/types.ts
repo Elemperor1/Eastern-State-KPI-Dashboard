@@ -6,10 +6,6 @@
  * changing or deleting existing KPI, entry, goal, or audit rows.
  */
 
-export const STRATEGIC_PLAN_START_YEAR = 2025;
-export const STRATEGIC_PLAN_END_YEAR = 2029;
-export const STRATEGIC_PLAN_REPORTING_YEARS = [2025, 2026, 2027, 2028, 2029] as const;
-
 export const MEASUREMENT_TYPES = [
   "binary",
   "milestone",

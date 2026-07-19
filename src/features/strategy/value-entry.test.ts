@@ -4,6 +4,7 @@ import path from "node:path";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { listCalculatedStrategyActuals } from "@/features/reporting/strategy-actuals-server";
 import { getDb, resetDb } from "@/lib/db";
+import { bootstrapTestInstallation } from "@/features/installation/test-fixture";
 import { listStrategicAuditEvents } from "./audit";
 import { archiveComponent } from "./mutations";
 import {
@@ -48,8 +49,9 @@ function seedKpi(
   if (!category) {
     const categoryId = Number(
       db.prepare(
-        `INSERT INTO categories (slug, name, description, sort_order)
-         VALUES ('visitor-experience', 'Reimagine Visitor Experience', '', 0)`,
+        `INSERT INTO categories (plan_id, slug, name, description, sort_order)
+         VALUES ((SELECT id FROM strategic_plans WHERE status = 'active'),
+                 'visitor-experience', 'Reimagine Visitor Experience', '', 0)`,
       ).run().lastInsertRowid,
     );
     category = { id: categoryId };
@@ -117,6 +119,7 @@ describe("strategy value-entry persistence", () => {
   beforeEach(() => {
     resetDb();
     process.env.DATABASE_PATH = path.join(tmpDir, `value-${databaseIndex++}.db`);
+    bootstrapTestInstallation();
   });
 
   afterAll(() => {
@@ -163,6 +166,52 @@ describe("strategy value-entry persistence", () => {
       listStrategyObservations({ kpi_id: kpiId, reporting_year: 2026 }),
     ).toEqual([updated]);
     expect(listStrategicAuditEvents({ entity_type: "kpi_observation" })).toHaveLength(2);
+  });
+
+  it("rejects value years outside the persisted active plan", () => {
+    const { kpiId, configurationId } = seedKpi(
+      "future-observation",
+      "count",
+      "annual",
+    );
+    getDb()
+      .prepare(
+        "UPDATE kpi_measurement_configs SET effective_to_year = 2030 WHERE id = ?",
+      )
+      .run(configurationId);
+
+    expect(() =>
+      upsertStrategyObservation(
+        { kpi_id: kpiId, reporting_year: 2030, value: 1 },
+        null,
+      ),
+    ).toThrow(StrategyValueEntryValidationError);
+  });
+
+  it("rejects distribution-band ranges outside the persisted active plan", () => {
+    const { kpiId } = seedKpi(
+      "future-distribution-band",
+      "distribution",
+      "annual",
+    );
+
+    expect(() =>
+      createStrategyDistributionBand(
+        {
+          kpi_id: kpiId,
+          component_id: null,
+          slug: "future",
+          label: "Future",
+          effective_from_year: 2025,
+          effective_to_year: 2030,
+          display_order: 0,
+          is_unknown: false,
+          is_declined: false,
+          derived_group: null,
+        },
+        null,
+      ),
+    ).toThrow(StrategyValueEntryValidationError);
   });
 
   it("derives the internal annual period and never accepts user month zero", () => {
@@ -852,6 +901,30 @@ describe("strategy value-entry persistence", () => {
     expect(listEffectiveDistributionBands({ kpi_id: kpiId, reporting_year: 2026 })).toEqual([
       expect.objectContaining({ id: original.id }),
     ]);
+  });
+
+  it("attributes an effective-range end beyond the plan to effective_to_year", () => {
+    const { kpiId } = seedKpi("end-bound-validation", "distribution", "annual");
+
+    try {
+      createStrategyDistributionBand(
+        {
+          kpi_id: kpiId,
+          effective_from_year: 2025,
+          effective_to_year: 2030,
+          slug: "outside-plan-end",
+          label: "Outside plan end",
+          display_order: 0,
+        },
+        null,
+      );
+      expect.unreachable("Expected an out-of-range validation error.");
+    } catch (error) {
+      expect(error).toBeInstanceOf(StrategyValueEntryValidationError);
+      expect((error as StrategyValueEntryValidationError).issues).toEqual([
+        expect.objectContaining({ path: "effective_to_year" }),
+      ]);
+    }
   });
 
   it("exposes effective bands and supports audited create, update, reorder, archive, and restore", () => {

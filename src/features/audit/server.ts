@@ -1,5 +1,19 @@
 import { getDb } from "@/lib/db";
+import type { StrategicAuditEvent } from "@/features/strategy";
 import type { Category, EntryHistoryWithMeta, KPIWithCategory } from "@/lib/types";
+
+export type SetupAuditEvent = Omit<
+  StrategicAuditEvent,
+  "entity_type" | "previous_value" | "new_value"
+> & {
+  audit_source: "strategic" | "installation";
+  entity_type:
+    | StrategicAuditEvent["entity_type"]
+    | "organization"
+    | "strategic_plan";
+  previous_value: unknown;
+  new_value: unknown;
+};
 
 export interface EntryHistoryFilter {
   kpi_id?: number;
@@ -94,6 +108,74 @@ export function listEntryHistoryYears(): number[] {
     .prepare("SELECT DISTINCT year FROM entry_history ORDER BY year DESC")
     .all() as Array<{ year: number }>;
   return rows.map((row) => Number(row.year));
+}
+
+function parseAuditValue(value: unknown): unknown {
+  if (value == null || value === "") return null;
+  try {
+    return JSON.parse(String(value)) as unknown;
+  } catch {
+    return null;
+  }
+}
+
+export function listSetupAuditEvents(
+  options: { limit?: number; offset?: number } = {},
+): SetupAuditEvent[] {
+  const limit = Number.isSafeInteger(options.limit)
+    ? Math.min(Math.max(options.limit ?? 50, 1), 1_000)
+    : 50;
+  const offset = Number.isSafeInteger(options.offset)
+    ? Math.max(options.offset ?? 0, 0)
+    : 0;
+  const rows = getDb()
+    .prepare(
+      `SELECT *
+       FROM (
+         SELECT
+           'strategic' AS audit_source,
+           id, entity_type, entity_id, event_type, entity_display_name,
+           parent_priority_name, parent_goal_name,
+           previous_value_json, new_value_json,
+           actor_id, actor_email_snapshot, source_reference, occurred_at
+         FROM strategic_audit_events
+         UNION ALL
+         SELECT
+           'installation' AS audit_source,
+           id, entity_type, entity_id, event_type, entity_display_name,
+           NULL AS parent_priority_name, NULL AS parent_goal_name,
+           previous_value_json, new_value_json,
+           actor_id, actor_email_snapshot, NULL AS source_reference, occurred_at
+         FROM installation_audit_events
+       ) combined_audit
+       ORDER BY occurred_at DESC, id DESC, audit_source DESC
+       LIMIT ? OFFSET ?`,
+    )
+    .all(limit, offset) as Record<string, unknown>[];
+  return rows.map((row) => ({
+    audit_source: String(row.audit_source) as SetupAuditEvent["audit_source"],
+    id: Number(row.id),
+    entity_type: String(row.entity_type) as SetupAuditEvent["entity_type"],
+    entity_id: Number(row.entity_id),
+    event_type: String(row.event_type) as SetupAuditEvent["event_type"],
+    entity_display_name: String(row.entity_display_name),
+    parent_priority_name:
+      row.parent_priority_name == null
+        ? null
+        : String(row.parent_priority_name),
+    parent_goal_name:
+      row.parent_goal_name == null ? null : String(row.parent_goal_name),
+    previous_value: parseAuditValue(row.previous_value_json),
+    new_value: parseAuditValue(row.new_value_json),
+    actor_id: row.actor_id == null ? null : Number(row.actor_id),
+    actor_email_snapshot:
+      row.actor_email_snapshot == null
+        ? null
+        : String(row.actor_email_snapshot),
+    source_reference:
+      row.source_reference == null ? null : String(row.source_reference),
+    occurred_at: String(row.occurred_at),
+  }));
 }
 
 export function listDeletedHistoryCategories(): Category[] {

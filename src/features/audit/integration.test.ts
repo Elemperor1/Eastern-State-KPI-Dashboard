@@ -3,11 +3,13 @@ import os from "node:os";
 import path from "node:path";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { getDb, resetDb } from "@/lib/db";
+import { bootstrapTestInstallation } from "@/features/installation/test-fixture";
 import {
   listDeletedHistoryCategories,
   listDeletedHistoryKpis,
   listEntryHistory,
   listEntryHistoryYears,
+  listSetupAuditEvents,
 } from "./server";
 
 describe("read-only legacy Activity archive", () => {
@@ -26,6 +28,7 @@ describe("read-only legacy Activity archive", () => {
   beforeEach(() => {
     resetDb();
     process.env.DATABASE_PATH = path.join(tmpDir, `activity-${databaseIndex++}.db`);
+    bootstrapTestInstallation();
     const db = getDb();
     actorId = Number(
       db.prepare(
@@ -35,8 +38,9 @@ describe("read-only legacy Activity archive", () => {
     );
     categoryId = Number(
       db.prepare(
-        `INSERT INTO categories (slug, name, sort_order)
-         VALUES ('visitor-experience', 'Visitor Experience', 1)`,
+        `INSERT INTO categories (plan_id, slug, name, sort_order)
+         VALUES ((SELECT id FROM strategic_plans WHERE status = 'active'),
+                 'visitor-experience', 'Visitor Experience', 1)`,
       ).run().lastInsertRowid,
     );
     kpiId = Number(
@@ -146,5 +150,37 @@ describe("read-only legacy Activity archive", () => {
 
     expect(listEntryHistory({ limit: 1, offset: Number.POSITIVE_INFINITY })[0]?.id)
       .toBe(newest);
+  });
+
+  it("paginates one globally ordered setup stream beyond one thousand events", () => {
+    const db = getDb();
+    db.exec("DELETE FROM strategic_audit_events; DELETE FROM installation_audit_events;");
+    const insertStrategic = db.prepare(
+      `INSERT INTO strategic_audit_events (
+         entity_type, entity_id, event_type, entity_display_name,
+         new_value_json, occurred_at
+       ) VALUES ('kpi', ?, 'create', ?, '{}', ?)`,
+    );
+    for (let id = 1; id <= 1_001; id += 1) {
+      const occurredAt = new Date(Date.UTC(2026, 0, 1, 0, 0, id))
+        .toISOString()
+        .slice(0, 19)
+        .replace("T", " ");
+      insertStrategic.run(id, `Strategic ${id}`, occurredAt);
+    }
+    const insertInstallation = db.prepare(
+      `INSERT INTO installation_audit_events (
+         entity_type, entity_id, event_type, entity_display_name,
+         new_value_json, occurred_at
+       ) VALUES ('strategic_plan', ?, 'create', ?, '{}', ?)`,
+    );
+    insertInstallation.run(1, "Newest installation", "2026-02-01 00:00:00");
+    insertInstallation.run(2, "Oldest installation", "2025-12-01 00:00:00");
+
+    expect(
+      listSetupAuditEvents({ limit: 4, offset: 1_000 }).map(
+        (event) => event.entity_display_name,
+      ),
+    ).toEqual(["Strategic 2", "Strategic 1", "Oldest installation"]);
   });
 });

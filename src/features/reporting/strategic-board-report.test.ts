@@ -294,6 +294,7 @@ function representativeInput(): StrategicBoardReportInput {
 
   return {
     organizationName: " Eastern State Penitentiary Historic Site ",
+    organizationSlug: "eastern-state",
     selectedYear: 2027,
     reportingPeriod: "Quarter 2",
     organizationGoalCompletion: {
@@ -525,7 +526,8 @@ describe("strategic board report contract", () => {
       priorities: null,
     });
     expect(report).toEqual({
-      organizationName: "Eastern State",
+      organizationName: "Organization",
+      organizationSlug: "organization",
       selectedYear: null,
       reportingPeriod: "Full year",
       organizationGoalCompletion: {

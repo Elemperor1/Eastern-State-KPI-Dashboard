@@ -2,7 +2,7 @@
 
 Status: accepted
 
-Superseded in part by ADR 0022: legacy tables remain for historical
+Superseded in part by ADR 0022 and ADR 0023: legacy tables remain for historical
 compatibility, but their production entry and goal mutation workflows are no
 longer active peers of the strategic model.
 
@@ -55,7 +55,9 @@ Schema 11 tightens that model without replacing it:
 The legacy category, KPI, value, per-KPI target, and entry-history tables stay
 intact. The canonical source mapping backfills sidecars by stable slug during
 seed or the schema-9-to-10 migration; ordinary page reads never resynchronize
-or overwrite operator edits.
+or overwrite operator edits. Schema 12 supersedes the embedded mapping as
+runtime authority: explicit initialization/migration may consume it once, but
+ordinary reads and later migration runs use only persisted operator content.
 
 All business formulas live in the pure strategy calculation module. Dashboard,
 detail, API, and export adapters consume its explicit missing/invalid/complete
@@ -69,7 +71,7 @@ Strategic entity lifecycle is soft archive/restore. New foreign keys use
 Calculation-affecting definitions are effective-dated contracts. Once either
 first-class or legacy scalar/breakdown values use a measurement, goal rule, or
 membership, semantic fields cannot be edited in place. The admin/API successor
-workflow stays within 2025–2029, splits predecessor ranges atomically, rejects
+workflow stays within the persisted active plan range, splits predecessor ranges atomically, rejects
 overlap, orphaning, historical-range adoption, and incompatible targets, and
 copies only compatible component definitions, future component targets, and
 distribution bands. It never copies observations. Goal successors receive a

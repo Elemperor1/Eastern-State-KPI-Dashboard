@@ -1,6 +1,7 @@
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
+import { DatabaseSync } from "node:sqlite";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { getDb, resetDb, SCHEMA_VERSION } from "@/lib/db";
 
@@ -16,6 +17,12 @@ const STRATEGIC_TABLES = [
   "distribution_observations",
   "distribution_values",
   "strategic_audit_events",
+] as const;
+
+const INSTALLATION_TABLES = [
+  "organizations",
+  "strategic_plans",
+  "installation_audit_events",
 ] as const;
 
 const LEGACY_TABLES = [
@@ -53,7 +60,75 @@ function schemaVersion(db: TestDb): number {
   );
 }
 
+function seedInstallationFixture(db: TestDb): number {
+  const organizationId = Number(
+    db
+      .prepare(
+        `INSERT INTO organizations (slug, name, short_name, status)
+         VALUES ('test-organization', 'Test Organization', 'Test Org', 'active')`,
+      )
+      .run().lastInsertRowid,
+  );
+  return Number(
+    db
+      .prepare(
+        `INSERT INTO strategic_plans (
+           organization_id, slug, name, start_year, end_year, status
+         ) VALUES (?, 'test-plan', 'Test Plan', 2025, 2029, 'active')`,
+      )
+      .run(organizationId).lastInsertRowid,
+  );
+}
+
+function downgradeInstallationOwnershipToV11(db: TestDb): void {
+  db.exec(`
+    PRAGMA foreign_keys = OFF;
+    DROP TRIGGER IF EXISTS categories_set_updated_at_after_insert;
+    DROP TRIGGER IF EXISTS categories_set_updated_at_after_update;
+    DROP INDEX IF EXISTS idx_categories_archived_at;
+
+    CREATE TABLE categories_v11 (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      slug TEXT UNIQUE NOT NULL,
+      name TEXT NOT NULL,
+      description TEXT,
+      sort_order INTEGER NOT NULL DEFAULT 0,
+      archived_at TEXT,
+      updated_at TEXT
+    );
+    INSERT INTO categories_v11 (
+      id, slug, name, description, sort_order, archived_at, updated_at
+    )
+    SELECT id, slug, name, description, sort_order, archived_at, updated_at
+    FROM categories;
+    DROP TABLE categories;
+    ALTER TABLE categories_v11 RENAME TO categories;
+    CREATE INDEX idx_categories_archived_at ON categories(archived_at);
+
+    CREATE TRIGGER categories_set_updated_at_after_insert
+    AFTER INSERT ON categories
+    FOR EACH ROW WHEN NEW.updated_at IS NULL
+    BEGIN
+      UPDATE categories SET updated_at = datetime('now') WHERE id = NEW.id;
+    END;
+
+    CREATE TRIGGER categories_set_updated_at_after_update
+    AFTER UPDATE OF slug, name, description, sort_order, archived_at ON categories
+    FOR EACH ROW WHEN NEW.updated_at IS OLD.updated_at
+    BEGIN
+      UPDATE categories SET updated_at = datetime('now') WHERE id = NEW.id;
+    END;
+
+    DROP TABLE installation_audit_events;
+    DROP TABLE strategic_plans;
+    DROP TABLE organizations;
+    INSERT OR REPLACE INTO meta (key, value) VALUES ('schema_version', '11');
+    PRAGMA foreign_keys = ON;
+  `);
+}
+
 function downgradeStrategicFoundationToV9(db: TestDb): void {
+  downgradeInstallationOwnershipToV11(db);
   // Build an actual v9-shaped copy from the freshly initialized database. All
   // strategic sidecars are empty because schema 10 intentionally performs no
   // canonical backfill yet.
@@ -86,6 +161,7 @@ function downgradeStrategicFoundationToV9(db: TestDb): void {
 }
 
 function downgradeComponentIdentityToV10(db: TestDb): void {
+  downgradeInstallationOwnershipToV11(db);
   // Recreate the actual schema-10 component identity on an otherwise-current,
   // empty strategic sidecar. Child tables continue to reference the same table
   // name, so the fixture can add representative child rows after this step.
@@ -136,7 +212,7 @@ function downgradeComponentIdentityToV10(db: TestDb): void {
   `);
 }
 
-describe("schema 11 migration", () => {
+describe("schema 12 migration", () => {
   let tmpDir: string;
   let dbPath: string;
   let originalDbPath: string | undefined;
@@ -161,6 +237,7 @@ describe("schema 11 migration", () => {
 
   function seedCurrentFixture() {
     const db = getDb();
+    const planId = seedInstallationFixture(db);
     db.prepare(
       `INSERT INTO users (email, name, password_hash, role)
        VALUES ('migration@example.org', 'Migration User', 'hash', 'admin')`,
@@ -173,9 +250,9 @@ describe("schema 11 migration", () => {
       ).id,
     );
     db.prepare(
-      `INSERT INTO categories (slug, name, sort_order)
-       VALUES ('legacy-category', 'Legacy Category', 1)`,
-    ).run();
+      `INSERT INTO categories (plan_id, slug, name, sort_order)
+       VALUES (?, 'legacy-category', 'Legacy Category', 1)`,
+    ).run(planId);
     const categoryId = Number(
       (
         db
@@ -277,10 +354,11 @@ describe("schema 11 migration", () => {
       breakdownEntryId,
       historyId,
       goalId,
+      planId,
     };
   }
 
-  it("creates a clean schema-11 database with legacy and strategic tables", () => {
+  it("creates a clean schema-12 database with installation, legacy, and strategic tables", () => {
     const db = getDb();
     const tableNames = new Set(
       (
@@ -290,14 +368,29 @@ describe("schema 11 migration", () => {
       ).map((row) => row.name),
     );
 
-    expect(SCHEMA_VERSION).toBe(11);
-    expect(schemaVersion(db)).toBe(11);
-    for (const table of [...LEGACY_TABLES, ...STRATEGIC_TABLES]) {
+    expect(SCHEMA_VERSION).toBe(12);
+    expect(schemaVersion(db)).toBe(12);
+    for (const table of [
+      ...INSTALLATION_TABLES,
+      ...LEGACY_TABLES,
+      ...STRATEGIC_TABLES,
+    ]) {
       expect(tableNames.has(table), `${table} should exist`).toBe(true);
     }
     expect(columnNames(db, "categories")).toEqual(
-      expect.arrayContaining(["archived_at", "updated_at"]),
+      expect.arrayContaining(["plan_id", "archived_at", "updated_at"]),
     );
+    expect(
+      db
+        .prepare("PRAGMA foreign_key_list(categories)")
+        .all()
+        .some(
+          (foreignKey) =>
+            foreignKey.table === "strategic_plans" &&
+            foreignKey.from === "plan_id" &&
+            foreignKey.on_delete === "RESTRICT",
+        ),
+    ).toBe(true);
     expect(columnNames(db, "kpis")).toEqual(
       expect.arrayContaining(["archived_at", "updated_at"]),
     );
@@ -319,6 +412,23 @@ describe("schema 11 migration", () => {
     expect(columnNames(db, "kpi_component_entries")).toContain("average_score");
     expect(columnNames(db, "kpi_components")).toContain("aggregation_role");
     expect(columnNames(db, "distribution_bands")).toContain("derived_group");
+    const goalColumns = db.prepare("PRAGMA table_info(strategic_goals)").all() as Array<{
+      name: string;
+      dflt_value: string | null;
+    }>;
+    expect(goalColumns.find((column) => column.name === "plan_start_year")?.dflt_value).toBeNull();
+    expect(goalColumns.find((column) => column.name === "plan_end_year")?.dflt_value).toBeNull();
+    const membershipColumns = db.prepare("PRAGMA table_info(goal_kpis)").all() as Array<{
+      name: string;
+      dflt_value: string | null;
+    }>;
+    expect(
+      membershipColumns.find((column) => column.name === "effective_from_year")?.dflt_value,
+    ).toBeNull();
+    const targetSchema = db
+      .prepare("SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'kpi_targets'")
+      .get() as { sql: string };
+    expect(targetSchema.sql).not.toContain("BETWEEN 2025 AND 2029");
 
     // Foundation only: canonical strategic goals/configurations are not
     // backfilled by the schema migration itself.
@@ -354,6 +464,152 @@ describe("schema 11 migration", () => {
     }
   });
 
+  it("migrates a populated schema-11 plan owner once without changing descendant ids", () => {
+    const fixture = seedCurrentFixture();
+    const before = {
+      categoryId: fixture.categoryId,
+      kpiId: fixture.kpiId,
+      entryId: fixture.entryId,
+      historyId: fixture.historyId,
+      categoryCount: countRows(fixture.db, "categories"),
+      kpiCount: countRows(fixture.db, "kpis"),
+      entryCount: countRows(fixture.db, "monthly_entries"),
+      historyCount: countRows(fixture.db, "entry_history"),
+    };
+    downgradeInstallationOwnershipToV11(fixture.db);
+    expect(schemaVersion(fixture.db)).toBe(11);
+    expect(columnNames(fixture.db, "categories")).not.toContain("plan_id");
+
+    resetDb();
+    const migrated = getDb();
+    const ownership = migrated
+      .prepare(
+        `SELECT organization.slug AS organization_slug,
+                plan.slug AS plan_slug, plan.start_year, plan.end_year,
+                priority.id AS category_id, priority.plan_id
+         FROM categories priority
+         JOIN strategic_plans plan ON plan.id = priority.plan_id
+         JOIN organizations organization ON organization.id = plan.organization_id`,
+      )
+      .get() as Record<string, unknown>;
+
+    expect(schemaVersion(migrated)).toBe(12);
+    expect(ownership).toMatchObject({
+      organization_slug: "eastern-state-penitentiary-historic-site",
+      plan_slug: "strategic-plan-2025-2029",
+      start_year: 2025,
+      end_year: 2029,
+      category_id: before.categoryId,
+    });
+    expect(countRows(migrated, "categories")).toBe(before.categoryCount);
+    expect(countRows(migrated, "kpis")).toBe(before.kpiCount);
+    expect(countRows(migrated, "monthly_entries")).toBe(before.entryCount);
+    expect(countRows(migrated, "entry_history")).toBe(before.historyCount);
+    expect(
+      (migrated.prepare("SELECT id FROM kpis WHERE slug = 'legacy-kpi'").get() as { id: number }).id,
+    ).toBe(before.kpiId);
+    expect(
+      (migrated.prepare("SELECT id FROM monthly_entries WHERE year = 2026").get() as { id: number }).id,
+    ).toBe(before.entryId);
+    expect(
+      (migrated.prepare("SELECT id FROM entry_history").get() as { id: number }).id,
+    ).toBe(before.historyId);
+    expect(countRows(migrated, "organizations")).toBe(1);
+    expect(countRows(migrated, "strategic_plans")).toBe(1);
+    expect(countRows(migrated, "installation_audit_events")).toBe(2);
+    const migratedGoalColumns = migrated
+      .prepare("PRAGMA table_info(strategic_goals)")
+      .all() as Array<{ name: string; dflt_value: string | null }>;
+    expect(
+      migratedGoalColumns.find((column) => column.name === "plan_start_year")
+        ?.dflt_value,
+    ).toBeNull();
+    expect(
+      migratedGoalColumns.find((column) => column.name === "plan_end_year")
+        ?.dflt_value,
+    ).toBeNull();
+    const migratedMembershipColumns = migrated
+      .prepare("PRAGMA table_info(goal_kpis)")
+      .all() as Array<{ name: string; dflt_value: string | null }>;
+    expect(
+      migratedMembershipColumns.find(
+        (column) => column.name === "effective_from_year",
+      )?.dflt_value,
+    ).toBeNull();
+    expect(
+      (
+        migrated
+          .prepare(
+            "SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'kpi_targets'",
+          )
+          .get() as { sql: string }
+      ).sql,
+    ).not.toContain("BETWEEN 2025 AND 2029");
+    migrated
+      .prepare("UPDATE strategic_plans SET end_year = 2030 WHERE status = 'active'")
+      .run();
+    expect(() =>
+      migrated
+        .prepare(
+          `INSERT INTO kpi_targets (
+             kpi_id, target_scope, target_year, target_value,
+             configuration_status
+           ) VALUES (?, 'full_plan', 2030, 1, 'draft')`,
+        )
+        .run(before.kpiId),
+    ).not.toThrow();
+    expect(migrated.prepare("PRAGMA foreign_key_check").all()).toEqual([]);
+
+    resetDb();
+    const reopened = getDb();
+    expect(countRows(reopened, "organizations")).toBe(1);
+    expect(countRows(reopened, "strategic_plans")).toBe(1);
+    expect(countRows(reopened, "installation_audit_events")).toBe(2);
+  });
+
+  it("rolls back every schema-12 change when installation ownership cannot be installed", () => {
+    const fixture = seedCurrentFixture();
+    downgradeInstallationOwnershipToV11(fixture.db);
+    fixture.db.exec(`
+      CREATE TABLE installation_audit_events (
+        id INTEGER PRIMARY KEY AUTOINCREMENT
+      );
+    `);
+    resetDb();
+
+    expect(() => getDb()).toThrow();
+
+    const verify = new DatabaseSync(dbPath);
+    expect(
+      Number(
+        (
+          verify
+            .prepare("SELECT value FROM meta WHERE key = 'schema_version'")
+            .get() as { value: string }
+        ).value,
+      ),
+    ).toBe(11);
+    expect(
+      (verify.prepare("PRAGMA table_info(categories)").all() as Array<{ name: string }>).map(
+        (column) => column.name,
+      ),
+    ).not.toContain("plan_id");
+    expect(
+      verify
+        .prepare(
+          `SELECT name FROM sqlite_master
+           WHERE type = 'table' AND name IN ('organizations', 'strategic_plans')`,
+        )
+        .all(),
+    ).toEqual([]);
+    expect(
+      (verify.prepare("PRAGMA table_info(installation_audit_events)").all() as Array<{ name: string }>).map(
+        (column) => column.name,
+      ),
+    ).toEqual(["id"]);
+    verify.close();
+  });
+
   it("migrates a schema-9 copy additively without changing legacy rows or ids", () => {
     const fixture = seedCurrentFixture();
     const legacyQueries: Record<string, string> = {
@@ -386,7 +642,7 @@ describe("schema 11 migration", () => {
     resetDb();
     const migrated = getDb();
 
-    expect(schemaVersion(migrated)).toBe(11);
+    expect(schemaVersion(migrated)).toBe(12);
     for (const [table, query] of Object.entries(legacyQueries)) {
       expect(countRows(migrated, table)).toBe(beforeCounts[table]);
       expect(migrated.prepare(query).all()).toEqual(before[table]);
@@ -476,8 +732,8 @@ describe("schema 11 migration", () => {
       )
       .get(kpiId);
 
-    expect(SCHEMA_VERSION).toBe(11);
-    expect(schemaVersion(migrated)).toBe(11);
+    expect(SCHEMA_VERSION).toBe(12);
+    expect(schemaVersion(migrated)).toBe(12);
     expect(goal).toMatchObject({
       kpi_id: kpiId,
       target_year: 2029,
@@ -564,8 +820,8 @@ describe("schema 11 migration", () => {
     resetDb();
     const migrated = getDb();
 
-    expect(SCHEMA_VERSION).toBe(11);
-    expect(schemaVersion(migrated)).toBe(11);
+    expect(SCHEMA_VERSION).toBe(12);
+    expect(schemaVersion(migrated)).toBe(12);
     expect(
       migrated.prepare("SELECT * FROM kpi_components WHERE id = ?").get(componentId),
     ).toMatchObject({
@@ -616,7 +872,7 @@ describe("schema 11 migration", () => {
 
     resetDb();
     const reopened = getDb();
-    expect(schemaVersion(reopened)).toBe(11);
+    expect(schemaVersion(reopened)).toBe(12);
     expect(
       reopened
         .prepare(
@@ -656,7 +912,7 @@ describe("schema 11 migration", () => {
       expect(
         migrated.prepare("SELECT value FROM meta WHERE key = 'sample_data'").get(),
       ).toBeUndefined();
-      expect(schemaVersion(migrated)).toBe(11);
+      expect(schemaVersion(migrated)).toBe(12);
     },
   );
 });

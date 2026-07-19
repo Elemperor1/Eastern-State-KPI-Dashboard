@@ -1,4 +1,4 @@
-import { STRATEGIC_PLAN_START_YEAR } from "@/features/strategy";
+import { getActiveInstallation } from "@/features/installation/server";
 import {
   listComponentsForConfiguration,
   listEffectiveMeasurementConfigs,
@@ -24,13 +24,14 @@ export function listCalculatedStrategyActuals({
   kpiIds: number[];
   throughYear: number;
 }): StrategicCalculatedActual[] {
-  if (kpiIds.length === 0 || throughYear < STRATEGIC_PLAN_START_YEAR) return [];
+  const planStartYear = getActiveInstallation().plan.startYear;
+  if (kpiIds.length === 0 || throughYear < planStartYear) return [];
   const wanted = new Set(kpiIds);
   const actuals: StrategicCalculatedActual[] = [];
   const kpiValuesByReportingPeriod = new Map<string, number>();
   const componentValuesByReportingPeriod = new Map<string, number>();
 
-  for (let year = STRATEGIC_PLAN_START_YEAR; year <= throughYear; year += 1) {
+  for (let year = planStartYear; year <= throughYear; year += 1) {
     const configurations = listEffectiveMeasurementConfigs(year).filter(
       (configuration) => wanted.has(configuration.kpi_id),
     );

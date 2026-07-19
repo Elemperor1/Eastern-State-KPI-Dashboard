@@ -17,7 +17,7 @@ interface Props {
  * Reports also expose browser-native print. This explicit download remains for
  * people who need a ready-to-share raster PDF without using the print dialog.
  */
-export function ExportPDFButton({ targetId, fileName = "eastern-state-kpi.pdf" }: Props) {
+export function ExportPDFButton({ targetId, fileName = "strategic-plan-report.pdf" }: Props) {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [status, setStatus] = useState("");

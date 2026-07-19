@@ -30,6 +30,13 @@ vi.mock("@/features/strategy/server", () => ({
   listStrategyObservations: listStrategyObservationsMock,
 }));
 
+vi.mock("@/features/installation/server", () => ({
+  getActiveInstallation: () => ({
+    plan: { startYear: 2025, endYear: 2029 },
+    years: [2025, 2026, 2027, 2028, 2029],
+  }),
+}));
+
 import { listCalculatedStrategyActuals } from "./strategy-actuals-server";
 
 describe("strategy actual server adapter", () => {

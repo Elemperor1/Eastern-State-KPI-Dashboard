@@ -1,5 +1,6 @@
 import { z } from "@/lib/zod";
 import { getDb, transaction } from "@/lib/db";
+import { getActiveInstallation } from "@/features/installation/server";
 import { recordStrategicAuditEvent } from "./audit";
 import { validateReportingPeriod } from "./periods";
 import type {
@@ -447,6 +448,40 @@ function parsePayload<T>(schema: z.ZodType<T>, input: unknown): T {
   return result.data;
 }
 
+function assertActivePlanYear(year: number, path = "reporting_year"): void {
+  const { plan } = getActiveInstallation();
+  if (year < plan.startYear || year > plan.endYear) {
+    throw new StrategyValueEntryValidationError(
+      "The reporting year is outside the active strategic plan.",
+      [
+        {
+          path,
+          message: `Choose a year from ${plan.startYear} through ${plan.endYear}.`,
+        },
+      ],
+    );
+  }
+}
+
+function assertActivePlanRange(startYear: number, endYear: number | null): void {
+  const { plan } = getActiveInstallation();
+  const startOutside =
+    startYear < plan.startYear ||
+    startYear > plan.endYear;
+  const endOutside = endYear !== null && endYear > plan.endYear;
+  if (startOutside || endOutside) {
+    throw new StrategyValueEntryValidationError(
+      "The effective range is outside the active strategic plan.",
+      [
+        {
+          path: startOutside ? "effective_from_year" : "effective_to_year",
+          message: `Keep the effective range within ${plan.startYear} through ${plan.endYear}.`,
+        },
+      ],
+    );
+  }
+}
+
 function numberOrNull(value: unknown): number | null {
   return value === null || value === undefined ? null : Number(value);
 }
@@ -486,6 +521,7 @@ function loadAuditContext(kpiId: number, year: number): AuditContext {
 }
 
 function loadEffectiveConfiguration(kpiId: number, year: number): EffectiveConfiguration {
+  assertActivePlanYear(year);
   const context = loadAuditContext(kpiId, year);
   const row = getDb()
     .prepare(
@@ -2085,6 +2121,7 @@ export function createStrategyDistributionBand(
     rawInput,
   ) as DistributionBandDefinitionWrite;
   return transaction(() => {
+    assertActivePlanRange(input.effective_from_year, input.effective_to_year);
     const context = assertDistributionBandOwner(
       input.kpi_id,
       input.component_id,
@@ -2142,6 +2179,7 @@ export function updateStrategyDistributionBand(
     rawInput,
   ) as DistributionBandDefinitionUpdate;
   return transaction(() => {
+    assertActivePlanRange(input.effective_from_year, input.effective_to_year);
     const before = getDistributionBandDefinition(input.id);
     if (
       before.kpi_id !== input.kpi_id ||

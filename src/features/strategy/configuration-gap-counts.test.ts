@@ -3,6 +3,7 @@ import os from "node:os";
 import path from "node:path";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { getDb, resetDb } from "@/lib/db";
+import { bootstrapTestInstallation } from "@/features/installation/test-fixture";
 import {
   countGoalsExcludedByConfiguration,
   getConfigurationGapCounts,
@@ -55,8 +56,9 @@ function seedComponentTargetFixture(
   const categoryId = Number(
     db
       .prepare(
-        `INSERT INTO categories (slug, name)
-         VALUES ('component-target-priority', 'Component Target Priority')`,
+        `INSERT INTO categories (plan_id, slug, name)
+         VALUES ((SELECT id FROM strategic_plans WHERE status = 'active'),
+                 'component-target-priority', 'Component Target Priority')`,
       )
       .run().lastInsertRowid,
   );
@@ -181,6 +183,7 @@ describe("configuration-gap component target completeness", () => {
       tmpDir,
       `component-targets-${databaseIndex++}.db`,
     );
+    bootstrapTestInstallation();
   });
 
   afterAll(() => {

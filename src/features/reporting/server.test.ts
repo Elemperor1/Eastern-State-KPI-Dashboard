@@ -10,6 +10,7 @@ const {
   listStrategicAuditEventsMock,
   listStrategicAuditIdentitiesForKpiMock,
   listStrategicGoalsMock,
+  getActiveInstallationMock,
 } = vi.hoisted(() => ({
   isSampleDataEnabledMock: vi.fn(),
   listCalculatedStrategyActualsMock: vi.fn(),
@@ -17,6 +18,7 @@ const {
   listStrategicAuditEventsMock: vi.fn(),
   listStrategicAuditIdentitiesForKpiMock: vi.fn(),
   listStrategicGoalsMock: vi.fn(),
+  getActiveInstallationMock: vi.fn(),
 }));
 
 vi.mock("@/features/catalog/server", () => ({ listKPIs: listKPIsMock }));
@@ -30,6 +32,9 @@ vi.mock("./strategy-actuals-server", () => ({
 }));
 vi.mock("@/lib/app-meta", () => ({
   isSampleDataEnabled: isSampleDataEnabledMock,
+}));
+vi.mock("@/features/installation/server", () => ({
+  getActiveInstallation: getActiveInstallationMock,
 }));
 
 import {
@@ -176,12 +181,32 @@ beforeEach(() => {
   ]);
   listStrategicAuditEventsMock.mockReturnValue([]);
   isSampleDataEnabledMock.mockReturnValue(true);
+  getActiveInstallationMock.mockReturnValue({
+    organization: {
+      id: 1,
+      slug: "example-museum",
+      name: "Example Museum",
+      shortName: "Example",
+    },
+    plan: { id: 2, startYear: 2025, endYear: 2029 },
+    years: [2025, 2026, 2027, 2028, 2029],
+  });
 });
 
 describe("strategic reporting server", () => {
   it("uses only strategic plan years and configured reporting periods", () => {
-    expect(listDashboardYears()).toEqual([2025, 2026, 2027, 2028, 2029]);
-    expect(listStrategicReportingPeriods(2026).map((period) => period.label)).toContain("Full year");
+    getActiveInstallationMock.mockReturnValue({
+      organization: {
+        id: 1,
+        slug: "example-museum",
+        name: "Example Museum",
+        shortName: "Example",
+      },
+      plan: { id: 2, startYear: 2030, endYear: 2032 },
+      years: [2030, 2031, 2032],
+    });
+    expect(listDashboardYears()).toEqual([2030, 2031, 2032]);
+    expect(listStrategicReportingPeriods(2031).map((period) => period.label)).toContain("Full year");
   });
 
   it("keeps Overview narrow and report-free", () => {
@@ -205,6 +230,7 @@ describe("strategic reporting server", () => {
       reportingPeriod,
     });
     expect(data.report.reportingPeriod).toBe("Quarter 2");
+    expect(data.report.organizationName).toBe("Example Museum");
   });
 
   it("keeps a monthly Board Report from absorbing annual or future records", () => {

@@ -13,8 +13,6 @@ import {
   STRATEGY_AUDIT_ACTIONS,
   STRATEGY_AUDIT_ENTITY_TYPES,
   STRATEGY_REPORTING_FREQUENCIES,
-  STRATEGIC_PLAN_END_YEAR,
-  STRATEGIC_PLAN_START_YEAR,
   TARGET_SCOPES,
   type StrategyJsonValue,
 } from "./types";
@@ -48,11 +46,6 @@ const StrategyAuditActionSchema = z.enum(STRATEGY_AUDIT_ACTIONS);
 
 const IdSchema = z.number().int().positive();
 const YearSchema = z.number().int().min(1900).max(2100);
-const PlanTargetYearSchema = z
-  .number()
-  .int()
-  .min(STRATEGIC_PLAN_START_YEAR)
-  .max(STRATEGIC_PLAN_END_YEAR);
 const FiniteNumberSchema = z.number().finite();
 const NullableFiniteNumberSchema = FiniteNumberSchema.nullable().optional().default(null);
 const NullableIdSchema = IdSchema.nullable().optional().default(null);
@@ -587,16 +580,6 @@ export const TargetInputSchema = z
   .superRefine((target, ctx) => {
     validateEffectiveYearRange(target, ctx);
     if (
-      !target.is_external_target &&
-      !PlanTargetYearSchema.safeParse(target.target_year).success
-    ) {
-      ctx.addIssue({
-        code: z.ZodIssueCode.custom,
-        path: ["target_year"],
-        message: "Strategic-plan target year must be between 2025 and 2029.",
-      });
-    }
-    if (
       target.target_year < target.effective_start_year ||
       (target.effective_end_year !== null &&
         target.target_year > target.effective_end_year)
@@ -650,7 +633,7 @@ export const ComponentInputSchema = z
     aggregation_role: ComponentAggregationRoleSchema.default("value"),
     target_value: NullableFiniteNumberSchema,
     annual_target_value: NullableFiniteNumberSchema,
-    target_year: PlanTargetYearSchema.nullable().optional().default(null),
+    target_year: YearSchema.nullable().optional().default(null),
     target_description: nullableText(4_000),
     weight: z.number().finite().positive().nullable().optional().default(null),
     display_order: z.number().int().nonnegative(),
@@ -1020,29 +1003,12 @@ export const StrategicTargetCreateSchema = z
           path: ["target_year"],
           message: "Annual target and reporting years must match.",
         });
-      } else if (!PlanTargetYearSchema.safeParse(target.reporting_year).success) {
-        ctx.addIssue({
-          code: z.ZodIssueCode.custom,
-          path: ["reporting_year"],
-          message:
-            "Annual target reporting years must stay within the 2025–2029 strategic plan.",
-        });
       }
     } else if (target.reporting_year !== null) {
       ctx.addIssue({
         code: z.ZodIssueCode.custom,
         path: ["reporting_year"],
         message: "Full-plan targets do not use a reporting year.",
-      });
-    }
-    if (
-      !target.external_target_year &&
-      !PlanTargetYearSchema.safeParse(target.target_year).success
-    ) {
-      ctx.addIssue({
-        code: z.ZodIssueCode.custom,
-        path: ["target_year"],
-        message: "Strategic-plan target year must be between 2025 and 2029.",
       });
     }
     if (target.baseline_year !== null && target.baseline_year >= target.target_year) {

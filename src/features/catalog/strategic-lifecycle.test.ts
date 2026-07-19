@@ -10,6 +10,7 @@ import {
   listStrategicGoals,
 } from "@/features/strategy/server";
 import { getDb, resetDb } from "@/lib/db";
+import { bootstrapTestInstallation } from "@/features/installation/test-fixture";
 import {
   archiveKPI,
   countCategoryDependents,
@@ -108,6 +109,7 @@ describe("schema-10 strategic catalog lifecycle", () => {
       tmpDir,
       `catalog-${databaseIndex++}.db`,
     );
+    bootstrapTestInstallation();
   });
 
   afterAll(() => {
@@ -115,6 +117,61 @@ describe("schema-10 strategic catalog lifecycle", () => {
     if (originalDatabasePath === undefined) delete process.env.DATABASE_PATH;
     else process.env.DATABASE_PATH = originalDatabasePath;
     fs.rmSync(tmpDir, { recursive: true, force: true });
+  });
+
+  it("keeps archived-plan priorities, measures, and goals out of active-plan reads", () => {
+    const db = getDb();
+    const activePlan = db
+      .prepare(
+        "SELECT organization_id FROM strategic_plans WHERE status = 'active'",
+      )
+      .get() as { organization_id: number };
+    const archivedPlanId = Number(
+      db
+        .prepare(
+          `INSERT INTO strategic_plans (
+             organization_id, slug, name, start_year, end_year, status, archived_at
+           ) VALUES (?, 'archived-plan', 'Archived plan', 2020, 2024,
+                     'archived', datetime('now'))`,
+        )
+        .run(activePlan.organization_id).lastInsertRowid,
+    );
+    const categoryId = Number(
+      db
+        .prepare(
+          `INSERT INTO categories (plan_id, slug, name)
+           VALUES (?, 'archived-plan-priority', 'Archived plan priority')`,
+        )
+        .run(archivedPlanId).lastInsertRowid,
+    );
+    const kpiId = Number(
+      db
+        .prepare(
+          `INSERT INTO kpis (
+             category_id, slug, name, unit_type, reporting_frequency, direction
+           ) VALUES (?, 'archived-plan-kpi', 'Archived plan KPI', 'count',
+                     'annual', 'higher')`,
+        )
+        .run(categoryId).lastInsertRowid,
+    );
+    db.prepare(
+      `INSERT INTO strategic_goals (
+         priority_id, slug, name, plan_start_year, plan_end_year,
+         configuration_status
+       ) VALUES (?, 'archived-plan-goal', 'Archived plan goal', 2020, 2029,
+                 'active')`,
+    ).run(categoryId);
+
+    expect(listCategories({ includeArchived: true })).toEqual([]);
+    expect(getCategory(categoryId, { includeArchived: true })).toBeNull();
+    expect(
+      getCategoryBySlug("archived-plan-priority", { includeArchived: true }),
+    ).toBeNull();
+    expect(listKPIs({ includeInactive: true, includeArchived: true })).toEqual([]);
+    expect(getKPI(kpiId, { includeArchived: true })).toBeNull();
+    expect(
+      listStrategicGoals({ year: 2025, includeArchived: true }),
+    ).toEqual([]);
   });
 
   it("creates a runtime measure with its goal membership and configuration atomically", () => {

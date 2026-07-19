@@ -9,8 +9,17 @@ those terms are not interchangeable interface labels.
 
 ## Strategic plan structure
 
+**Organization**:
+The persisted installation owner whose display identity and Strategic Plan are
+managed in Setup. The product currently supports exactly one active
+Organization and does not expose tenant selection.
+_Avoid_: Tenant, customer, hard-coded brand name
+
 **Strategic Plan**:
-The time-bounded organizational plan whose Strategic Priorities, Strategic Goals, KPIs, Targets, and Reporting Years define strategic performance.
+The persisted, time-bounded organizational plan whose Strategic Priorities,
+Strategic Goals, KPIs, Targets, and Reporting Years define strategic
+performance. After initialization, its database row and descendants are the
+content authority; bootstrap fixtures are not runtime fallbacks.
 _Avoid_: Dashboard, scorecard
 
 **Strategic Priority**:

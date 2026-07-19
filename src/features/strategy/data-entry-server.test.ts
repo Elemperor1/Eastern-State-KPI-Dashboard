@@ -22,6 +22,13 @@ vi.mock("./server", () => ({
   listStrategyObservations: listStrategyObservationsMock,
 }));
 
+vi.mock("@/features/installation/server", () => ({
+  getActiveInstallation: () => ({
+    plan: { startYear: 2025, endYear: 2029 },
+    years: [2025, 2026, 2027, 2028, 2029],
+  }),
+}));
+
 import { loadStrategicDataEntryPageData } from "./data-entry-server";
 
 function readyGoal() {

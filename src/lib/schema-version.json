@@ -1,4 +1,4 @@
 {
-  "schemaVersion": 11,
-  "additiveFrom": [9, 10]
+  "schemaVersion": 12,
+  "additiveFrom": [9, 10, 11]
 }
