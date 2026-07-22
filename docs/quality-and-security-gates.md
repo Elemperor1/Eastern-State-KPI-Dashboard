@@ -170,7 +170,7 @@ package or severity exclusion, and never perform an automatic major upgrade
 solely to hide a finding.
 
 Dependabot checks npm and GitHub Actions weekly. Minor/patch development
-updates are grouped; open pull requests are capped to keep review volume
+updates are grouped, and open pull requests are capped to keep review volume
 bounded.
 
 ### Dependency Review
@@ -210,13 +210,46 @@ Both the Docker build and the workflow re-run the production-dependency guard
 against the final image: every lock entry marked development-only must be absent,
 while Next, React, jsPDF, sharp, and the `tsx` seed/migration runner must remain.
 
-Pull requests run this workflow only when the production image inputs,
-application, scripts, or workflows change. Pushes to `master`, manual runs,
-and the weekly schedule scan the image again so newly published distro or npm
+The workflow starts on every pull request so the lightweight
+`Production container security` contract is always present. A first job compares
+the pull-request base and head using NUL-delimited Git paths with rename
+detection disabled. It skips the full image build only when every changed path
+is an explicitly Docker-excluded documentation/evidence path. Every other path,
+including any new or previously unknown root file, requires the full build and
+Trivy scan. The stable contract succeeds only when that required scan succeeds,
+or when the classifier proves all changes are excluded from the image. A
+classifier failure, invalid decision, unexpected skip, cancelled scan, or red
+scan makes the contract fail closed.
+
+Pushes to `master`, manual runs, and the weekly schedule always build and scan
+the exact commit, regardless of paths, so newly published distro or npm
 advisories are detected even without a source change. GitHub does not grant
-`security-events: write` to fork pull requests, so those runs still build,
-scan, retain the text artifact, and enforce the blocking policy but skip SARIF
-publication.
+`security-events: write` to fork pull requests, so fork runs still classify,
+build when required, retain the text artifact, and enforce the blocking policy,
+but skip SARIF publication. GitHub may also issue a read-only token to a
+Dependabot-authored push. Only that narrowly detected push case may tolerate a
+failed SARIF upload; an upload failure on an ordinary trusted run fails the job.
+The independent blocking Trivy scan remains authoritative in every case. No
+workflow reads repository secrets.
+
+### Release container readiness
+
+`.github/workflows/release-security.yml` is the authoritative release-security
+declaration. Dispatch it from `master` immediately before a release. The
+read-only workflow refuses a non-default ref, refuses a stale SHA if `master`
+moved, selects the latest Container Security run for that exact commit, and
+requires all three of these results to be completed and successful:
+
+- the exact-commit Container Security workflow run;
+- `Container image / Trivy` (the full image build and blocking scan); and
+- `Production container security` (the stable fail-closed contract).
+
+Missing, queued, in-progress, skipped, cancelled, stale, or red evidence fails
+the release check. A prior green run does not authorize a newer commit, and a
+newer failed exact-commit scan supersedes older green evidence. Record the SHA
+and Container Security run linked in the successful `Release container
+readiness` summary. If `master` moves before deployment, dispatch it again and
+deploy only the newly recorded clean commit.
 
 A separate Syft workflow is intentionally omitted. Trivy can already generate
 SPDX or CycloneDX from this exact image, while the repository currently has no
@@ -276,11 +309,18 @@ Neither workflow references repository secrets, including on fork pull
 requests.
 
 `.github/workflows/dependency-review.yml` exposes one pull-request-only
-`Dependency Review` check. `.github/workflows/container-security.yml` exposes
-`Container image / Trivy` on relevant pull requests, pushes to `master`, the
-weekly schedule, and manual dispatch. These two checks carry the blocking
-policies described above; their summaries and SARIF also contain informational
-findings.
+`Dependency Review` check. `.github/workflows/container-security.yml` always
+exposes `Container scan decision` and `Production container security`; it also
+exposes `Container image / Trivy` when a pull request changes the production
+image, and on every push to `master`, weekly schedule, and manual dispatch.
+Dependency Review and the container contract carry the blocking policies
+described above; their summaries and SARIF also contain informational findings.
+
+`.github/workflows/release-security.yml` is manual-only and exposes `Release
+container readiness`. It has read-only `actions` and `contents` permissions,
+uses no checkout or third-party action, and validates current GitHub Actions
+evidence rather than rebuilding or deploying. It is a release authorization
+record, not a pull-request required check.
 
 `.github/workflows/scorecard.yml` runs on pushes to `master`, weekly, and by
 manual dispatch. OpenSSF Scorecard evaluates repository and workflow
@@ -329,9 +369,10 @@ build output, temp databases, or copied logs.
 
 ## Required checks and repository settings
 
-After these workflows run successfully, an administrator should protect
-`master` and require the existing ten stable checks plus the two intentionally
-blocking security checks:
+As live-verified on July 22, 2026, active repository ruleset
+[`Default branch safety`](https://github.com/Elemperor1/Eastern-State-KPI-Dashboard/rules/19106275)
+targets `~DEFAULT_BRANCH` (`master`) and requires these 11 completed GitHub
+Actions check names:
 
 - `Typecheck`
 - `Lint`
@@ -344,22 +385,78 @@ blocking security checks:
 - `CodeQL (javascript-typescript)`
 - `CodeQL (python)`
 - `Dependency Review`
-- `Container image / Trivy`
 
-Do not require `Scorecard analysis`; it is scheduled/default-branch
-informational signal rather than a pull-request gate.
+Completed GitHub Actions runs prove those names and the path-filter hazard:
 
-Repository files implement the workflows and Dependabot schedule. The following
-settings are **not** changed by this work and still require a GitHub
-administrator, subject to plan/visibility availability:
+- docs-only PR #59 at `8aae67ac03804069af300ef5f28aa6cee5de8e7f`
+  completed all 11 required names under GitHub Actions app ID `15368`, while
+  `Container image / Trivy` was absent;
+- production-input PR #73 at
+  `5afe0660c71286e01d571a2ee6a1da252012a2b3` completed the same 11 names plus
+  `Container image / Trivy`, also under app ID `15368`; and
+- the July 22, 2026 `master` snapshot at
+  `3e446acd52da4a68a48cda453b0c9c406598edaa` has a completed successful
+  `Container image / Trivy` run.
 
-- enable branch protection/rulesets, required pull requests, and the checks
-  above (the repository currently has neither branch protection nor a
-  ruleset);
-- enable Dependabot alerts and Dependabot security updates;
-- confirm code scanning accepts CodeQL uploads and alerts are visible;
-- enable GitHub Secret Scanning and push protection;
-- restrict workflow changes and review third-party/action updates carefully.
+This evidence proves the existing 11 contexts are stable and proves that the
+path-filtered Trivy context is unsafe to require. It does not yet prove the new
+`Production container security` context, because that job has not run on
+GitHub. Therefore no live ruleset mutation is recommended from this local patch.
+
+The live ruleset also requires pull requests with **zero approving reviews**,
+resolved review conversations, squash-only merges, linear history, deletion
+protection, and non-fast-forward protection. `Elemperor1` is the only bypass
+actor and its bypass mode is `pull_request`, so the owner can use an explicit
+PR emergency bypass but cannot bypass the ruleset with a direct push. The
+status-check policy is not strict about updating a branch before merge and does
+not enforce checks while the branch is first created. It is bound to the
+GitHub Actions app, preventing an unrelated status provider from satisfying the
+same text name. There is no separate legacy branch-protection record; the
+active ruleset is the protection authority.
+
+Repository merge settings match that policy: squash is the only enabled merge
+method, squash title/body use the PR title/body, update-branch is enabled, and
+merged head branches are deleted automatically. Do not add an approval
+requirement until an independent reviewer is reliably available, do not add a
+broad administrator bypass, and do not change the owner bypass to `always`.
+
+Live Actions settings use a read-only default `GITHUB_TOKEN`, prohibit Actions
+from approving pull requests, and permit all action publishers. GitHub's
+repository-level SHA-pinning switch is currently off, so the repository guard
+in `scripts/security-workflow-policy.test.ts` is the blocking control that
+requires every external `uses:` reference to be a full 40-character commit SHA.
+The same guard requires every checkout to disable credential persistence.
+
+Do **not** require `Container image / Trivy`: it remains intentionally
+conditional on pull requests and can be absent when the production image is
+unchanged. Do not require `Container scan decision`, `Release container
+readiness`, `Scorecard analysis`, Vercel, CodeRabbit, or dynamically generated
+code-scanning contexts. The existing 11 checks above remain the current live
+required set.
+
+`Production container security` is the proposed future twelfth required check
+because it is designed to be unconditional and fail closed. A GitHub
+administrator must not add it based on this source edit alone. First merge the
+workflow through the existing rules, then prove the exact check name and
+GitHub Actions app ID on completed pull-request runs for both a production-path
+change and a docs-only change, and on a completed `master` push with a real
+Trivy scan. Only after that live proof may an administrator add exactly
+`Production container security` while preserving all existing 11 entries and
+every policy setting above.
+
+Live repository security settings currently show Dependabot security updates
+enabled and GitHub Secret Scanning enabled, while Secret Scanning push
+protection remains disabled. Repository files implement the workflows and
+Dependabot schedule; administrator actions still requiring separate approval
+are:
+
+- enable Secret Scanning push protection after confirming the intended owner
+  recovery path;
+- add `Production container security` only after the completed-name proof above;
+- optionally enable GitHub's repository-level action SHA-pinning enforcement
+  after confirming it accepts every already-pinned workflow;
+- continue reviewing workflow and action-SHA updates as security-sensitive
+  changes.
 
 ## Why UBS is not a gate
 

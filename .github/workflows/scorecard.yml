@@ -22,8 +22,8 @@ jobs:
     timeout-minutes: 20
     permissions:
       contents: read
-      security-events: write
-      id-token: write
+      security-events: write # Required to publish Scorecard SARIF.
+      id-token: write # Required by the public publish_results exchange.
 
     steps:
       - name: Check out repository

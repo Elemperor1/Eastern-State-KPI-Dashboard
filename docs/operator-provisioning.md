@@ -45,6 +45,22 @@ used as a permanent login.
 
 ## Production deployment (Fly.io)
 
+### Release security preflight
+
+For every release, dispatch `.github/workflows/release-security.yml` from
+`master` and wait for `Release container readiness` to complete successfully.
+The workflow fails closed unless the dispatched SHA is still the current
+default-branch head and the latest Container Security run for that exact commit
+has successful `Container image / Trivy` and `Production container security`
+jobs. Missing, pending, skipped, cancelled, stale, or red scan evidence is not
+release-ready.
+
+Record the exact SHA and linked Container Security run from the job summary.
+Deploy only from a clean checkout whose `git rev-parse HEAD` matches that SHA.
+If `master` moves, the checkout becomes dirty, or a newer exact-commit scan is
+red, stop and dispatch a new release check. The workflow verifies evidence only;
+it does not deploy and grants no write permission.
+
 Secrets must be set with `fly secrets set`, **never** committed to
 `fly.toml`. The `[env]` block in `fly.toml` is non-secret, version
 controlled, and visible in CI/deploy logs — do not put any password
@@ -55,6 +71,8 @@ there.
 fly secrets set SESSION_SECRET="$(openssl rand -hex 32)"
 fly secrets set BOOTSTRAP_ADMIN_PASSWORD="$(openssl rand -base64 24)"
 fly secrets set BOOTSTRAP_VIEWER_PASSWORD="$(openssl rand -base64 24)"
+
+# Only after the exact-commit Release Security preflight is green:
 fly deploy
 ```
 
