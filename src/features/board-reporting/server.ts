@@ -219,6 +219,7 @@ function readScope(planId: number): BoardReportingScope {
      LEFT JOIN kpis kpi
        ON kpi.id = link.kpi_id
       AND kpi.is_active = 1 AND kpi.archived_at IS NULL
+      AND kpi.category_id = board_priority.priority_id
      WHERE board_priority.scope_id = ?
        AND priority.archived_at IS NULL
      ORDER BY board_priority.display_order, board_priority.id,

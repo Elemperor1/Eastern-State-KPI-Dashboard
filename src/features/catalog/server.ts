@@ -776,6 +776,7 @@ export function isStrategicCategory(id: number): boolean {
        )
        SELECT CASE WHEN
          EXISTS (SELECT 1 FROM strategic_goals WHERE priority_id = ?) OR
+         EXISTS (SELECT 1 FROM board_reporting_priorities WHERE priority_id = ?) OR
          EXISTS (
            SELECT 1 FROM descendants k
            WHERE
@@ -784,7 +785,7 @@ export function isStrategicCategory(id: number): boolean {
          )
        THEN 1 ELSE 0 END AS strategic`,
     )
-    .get(id, id) as { strategic: number };
+    .get(id, id, id) as { strategic: number };
   return Number(row.strategic) === 1;
 }
 

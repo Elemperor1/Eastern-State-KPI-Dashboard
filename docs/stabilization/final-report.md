@@ -233,11 +233,12 @@ for macOS `/private/tmp` scanner mounts, are machine-readable in
 
 ### E2E inventory
 
-The 11 production-browser workflows cover forced rotation, failed atomic-save
+The 12 production-browser workflows cover forced rotation, failed atomic-save
 recovery, unsaved navigation, complete multi-component forms, distributions,
 four-destination/removed-route boundaries, responsive and zoom-equivalent
-geometry, concise Overview truth, flat Setup plus focus return, Board/Trends/
-CSV/PNG/PDF/print truth, and route-error focus/recovery.
+geometry, concise Overview truth, flat Setup plus focus return, Admin editing
+of Board visibility with Board-account scope enforcement, Board/Trends/CSV/
+PNG/PDF/print truth, and route-error focus/recovery.
 
 ## 10. Readiness recommendation
 

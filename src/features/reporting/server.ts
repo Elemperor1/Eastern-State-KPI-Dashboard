@@ -35,22 +35,31 @@ function scopeGoalsForAudience(
 ): ReturnType<typeof listStrategicGoals> {
   if (audience !== "board") return goals;
   const scope = getBoardReportingScope();
-  const prioritySlugs = new Set(
-    scope.priorities.map((priority) => priority.prioritySlug),
-  );
-  const kpiSlugs = new Set(
-    scope.priorities.flatMap((priority) =>
-      priority.statements.flatMap((statement) =>
-        statement.measures.map((measure) => measure.slug),
-      ),
-    ),
+  const scopeByPriority = new Map(
+    scope.priorities.map((priority) => [
+      priority.prioritySlug,
+      {
+        displayTitle: priority.displayTitle,
+        measureSlugs: new Set(
+          priority.statements.flatMap((statement) =>
+            statement.measures.map((measure) => measure.slug),
+          ),
+        ),
+      },
+    ]),
   );
   return goals
-    .filter((goal) => prioritySlugs.has(goal.priority_slug))
-    .map((goal) => ({
-      ...goal,
-      members: goal.members.filter((member) => kpiSlugs.has(member.kpi.slug)),
-    }))
+    .filter((goal) => scopeByPriority.has(goal.priority_slug))
+    .map((goal) => {
+      const priorityScope = scopeByPriority.get(goal.priority_slug)!;
+      return {
+        ...goal,
+        priority_name: priorityScope.displayTitle,
+        members: goal.members.filter((member) =>
+          priorityScope.measureSlugs.has(member.kpi.slug),
+        ),
+      };
+    })
     .filter((goal) => goal.members.length > 0);
 }
 
@@ -268,15 +277,7 @@ export function loadStrategicMetricPageData(
 ): StrategicMetricPageData | null {
   const catalogKpi = listKPIs().find((kpi) => kpi.slug === kpiSlug);
   if (!catalogKpi) return null;
-  if (
-    audience === "board" &&
-    !getBoardReportingScope().priorities.some((priority) =>
-      priority.statements.some((statement) =>
-        statement.measures.some((measure) => measure.slug === kpiSlug),
-      ),
-    )
-  ) return null;
-  const goals = listStrategicGoals({ year });
+  const goals = scopeGoalsForAudience(listStrategicGoals({ year }), audience);
   const context = goals
     .flatMap((goal) => goal.members.map((member) => ({ goal, member })))
     .find(({ member }) => member.kpi_id === catalogKpi.id);

@@ -165,4 +165,21 @@ describe("database-backed Board reporting configuration", () => {
     ).run(priority.id);
     expect(getBoardReportingScope().priorities).toEqual([]);
   });
+
+  it("removes a linked measure when it moves to a different priority", () => {
+    const { priority, otherPriority, measure, actorId } = fixture();
+    updateBoardReportingScope({
+      expectedRevision: getBoardReportingScope().revision,
+      priorities: [{
+        priorityId: priority.id,
+        displayTitle: "Visitor",
+        statements: [{ text: "Grow attendance.", kpiIds: [measure.id] }],
+      }],
+    }, actorId);
+
+    getDb().prepare("UPDATE kpis SET category_id = ? WHERE id = ?")
+      .run(otherPriority.id, measure.id);
+
+    expect(getBoardReportingScope().priorities[0]?.statements[0]?.measures).toEqual([]);
+  });
 });

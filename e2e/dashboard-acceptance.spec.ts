@@ -428,23 +428,26 @@ test("lets an Admin edit the Board view and enforces the saved scope for Board m
   const run = e2eDatabaseRunFromMetadata(testInfo.config.metadata);
   const email = "board-scope-acceptance@example.org";
   const password = "Board-Scope-2029!";
-  const db = new DatabaseSync(run.databasePath);
-  db.exec("PRAGMA busy_timeout = 5000");
-  db.prepare("DELETE FROM users WHERE email = ?").run(email);
-  db.prepare(`
-    INSERT INTO users (
-      email, name, password_hash, role, must_change_password,
-      disabled, sessions_valid_after
-    ) VALUES (?, ?, ?, 'board', 0, 0, ?)
-  `).run(
-    email,
-    "Board Scope Acceptance",
-    bcrypt.hashSync(password, 4),
-    Date.now(),
-  );
-  db.close();
+  let setupDb: DatabaseSync | null = null;
 
   try {
+    setupDb = new DatabaseSync(run.databasePath);
+    setupDb.exec("PRAGMA busy_timeout = 5000");
+    setupDb.prepare("DELETE FROM users WHERE email = ?").run(email);
+    setupDb.prepare(`
+      INSERT INTO users (
+        email, name, password_hash, role, must_change_password,
+        disabled, sessions_valid_after
+      ) VALUES (?, ?, ?, 'board', 0, 0, ?)
+    `).run(
+      email,
+      "Board Scope Acceptance",
+      bcrypt.hashSync(password, 4),
+      Date.now(),
+    );
+    setupDb.close();
+    setupDb = null;
+
     await page.goto("/setup?area=goals");
     await expect(page.getByRole("heading", { name: "Board visibility" })).toBeVisible();
     const visitorEditor = page
@@ -498,10 +501,14 @@ test("lets an Admin edit the Board view and enforces the saved scope for Board m
     await expect(page).toHaveURL(/\/dashboard\/overview$/);
     expect(browserErrors).toEqual([]);
   } finally {
+    setupDb?.close();
     const cleanup = new DatabaseSync(run.databasePath);
-    cleanup.exec("PRAGMA busy_timeout = 5000");
-    cleanup.prepare("DELETE FROM users WHERE email = ?").run(email);
-    cleanup.close();
+    try {
+      cleanup.exec("PRAGMA busy_timeout = 5000");
+      cleanup.prepare("DELETE FROM users WHERE email = ?").run(email);
+    } finally {
+      cleanup.close();
+    }
   }
 });
 

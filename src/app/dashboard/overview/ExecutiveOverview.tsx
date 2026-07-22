@@ -110,7 +110,7 @@ export function ExecutiveOverview({
                 <h3 className="font-semibold text-ink-950">{priority.displayTitle}</h3>
                 <ul className="mt-3 space-y-2 text-sm text-ink-700">
                   {priority.statements.map((statement) => (
-                    <li key={statement.text} className="flex gap-2">
+                    <li key={statement.id} className="flex gap-2">
                       <span aria-hidden>•</span>
                       <span>
                         {statement.text}

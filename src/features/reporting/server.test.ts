@@ -257,6 +257,13 @@ describe("strategic reporting server", () => {
     };
     listKPIsMock.mockReturnValue([metric, boardMetric]);
     listStrategicGoalsMock.mockReturnValue([goal, boardGoal]);
+    getBoardReportingScopeMock.mockReturnValue({
+      ...getBoardReportingScopeMock(),
+      priorities: [{
+        ...getBoardReportingScopeMock().priorities[0],
+        displayTitle: "Board learning focus",
+      }],
+    });
 
     const report = loadBoardReportPageData({ year: 2026, audience: "board" }).report;
     const slugsById = new Map([[String(boardMetric.id), boardMetric.slug]]);
@@ -268,8 +275,69 @@ describe("strategic reporting server", () => {
 
     expect(visibleSlugs).toEqual(["justice-ed-online-digital-attendance"]);
     expect(report.priorities.map((priority) => priority.name)).toEqual([
-      "Support Learning through Justice Education",
+      "Board learning focus",
     ]);
+    expect(loadStrategicTrendReportData({ year: 2026, audience: "board" }).series)
+      .toEqual([expect.objectContaining({ priorityName: "Board learning focus" })]);
+    expect(loadStrategicMetricPageData(boardMetric.slug, {
+      year: 2026,
+      audience: "board",
+    })?.priorityName).toBe("Board learning focus");
+  });
+
+  it("does not authorize a shared measure under a different visible priority", () => {
+    const sharedMember = {
+      ...goal.members[0],
+      kpi_id: metric.id,
+      kpi: { ...goal.members[0].kpi, id: metric.id, slug: metric.slug },
+    };
+    const otherGoal: StrategicGoalReadModel = {
+      ...goal,
+      id: 701,
+      priority_id: 2,
+      priority_slug: "preservation",
+      priority_name: "Preservation",
+      members: [{ ...sharedMember, id: 702, goal_id: 701 }],
+    };
+    listStrategicGoalsMock.mockReturnValue([
+      { ...goal, members: [{ ...sharedMember, id: 703, goal_id: goal.id }] },
+      otherGoal,
+    ]);
+    getBoardReportingScopeMock.mockReturnValue({
+      id: 1,
+      planId: 2,
+      revision: 2,
+      priorities: [
+        {
+          id: 1,
+          priorityId: 1,
+          prioritySlug: "education",
+          priorityName: "Education",
+          displayTitle: "Board education",
+          displayOrder: 10,
+          statements: [{ id: 1, text: "Education focus", displayOrder: 10, measures: [] }],
+        },
+        {
+          id: 2,
+          priorityId: 2,
+          prioritySlug: "preservation",
+          priorityName: "Preservation",
+          displayTitle: "Board preservation",
+          displayOrder: 20,
+          statements: [{
+            id: 2,
+            text: "Preservation focus",
+            displayOrder: 10,
+            measures: [{ id: metric.id, slug: metric.slug, name: metric.name }],
+          }],
+        },
+      ],
+    });
+
+    const report = loadBoardReportPageData({ year: 2026, audience: "board" }).report;
+    expect(report.priorities).toHaveLength(1);
+    expect(report.priorities[0]?.name).toBe("Board preservation");
+    expect(report.priorities[0]?.goals.flatMap((item) => item.kpis)).toHaveLength(1);
   });
 
   it("uses only strategic plan years and configured reporting periods", () => {
