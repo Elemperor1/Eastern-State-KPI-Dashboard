@@ -114,10 +114,14 @@ function parseArguments(argv) {
   for (let index = 0; index < argv.length; index += 1) {
     const argument = argv[index];
     if (argument === "--lockfile") {
-      lockfilePath = argv[index + 1] ?? null;
+      const value = argv[index + 1];
+      if (value === undefined) throw new Error("--lockfile requires a path");
+      lockfilePath = value;
       index += 1;
     } else if (argument === "--runtime-root") {
-      runtimeRoot = argv[index + 1] ?? null;
+      const value = argv[index + 1];
+      if (value === undefined) throw new Error("--runtime-root requires a path");
+      runtimeRoot = value;
       index += 1;
     } else {
       throw new Error(`Unknown argument: ${argument}`);
