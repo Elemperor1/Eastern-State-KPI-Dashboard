@@ -61,6 +61,11 @@ function queryExistingDatabase() {
       "kpi_component_entries",
       "distribution_observations",
       "strategic_audit_events",
+      "board_reporting_scopes",
+      "board_reporting_priorities",
+      "board_reporting_statements",
+      "board_reporting_statement_kpis",
+      "board_reporting_audit_events",
     ];
     const businessRowCount = businessTables.reduce((total, table) => {
       const exists = db

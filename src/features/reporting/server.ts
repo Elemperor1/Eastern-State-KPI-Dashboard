@@ -24,6 +24,44 @@ import {
   buildStrategicDashboardSummary,
   type StrategicDashboardSummary,
 } from "./strategy-summary";
+import { getBoardReportingScope } from "@/features/board-reporting";
+
+export type ReportingAudience = "staff" | "board";
+
+/** Keeps Board reporting on the explicitly approved priorities and measures. */
+function scopeGoalsForAudience(
+  goals: ReturnType<typeof listStrategicGoals>,
+  audience: ReportingAudience,
+): ReturnType<typeof listStrategicGoals> {
+  if (audience !== "board") return goals;
+  const scope = getBoardReportingScope();
+  const scopeByPriority = new Map(
+    scope.priorities.map((priority) => [
+      priority.prioritySlug,
+      {
+        displayTitle: priority.displayTitle,
+        measureSlugs: new Set(
+          priority.statements.flatMap((statement) =>
+            statement.measures.map((measure) => measure.slug),
+          ),
+        ),
+      },
+    ]),
+  );
+  return goals
+    .filter((goal) => scopeByPriority.has(goal.priority_slug))
+    .map((goal) => {
+      const priorityScope = scopeByPriority.get(goal.priority_slug)!;
+      return {
+        ...goal,
+        priority_name: priorityScope.displayTitle,
+        members: goal.members.filter((member) =>
+          priorityScope.measureSlugs.has(member.kpi.slug),
+        ),
+      };
+    })
+    .filter((goal) => goal.members.length > 0);
+}
 
 /** Retrieves dashboard years. */
 export function listDashboardYears(): number[] {
@@ -45,17 +83,19 @@ function loadStrategicReportModel({
   throughMonth = 12,
   priorityId,
   reportingPeriod,
+  audience = "staff",
 }: {
   year: number;
   throughMonth?: number;
   priorityId?: number;
   reportingPeriod?: ReportingCycleOption;
+  audience?: ReportingAudience;
 }) {
   const installation = getActiveInstallation();
-  const goals = listStrategicGoals({
+  const goals = scopeGoalsForAudience(listStrategicGoals({
     year,
     ...(priorityId === undefined ? {} : { priority_id: priorityId }),
-  });
+  }), audience);
   const actuals = listCalculatedStrategyActuals({
     kpiIds: uniqueKpiIds(goals),
     throughYear: year,
@@ -86,8 +126,11 @@ function loadStrategicReportModel({
 }
 
 /** Retrieves strategic reporting periods. */
-export function listStrategicReportingPeriods(year: number): ReportingCycleOption[] {
-  const goals = listStrategicGoals({ year });
+export function listStrategicReportingPeriods(
+  year: number,
+  audience: ReportingAudience = "staff",
+): ReportingCycleOption[] {
+  const goals = scopeGoalsForAudience(listStrategicGoals({ year }), audience);
   return buildReportingCycleOptions(
     goals.flatMap((goal) =>
       goal.members.map((member) => member.configuration?.reporting_frequency ?? null),
@@ -119,11 +162,13 @@ export interface ExecutiveOverviewPageData {
 export function loadExecutiveOverviewPageData({
   year,
   throughMonth,
+  audience = "staff",
 }: {
   year: number;
   throughMonth?: number;
+  audience?: ReportingAudience;
 }): ExecutiveOverviewPageData {
-  const { summary } = loadStrategicReportModel({ year, throughMonth });
+  const { summary } = loadStrategicReportModel({ year, throughMonth, audience });
   const priorityById = new Map(
     summary.priorities.map((priority) => [priority.priorityId, priority.priorityName]),
   );
@@ -153,15 +198,18 @@ export function loadBoardReportPageData({
   year,
   throughMonth = 12,
   reportingPeriod,
+  audience = "staff",
 }: {
   year: number;
   throughMonth?: number;
   reportingPeriod?: ReportingCycleOption;
+  audience?: ReportingAudience;
 }): BoardReportPageData {
   const { report } = loadStrategicReportModel({
     year,
     throughMonth,
     reportingPeriod,
+    audience,
   });
   return {
     years: listDashboardYears(),
@@ -173,8 +221,18 @@ export function loadBoardReportPageData({
 /** Retrieves strategic priority page data. */
 export function loadStrategicPriorityPageData(
   prioritySlug: string,
-  { year, throughMonth = 12 }: { year: number; throughMonth?: number },
+  {
+    year,
+    throughMonth = 12,
+    audience = "staff",
+  }: { year: number; throughMonth?: number; audience?: ReportingAudience },
 ): StrategicPriorityPageData | null {
+  if (
+    audience === "board" &&
+    !getBoardReportingScope().priorities.some(
+      (priority) => priority.prioritySlug === prioritySlug,
+    )
+  ) return null;
   const context = listStrategicGoals({ year }).find(
     (goal) => goal.priority_slug === prioritySlug,
   );
@@ -183,6 +241,7 @@ export function loadStrategicPriorityPageData(
     year,
     throughMonth,
     priorityId: context.priority_id,
+    audience,
   });
   const priority = report.priorities.find(
     (candidate) => candidate.id === String(context.priority_id),
@@ -208,16 +267,22 @@ export function loadStrategicMetricPageData(
     year,
     throughMonth = 12,
     includeAudit = false,
-  }: { year: number; throughMonth?: number; includeAudit?: boolean },
+    audience = "staff",
+  }: {
+    year: number;
+    throughMonth?: number;
+    includeAudit?: boolean;
+    audience?: ReportingAudience;
+  },
 ): StrategicMetricPageData | null {
   const catalogKpi = listKPIs().find((kpi) => kpi.slug === kpiSlug);
   if (!catalogKpi) return null;
-  const goals = listStrategicGoals({ year });
+  const goals = scopeGoalsForAudience(listStrategicGoals({ year }), audience);
   const context = goals
     .flatMap((goal) => goal.members.map((member) => ({ goal, member })))
     .find(({ member }) => member.kpi_id === catalogKpi.id);
   if (!context) return null;
-  const { report, actuals } = loadStrategicReportModel({ year, throughMonth });
+  const { report, actuals } = loadStrategicReportModel({ year, throughMonth, audience });
   const kpi = report.priorities
     .flatMap((priority) => priority.goals)
     .flatMap((goal) => goal.kpis)
@@ -282,15 +347,17 @@ export function loadStrategicTrendReportData({
   year = getActiveInstallation().plan.endYear,
   throughMonth = 12,
   reportingPeriod,
+  audience = "staff",
 }: {
   year?: number;
   throughMonth?: number;
   reportingPeriod?: ReportingCycleOption;
+  audience?: ReportingAudience;
 } = {}): StrategicTrendReportData {
   const years = getActiveInstallation().years.filter(
     (candidate) => candidate <= year,
   );
-  const goals = listStrategicGoals({ year });
+  const goals = scopeGoalsForAudience(listStrategicGoals({ year }), audience);
   const members = Array.from(
     new Map(
       goals.flatMap((goal) =>

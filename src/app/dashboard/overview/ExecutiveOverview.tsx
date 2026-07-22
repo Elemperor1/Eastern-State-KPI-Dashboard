@@ -5,6 +5,7 @@ import { SampleDataBadge } from "@/components/SampleDataBadge";
 import { normalizeGoalCompletionViewModel } from "@/components/goal-completion-model";
 import type { ExecutiveOverviewPageData } from "@/features/reporting/server";
 import { OverviewYearFilter } from "./OverviewYearFilter";
+import type { BoardReportingPriority } from "@/features/board-reporting";
 
 /** Implements the status for operation. */
 function statusFor(priority: ExecutiveOverviewPageData["summary"]["priorities"][number]) {
@@ -14,7 +15,13 @@ function statusFor(priority: ExecutiveOverviewPageData["summary"]["priorities"][
 }
 
 /** Renders the executive overview interface. */
-export function ExecutiveOverview({ data }: { data: ExecutiveOverviewPageData }) {
+export function ExecutiveOverview({
+  data,
+  boardFocus,
+}: {
+  data: ExecutiveOverviewPageData;
+  boardFocus?: readonly BoardReportingPriority[];
+}) {
   const organization = normalizeGoalCompletionViewModel(data.summary.organization);
   const hasStrategicGoals = data.summary.goals.length > 0;
 
@@ -90,6 +97,35 @@ export function ExecutiveOverview({ data }: { data: ExecutiveOverviewPageData })
           })}
         </div>
       </section>
+
+      {boardFocus ? (
+        <section aria-labelledby="board-focus-heading" className="mb-10">
+          <h2 id="board-focus-heading" className="section-title mb-2">Board focus</h2>
+          <p className="mb-5 text-sm text-ink-600">
+            Your account is limited to measures linked to these priorities. Items without a linked measure remain visible so reporting gaps are explicit.
+          </p>
+          <div className="divide-y divide-ink-200 border-y border-ink-200">
+            {boardFocus.map((priority) => (
+              <section key={priority.prioritySlug} className="py-5">
+                <h3 className="font-semibold text-ink-950">{priority.displayTitle}</h3>
+                <ul className="mt-3 space-y-2 text-sm text-ink-700">
+                  {priority.statements.map((statement) => (
+                    <li key={statement.id} className="flex gap-2">
+                      <span aria-hidden>•</span>
+                      <span>
+                        {statement.text}
+                        {statement.measures.length === 0 ? (
+                          <span className="ml-2 text-ink-500">No linked measure yet.</span>
+                        ) : null}
+                      </span>
+                    </li>
+                  ))}
+                </ul>
+              </section>
+            ))}
+          </div>
+        </section>
+      ) : null}
 
       <section aria-labelledby="attention-heading">
         <h2 id="attention-heading" className="section-title mb-5">Needs attention</h2>

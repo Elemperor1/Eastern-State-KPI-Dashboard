@@ -177,12 +177,34 @@ export function AppShell({
     dirty: false,
     busy: false,
   });
+  const unsavedSourcesRef = useRef(new Map<string, UnsavedChangesState>());
   const [pendingNavigation, setPendingNavigation] = useState<
     { kind: "link"; href: string } | { kind: "history" } | null
   >(null);
   const historyGuardArmed = useRef(false);
+  /** Updates the legacy single-editor unsaved state. */
   const setUnsavedState = useCallback((state: UnsavedChangesState) => {
-    setUnsaved(state);
+    unsavedSourcesRef.current.set("default", state);
+    setUnsaved({
+      dirty: Array.from(unsavedSourcesRef.current.values()).some((item) => item.dirty),
+      busy: Array.from(unsavedSourcesRef.current.values()).some((item) => item.busy),
+    });
+  }, []);
+  /** Updates one named editor while preserving other mounted editors. */
+  const setUnsavedSourceState = useCallback((source: string, state: UnsavedChangesState) => {
+    unsavedSourcesRef.current.set(source, state);
+    setUnsaved({
+      dirty: Array.from(unsavedSourcesRef.current.values()).some((item) => item.dirty),
+      busy: Array.from(unsavedSourcesRef.current.values()).some((item) => item.busy),
+    });
+  }, []);
+  /** Removes one unmounted editor from the aggregate state. */
+  const clearUnsavedSourceState = useCallback((source: string) => {
+    unsavedSourcesRef.current.delete(source);
+    setUnsaved({
+      dirty: Array.from(unsavedSourcesRef.current.values()).some((item) => item.dirty),
+      busy: Array.from(unsavedSourcesRef.current.values()).some((item) => item.busy),
+    });
   }, []);
 
   useModalFocus({
@@ -282,7 +304,12 @@ export function AppShell({
 
   return (
     <UnsavedChangesContext.Provider
-      value={{ state: unsaved, setState: setUnsavedState }}
+      value={{
+        state: unsaved,
+        setState: setUnsavedState,
+        setSourceState: setUnsavedSourceState,
+        clearSourceState: clearUnsavedSourceState,
+      }}
     >
     <div
       className="min-h-screen bg-ink-50"

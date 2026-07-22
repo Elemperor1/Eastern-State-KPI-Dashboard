@@ -25,6 +25,14 @@ const INSTALLATION_TABLES = [
   "installation_audit_events",
 ] as const;
 
+const BOARD_REPORTING_TABLES = [
+  "board_reporting_scopes",
+  "board_reporting_priorities",
+  "board_reporting_statements",
+  "board_reporting_statement_kpis",
+  "board_reporting_audit_events",
+] as const;
+
 const LEGACY_TABLES = [
   "users",
   "categories",
@@ -366,7 +374,7 @@ describe("schema 12 migration", () => {
     };
   }
 
-  it("creates a clean schema-12 database with installation, legacy, and strategic tables", () => {
+  it("creates a clean schema-14 database with installation, legacy, strategic, and Board reporting tables", () => {
     const db = getDb();
     const tableNames = new Set(
       (
@@ -376,12 +384,25 @@ describe("schema 12 migration", () => {
       ).map((row) => row.name),
     );
 
-    expect(SCHEMA_VERSION).toBe(12);
-    expect(schemaVersion(db)).toBe(12);
+    expect(SCHEMA_VERSION).toBe(14);
+    expect(schemaVersion(db)).toBe(14);
+    expect(() =>
+      db.prepare(
+        `INSERT INTO users (email, name, password_hash, role)
+         VALUES ('board@example.org', 'Board Member', 'hash', 'board')`,
+      ).run(),
+    ).not.toThrow();
+    expect(() =>
+      db.prepare(
+        `INSERT INTO users (email, name, password_hash, role)
+         VALUES ('owner@example.org', 'Owner', 'hash', 'owner')`,
+      ).run(),
+    ).toThrow();
     for (const table of [
       ...INSTALLATION_TABLES,
       ...LEGACY_TABLES,
       ...STRATEGIC_TABLES,
+      ...BOARD_REPORTING_TABLES,
     ]) {
       expect(tableNames.has(table), `${table} should exist`).toBe(true);
     }
@@ -501,7 +522,7 @@ describe("schema 12 migration", () => {
       )
       .get() as Record<string, unknown>;
 
-    expect(schemaVersion(migrated)).toBe(12);
+    expect(schemaVersion(migrated)).toBe(14);
     expect(ownership).toMatchObject({
       organization_slug: "eastern-state-penitentiary-historic-site",
       plan_slug: "strategic-plan-2025-2029",
@@ -650,7 +671,7 @@ describe("schema 12 migration", () => {
     resetDb();
     const migrated = getDb();
 
-    expect(schemaVersion(migrated)).toBe(12);
+    expect(schemaVersion(migrated)).toBe(14);
     for (const [table, query] of Object.entries(legacyQueries)) {
       expect(countRows(migrated, table)).toBe(beforeCounts[table]);
       expect(migrated.prepare(query).all()).toEqual(before[table]);
@@ -740,8 +761,8 @@ describe("schema 12 migration", () => {
       )
       .get(kpiId);
 
-    expect(SCHEMA_VERSION).toBe(12);
-    expect(schemaVersion(migrated)).toBe(12);
+    expect(SCHEMA_VERSION).toBe(14);
+    expect(schemaVersion(migrated)).toBe(14);
     expect(goal).toMatchObject({
       kpi_id: kpiId,
       target_year: 2029,
@@ -828,8 +849,8 @@ describe("schema 12 migration", () => {
     resetDb();
     const migrated = getDb();
 
-    expect(SCHEMA_VERSION).toBe(12);
-    expect(schemaVersion(migrated)).toBe(12);
+    expect(SCHEMA_VERSION).toBe(14);
+    expect(schemaVersion(migrated)).toBe(14);
     expect(
       migrated.prepare("SELECT * FROM kpi_components WHERE id = ?").get(componentId),
     ).toMatchObject({
@@ -880,7 +901,7 @@ describe("schema 12 migration", () => {
 
     resetDb();
     const reopened = getDb();
-    expect(schemaVersion(reopened)).toBe(12);
+    expect(schemaVersion(reopened)).toBe(14);
     expect(
       reopened
         .prepare(
@@ -920,7 +941,37 @@ describe("schema 12 migration", () => {
       expect(
         migrated.prepare("SELECT value FROM meta WHERE key = 'sample_data'").get(),
       ).toBeUndefined();
-      expect(schemaVersion(migrated)).toBe(12);
+      expect(schemaVersion(migrated)).toBe(14);
     },
   );
+
+  it("adds schema-14 Board reporting storage to schema 13 without changing existing business rows", () => {
+    const { db, userId, categoryId, kpiId, planId } = seedCurrentFixture();
+    db.exec(`
+      DROP TABLE board_reporting_audit_events;
+      DROP TABLE board_reporting_statement_kpis;
+      DROP TABLE board_reporting_statements;
+      DROP TABLE board_reporting_priorities;
+      DROP TABLE board_reporting_scopes;
+      DELETE FROM meta WHERE key = 'board_reporting_scope_initialized';
+      INSERT OR REPLACE INTO meta (key, value) VALUES ('schema_version', '13');
+    `);
+
+    resetDb();
+    const migrated = getDb();
+
+    expect(schemaVersion(migrated)).toBe(14);
+    for (const table of BOARD_REPORTING_TABLES) {
+      expect(migrated.prepare(
+        "SELECT name FROM sqlite_master WHERE type = 'table' AND name = ?",
+      ).get(table)).toEqual({ name: table });
+    }
+    expect(migrated.prepare("SELECT id FROM users WHERE id = ?").get(userId)).toEqual({ id: userId });
+    expect(migrated.prepare("SELECT id, plan_id FROM categories WHERE id = ?").get(categoryId)).toEqual({
+      id: categoryId,
+      plan_id: planId,
+    });
+    expect(migrated.prepare("SELECT id FROM kpis WHERE id = ?").get(kpiId)).toEqual({ id: kpiId });
+    expect(migrated.prepare("PRAGMA foreign_key_check").all()).toEqual([]);
+  });
 });

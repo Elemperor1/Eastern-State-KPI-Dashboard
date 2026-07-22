@@ -5,6 +5,7 @@ import { AdminPasswordResetDialog } from "@/components/AdminPasswordResetDialog"
 import { AdminUserCreateForm } from "@/components/AdminUserCreateForm";
 import { Badge, Button, Chip, ConfirmDialog, EmptyState, FormField, Select, StatusBanner } from "@/components/ui";
 import {
+  ADMIN_USER_ROLE_OPTIONS,
   buildCreateUserPayload,
   buildDisableUserSuccessMessage,
   buildEnableUserSuccessMessage,
@@ -277,8 +278,9 @@ export function UserManagerClient({
                       )
                     }
                   >
-                    <option value="viewer">Can view</option>
-                    <option value="admin">Can edit</option>
+                    {ADMIN_USER_ROLE_OPTIONS.map((role) => (
+                      <option key={role.value} value={role.value}>{role.label}</option>
+                    ))}
                   </Select>
                 </FormField>
                 <div>

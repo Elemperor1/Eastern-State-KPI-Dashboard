@@ -49,6 +49,7 @@
  *   PATCH  /api/strategy/targets             requireAdmin (target lifecycle)
  *   PATCH  /api/strategy/goals               requireAdmin (strategic goal settings/lifecycle)
  *   PATCH  /api/strategy/memberships         requireAdmin (goal membership settings)
+ *   PATCH  /api/strategy/board-reporting     requireAdmin (Board visibility replacement)
  *
  * ## Routes that CANNOT use the shared authorization boundary
  *
@@ -101,9 +102,10 @@ import * as strategyComponents from "@/app/api/strategy/components/route";
 import * as strategyTargets from "@/app/api/strategy/targets/route";
 import * as strategyGoals from "@/app/api/strategy/goals/route";
 import * as strategyMemberships from "@/app/api/strategy/memberships/route";
+import * as strategyBoardReporting from "@/app/api/strategy/board-reporting/route";
 
 export type HttpMethod = "GET" | "POST" | "PATCH" | "DELETE";
-type Gate = "requireSession" | "requireAdmin";
+type Gate = "requireSession" | "requireStaffSession" | "requireAdmin";
 
 export interface ProtectedRoute {
   method: HttpMethod;
@@ -135,7 +137,7 @@ export const PROTECTED_API_ROUTES: ProtectedRoute[] = [
   { method: "DELETE", path: "/api/strategy/component-entries", gate: "requireAdmin", group: "strategy_values", takesReq: true },
   { method: "POST", path: "/api/strategy/distributions", gate: "requireAdmin", group: "strategy_values", takesReq: true },
   { method: "DELETE", path: "/api/strategy/distributions", gate: "requireAdmin", group: "strategy_values", takesReq: true },
-  { method: "GET", path: "/api/strategy/distribution-bands", gate: "requireSession", group: "strategy_values", takesReq: true },
+  { method: "GET", path: "/api/strategy/distribution-bands", gate: "requireStaffSession", group: "strategy_values", takesReq: true },
   { method: "POST", path: "/api/strategy/distribution-bands", gate: "requireAdmin", group: "strategy_values", takesReq: true },
   { method: "PATCH", path: "/api/strategy/distribution-bands", gate: "requireAdmin", group: "strategy_values", takesReq: true },
   { method: "POST", path: "/api/strategy/configurations", gate: "requireAdmin", group: "strategy_configuration", takesReq: true },
@@ -146,6 +148,7 @@ export const PROTECTED_API_ROUTES: ProtectedRoute[] = [
   { method: "PATCH", path: "/api/strategy/targets", gate: "requireAdmin", group: "strategy_configuration", takesReq: true },
   { method: "PATCH", path: "/api/strategy/goals", gate: "requireAdmin", group: "strategy_configuration", takesReq: true },
   { method: "PATCH", path: "/api/strategy/memberships", gate: "requireAdmin", group: "strategy_configuration", takesReq: true },
+  { method: "PATCH", path: "/api/strategy/board-reporting", gate: "requireAdmin", group: "strategy_configuration", takesReq: true },
   { method: "POST", path: "/api/categories", gate: "requireAdmin", group: "categories", takesReq: true },
   { method: "PATCH", path: "/api/categories", gate: "requireAdmin", group: "categories", takesReq: true },
   { method: "DELETE", path: "/api/categories", gate: "requireAdmin", group: "categories", takesReq: true },
@@ -179,6 +182,7 @@ const HANDLERS: Record<string, Handler> = {
   "PATCH /api/strategy/targets": strategyTargets.PATCH as Handler,
   "PATCH /api/strategy/goals": strategyGoals.PATCH as Handler,
   "PATCH /api/strategy/memberships": strategyMemberships.PATCH as Handler,
+  "PATCH /api/strategy/board-reporting": strategyBoardReporting.PATCH as Handler,
   "POST /api/categories": categories.POST as Handler,
   "PATCH /api/categories": categories.PATCH as Handler,
   "DELETE /api/categories": categories.DELETE as Handler,

@@ -747,6 +747,31 @@ describe("schema-10 strategic catalog lifecycle", () => {
     expect(html).toContain("catalog-admin@example.org");
   });
 
+  it("archives a priority configured for Board reporting instead of hard-deleting it", () => {
+    const actorId = createCatalogActor();
+    const category = createCategory({
+      slug: "board-priority",
+      name: "Board Priority",
+    });
+    const db = getDb();
+    const scopeId = Number(db.prepare(
+      `INSERT INTO board_reporting_scopes (plan_id, created_by, updated_by)
+       SELECT id, ?, ? FROM strategic_plans WHERE status = 'active' LIMIT 1`,
+    ).run(actorId, actorId).lastInsertRowid);
+    db.prepare(
+      `INSERT INTO board_reporting_priorities (
+         scope_id, priority_id, display_title, display_order, created_by, updated_by
+       ) VALUES (?, ?, 'Board Priority', 10, ?, ?)`,
+    ).run(scopeId, category.id, actorId, actorId);
+
+    expect(isStrategicCategory(category.id)).toBe(true);
+    expect(retireOrDeleteCategory(category.id, actorId)).toBe("archived");
+    expect(getCategory(category.id, { includeArchived: true })).toMatchObject({
+      id: category.id,
+      archived_at: expect.any(String),
+    });
+  });
+
   it("preserves and renders every KPI snapshot when a category hard delete cascades", () => {
     const actorId = createCatalogActor();
     const category = createCategory({

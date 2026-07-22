@@ -18,7 +18,7 @@ const CreateSchema = z.object({
   email: z.email(),
   name: z.string().min(1),
   password: z.string().min(8),
-  role: z.enum(["admin", "viewer"]),
+  role: z.enum(["admin", "viewer", "board"]),
 });
 
 /** Implements the post operation. */

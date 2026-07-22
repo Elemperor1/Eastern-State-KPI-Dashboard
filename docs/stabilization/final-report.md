@@ -208,9 +208,9 @@ for macOS `/private/tmp` scanner mounts, are machine-readable in
 - Destinations: `/dashboard/overview`, `/data-entry`, `/reports`, `/setup`.
 - Supporting pages: `/dashboard/category/[slug]`,
   `/dashboard/metric/[slug]`, `/login`, `/setup-password`.
-- Protected APIs: the exhaustive 28 route/method matrix remains 26 Admin-gated
-  combinations plus session-gated `GET /api/strategy/export` and
-  `GET /api/strategy/distribution-bands`.
+- Protected APIs: the exhaustive 29 route/method matrix contains 27 Admin-gated
+  combinations, session-gated `GET /api/strategy/export`, and staff-session-
+  gated `GET /api/strategy/distribution-bands`.
 - Removed `/admin/*`, `/dashboard/trends`, and legacy mutation adapters remain
   404 boundaries.
 
@@ -233,11 +233,12 @@ for macOS `/private/tmp` scanner mounts, are machine-readable in
 
 ### E2E inventory
 
-The 11 production-browser workflows cover forced rotation, failed atomic-save
+The 12 production-browser workflows cover forced rotation, failed atomic-save
 recovery, unsaved navigation, complete multi-component forms, distributions,
 four-destination/removed-route boundaries, responsive and zoom-equivalent
-geometry, concise Overview truth, flat Setup plus focus return, Board/Trends/
-CSV/PNG/PDF/print truth, and route-error focus/recovery.
+geometry, concise Overview truth, flat Setup plus focus return, Admin editing
+of Board visibility with Board-account scope enforcement, Board/Trends/CSV/
+PNG/PDF/print truth, and route-error focus/recovery.
 
 ## 10. Readiness recommendation
 

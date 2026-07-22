@@ -32,6 +32,16 @@ describe("primary navigation", () => {
     expect(html).not.toContain('href="/setup"');
   });
 
+  it("shows Board members only Overview and Reports", () => {
+    const html = renderToStaticMarkup(
+      <AppShell user={user("board")}><p>Content</p></AppShell>,
+    );
+    expect(html).toContain('href="/dashboard/overview"');
+    expect(html).toContain('href="/reports"');
+    expect(html).not.toContain('href="/data-entry"');
+    expect(html).not.toContain('href="/setup"');
+  });
+
   it("shows admins the four product destinations", () => {
     const html = renderToStaticMarkup(
       <AppShell user={user("admin")}><p>Content</p></AppShell>,

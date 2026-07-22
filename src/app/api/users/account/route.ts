@@ -30,7 +30,7 @@ import {
 const AccountSchema = z
   .object({
     id: z.number().int().positive(),
-    role: z.enum(["admin", "viewer"]).optional(),
+    role: z.enum(["admin", "viewer", "board"]).optional(),
     disabled: z.boolean().optional(),
   })
   .refine((d) => d.role !== undefined || d.disabled !== undefined, {

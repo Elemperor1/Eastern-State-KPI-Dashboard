@@ -118,6 +118,28 @@ describe("/api/users refreshed mutation payloads", () => {
     });
   });
 
+  it("POST accepts the restricted Board role", async () => {
+    createUserMock.mockReturnValueOnce({
+      id: 12,
+      email: "board@easternstate.org",
+      name: "Board Member",
+      role: "board",
+    });
+    const res = await POST(
+      mutationReq("POST", {
+        name: "Board Member",
+        email: "board@easternstate.org",
+        password: "TempPass!2026",
+        role: "board",
+      }),
+    );
+
+    expect(res.status).toBe(201);
+    expect(createUserMock).toHaveBeenCalledWith(
+      expect.objectContaining({ role: "board" }),
+    );
+  });
+
   it("PATCH returns refreshed users after an admin-issued temporary password reset", async () => {
     const res = await PATCH(
       mutationReq("PATCH", {

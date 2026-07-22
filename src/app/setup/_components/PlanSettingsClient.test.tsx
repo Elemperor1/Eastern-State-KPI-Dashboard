@@ -55,7 +55,7 @@ describe("PlanSettingsClient", () => {
   it("participates in the shared unsaved-change and accessible validation contracts", () => {
     const source = readFileSync(new URL("./PlanSettingsClient.tsx", import.meta.url), "utf8");
     expect(source).toContain("useUnsavedChanges");
-    expect(source).toContain("setUnsavedState({ dirty: isDirty, busy })");
+    expect(source).toContain('setSourceState("plan-settings", { dirty: isDirty, busy })');
     expect(source).toContain('querySelector<HTMLElement>(\'[aria-invalid="true"]\')');
     expect(source).toContain("aria-invalid={Boolean(errors.startYear)}");
     expect(source).toContain("aria-invalid={Boolean(errors.endYear)}");

@@ -2,6 +2,7 @@ import type { Role, User } from "@/lib/types";
 
 export const ADMIN_USER_ROLE_OPTIONS: Array<{ value: Role; label: string }> = [
   { value: "viewer", label: "Viewer (read-only)" },
+  { value: "board", label: "Board member (Board priorities only)" },
   { value: "admin", label: "Admin (full access)" },
 ];
 
@@ -19,7 +20,9 @@ export function buildCreateUserPayload(form: FormData): CreateUserPayload {
     name: String(form.get("name") ?? ""),
     email: String(form.get("email") ?? ""),
     password: String(form.get("password") ?? ""),
-    role: requestedRole === "admin" ? "admin" : "viewer",
+    role: requestedRole === "admin" || requestedRole === "board"
+      ? requestedRole
+      : "viewer",
   };
 }
 

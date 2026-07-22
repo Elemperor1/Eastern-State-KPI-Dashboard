@@ -106,7 +106,7 @@ function ensureUsersTable(raw: DatabaseSync): void {
       email TEXT UNIQUE NOT NULL,
       name TEXT NOT NULL,
       password_hash TEXT NOT NULL,
-      role TEXT NOT NULL CHECK (role IN ('admin','viewer')),
+      role TEXT NOT NULL CHECK (role IN ('admin','viewer','board')),
       created_at TEXT NOT NULL DEFAULT (datetime('now')),
       must_change_password INTEGER NOT NULL DEFAULT 0,
       disabled INTEGER NOT NULL DEFAULT 0,
@@ -177,6 +177,161 @@ function ensureUsersTable(raw: DatabaseSync): void {
       }
     }
   }
+  ensureBoardUserRole(raw);
+}
+
+/**
+ * Schema 13 widens the durable user-role check without changing user ids,
+ * credentials, revocation watermarks, or any referencing audit rows.
+ */
+function ensureBoardUserRole(raw: DatabaseSync): void {
+  const table = raw.prepare(
+    "SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'users'",
+  ).get() as { sql?: string } | undefined;
+  if (table?.sql?.includes("'board'")) return;
+
+  const foreignKeysEnabled = Number(
+    (raw.prepare("PRAGMA foreign_keys").get() as { foreign_keys?: number } | undefined)
+      ?.foreign_keys ?? 0,
+  ) === 1;
+  if (foreignKeysEnabled) raw.exec("PRAGMA foreign_keys = OFF;");
+  try {
+    raw.exec("BEGIN IMMEDIATE;");
+    try {
+      raw.exec(`
+        CREATE TABLE users_v13 (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          email TEXT UNIQUE NOT NULL,
+          name TEXT NOT NULL,
+          password_hash TEXT NOT NULL,
+          role TEXT NOT NULL CHECK (role IN ('admin','viewer','board')),
+          created_at TEXT NOT NULL DEFAULT (datetime('now')),
+          must_change_password INTEGER NOT NULL DEFAULT 0,
+          disabled INTEGER NOT NULL DEFAULT 0,
+          sessions_valid_after INTEGER NOT NULL DEFAULT 0
+        );
+        INSERT INTO users_v13 (
+          id, email, name, password_hash, role, created_at,
+          must_change_password, disabled, sessions_valid_after
+        )
+        SELECT id, email, name, password_hash, role, created_at,
+               must_change_password, disabled, sessions_valid_after
+        FROM users;
+        DROP TABLE users;
+        ALTER TABLE users_v13 RENAME TO users;
+      `);
+      const violations = raw.prepare("PRAGMA foreign_key_check").all();
+      if (violations.length > 0) {
+        throw new Error(
+          `Schema 13 Board-role migration produced ${violations.length} foreign-key violation(s).`,
+        );
+      }
+      raw.exec("COMMIT;");
+    } catch (error) {
+      try {
+        raw.exec("ROLLBACK;");
+      } catch {
+        // Surface the migration error.
+      }
+      throw error;
+    }
+  } finally {
+    if (foreignKeysEnabled) raw.exec("PRAGMA foreign_keys = ON;");
+  }
+}
+
+/** Records completion of the role-only schema-13 migration. */
+function recordSchemaV13(raw: DatabaseSync): void {
+  raw.exec(
+    "INSERT OR REPLACE INTO meta (key, value) VALUES ('schema_version', '13');",
+  );
+}
+
+/** Creates the schema-14 database-authoritative Board reporting model. */
+function initializeBoardReportingSchema(raw: DatabaseSync): void {
+  raw.exec(`
+    CREATE TABLE IF NOT EXISTS board_reporting_scopes (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      plan_id INTEGER NOT NULL UNIQUE
+        REFERENCES strategic_plans(id) ON DELETE CASCADE,
+      revision INTEGER NOT NULL DEFAULT 0 CHECK (revision >= 0),
+      created_by INTEGER REFERENCES users(id) ON DELETE SET NULL,
+      updated_by INTEGER REFERENCES users(id) ON DELETE SET NULL,
+      created_at TEXT NOT NULL DEFAULT (datetime('now')),
+      updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+    );
+
+    CREATE TABLE IF NOT EXISTS board_reporting_priorities (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      scope_id INTEGER NOT NULL
+        REFERENCES board_reporting_scopes(id) ON DELETE CASCADE,
+      priority_id INTEGER NOT NULL REFERENCES categories(id) ON DELETE RESTRICT,
+      display_title TEXT NOT NULL CHECK (length(trim(display_title)) BETWEEN 1 AND 240),
+      display_order INTEGER NOT NULL DEFAULT 0,
+      created_by INTEGER REFERENCES users(id) ON DELETE SET NULL,
+      updated_by INTEGER REFERENCES users(id) ON DELETE SET NULL,
+      created_at TEXT NOT NULL DEFAULT (datetime('now')),
+      updated_at TEXT NOT NULL DEFAULT (datetime('now')),
+      UNIQUE (scope_id, priority_id)
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_board_reporting_priorities_scope
+      ON board_reporting_priorities(scope_id, display_order, id);
+
+    CREATE TABLE IF NOT EXISTS board_reporting_statements (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      board_priority_id INTEGER NOT NULL
+        REFERENCES board_reporting_priorities(id) ON DELETE CASCADE,
+      statement_text TEXT NOT NULL
+        CHECK (length(trim(statement_text)) BETWEEN 1 AND 1000),
+      display_order INTEGER NOT NULL DEFAULT 0,
+      created_by INTEGER REFERENCES users(id) ON DELETE SET NULL,
+      updated_by INTEGER REFERENCES users(id) ON DELETE SET NULL,
+      created_at TEXT NOT NULL DEFAULT (datetime('now')),
+      updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_board_reporting_statements_priority
+      ON board_reporting_statements(board_priority_id, display_order, id);
+
+    CREATE TABLE IF NOT EXISTS board_reporting_statement_kpis (
+      statement_id INTEGER NOT NULL
+        REFERENCES board_reporting_statements(id) ON DELETE CASCADE,
+      kpi_id INTEGER NOT NULL REFERENCES kpis(id) ON DELETE RESTRICT,
+      display_order INTEGER NOT NULL DEFAULT 0,
+      created_by INTEGER REFERENCES users(id) ON DELETE SET NULL,
+      created_at TEXT NOT NULL DEFAULT (datetime('now')),
+      PRIMARY KEY (statement_id, kpi_id)
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_board_reporting_statement_kpis_kpi
+      ON board_reporting_statement_kpis(kpi_id, statement_id);
+
+    CREATE TABLE IF NOT EXISTS board_reporting_audit_events (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      scope_id INTEGER NOT NULL,
+      event_type TEXT NOT NULL CHECK (event_type IN ('create','update')),
+      previous_value_json TEXT,
+      new_value_json TEXT NOT NULL,
+      actor_id INTEGER REFERENCES users(id) ON DELETE SET NULL,
+      actor_email_snapshot TEXT,
+      occurred_at TEXT NOT NULL DEFAULT (datetime('now'))
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_board_reporting_audit_occurred
+      ON board_reporting_audit_events(occurred_at, id);
+
+    INSERT OR IGNORE INTO meta (key, value)
+      VALUES ('board_reporting_scope_initialized', '0');
+  `);
+}
+
+/** Applies the additive schema-14 Board reporting migration. */
+function migrateBoardReportingSchemaV14(raw: DatabaseSync): void {
+  initializeBoardReportingSchema(raw);
+  raw.exec(
+    "INSERT OR REPLACE INTO meta (key, value) VALUES ('schema_version', '14');",
+  );
 }
 
 /** Implements the current schema version operation. */
@@ -198,6 +353,22 @@ function migrateSchema(raw: DatabaseSync): void {
   const version = currentSchemaVersion(raw);
   if (version === SCHEMA_VERSION) {
     ensureStrategicSchemaV10Columns(raw);
+    initializeBoardReportingSchema(raw);
+    return;
+  }
+
+  if (version === 13) {
+    ensureStrategicSchemaV10Columns(raw);
+    migrateBoardReportingSchemaV14(raw);
+    return;
+  }
+
+  // v12 -> v13 only widens users.role to include the Board reporting role.
+  // ensureUsersTable performs the preservation-safe table rebuild above.
+  if (version === 12) {
+    ensureStrategicSchemaV10Columns(raw);
+    recordSchemaV13(raw);
+    migrateBoardReportingSchemaV14(raw);
     return;
   }
 
@@ -206,6 +377,8 @@ function migrateSchema(raw: DatabaseSync): void {
   if (version === 11) {
     ensureStrategicSchemaV10Columns(raw);
     migrateInstallationSchemaV12(raw);
+    recordSchemaV13(raw);
+    migrateBoardReportingSchemaV14(raw);
     return;
   }
 
@@ -218,6 +391,8 @@ function migrateSchema(raw: DatabaseSync): void {
     ensureStrategicSchemaV10Columns(raw);
     migrateStrategicSchemaV11(raw);
     migrateInstallationSchemaV12(raw);
+    recordSchemaV13(raw);
+    migrateBoardReportingSchemaV14(raw);
     return;
   }
 
@@ -228,6 +403,8 @@ function migrateSchema(raw: DatabaseSync): void {
     migrateStrategicSchemaV10(raw);
     migrateStrategicSchemaV11(raw);
     migrateInstallationSchemaV12(raw);
+    recordSchemaV13(raw);
+    migrateBoardReportingSchemaV14(raw);
     return;
   }
 
@@ -246,6 +423,8 @@ function migrateSchema(raw: DatabaseSync): void {
     migrateStrategicSchemaV10(raw);
     migrateStrategicSchemaV11(raw);
     migrateInstallationSchemaV12(raw);
+    recordSchemaV13(raw);
+    migrateBoardReportingSchemaV14(raw);
     return;
   }
 
@@ -268,6 +447,11 @@ function migrateSchema(raw: DatabaseSync): void {
 function resetKpiSchema(raw: DatabaseSync): void {
   raw.exec("BEGIN IMMEDIATE;");
   try {
+    raw.exec("DROP TABLE IF EXISTS board_reporting_audit_events;");
+    raw.exec("DROP TABLE IF EXISTS board_reporting_statement_kpis;");
+    raw.exec("DROP TABLE IF EXISTS board_reporting_statements;");
+    raw.exec("DROP TABLE IF EXISTS board_reporting_priorities;");
+    raw.exec("DROP TABLE IF EXISTS board_reporting_scopes;");
     raw.exec("DROP TABLE IF EXISTS entry_history;");
     raw.exec("DROP TABLE IF EXISTS kpi_goals;");
     raw.exec("DROP TABLE IF EXISTS breakdown_entries;");
@@ -1628,6 +1812,7 @@ function initializeSchema(raw: DatabaseSync): void {
     CREATE INDEX IF NOT EXISTS idx_kpi_goals_year ON kpi_goals(target_year);
   `);
   initializeStrategicSchema(raw);
+  initializeBoardReportingSchema(raw);
 }
 
 /** Reset connection — useful when env changes during dev hot reload. */

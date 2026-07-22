@@ -55,6 +55,13 @@ AUTH_DISABLED=true PORT=3290 BASE=http://127.0.0.1:3290 bash ./scripts/smoke.sh
   understandable.
 - In Goals, exercise selection, completion rules, membership, annual targets,
   and full-plan targets.
+- In Goals → Board visibility, edit a focus statement, link and unlink a
+  measure, review the preview, and save. Sign in as a Board account and confirm
+  Overview, Reports, priority/measure details, and JSON/CSV exports all reflect
+  the saved scope. Confirm an unlinked focus statement remains visible as “No
+  linked measure yet.” without a statistic, and confirm Trends uses the same
+  saved priority titles and measure scope. Confirm Activity records the Admin
+  and before/after snapshot.
 - In People, verify role/status/password-recovery controls and self-lockout
   prevention.
 - In Activity, verify Entry History and Strategic Audit Events retain immutable
@@ -65,7 +72,8 @@ AUTH_DISABLED=true PORT=3290 BASE=http://127.0.0.1:3290 bash ./scripts/smoke.sh
 - Confirm removed UI routes and `/api/entries`, `/api/breakdowns`, `/api/goals`
   return 404.
 - Confirm a Viewer sees only Overview and Reports and receives 403 from every
-  Admin mutation in the auth regression matrix.
+  Admin mutation in the auth regression matrix. Confirm a Board account cannot
+  open Setup or mutate Board visibility directly.
 - Confirm revoked sessions receive uniform 401 responses, CSRF failures remain
   generic, and `AUTH_DISABLED` cannot run outside loopback development.
 

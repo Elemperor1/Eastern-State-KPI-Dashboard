@@ -46,7 +46,10 @@ export default async function StrategicPriorityPage({
   const installation = getActiveInstallation();
   const requestedYear = Number(firstValue(query.year));
   const selectedYear = years.includes(requestedYear) ? requestedYear : Math.max(...years);
-  const data = loadStrategicPriorityPageData(slug, { year: selectedYear });
+  const data = loadStrategicPriorityPageData(slug, {
+    year: selectedYear,
+    audience: user.role === "board" ? "board" : "staff",
+  });
   if (!data) redirect("/dashboard/overview");
 
   return (

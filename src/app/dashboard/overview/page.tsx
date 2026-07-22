@@ -5,6 +5,7 @@ import { ExecutiveOverview } from "./ExecutiveOverview";
 import { loadExecutiveOverviewPageData } from "@/features/reporting/server";
 import { resolveStrategicReportingYear } from "@/features/strategy";
 import { getActiveInstallation } from "@/features/installation/server";
+import { getBoardReportingScope } from "@/features/board-reporting";
 
 export const dynamic = "force-dynamic";
 
@@ -24,11 +25,18 @@ export default async function DashboardOverviewPage({
     Array.isArray(sp.year) ? sp.year[0] : sp.year,
     installation.years,
   );
-  const data = loadExecutiveOverviewPageData({ year });
+  const boardAudience = user.role === "board";
+  const data = loadExecutiveOverviewPageData({
+    year,
+    audience: boardAudience ? "board" : "staff",
+  });
 
   return (
     <AppShell user={user} organizationShortName={installation.organization.shortName} planName={installation.plan.name}>
-      <ExecutiveOverview data={data} />
+      <ExecutiveOverview
+        data={data}
+        boardFocus={boardAudience ? getBoardReportingScope().priorities : undefined}
+      />
     </AppShell>
   );
 }

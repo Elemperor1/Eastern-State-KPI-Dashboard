@@ -17,8 +17,9 @@ const ExportQuerySchema = z.object({
 
 /** Retrieves the requested data. */
 export async function GET(req: NextRequest) {
+  let user;
   try {
-    await requireSession();
+    user = await requireSession();
   } catch (error) {
     return authErrorResponse(error);
   }
@@ -37,7 +38,10 @@ export async function GET(req: NextRequest) {
   }
 
   const reportingPeriod = parsed.data.period
-    ? listStrategicReportingPeriods(parsed.data.year).find(
+    ? listStrategicReportingPeriods(
+        parsed.data.year,
+        user.role === "board" ? "board" : "staff",
+      ).find(
         (candidate) => candidate.value === parsed.data.period,
       )
     : undefined;
@@ -51,6 +55,7 @@ export async function GET(req: NextRequest) {
       ? reportingCycleThroughMonth(reportingPeriod)
       : parsed.data.throughMonth,
     ...(reportingPeriod ? { reportingPeriod } : {}),
+    audience: user.role === "board" ? "board" : "staff",
   });
   if (parsed.data.format === "csv") {
     const output = buildStrategicBoardCsvText(data.report);

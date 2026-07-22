@@ -158,7 +158,7 @@ interface Account {
 
 /** Supports the make target test scenario. */
 function makeTarget(
-  role: "admin" | "viewer",
+  role: "admin" | "viewer" | "board",
   email: string,
   password = "TargetPass!2026",
 ): Account {
@@ -327,6 +327,35 @@ describe("viewer session cannot reach administrator operations (req 5)", () => {
     replay(viewerCookie);
     const res = await dispatch(route.method, route.path);
     await assertForbidden(res);
+  });
+});
+
+describe("Board session is limited to Board reporting", () => {
+  let boardCookie = "";
+  beforeAll(async () => {
+    freshDb();
+    boardCookie = await captureLogin(
+      makeTarget("board", "board-reporting@example.com"),
+      "10.0.0.61",
+    );
+  });
+  afterAll(() => resetSession());
+
+  it("authenticates with the durable Board role", async () => {
+    replay(boardCookie);
+    await expect(getCurrentUser()).resolves.toMatchObject({ role: "board" });
+  });
+
+  it("cannot read staff-only distribution configuration", async () => {
+    replay(boardCookie);
+    await assertForbidden(
+      await dispatch("GET", "/api/strategy/distribution-bands"),
+    );
+  });
+
+  it.each(ADMIN_GATED)("cannot call $method $path", async (route) => {
+    replay(boardCookie);
+    await assertForbidden(await dispatch(route.method, route.path));
   });
 });
 

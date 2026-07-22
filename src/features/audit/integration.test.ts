@@ -184,4 +184,30 @@ describe("read-only legacy Activity archive", () => {
       ),
     ).toEqual(["Strategic 2", "Strategic 1", "Oldest installation"]);
   });
+
+  it("includes immutable Board visibility snapshots in Setup Activity", () => {
+    const db = getDb();
+    const scopeId = Number(db.prepare(
+      `INSERT INTO board_reporting_scopes (plan_id, revision, updated_by)
+       VALUES ((SELECT id FROM strategic_plans WHERE status = 'active'), 1, ?)`,
+    ).run(actorId).lastInsertRowid);
+    db.prepare(
+      `INSERT INTO board_reporting_audit_events (
+         scope_id, event_type, previous_value_json, new_value_json,
+         actor_id, actor_email_snapshot, occurred_at
+       ) VALUES (?, 'update', '{"revision":0}', '{"revision":1}', ?,
+                 'archive-admin@example.org', '2030-01-01 00:00:00')`,
+    ).run(scopeId, actorId);
+
+    expect(listSetupAuditEvents({ limit: 1 })).toEqual([
+      expect.objectContaining({
+        audit_source: "board_reporting",
+        entity_type: "board_reporting_scope",
+        entity_display_name: "Board visibility",
+        actor_email_snapshot: "archive-admin@example.org",
+        previous_value: { revision: 0 },
+        new_value: { revision: 1 },
+      }),
+    ]);
+  });
 });

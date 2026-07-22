@@ -3,7 +3,7 @@ import { z } from "@/lib/zod";
 import {
   authErrorResponse,
   requireAdmin,
-  requireSession,
+  requireStaffSession,
 } from "@/features/auth/session";
 import {
   archiveStrategyDistributionBand,
@@ -54,7 +54,7 @@ function valueEntryError(error: unknown): NextResponse | null {
 /** Retrieves the requested data. */
 export async function GET(req: NextRequest) {
   try {
-    await requireSession();
+    await requireStaffSession();
   } catch (error) {
     return authErrorResponse(error);
   }
