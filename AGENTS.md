@@ -68,6 +68,7 @@ On the first run against a fresh database, the seed creates `kerry@easternstate.
 | `npm run setup:admin`         | Operator-only: set a known password on a bootstrap account (`SETUP_ADMIN_PASSWORD=...`), clears `must_change_password`. Never logs the password. |
 | `npm run architecture:guard`  | Fails if server-owned source calls the app's own `/api/*` routes, client components import server-only data access, or removed internal read routes reappear in `src/` or smoke scripts. |
 | `npm run docstrings:guard`     | Requires every named JavaScript/TypeScript function, method, constructor, and named arrow/function expression in repository-owned source to have an attached TSDoc block. Runs inside `quality:guards`; use `npm run docstrings:fix` to backfill omissions. |
+| `npm run production-dependencies:guard` | Reject vulnerable dependency ranges in the lockfile; the Docker build also uses it to reject development-only packages in the final runtime tree. |
 | `npm test`                    | Vitest unit and contract tests across app, feature, and infrastructure boundaries |
 | `npm run test:e2e`            | Playwright/Chrome acceptance suite for the four destinations, strategic save recovery, removed routes, Setup, and CSV/PNG/PDF output. Builds and starts a loopback production server automatically. |
 | `npm run perf:profile`         | Repeatable Chrome performance profile for the four destinations; requires a running server. |

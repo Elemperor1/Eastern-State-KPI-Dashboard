@@ -56,6 +56,13 @@ jobs:
           docker build --file Dockerfile --tag "$IMAGE_REF" .
           docker image inspect "$IMAGE_REF" --format '{{.Id}}'
 
+      - name: Verify production dependency tree
+        shell: bash
+        run: |
+          set -euo pipefail
+          docker run --rm --entrypoint node "$IMAGE_REF" \
+            ./scripts/production-dependency-guard.mjs --runtime-root /app
+
       - name: Generate actionable SARIF report
         uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
         with:

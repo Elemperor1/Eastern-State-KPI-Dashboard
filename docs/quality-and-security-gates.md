@@ -42,6 +42,7 @@ Review and code-scanning availability before making those checks required.
 | `npm run security:secrets` | Scan Git history or the supplied commit range with Gitleaks 8.30.1. |
 | `npm run security:semgrep` | Run Semgrep 1.164.0 maintained packs and local rules. |
 | `npm run security:scan` | Run all three local security scanners. |
+| `npm run production-dependencies:guard` | Reject known vulnerable lockfile ranges and verify runtime dependency ownership. |
 
 `npm run design-system:test` remains the existing combined design, auth,
 architecture, shell-injection, typecheck, and production-build aggregate.
@@ -155,6 +156,13 @@ development packages, and fails on every active known vulnerability regardless
 of severity. Withdrawn advisories are handled by OSV metadata. `npm audit` may
 remain a supplemental observation but is not the blocking policy.
 
+The offline production-dependency guard complements OSV with fixed regression
+boundaries for the release-candidate advisories and manifest ownership. It
+rejects vulnerable `brace-expansion`, `sharp`, or `dompurify` versions, requires
+image optimization and seed/migration tooling to remain production dependencies,
+and requires Next's transitive `sharp` request to follow the validated direct
+version. OSV remains authoritative for newly disclosed advisories.
+
 `osv-scanner.toml` contains no ignores. Any future `[[IgnoredVulns]]` entry must
 include the exact advisory ID, a technical justification, an owner in the
 reason, and `ignoreUntil` as the expiration/review date. Never add a blanket
@@ -192,6 +200,15 @@ packages and language dependencies. The all-severity scan (`UNKNOWN` through
 table artifact and job-summary evidence. Code-scanning SARIF and the blocking
 pass contain only fixable `HIGH` and `CRITICAL` findings, so the alert backlog
 stays actionable without discarding lower-severity or unfixed evidence.
+
+The image is assembled from a dedicated dependency stage. That stage removes
+the root `devDependencies` declarations from its disposable manifest, then runs
+lock-enforcing `npm ci --omit=dev --omit=peer`. The final image retains the
+original manifest, while the derived install prevents development tools that
+also satisfy optional framework peers from leaking back into production.
+Both the Docker build and the workflow re-run the production-dependency guard
+against the final image: every lock entry marked development-only must be absent,
+while Next, React, jsPDF, sharp, and the `tsx` seed/migration runner must remain.
 
 Pull requests run this workflow only when the production image inputs,
 application, scripts, or workflows change. Pushes to `master`, manual runs,
