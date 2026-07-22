@@ -46,6 +46,12 @@ jobs:
           scan_required=true
           if [[ "$EVENT_NAME" == "pull_request" ]]; then
             scan_required=false
+            changed_paths_file="$(mktemp "${RUNNER_TEMP:-/tmp}/container-changed-paths.XXXXXX")"
+            trap 'rm -f "$changed_paths_file"' EXIT
+            if ! git diff --no-renames --name-only -z "$BASE_SHA" "$HEAD_SHA" > "$changed_paths_file"; then
+              echo "Unable to classify production-container changes for $BASE_SHA..$HEAD_SHA." >&2
+              exit 1
+            fi
             while IFS= read -r -d '' changed_path; do
               case "$changed_path" in
                 docs/*|security-audit/*|wiki/*|*.md|*.pdf|*.txt)
@@ -55,7 +61,7 @@ jobs:
                   break
                   ;;
               esac
-            done < <(git diff --no-renames --name-only -z "$BASE_SHA" "$HEAD_SHA")
+            done < "$changed_paths_file"
           fi
 
           echo "scan_required=$scan_required" >> "$GITHUB_OUTPUT"

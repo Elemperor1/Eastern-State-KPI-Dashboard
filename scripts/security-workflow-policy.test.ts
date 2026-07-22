@@ -255,6 +255,10 @@ describe("security workflow policy", () => {
     expect(gate.needs).toEqual(["scan_scope", "trivy"]);
     expect(gate.if).toBe("${{ always() }}");
     expect(classifier).toContain("git diff --no-renames --name-only -z");
+    expect(classifier).toContain(
+      'if ! git diff --no-renames --name-only -z "$BASE_SHA" "$HEAD_SHA" > "$changed_paths_file"; then',
+    );
+    expect(classifier).not.toContain("done < <(");
     expect(classifier).toContain("docs/*|security-audit/*|wiki/*|*.md|*.pdf|*.txt)");
     expect(classifier).toMatch(/\*\)\s+scan_required=true/u);
     expect(enforcement).toContain('if [[ "$SCOPE_RESULT" != "success" ]]');
