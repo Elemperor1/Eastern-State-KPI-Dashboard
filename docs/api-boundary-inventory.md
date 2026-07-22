@@ -1,7 +1,7 @@
 # API Boundary Inventory
 
 Status: active
-Last updated: 2026-07-14
+Last updated: 2026-07-22
 
 ADR 0022 is authoritative. API handlers are browser adapters around feature
 operations; server-rendered pages call feature operations directly.
@@ -13,13 +13,15 @@ operations; server-rendered pages call feature operations directly.
 | `/api/auth/{login,logout,me,change-password}` | Login, logout, CSRF bootstrap, password setup | public or current-session policy | `src/features/auth`, `src/lib/request-guard.ts` |
 | `/api/strategy/{observations,component-entries,distributions}` | Data Entry | Admin + CSRF for mutations | `src/features/strategy` |
 | `/api/strategy/{configurations,components,targets,goals,memberships}` | Setup → Measures/Goals | Admin + CSRF | `src/features/strategy` |
-| `/api/strategy/distribution-bands` | Data Entry and Setup | session read; Admin + CSRF mutation | `src/features/strategy` |
+| `/api/strategy/board-reporting` | Setup → Goals → Board visibility | Admin + CSRF | `src/features/board-reporting` |
+| `/api/strategy/distribution-bands` | Data Entry and Setup | staff-session read; Admin + CSRF mutation | `src/features/strategy` |
 | `/api/strategy/export` | Reports → Board Report CSV/JSON | session | `src/features/reporting` |
 | `/api/{categories,kpis}` | Setup → Measures | Admin + CSRF mutation | `src/features/catalog` |
 | `/api/users` and `/api/users/account` | Setup → People | Admin + CSRF mutation | `src/features/users`, `src/features/auth/session.ts` |
 
-The exhaustive regression matrix has 28 route/method combinations: 26 require
-Admin and the two reads above require any valid session.
+The exhaustive regression matrix has 29 route/method combinations: 27 require
+Admin, the distribution-band read requires a staff session, and the export read
+accepts any valid session before applying the persisted Board scope.
 
 ## Removed production boundaries
 

@@ -1,3 +1,46 @@
+# Schema 14 Migration Notes
+
+## Schema 14 editable Board visibility
+
+Schema 14 additively creates `board_reporting_scopes`,
+`board_reporting_priorities`, `board_reporting_statements`,
+`board_reporting_statement_kpis`, and `board_reporting_audit_events`. It does
+not rebuild or rewrite users, installation ownership, priorities, measures,
+strategic configuration, observations, or legacy archive rows.
+
+On the first Board-scope read only, an initialization marker imports the
+supplied five-priority focus list when the active plan has no saved Board
+priorities. The marker is then permanently consumed. Admin edits in Setup →
+Goals are full atomic replacements with revision conflict detection and
+immutable before/after audit snapshots. A deliberately empty or reduced Board
+view is never repopulated on restart or a later migration.
+
+Board reporting authorization now reads only this persisted scope for Overview,
+Reports, Trends, priority and measure details, and JSON/CSV exports. Statements
+may intentionally have no linked measure and remain visible as reporting gaps.
+
+Back up SQLite and run `DATABASE_PATH=/absolute/path/to/kpi.db npm run
+db:migrate`; do not run `db:seed` for this upgrade.
+
+# Schema 13 Migration Notes
+
+## Schema 13 Board role
+
+Schema 13 adds the durable `board` user role. The migration rebuilds only the
+`users` table to widen its role check from `admin | viewer` to
+`admin | viewer | board`; it copies every user id, credential hash, creation
+timestamp, password-rotation flag, disabled flag, and session-revocation
+watermark unchanged. KPI/strategy content is not seeded, reset, or reconciled.
+
+Board accounts can open Overview, Reports, and linked priority/measure detail
+pages. Schema 14 supersedes the original source-defined allowlist with an
+Admin-editable, database-authoritative scope. Statements without a dedicated
+measure remain visible as reporting gaps. Board accounts cannot use Data Entry,
+Setup, mutations, or the staff-only distribution-band configuration read.
+
+Back up SQLite and run `DATABASE_PATH=/absolute/path/to/kpi.db npm run
+db:migrate`; do not run `db:seed` for this upgrade.
+
 # Schema 12 Migration Notes
 
 ## Summary

@@ -29,6 +29,7 @@ export default async function ReportsPage({
   if (user.must_change_password) redirect("/setup-password");
 
   const params = await searchParams;
+  const audience = user.role === "board" ? "board" : "staff";
   const installation = getActiveInstallation();
   const view = firstSearchParam(params.view) === "trends"
     ? "trends"
@@ -36,7 +37,7 @@ export default async function ReportsPage({
   const years = listDashboardYears();
   const rawYear = Number(firstSearchParam(params.year));
   const year = years.includes(rawYear) ? rawYear : Math.max(...years);
-  const periods = listStrategicReportingPeriods(year);
+  const periods = listStrategicReportingPeriods(year, audience);
   const rawPeriod = firstSearchParam(params.period);
   const period = reportingCycleForSelection(rawPeriod, periods);
   const throughMonth = reportingCycleThroughMonth(period);
@@ -58,6 +59,7 @@ export default async function ReportsPage({
               year,
               throughMonth,
               reportingPeriod: period,
+              audience,
             })}
           />
         ) : (
@@ -66,6 +68,7 @@ export default async function ReportsPage({
               year,
               throughMonth,
               reportingPeriod: period,
+              audience,
             })}
             reportingPeriod={period.label}
           />

@@ -10,7 +10,8 @@ export type SetupAuditEvent = Omit<
   entity_type:
     | StrategicAuditEvent["entity_type"]
     | "organization"
-    | "strategic_plan";
+    | "strategic_plan"
+    | "board_reporting_scope";
   previous_value: unknown;
   new_value: unknown;
 };
@@ -99,6 +100,7 @@ function eventTypeLabel(value: string): string {
     category: "Priority",
     organization: "Organization",
     strategic_plan: "Strategic plan",
+    board_reporting_scope: "Board visibility",
   };
   return labels[value] ?? displayToken(value);
 }

@@ -263,6 +263,16 @@ export async function requireAdmin(): Promise<SessionUser> {
   return user;
 }
 
+/** Requires an authenticated staff account and excludes Board-only accounts. */
+export async function requireStaffSession(): Promise<SessionUser> {
+  if (AUTH_DISABLED) return getBypassUser();
+  const user = await requireSession();
+  if (user.role === "board") {
+    throw new AuthError("Staff privileges required", 403);
+  }
+  return user;
+}
+
 export class AuthError extends Error {
   /** Creates a new instance with the supplied state. */
   constructor(message: string, public readonly status: number) {

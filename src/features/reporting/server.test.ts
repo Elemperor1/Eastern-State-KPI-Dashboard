@@ -11,6 +11,7 @@ const {
   listStrategicAuditIdentitiesForKpiMock,
   listStrategicGoalsMock,
   getActiveInstallationMock,
+  getBoardReportingScopeMock,
 } = vi.hoisted(() => ({
   isSampleDataEnabledMock: vi.fn(),
   listCalculatedStrategyActualsMock: vi.fn(),
@@ -19,6 +20,7 @@ const {
   listStrategicAuditIdentitiesForKpiMock: vi.fn(),
   listStrategicGoalsMock: vi.fn(),
   getActiveInstallationMock: vi.fn(),
+  getBoardReportingScopeMock: vi.fn(),
 }));
 
 vi.mock("@/features/catalog/server", () => ({ listKPIs: listKPIsMock }));
@@ -35,6 +37,9 @@ vi.mock("@/lib/app-meta", () => ({
 }));
 vi.mock("@/features/installation/server", () => ({
   getActiveInstallation: getActiveInstallationMock,
+}));
+vi.mock("@/features/board-reporting", () => ({
+  getBoardReportingScope: getBoardReportingScopeMock,
 }));
 
 import {
@@ -192,9 +197,81 @@ beforeEach(() => {
     plan: { id: 2, startYear: 2025, endYear: 2029 },
     years: [2025, 2026, 2027, 2028, 2029],
   });
+  getBoardReportingScopeMock.mockReturnValue({
+    id: 1,
+    planId: 2,
+    revision: 1,
+    priorities: [{
+      id: 1,
+      priorityId: 1,
+      prioritySlug: "justice-education",
+      priorityName: "Support Learning through Justice Education",
+      displayTitle: "Support Learning through Justice Education",
+      displayOrder: 10,
+      statements: [{
+        id: 1,
+        text: "Increase online engagement.",
+        displayOrder: 10,
+        measures: [{
+          id: 11,
+          slug: "justice-ed-online-digital-attendance",
+          name: "Online digital attendance",
+        }],
+      }],
+    }],
+  });
 });
 
 describe("strategic reporting server", () => {
+  it("filters Board reporting to the explicit priority and measure allowlist", () => {
+    const boardMetric: KPIWithCategory = {
+      ...metric,
+      id: 11,
+      slug: "justice-ed-online-digital-attendance",
+      name: "Online digital attendance",
+      category_slug: "justice-education",
+      category_name: "Justice Education",
+    };
+    const boardGoal: StrategicGoalReadModel = {
+      ...goal,
+      id: 710,
+      priority_slug: "justice-education",
+      priority_name: "Support Learning through Justice Education",
+      members: goal.members.map((member) => ({
+        ...member,
+        id: 711,
+        goal_id: 710,
+        kpi_id: boardMetric.id,
+        kpi: {
+          ...member.kpi,
+          id: boardMetric.id,
+          slug: boardMetric.slug,
+          name: boardMetric.name,
+          category_slug: boardMetric.category_slug,
+          category_name: boardMetric.category_name,
+        },
+        configuration: member.configuration
+          ? { ...member.configuration, kpi_id: boardMetric.id }
+          : null,
+      })),
+    };
+    listKPIsMock.mockReturnValue([metric, boardMetric]);
+    listStrategicGoalsMock.mockReturnValue([goal, boardGoal]);
+
+    const report = loadBoardReportPageData({ year: 2026, audience: "board" }).report;
+    const slugsById = new Map([[String(boardMetric.id), boardMetric.slug]]);
+    const visibleSlugs = report.priorities.flatMap((priority) =>
+      priority.goals.flatMap((item) =>
+        item.kpis.map((kpi) => slugsById.get(kpi.id)),
+      ),
+    );
+
+    expect(visibleSlugs).toEqual(["justice-ed-online-digital-attendance"]);
+    expect(report.priorities.map((priority) => priority.name)).toEqual([
+      "Support Learning through Justice Education",
+    ]);
+  });
+
   it("uses only strategic plan years and configured reporting periods", () => {
     getActiveInstallationMock.mockReturnValue({
       organization: {

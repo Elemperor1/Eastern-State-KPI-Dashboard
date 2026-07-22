@@ -31,6 +31,9 @@ function resetStrategicPlanData(): void {
   // history or definition can disappear through an ordinary entity delete.
   // `db:seed` is the one explicit disposable-data reset, so clear those rows
   // deliberately in dependency order before replacing the legacy sample set.
+  db.exec("DELETE FROM board_reporting_audit_events;");
+  db.exec("DELETE FROM board_reporting_scopes;");
+  db.exec("INSERT OR REPLACE INTO meta (key, value) VALUES ('board_reporting_scope_initialized', '0');");
   db.exec("DELETE FROM strategic_audit_events;");
   db.exec("DELETE FROM distribution_values;");
   db.exec("DELETE FROM distribution_observations;");

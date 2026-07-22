@@ -14,12 +14,12 @@ afterEach(() => {
 });
 
 describe("ensure-seeded destructive reset guard", () => {
-  it("leaves a populated schema-12 database intact when sample_data metadata is absent", () => {
+  it("leaves a populated schema-14 database intact when sample_data metadata is absent", () => {
     const databasePath = tempDatabase();
     const db = new DatabaseSync(databasePath);
     db.exec(`
       CREATE TABLE meta (key TEXT PRIMARY KEY, value TEXT NOT NULL);
-      INSERT INTO meta (key, value) VALUES ('schema_version', '12');
+      INSERT INTO meta (key, value) VALUES ('schema_version', '14');
       CREATE TABLE categories (id INTEGER PRIMARY KEY, name TEXT NOT NULL);
       INSERT INTO categories (name) VALUES ('Production category');
     `);
@@ -51,7 +51,7 @@ describe("ensure-seeded destructive reset guard", () => {
     const db = new DatabaseSync(databasePath);
     db.exec(`
       CREATE TABLE meta (key TEXT PRIMARY KEY, value TEXT NOT NULL);
-      INSERT INTO meta (key, value) VALUES ('schema_version', '12');
+      INSERT INTO meta (key, value) VALUES ('schema_version', '14');
       CREATE TABLE categories (id INTEGER PRIMARY KEY, name TEXT NOT NULL);
       CREATE TABLE strategic_audit_events (id INTEGER PRIMARY KEY);
       INSERT INTO strategic_audit_events DEFAULT VALUES;

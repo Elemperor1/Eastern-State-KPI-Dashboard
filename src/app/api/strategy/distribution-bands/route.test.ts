@@ -11,6 +11,7 @@ const ADMIN = {
 
 vi.mock("@/features/auth/session", () => ({
   requireAdmin: vi.fn(async () => ADMIN),
+  requireStaffSession: vi.fn(async () => ADMIN),
   requireSession: vi.fn(async () => ADMIN),
   /** Supports the auth error response test scenario. */
   authErrorResponse: () => new Response(null, { status: 401 }),

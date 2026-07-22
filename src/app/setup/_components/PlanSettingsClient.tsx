@@ -77,7 +77,7 @@ export function PlanSettingsClient({
   installation: ActiveInstallation;
 }) {
   const router = useRouter();
-  const { setState: setUnsavedState } = useUnsavedChanges();
+  const { setSourceState, clearSourceState } = useUnsavedChanges();
   const initialDraft = useMemo(
     () => draftFromInstallation(installation),
     [installation],
@@ -98,9 +98,9 @@ export function PlanSettingsClient({
   );
 
   useEffect(() => {
-    setUnsavedState({ dirty: isDirty, busy });
-    return () => setUnsavedState({ dirty: false, busy: false });
-  }, [busy, isDirty, setUnsavedState]);
+    setSourceState("plan-settings", { dirty: isDirty, busy });
+    return () => clearSourceState("plan-settings");
+  }, [busy, clearSourceState, isDirty, setSourceState]);
 
   /** Updates the current state. */
   function update(key: keyof PlanSettingsDraft, value: string) {

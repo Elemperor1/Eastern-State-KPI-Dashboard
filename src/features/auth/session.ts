@@ -13,5 +13,6 @@ export {
   getCurrentUserReadOnly,
   getSession,
   requireAdmin,
+  requireStaffSession,
   requireSession,
 } from "@/lib/session";

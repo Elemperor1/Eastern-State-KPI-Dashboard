@@ -22,6 +22,12 @@ authorization surface. Its low-level implementation remains in
 - Protected route mutations call `requireSession()` or `requireAdmin()` before
   processing input. Authorization is always server-side; hidden client controls
   are presentation only.
+- Board accounts use the durable `board` role. Reporting loaders apply the
+  persisted schema-14 Board visibility scope before calculating Overview,
+  Board Report, Trends, priority, metric, or export models. Admins edit that
+  scope in Setup → Goals.
+- `requireStaffSession()` protects authenticated configuration reads that are
+  valid for staff viewers but outside the Board reporting contract.
 - `getCurrentUser()` and `getCurrentUserReadOnly()` re-read the user by stable id
   and reject deleted, disabled, or watermark-revoked sessions.
 - Protected JSON routes use `authErrorResponse()` for consistent 401/403

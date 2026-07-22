@@ -208,9 +208,9 @@ for macOS `/private/tmp` scanner mounts, are machine-readable in
 - Destinations: `/dashboard/overview`, `/data-entry`, `/reports`, `/setup`.
 - Supporting pages: `/dashboard/category/[slug]`,
   `/dashboard/metric/[slug]`, `/login`, `/setup-password`.
-- Protected APIs: the exhaustive 28 route/method matrix remains 26 Admin-gated
-  combinations plus session-gated `GET /api/strategy/export` and
-  `GET /api/strategy/distribution-bands`.
+- Protected APIs: the exhaustive 29 route/method matrix contains 27 Admin-gated
+  combinations, session-gated `GET /api/strategy/export`, and staff-session-
+  gated `GET /api/strategy/distribution-bands`.
 - Removed `/admin/*`, `/dashboard/trends`, and legacy mutation adapters remain
   404 boundaries.
 

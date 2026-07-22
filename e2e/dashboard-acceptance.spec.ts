@@ -423,6 +423,88 @@ test("shows four admin destinations and removes every superseded route", async (
   expect(browserErrors).toEqual([]);
 });
 
+test("lets an Admin edit the Board view and enforces the saved scope for Board members", async ({ page }, testInfo) => {
+  const browserErrors = collectBrowserErrors(page);
+  const run = e2eDatabaseRunFromMetadata(testInfo.config.metadata);
+  const email = "board-scope-acceptance@example.org";
+  const password = "Board-Scope-2029!";
+  const db = new DatabaseSync(run.databasePath);
+  db.exec("PRAGMA busy_timeout = 5000");
+  db.prepare("DELETE FROM users WHERE email = ?").run(email);
+  db.prepare(`
+    INSERT INTO users (
+      email, name, password_hash, role, must_change_password,
+      disabled, sessions_valid_after
+    ) VALUES (?, ?, ?, 'board', 0, 0, ?)
+  `).run(
+    email,
+    "Board Scope Acceptance",
+    bcrypt.hashSync(password, 4),
+    Date.now(),
+  );
+  db.close();
+
+  try {
+    await page.goto("/setup?area=goals");
+    await expect(page.getByRole("heading", { name: "Board visibility" })).toBeVisible();
+    const visitorEditor = page
+      .getByRole("checkbox", { name: /^Reimagine Visitor Experience/ })
+      .locator("xpath=ancestor::section[1]");
+    await visitorEditor.getByLabel("Focus statement 1").fill(
+      "Board acceptance: reduce the Visitor Experience budget impact.",
+    );
+    await visitorEditor.getByLabel("Link a measure").first().selectOption({
+      label: "Interpretive Site Plan — Plan adoption by Board",
+    });
+    await page.getByRole("button", { name: "Save Board visibility" }).click();
+    await expect(page.getByText("Board visibility settings saved.")).toBeVisible();
+
+    await page.context().clearCookies();
+    const login = await page.request.post("/api/auth/login", {
+      data: { email, password },
+    });
+    expect(login.ok(), await login.text()).toBe(true);
+
+    await page.goto("/dashboard/overview?year=2029");
+    const navigation = page.getByRole("navigation", { name: "Primary" });
+    await expect(navigation.getByRole("link")).toHaveCount(2);
+    await expect(navigation.getByRole("link", { name: "Overview" })).toBeVisible();
+    await expect(navigation.getByRole("link", { name: "Reports" })).toBeVisible();
+    await expect(page.getByRole("heading", { name: "Board focus" })).toBeVisible();
+    await expect(page.getByText("Board acceptance: reduce the Visitor Experience budget impact.")).toBeVisible();
+    await expect(page.getByText("No linked measure yet.").first()).toBeVisible();
+
+    await page.goto("/dashboard/category/visitor-experience?year=2029");
+    await expect(page.getByText("Modernized Exhibits — Attendance increase vs baseline")).toBeVisible();
+    await expect(page.getByText("Interpretive Site Plan — Plan adoption by Board")).toBeVisible();
+
+    await page.goto("/dashboard/metric/interpretive-plan-adoption?year=2029");
+    await expect(page.getByRole("heading", { name: "Interpretive Site Plan — Plan adoption by Board" })).toBeVisible();
+
+    const configurationRead = await page.request.get(
+      "/api/strategy/distribution-bands?kpi_id=1&reporting_year=2029&include_archived=false",
+    );
+    expect(configurationRead.status()).toBe(403);
+
+    const exportResponse = await page.request.get(
+      "/api/strategy/export?year=2029&format=json",
+    );
+    expect(exportResponse.ok(), await exportResponse.text()).toBe(true);
+    const exportText = JSON.stringify(await exportResponse.json());
+    expect(exportText).toContain("Attendance increase vs baseline");
+    expect(exportText).toContain("Plan adoption by Board");
+
+    await page.goto("/data-entry");
+    await expect(page).toHaveURL(/\/dashboard\/overview$/);
+    expect(browserErrors).toEqual([]);
+  } finally {
+    const cleanup = new DatabaseSync(run.databasePath);
+    cleanup.exec("PRAGMA busy_timeout = 5000");
+    cleanup.prepare("DELETE FROM users WHERE email = ?").run(email);
+    cleanup.close();
+  }
+});
+
 test("reflows every destination and detail route across the required viewport and zoom-equivalent matrix", async ({ page }) => {
   test.setTimeout(240_000);
   const browserErrors = collectBrowserErrors(page);

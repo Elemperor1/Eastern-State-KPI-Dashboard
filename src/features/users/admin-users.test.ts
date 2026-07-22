@@ -19,8 +19,12 @@ function formData(values: Record<string, string>) {
 }
 
 describe("admin user helpers", () => {
-  it("keeps viewer as the default role option before admin", () => {
-    expect(ADMIN_USER_ROLE_OPTIONS.map((option) => option.value)).toEqual(["viewer", "admin"]);
+  it("keeps viewer as the default and offers the restricted Board role", () => {
+    expect(ADMIN_USER_ROLE_OPTIONS.map((option) => option.value)).toEqual([
+      "viewer",
+      "board",
+      "admin",
+    ]);
   });
 
   it("builds a create-user payload from form data", () => {
@@ -48,6 +52,17 @@ describe("admin user helpers", () => {
     }));
 
     expect(payload.role).toBe("viewer");
+  });
+
+  it("preserves the Board role in create-user payloads", () => {
+    const payload = buildCreateUserPayload(formData({
+      name: "Board Member",
+      email: "board@example.test",
+      password: "temporary",
+      role: "board",
+    }));
+
+    expect(payload.role).toBe("board");
   });
 
   it("classifies self, status, and password-reset eligibility", () => {

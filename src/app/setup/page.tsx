@@ -8,6 +8,7 @@ import { StrategicKpiEditorClient } from "./_components/StrategicKpiEditorClient
 import { StrategicGoalsEditorClient } from "./_components/StrategicGoalsEditorClient";
 import { UserManagerClient } from "./_components/UserManagerClient";
 import { PlanSettingsClient } from "./_components/PlanSettingsClient";
+import { BoardReportingEditorClient } from "./_components/BoardReportingEditorClient";
 import type { StrategicGoalEditorRecord } from "@/components/strategic-goal-editor-model";
 import type { StrategicKpiEditorData } from "@/components/strategic-kpi-editor-model";
 import {
@@ -33,6 +34,7 @@ import { listUsers } from "@/features/users/server";
 import type { Category, KPIWithCategory } from "@/lib/types";
 import { cn } from "@/lib/utils";
 import { firstSearchParam } from "@/lib/search-params";
+import { getBoardReportingAdminModel } from "@/features/board-reporting";
 
 export const dynamic = "force-dynamic";
 
@@ -188,6 +190,7 @@ function GoalsArea({ params, year }: { params: Params; year: number }) {
   return (
     <>
       <PlanSettingsClient installation={installation} />
+      <BoardReportingEditorClient initialModel={getBoardReportingAdminModel()} />
       <StrategicGoalsEditorClient
         initialGoals={initialGoals}
         initialSelectedGoalId={initialGoals.some((goal) => goal.id === requestedGoalId) ? requestedGoalId : null}

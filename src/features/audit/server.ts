@@ -6,11 +6,12 @@ export type SetupAuditEvent = Omit<
   StrategicAuditEvent,
   "entity_type" | "previous_value" | "new_value"
 > & {
-  audit_source: "strategic" | "installation";
+  audit_source: "strategic" | "installation" | "board_reporting";
   entity_type:
     | StrategicAuditEvent["entity_type"]
     | "organization"
-    | "strategic_plan";
+    | "strategic_plan"
+    | "board_reporting_scope";
   previous_value: unknown;
   new_value: unknown;
 };
@@ -151,6 +152,15 @@ export function listSetupAuditEvents(
            previous_value_json, new_value_json,
            actor_id, actor_email_snapshot, NULL AS source_reference, occurred_at
          FROM installation_audit_events
+         UNION ALL
+         SELECT
+           'board_reporting' AS audit_source,
+           id, 'board_reporting_scope' AS entity_type, scope_id AS entity_id,
+           event_type, 'Board visibility' AS entity_display_name,
+           NULL AS parent_priority_name, NULL AS parent_goal_name,
+           previous_value_json, new_value_json,
+           actor_id, actor_email_snapshot, NULL AS source_reference, occurred_at
+         FROM board_reporting_audit_events
        ) combined_audit
        ORDER BY occurred_at DESC, id DESC, audit_source DESC
        LIMIT ? OFFSET ?`,

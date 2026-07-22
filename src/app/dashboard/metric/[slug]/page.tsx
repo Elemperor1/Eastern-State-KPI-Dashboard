@@ -116,7 +116,10 @@ export default async function StrategicMeasurePage({
   const installation = getActiveInstallation();
   const requestedYear = Number(firstValue(query.year));
   const selectedYear = years.includes(requestedYear) ? requestedYear : Math.max(...years);
-  const data = loadStrategicMetricPageData(slug, { year: selectedYear });
+  const data = loadStrategicMetricPageData(slug, {
+    year: selectedYear,
+    audience: user.role === "board" ? "board" : "staff",
+  });
   if (!data) redirect("/dashboard/overview");
 
   return (

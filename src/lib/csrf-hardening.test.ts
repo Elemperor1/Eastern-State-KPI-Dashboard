@@ -29,6 +29,7 @@ const ADMIN = {
 
 vi.mock("@/features/auth/session", () => ({
   requireAdmin: vi.fn(async () => ADMIN),
+  requireStaffSession: vi.fn(async () => ADMIN),
   requireSession: vi.fn(async () => ADMIN),
   getCurrentUser: vi.fn(async () => ADMIN),
   getSession: vi.fn(async () => ({
@@ -100,6 +101,21 @@ vi.mock("@/features/catalog/server", () => ({
   retireOrDeleteCategory: vi.fn(() => "deleted"),
 }));
 
+vi.mock("@/features/board-reporting", async () => {
+  const actual = await vi.importActual<typeof import("@/features/board-reporting")>(
+    "@/features/board-reporting",
+  );
+  return {
+    ...actual,
+    updateBoardReportingScope: vi.fn((input: { expectedRevision: number }) => ({
+      id: 1,
+      planId: 1,
+      revision: input.expectedRevision + 1,
+      priorities: [],
+    })),
+  };
+});
+
 vi.mock("@/features/strategy/server", async () => {
   const actual = await vi.importActual<typeof import("@/features/strategy/server")>(
     "@/features/strategy/server",
@@ -158,6 +174,7 @@ import * as strategyComponents from "@/app/api/strategy/components/route";
 import * as strategyTargets from "@/app/api/strategy/targets/route";
 import * as strategyGoals from "@/app/api/strategy/goals/route";
 import * as strategyMemberships from "@/app/api/strategy/memberships/route";
+import * as strategyBoardReporting from "@/app/api/strategy/board-reporting/route";
 
 const CSRF_COOKIE = "eastern_state_kpi_csrf";
 const TOKEN = "test-csrf-token-0123456789abcdef";
@@ -174,6 +191,8 @@ interface Case {
 }
 
 const CASES: Case[] = [
+  { name: "PATCH /api/strategy/board-reporting", method: "PATCH", path: "/api/strategy/board-reporting", handler: strategyBoardReporting.PATCH, okStatus: 200,
+    body: { expectedRevision: 0, priorities: [] } },
   { name: "POST /api/strategy/observations", method: "POST", path: "/api/strategy/observations", handler: strategyObservations.POST, okStatus: 201,
     body: { kpi_id: 1, reporting_year: 2026, value: 10 } },
   { name: "DELETE /api/strategy/observations", method: "DELETE", path: "/api/strategy/observations", handler: strategyObservations.DELETE, okStatus: 200,

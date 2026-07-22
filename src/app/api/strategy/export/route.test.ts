@@ -73,6 +73,7 @@ describe("GET /api/strategy/export", () => {
     expect(loadBoardReportPageDataMock).toHaveBeenCalledWith({
       year: 2026,
       throughMonth: 12,
+      audience: "staff",
     });
   });
 
@@ -92,6 +93,7 @@ describe("GET /api/strategy/export", () => {
     expect(loadBoardReportPageDataMock).toHaveBeenCalledWith({
       year: 2026,
       throughMonth: 6,
+      audience: "staff",
     });
   });
 
@@ -112,7 +114,24 @@ describe("GET /api/strategy/export", () => {
         periodType: "monthly",
         periodIndex: 1,
       },
+      audience: "staff",
     });
+  });
+
+  it("uses the restricted reporting audience for Board accounts", async () => {
+    requireSessionMock.mockResolvedValueOnce({ id: 2, role: "board" });
+
+    const response = await GET(
+      new NextRequest(
+        "http://localhost/api/strategy/export?year=2026&period=monthly%3A1",
+      ),
+    );
+
+    expect(response.status).toBe(200);
+    expect(listStrategicReportingPeriodsMock).toHaveBeenCalledWith(2026, "board");
+    expect(loadBoardReportPageDataMock).toHaveBeenCalledWith(
+      expect.objectContaining({ audience: "board" }),
+    );
   });
 
   it("rejects invalid periods before loading data", async () => {
