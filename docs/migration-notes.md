@@ -146,20 +146,24 @@ therefore cannot fall through to the sample seed.
 
 ## Pre-deployment
 
-1. Stop application writes.
-2. Back up SQLite consistently (database plus WAL/SHM while stopped, or the
+1. Dispatch `Release Security` from `master` and require a successful `Release
+   container readiness` result for the current default-branch SHA. Confirm the
+   deployment checkout is clean and matches that exact SHA; rerun if `master`
+   moves or a newer container scan is red.
+2. Stop application writes.
+3. Back up SQLite consistently (database plus WAL/SHM while stopped, or the
    SQLite backup API).
-3. Record schema version and row counts for users, organizations, strategic plans, categories, KPIs, entries,
+4. Record schema version and row counts for users, organizations, strategic plans, categories, KPIs, entries,
    breakdowns, legacy targets, history, strategic configurations, components,
    and component entries.
-4. Deploy and run `DATABASE_PATH=/absolute/path/to/kpi.db npm run db:migrate`.
-5. Compare stable IDs and business-row counts. On an untouched prior canonical
+5. Deploy and run `DATABASE_PATH=/absolute/path/to/kpi.db npm run db:migrate`.
+6. Compare stable IDs and business-row counts. On an untouched prior canonical
    signature, allow only the documented, audited government-support and exact
    system-owned goal/membership/unit/precision/target-state corrections.
    Operator-attributed or customized rows must remain unchanged. Run
    `PRAGMA foreign_key_check`.
-6. Re-run the migration to prove idempotence.
-7. Run credentialed smoke and representative report checks.
+7. Re-run the migration to prove idempotence.
+8. Run credentialed smoke and representative report checks.
 
 ## Verified migration paths
 

@@ -233,11 +233,12 @@ Use `npm run check:all` for release-level validation and
 `npm run security:scan` for the pinned OSV-Scanner, Gitleaks, and Semgrep gates.
 GitHub Actions runs those gates independently alongside CodeQL so each can be a
 stable required check. Pull requests also receive dependency-delta review and
-a production-container Trivy scan; OpenSSF Scorecard runs as scheduled
-repository supply-chain signal. See
+an always-present production-container security contract; production-relevant
+pull requests and every `master` commit receive the full Trivy image scan.
+OpenSSF Scorecard runs as a scheduled repository supply-chain signal. See
 [`docs/quality-and-security-gates.md`](docs/quality-and-security-gates.md) for
-commands, policies, exceptions, failure triage, and the GitHub settings an
-administrator must enable.
+commands, policies, exceptions, failure triage, live GitHub governance, and
+approval-only administrator actions.
 
 ## Verification
 
@@ -281,6 +282,15 @@ must be a new prefixed `.db` beneath the OS temp root; pre-existing files,
 directories, links, and path escapes are rejected before seeding.
 
 ## Deployment Notes
+
+Before declaring a release ready, dispatch the manual `Release Security`
+workflow from `master` and record the exact SHA in its successful `Release
+container readiness` summary. It fails unless `master` still points at that SHA
+and the latest exact-commit `Container image / Trivy` and `Production container
+security` jobs are both green. Deploy only a clean checkout of the recorded
+commit; if `master` moves or a newer exact-commit scan fails, rerun the release
+check. See `docs/quality-and-security-gates.md` and
+`docs/operator-provisioning.md` for the complete contract.
 
 Fly deploys through `Dockerfile` + `fly.toml` with SQLite mounted at
 `/app/data/kpi.db`. `TRUST_PROXY=true` is set for Fly so the login throttle uses

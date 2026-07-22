@@ -7,20 +7,6 @@ on:
   pull_request:
     branches:
       - master
-    paths:
-      - .github/workflows/**
-      - .dockerignore
-      - Dockerfile
-      - fly.toml
-      - next.config.mjs
-      - package.json
-      - package-lock.json
-      - postcss.config.mjs
-      - public/**
-      - scripts/**
-      - src/**
-      - tailwind.config.ts
-      - tsconfig.json
   schedule:
     - cron: "17 9 * * 3"
   workflow_dispatch:
@@ -33,13 +19,67 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  scan_scope:
+    name: Container scan decision
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      scan_required: ${{ steps.scope.outputs.scan_required }}
+
+    steps:
+      - name: Check out repository history
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Decide whether the production image changed
+        id: scope
+        shell: bash
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: |
+          set -euo pipefail
+
+          scan_required=true
+          if [[ "$EVENT_NAME" == "pull_request" ]]; then
+            scan_required=false
+            changed_paths_file="$(mktemp "${RUNNER_TEMP:-/tmp}/container-changed-paths.XXXXXX")"
+            trap 'rm -f "$changed_paths_file"' EXIT
+            if ! git diff --no-renames --name-only -z "$BASE_SHA" "$HEAD_SHA" > "$changed_paths_file"; then
+              echo "Unable to classify production-container changes for $BASE_SHA..$HEAD_SHA." >&2
+              exit 1
+            fi
+            while IFS= read -r -d '' changed_path; do
+              case "$changed_path" in
+                docs/*|security-audit/*|wiki/*|*.md|*.pdf|*.txt)
+                  ;;
+                *)
+                  scan_required=true
+                  break
+                  ;;
+              esac
+            done < "$changed_paths_file"
+          fi
+
+          echo "scan_required=$scan_required" >> "$GITHUB_OUTPUT"
+          if [[ "$scan_required" == "true" ]]; then
+            echo "A production-container scan is required for this run." >> "$GITHUB_STEP_SUMMARY"
+          else
+            echo "No production-image input changed; the full image scan is not required for this pull request." >> "$GITHUB_STEP_SUMMARY"
+          fi
+
   trivy:
     name: Container image / Trivy
+    needs: scan_scope
+    if: needs.scan_scope.outputs.scan_required == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 35
     permissions:
       contents: read
-      security-events: write
+      security-events: write # Required to publish Trivy SARIF on trusted runs.
     env:
       IMAGE_REF: eastern-state-kpi:${{ github.sha }}
 
@@ -64,6 +104,7 @@ jobs:
             ./scripts/production-dependency-guard.mjs --runtime-root /app
 
       - name: Generate actionable SARIF report
+        id: actionable_scan
         uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
         with:
           scan-type: image
@@ -80,6 +121,7 @@ jobs:
           cache: true
 
       - name: Generate human-readable report
+        id: human_scan
         uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
         with:
           scan-type: image
@@ -111,20 +153,13 @@ jobs:
           } >> "$GITHUB_STEP_SUMMARY"
 
       - name: Upload human-readable report
-        if: always()
+        if: ${{ always() && steps.human_scan.outcome == 'success' }}
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: trivy-container-report-${{ github.sha }}
           path: trivy-results.txt
           if-no-files-found: error
           retention-days: 14
-
-      - name: Upload SARIF report to code scanning
-        if: ${{ always() && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository) }}
-        uses: github/codeql-action/upload-sarif@8aad20d150bbac5944a9f9d289da16a4b0d87c1e # v4.36.2
-        with:
-          sarif_file: trivy-results.sarif
-          category: trivy-container-image
 
       - name: Block fixable high and critical vulnerabilities
         uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
@@ -141,3 +176,103 @@ jobs:
           version: v0.70.0
           skip-setup-trivy: true
           cache: false
+
+      - name: Classify SARIF publication policy
+        id: sarif_policy
+        if: ${{ always() && steps.actionable_scan.outcome == 'success' }}
+        shell: bash
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          PUSH_ACTOR: ${{ github.actor }}
+          HEAD_REPOSITORY: ${{ github.event.pull_request.head.repo.full_name }}
+          BASE_REPOSITORY: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+
+          publication_required=true
+          allow_read_only_failure=false
+          if [[ "$EVENT_NAME" == "pull_request" && "$HEAD_REPOSITORY" != "$BASE_REPOSITORY" ]]; then
+            publication_required=false
+          elif [[ "$EVENT_NAME" == "push" ]]; then
+            author_name="$(git show -s --format=%an "$GITHUB_SHA")"
+            author_email="$(git show -s --format=%ae "$GITHUB_SHA")"
+            if [[ "$PUSH_ACTOR" == "dependabot[bot]" || ( "$author_name" == "dependabot[bot]" && "$author_email" == *"+dependabot[bot]@users.noreply.github.com" ) ]]; then
+              allow_read_only_failure=true
+            fi
+          fi
+
+          echo "publication_required=$publication_required" >> "$GITHUB_OUTPUT"
+          echo "allow_read_only_failure=$allow_read_only_failure" >> "$GITHUB_OUTPUT"
+
+      - name: Upload SARIF report to code scanning
+        id: sarif_upload
+        if: ${{ always() && steps.actionable_scan.outcome == 'success' && steps.sarif_policy.outputs.publication_required == 'true' }}
+        continue-on-error: true
+        uses: github/codeql-action/upload-sarif@8aad20d150bbac5944a9f9d289da16a4b0d87c1e # v4.36.2
+        with:
+          sarif_file: trivy-results.sarif
+          category: trivy-container-image
+
+      - name: Enforce SARIF publication policy
+        if: ${{ always() && steps.actionable_scan.outcome == 'success' }}
+        shell: bash
+        env:
+          PUBLICATION_REQUIRED: ${{ steps.sarif_policy.outputs.publication_required }}
+          ALLOW_READ_ONLY_FAILURE: ${{ steps.sarif_policy.outputs.allow_read_only_failure }}
+          UPLOAD_OUTCOME: ${{ steps.sarif_upload.outcome }}
+        run: |
+          set -euo pipefail
+
+          if [[ "$PUBLICATION_REQUIRED" == "false" && "$UPLOAD_OUTCOME" == "skipped" ]]; then
+            echo "SARIF publication is unavailable for this fork pull request." >> "$GITHUB_STEP_SUMMARY"
+          elif [[ "$PUBLICATION_REQUIRED" == "true" && "$UPLOAD_OUTCOME" == "success" ]]; then
+            echo "Trivy SARIF publication succeeded." >> "$GITHUB_STEP_SUMMARY"
+          elif [[ "$ALLOW_READ_ONLY_FAILURE" == "true" && "$UPLOAD_OUTCOME" == "failure" ]]; then
+            echo "Trivy SARIF publication was denied on a Dependabot-authored push; the blocking image scan remains authoritative." >> "$GITHUB_STEP_SUMMARY"
+          else
+            echo "Unexpected Trivy SARIF publication result: required=$PUBLICATION_REQUIRED allow_read_only_failure=$ALLOW_READ_ONLY_FAILURE outcome=$UPLOAD_OUTCOME" >&2
+            exit 1
+          fi
+
+  container_security:
+    name: Production container security
+    needs: [scan_scope, trivy]
+    if: ${{ always() }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+
+    steps:
+      - name: Enforce the container scan contract
+        shell: bash
+        env:
+          SCOPE_RESULT: ${{ needs.scan_scope.result }}
+          SCAN_REQUIRED: ${{ needs.scan_scope.outputs.scan_required }}
+          SCAN_RESULT: ${{ needs.trivy.result }}
+        run: |
+          set -euo pipefail
+
+          if [[ "$SCOPE_RESULT" != "success" ]]; then
+            echo "Container scan decision did not succeed: $SCOPE_RESULT" >&2
+            exit 1
+          fi
+
+          case "$SCAN_REQUIRED" in
+            true)
+              if [[ "$SCAN_RESULT" != "success" ]]; then
+                echo "The required production-container scan did not succeed: $SCAN_RESULT" >&2
+                exit 1
+              fi
+              echo "The exact-commit production-container scan succeeded." >> "$GITHUB_STEP_SUMMARY"
+              ;;
+            false)
+              if [[ "$SCAN_RESULT" != "skipped" ]]; then
+                echo "The image scan had an unexpected result for an unchanged production image: $SCAN_RESULT" >&2
+                exit 1
+              fi
+              echo "The production image was unchanged, so the full scan was safely skipped." >> "$GITHUB_STEP_SUMMARY"
+              ;;
+            *)
+              echo "Container scan decision produced an invalid value: $SCAN_REQUIRED" >&2
+              exit 1
+              ;;
+          esac

@@ -1,0 +1,143 @@
+name: Release Security
+
+on:
+  workflow_dispatch:
+
+permissions:
+  actions: read # Required to inspect Container Security runs and jobs.
+  contents: read
+
+concurrency:
+  group: release-security-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  verify_container:
+    name: Release container readiness
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    env:
+      GH_TOKEN: ${{ github.token }}
+      RELEASE_REF: ${{ github.ref }}
+      RELEASE_SHA: ${{ github.sha }}
+
+    steps:
+      - name: Verify the latest exact-commit container scan
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          if [[ ! "$RELEASE_SHA" =~ ^[0-9a-f]{40}$ ]]; then
+            echo "Release SHA is not a full commit ID: $RELEASE_SHA" >&2
+            exit 1
+          fi
+
+          default_branch="$(gh api "repos/$GITHUB_REPOSITORY" --jq '.default_branch')"
+          default_ref="refs/heads/$default_branch"
+          if [[ "$RELEASE_REF" != "$default_ref" ]]; then
+            echo "Release Security must be dispatched from $default_ref, not $RELEASE_REF." >&2
+            exit 1
+          fi
+
+          current_default_sha="$(gh api "repos/$GITHUB_REPOSITORY/commits/$default_branch" --jq '.sha')"
+          if [[ "$RELEASE_SHA" != "$current_default_sha" ]]; then
+            echo "The default branch moved from $RELEASE_SHA to $current_default_sha; dispatch a fresh release check." >&2
+            exit 1
+          fi
+
+          runs_json="$(
+            gh api --method GET \
+              "repos/$GITHUB_REPOSITORY/actions/workflows/container-security.yml/runs" \
+              -f branch="$default_branch" \
+              -f head_sha="$RELEASE_SHA" \
+              -f per_page=100
+          )"
+          run_record="$(
+            jq -r '
+              .workflow_runs
+              | sort_by([.updated_at, .id])
+              | reverse
+              | .[0]
+              | if . == null then empty else [.id, .run_attempt, .status, .conclusion, .html_url] | @tsv end
+            ' <<< "$runs_json"
+          )"
+          if [[ -z "$run_record" ]]; then
+            echo "No Container Security run exists for exact commit $RELEASE_SHA." >&2
+            exit 1
+          fi
+
+          IFS=$'\t' read -r run_id run_attempt run_status run_conclusion run_url <<< "$run_record"
+          if [[ "$run_status" != "completed" || "$run_conclusion" != "success" ]]; then
+            echo "Latest exact-commit Container Security run is not green: status=$run_status conclusion=$run_conclusion $run_url" >&2
+            exit 1
+          fi
+
+          jobs_json="$(
+            gh api --method GET \
+              "repos/$GITHUB_REPOSITORY/actions/runs/$run_id/jobs" \
+              -f filter=latest \
+              -f per_page=100
+          )"
+          scan_conclusion="$(
+            jq -r '.jobs | map(select(.name == "Container image / Trivy")) | sort_by(.started_at) | reverse | .[0].conclusion // empty' \
+              <<< "$jobs_json"
+          )"
+          gate_conclusion="$(
+            jq -r '.jobs | map(select(.name == "Production container security")) | sort_by(.started_at) | reverse | .[0].conclusion // empty' \
+              <<< "$jobs_json"
+          )"
+
+          if [[ "$scan_conclusion" != "success" ]]; then
+            echo "Latest exact-commit Container image / Trivy job is not green: ${scan_conclusion:-missing}" >&2
+            exit 1
+          fi
+          if [[ "$gate_conclusion" != "success" ]]; then
+            echo "Latest exact-commit Production container security job is not green: ${gate_conclusion:-missing}" >&2
+            exit 1
+          fi
+
+          final_default_branch="$(gh api "repos/$GITHUB_REPOSITORY" --jq '.default_branch')"
+          if [[ "$final_default_branch" != "$default_branch" ]]; then
+            echo "The repository default branch changed during verification; dispatch a fresh release check." >&2
+            exit 1
+          fi
+          final_default_sha="$(gh api "repos/$GITHUB_REPOSITORY/commits/$default_branch" --jq '.sha')"
+          if [[ "$final_default_sha" != "$RELEASE_SHA" ]]; then
+            echo "The default branch moved from $RELEASE_SHA to $final_default_sha during verification; dispatch a fresh release check." >&2
+            exit 1
+          fi
+
+          final_runs_json="$(
+            gh api --method GET \
+              "repos/$GITHUB_REPOSITORY/actions/workflows/container-security.yml/runs" \
+              -f branch="$default_branch" \
+              -f head_sha="$RELEASE_SHA" \
+              -f per_page=100
+          )"
+          final_run_record="$(
+            jq -r '
+              .workflow_runs
+              | sort_by([.updated_at, .id])
+              | reverse
+              | .[0]
+              | if . == null then empty else [.id, .run_attempt, .status, .conclusion] | @tsv end
+            ' <<< "$final_runs_json"
+          )"
+          IFS=$'\t' read -r final_run_id final_run_attempt final_run_status final_run_conclusion <<< "$final_run_record"
+          if [[ -z "$final_run_record" || "$final_run_id" != "$run_id" || "$final_run_attempt" != "$run_attempt" ]]; then
+            echo "A newer exact-commit Container Security run or rerun appeared during verification; dispatch a fresh release check." >&2
+            exit 1
+          fi
+          if [[ "$final_run_status" != "completed" || "$final_run_conclusion" != "success" ]]; then
+            echo "The selected exact-commit Container Security run changed state during verification: status=$final_run_status conclusion=$final_run_conclusion" >&2
+            exit 1
+          fi
+
+          {
+            echo "## Release container security"
+            echo
+            echo "- Exact default-branch commit: \`$RELEASE_SHA\`"
+            echo "- [Container Security run $run_id]($run_url): success"
+            echo "- \`Container image / Trivy\`: success"
+            echo "- \`Production container security\`: success"
+          } >> "$GITHUB_STEP_SUMMARY"

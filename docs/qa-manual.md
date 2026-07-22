@@ -79,6 +79,13 @@ AUTH_DISABLED=true PORT=3290 BASE=http://127.0.0.1:3290 bash ./scripts/smoke.sh
 
 ## Release
 
+- Dispatch `Release Security` from `master`. Confirm `Release container
+  readiness` records the current default-branch SHA and a successful latest
+  exact-commit `Container image / Trivy` plus `Production container security`
+  result. Do not continue for missing, pending, skipped, cancelled, stale, or
+  red evidence; rerun if `master` moves.
+- Confirm the deployment checkout is clean and `git rev-parse HEAD` matches the
+  SHA recorded by `Release container readiness`.
 - Back up the production SQLite volume and verify the backup opens.
 - Run `DATABASE_PATH=/absolute/path/to/kpi.db npm run db:migrate`; never use
   `db:seed` as a migration.
