@@ -41,7 +41,7 @@
     "prelint": "npm run quality:guards"
   },
   "dependencies": {
-    "bcryptjs": "^2.4.3",
+    "bcryptjs": "^3.0.3",
     "clsx": "^2.1.1",
     "html2canvas": "^1.4.1",
     "iron-session": "^8.0.4",
@@ -59,7 +59,7 @@
     "@eslint/compat": "^2.1.0",
     "@playwright/test": "^1.61.1",
     "@testing-library/react": "^16.3.2",
-    "@types/bcryptjs": "^2.4.6",
+    "@types/bcryptjs": "^3.0.0",
     "@types/node": "^22.7.5",
     "@types/react": "^19.0.0",
     "@types/react-dom": "^19.0.0",
