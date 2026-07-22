@@ -17,6 +17,16 @@ WORKDIR /app
 COPY package.json package-lock.json ./
 RUN npm ci
 
+FROM base AS production-deps
+
+WORKDIR /app
+COPY package.json package-lock.json ./
+COPY scripts/production-dependency-guard.mjs ./scripts/
+RUN npm pkg delete devDependencies \
+  && npm ci --omit=dev --omit=peer \
+  && node ./scripts/production-dependency-guard.mjs --runtime-root /app \
+  && npm cache clean --force
+
 FROM deps AS builder
 
 COPY . .
@@ -29,7 +39,13 @@ FROM base AS runner
 WORKDIR /app
 ENV NODE_ENV=production
 
-COPY --from=builder /app ./
+COPY --from=builder /app/package.json /app/package-lock.json /app/next.config.mjs /app/tsconfig.json ./
+COPY --from=builder /app/.next ./.next
+COPY --from=builder /app/public ./public
+COPY --from=builder /app/scripts ./scripts
+COPY --from=builder /app/src ./src
+COPY --from=production-deps /app/node_modules ./node_modules
+RUN node ./scripts/production-dependency-guard.mjs --runtime-root /app
 
 EXPOSE 3000
 CMD ["npm", "run", "start:deploy"]
