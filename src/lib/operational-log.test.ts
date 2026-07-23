@@ -3,7 +3,7 @@ import {
   logReadinessFailure,
   logUnexpectedServerError,
 } from "./operational-log";
-import { logStartupFailure } from "../../scripts/operational-log.mjs";
+import { logStartupFailure } from "./operational-log-core.mjs";
 
 afterEach(() => {
   vi.restoreAllMocks();

@@ -1,7 +1,7 @@
 import {
   logReadinessFailure as writeReadinessFailure,
   logUnexpectedServerError as writeUnexpectedServerError,
-} from "../../scripts/operational-log.mjs";
+} from "./operational-log-core.mjs";
 import type { ReadinessFailureReason } from "@/features/health/readiness";
 
 type ServerErrorContext = {

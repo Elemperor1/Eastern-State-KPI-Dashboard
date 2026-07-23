@@ -9,6 +9,15 @@ CSRF_COOKIE_NAME="eastern_state_kpi_csrf"
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 BASE_ORIGIN="${SMOKE_ORIGIN:-${BASE%/}}"
+CURL_TLS_ARGS=()
+
+if [ -n "${SMOKE_CA_BUNDLE:-}" ]; then
+  if [ ! -r "$SMOKE_CA_BUNDLE" ]; then
+    echo "ERROR: SMOKE_CA_BUNDLE must name a readable CA certificate bundle." >&2
+    exit 1
+  fi
+  CURL_TLS_ARGS=(--cacert "$SMOKE_CA_BUNDLE")
+fi
 
 if [ "$AUTH_DISABLED" != "true" ] && { [ -z "${SMOKE_EMAIL:-}" ] || [ -z "${SMOKE_PASSWORD:-}" ]; }; then
   echo "ERROR: SMOKE_EMAIL and SMOKE_PASSWORD are required when auth is enabled." >&2
@@ -31,7 +40,7 @@ check() {
 
 csrf_token_for() {
   local jar="$1"
-  curl -sk -b "$jar" -c "$jar" -o /dev/null "$BASE/api/auth/me"
+  curl -sS "${CURL_TLS_ARGS[@]}" -b "$jar" -c "$jar" -o /dev/null "$BASE/api/auth/me"
   awk -v name="$CSRF_COOKIE_NAME" '$0 !~ /^#/ && $6 == name { value = $7 } END { print value }' "$jar"
 }
 
@@ -41,7 +50,7 @@ mutation_request() {
   local jar="$1" method="$2" path="$3" payload="$4" body_file token
   token="$(csrf_token_for "$jar")"
   body_file="$(mktemp)"
-  MUTATION_STATUS="$(curl -sk -b "$jar" -c "$jar" -o "$body_file" -w '%{http_code}' \
+  MUTATION_STATUS="$(curl -sS "${CURL_TLS_ARGS[@]}" -b "$jar" -c "$jar" -o "$body_file" -w '%{http_code}' \
     -X "$method" "$BASE$path" \
     -H "Content-Type: application/json" \
     -H "Origin: $BASE_ORIGIN" \
@@ -58,20 +67,20 @@ trap 'rm -f "$cookie_jar" "$anonymous_jar"' EXIT
 echo "== Eastern State KPI smoke test =="
 echo "Base: $BASE"
 
-readiness_code=$(curl -sk -o /dev/null -w '%{http_code}' "$BASE/api/health/ready")
-readiness_body=$(curl -sk "$BASE/api/health/ready")
+readiness_code=$(curl -sS "${CURL_TLS_ARGS[@]}" -o /dev/null -w '%{http_code}' "$BASE/api/health/ready")
+readiness_body=$(curl -sS "${CURL_TLS_ARGS[@]}" "$BASE/api/health/ready")
 check "readiness reports the initialized SQLite process ready" \
   test "$readiness_code" = "200"
 check "readiness response is minimal and privacy-safe" \
   test "$readiness_body" = '{"status":"ready"}'
 
 if [ "$AUTH_DISABLED" != "true" ]; then
-  code=$(curl -sk -o /dev/null -w '%{http_code}' "$BASE/login")
+  code=$(curl -sS "${CURL_TLS_ARGS[@]}" -o /dev/null -w '%{http_code}' "$BASE/login")
   check "login page renders" test "$code" = "200"
-  curl -sk -c "$cookie_jar" -o /dev/null -X POST "$BASE/api/auth/login" \
+  curl -sS "${CURL_TLS_ARGS[@]}" -c "$cookie_jar" -o /dev/null -X POST "$BASE/api/auth/login" \
     -H "Content-Type: application/json" \
     --data "{\"email\":\"${SMOKE_EMAIL}\",\"password\":\"${SMOKE_PASSWORD}\"}"
-  me=$(curl -sk -b "$cookie_jar" "$BASE/api/auth/me")
+  me=$(curl -sS "${CURL_TLS_ARGS[@]}" -b "$cookie_jar" "$BASE/api/auth/me")
   check "session identifies admin" grep -q '"role":"admin"' <<< "$me"
 fi
 
@@ -101,7 +110,7 @@ fi
 
 echo
 echo "Product routes"
-overview=$(curl -sk -b "$cookie_jar" "$BASE/dashboard/overview?year=2026")
+overview=$(curl -sS "${CURL_TLS_ARGS[@]}" -b "$cookie_jar" "$BASE/dashboard/overview?year=2026")
 check "Overview renders" grep -q '>Overview<' <<< "$overview"
 check "Overview shows organization progress" grep -q "Organization progress" <<< "$overview"
 check "Overview shows Strategic Priorities" grep -q "Strategic Priorities" <<< "$overview"
@@ -123,7 +132,7 @@ for priority in \
   check "Overview includes $priority" grep -q "$priority" <<< "$overview"
 done
 
-data_entry=$(curl -sk -b "$cookie_jar" "$BASE/data-entry?year=2026")
+data_entry=$(curl -sS "${CURL_TLS_ARGS[@]}" -b "$cookie_jar" "$BASE/data-entry?year=2026")
 check "Data Entry renders" grep -q '>Data Entry<' <<< "$data_entry"
 check "Data Entry has reporting checklist" grep -q "Reporting checklist" <<< "$data_entry"
 check "Data Entry exposes status language" grep -qE "Not started|Needs attention|Complete" <<< "$data_entry"
@@ -133,10 +142,10 @@ else
   check "Data Entry hides the annual storage sentinel" true
 fi
 
-reports=$(curl -sk -b "$cookie_jar" "$BASE/reports?view=board&year=2026")
+reports=$(curl -sS "${CURL_TLS_ARGS[@]}" -b "$cookie_jar" "$BASE/reports?view=board&year=2026")
 check "Reports renders Board Report on demand" grep -q "board-report-root" <<< "$reports"
 check "Board Report includes all 59 KPIs" test "$(grep -o 'data-board-kpi=' <<< "$reports" | wc -l | tr -d ' ')" -eq 59
-trends=$(curl -sk -b "$cookie_jar" "$BASE/reports?view=trends&year=2026")
+trends=$(curl -sS "${CURL_TLS_ARGS[@]}" -b "$cookie_jar" "$BASE/reports?view=trends&year=2026")
 check "Reports renders strategic Trends on demand" grep -q "trend-measure" <<< "$trends"
 if grep -q "board-report-root" <<< "$trends"; then
   check "Trends does not render Board Report" false
@@ -145,14 +154,14 @@ else
 fi
 
 for area in measures goals people activity; do
-  code=$(curl -sk -b "$cookie_jar" -o /dev/null -w '%{http_code}' "$BASE/setup?area=$area")
+  code=$(curl -sS "${CURL_TLS_ARGS[@]}" -b "$cookie_jar" -o /dev/null -w '%{http_code}' "$BASE/setup?area=$area")
   check "Setup $area renders" test "$code" = "200"
 done
-setup=$(curl -sk -b "$cookie_jar" "$BASE/setup?area=measures")
+setup=$(curl -sS "${CURL_TLS_ARGS[@]}" -b "$cookie_jar" "$BASE/setup?area=measures")
 for label in Measures Goals People Activity; do
   check "Setup exposes $label" grep -q ">$label<" <<< "$setup"
 done
-needs_attention=$(curl -sk -b "$cookie_jar" "$BASE/setup?area=measures&filter=needs-attention")
+needs_attention=$(curl -sS "${CURL_TLS_ARGS[@]}" -b "$cookie_jar" "$BASE/setup?area=measures&filter=needs-attention")
 check "Measures integrates setup attention" grep -q "Needs attention (" <<< "$needs_attention"
 check "Attention rows link into Setup details" grep -q "area=measures&amp;item=" <<< "$needs_attention"
 
@@ -162,11 +171,11 @@ for path in \
   /admin /admin/data /admin/strategy-data /admin/goals /admin/kpis \
   /admin/strategic-goals /admin/configuration-gaps /admin/history /admin/users \
   /dashboard/trends; do
-  code=$(curl -sk -b "$cookie_jar" -o /dev/null -w '%{http_code}' "$BASE$path")
+  code=$(curl -sS "${CURL_TLS_ARGS[@]}" -b "$cookie_jar" -o /dev/null -w '%{http_code}' "$BASE$path")
   check "$path is removed" test "$code" = "404"
 done
 for path in /api/entries /api/breakdowns /api/goals; do
-  code=$(curl -sk -b "$cookie_jar" -o /dev/null -w '%{http_code}' -X POST "$BASE$path")
+  code=$(curl -sS "${CURL_TLS_ARGS[@]}" -b "$cookie_jar" -o /dev/null -w '%{http_code}' -X POST "$BASE$path")
   check "$path legacy mutation is removed" test "$code" = "404"
 done
 
@@ -184,9 +193,9 @@ mutation_request "$cookie_jar" POST "/api/strategy/observations" \
 check "strategic observation saves raw inputs" test "$MUTATION_STATUS" = "201"
 observation_id=$(printf "%s" "$MUTATION_BODY" | python3 -c "import sys,json; d=json.load(sys.stdin); print((d.get('observation') or {}).get('id',''))")
 check "strategic observation returns a durable id" test -n "$observation_id"
-report_json=$(curl -sk -b "$cookie_jar" "$BASE/api/strategy/export?year=$year&format=json")
+report_json=$(curl -sS "${CURL_TLS_ARGS[@]}" -b "$cookie_jar" "$BASE/api/strategy/export?year=$year&format=json")
 check "report export reads strategic calculation truth" grep -q '"report"' <<< "$report_json"
-report_csv=$(curl -sk -b "$cookie_jar" "$BASE/api/strategy/export?year=$year&format=csv")
+report_csv=$(curl -sS "${CURL_TLS_ARGS[@]}" -b "$cookie_jar" "$BASE/api/strategy/export?year=$year&format=csv")
 check "CSV uses annual and full-plan columns" grep -q "Annual Pacing Target.*Full Plan Actual" <<< "$report_csv"
 if grep -qE 'NaN|undefined|Infinity' <<< "$report_csv"; then
   check "CSV has finite output" false
@@ -196,7 +205,7 @@ fi
 mutation_request "$cookie_jar" DELETE "/api/strategy/observations" "{\"id\":$observation_id}"
 check "strategic observation cleanup succeeds" test "$MUTATION_STATUS" = "200"
 
-activity=$(curl -sk -b "$cookie_jar" "$BASE/setup?area=activity")
+activity=$(curl -sS "${CURL_TLS_ARGS[@]}" -b "$cookie_jar" "$BASE/setup?area=activity")
 check "Activity retains the deleted observation audit" grep -q "Smoke test; delete after verification" <<< "$activity"
 
 echo
