@@ -144,6 +144,14 @@ either version, rechecks the database, and refuses destructive reseeding if the
 migration does not produce a ready database. A production schema mismatch
 therefore cannot fall through to the sample seed.
 
+The public migration entrypoint records
+`meta.production_migration_state = in_progress` before schema or content work
+and removes it only after the full migration succeeds. The unauthenticated
+readiness probe is read-only and returns the same generic 503 response while
+that marker or the schema-12 content marker remains. A failed migration leaves
+production unready; investigate and rerun or restore the backup rather than
+manually deleting the marker.
+
 ## Pre-deployment
 
 1. Dispatch `Release Security` from `master` and require a successful `Release
@@ -164,6 +172,9 @@ therefore cannot fall through to the sample seed.
    `PRAGMA foreign_key_check`.
 7. Re-run the migration to prove idempotence.
 8. Run credentialed smoke and representative report checks.
+9. Confirm `GET /api/health/ready` returns exactly
+   `{"status":"ready"}`, `fly checks list` reports passing, and the production
+   auth wall still redirects `/` to `/login`.
 
 ## Verified migration paths
 

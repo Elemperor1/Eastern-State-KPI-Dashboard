@@ -23,6 +23,13 @@ Actions supply chain are in scope. Tests, fixtures, sample data, and the
 development-only `AUTH_DISABLED` path are not production vulnerabilities unless
 they can escape their documented isolation or affect a production artifact.
 
+`GET /api/health/ready` is an intentional unauthenticated exception to the
+production auth wall. Its response is limited to `{"status":"ready"}` or
+`{"status":"unavailable"}` and must never expose accounts, installation or
+Strategic Plan content, row counts, paths, schema details, exceptions, stacks,
+secrets, auth-bypass state, credentials, cookies, or sessions. Report any
+deviation privately using the process above.
+
 Reports are evaluated against the current production path. A dependency or base
 image advisory is actionable when the affected operation is reachable or a
 supported fixed version is available; unfixed or unreachable advisories remain

@@ -74,6 +74,10 @@
  *                                  403 gate; reachable by must_change
  *                                  users performing their rotation.
  *                                  Minimum route.
+ *   GET    /api/health/ready        PUBLIC operational exception. Uses an
+ *                                  independent read-only SQLite probe and
+ *                                  returns only a constant-shape readiness
+ *                                  status; it imports no session boundary.
  *
  * Page routes (`/`, `/dashboard/*`, `/admin/*`) also sit outside the
  * throw-based shared gate: they call `getCurrentUser` + `redirect()`

@@ -10,6 +10,33 @@ describe("production migration entrypoint", () => {
 
   afterAll(() => fs.rmSync(directory, { recursive: true, force: true }));
 
+  it("fails with a bounded structured event and retains the in-progress marker", () => {
+    const databasePath = path.join(directory, "broken-migration.db");
+    const database = new DatabaseSync(databasePath);
+    database.exec(`
+      CREATE TABLE meta (key TEXT PRIMARY KEY, value TEXT NOT NULL);
+      INSERT INTO meta (key, value) VALUES ('schema_version', '14');
+    `);
+    database.close();
+
+    const migrated = runTsx("scripts/migrate.ts", databasePath);
+
+    expect(migrated.status).toBe(1);
+    expect(migrated.stderr).toContain('"event":"migration_failure"');
+    expect(migrated.stderr).toContain('"reason":"migration_execution_failed"');
+    expect(migrated.stderr).not.toContain(databasePath);
+    expect(migrated.stderr).not.toMatch(/no such table|stack|scripts\/migrate\.ts:/i);
+    const verify = new DatabaseSync(databasePath, { readOnly: true });
+    expect(
+      verify
+        .prepare(
+          "SELECT value FROM meta WHERE key = 'production_migration_state'",
+        )
+        .get(),
+    ).toEqual({ value: "in_progress" });
+    verify.close();
+  });
+
   it("initializes canonical strategy rows only when the populated legacy catalog has no strategic entities", () => {
     const databasePath = path.join(directory, "empty-strategic-sidecars.db");
     expect(runTsx("scripts/seed.ts", databasePath).status).toBe(0);

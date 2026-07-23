@@ -11,6 +11,7 @@ operations; server-rendered pages call feature operations directly.
 | Route family | Product consumer | Gate | Owner |
 | --- | --- | --- | --- |
 | `/api/auth/{login,logout,me,change-password}` | Login, logout, CSRF bootstrap, password setup | public or current-session policy | `src/features/auth`, `src/lib/request-guard.ts` |
+| `/api/health/ready` | Minimal process-to-SQLite production readiness | public, read-only, constant-shape response | `src/features/health/readiness.ts` |
 | `/api/strategy/{observations,component-entries,distributions}` | Data Entry | Admin + CSRF for mutations | `src/features/strategy` |
 | `/api/strategy/{configurations,components,targets,goals,memberships}` | Setup → Measures/Goals | Admin + CSRF | `src/features/strategy` |
 | `/api/strategy/board-reporting` | Setup → Goals → Board visibility | Admin + CSRF | `src/features/board-reporting` |

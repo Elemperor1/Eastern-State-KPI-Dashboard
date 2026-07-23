@@ -1,10 +1,17 @@
 /** Apply the application's idempotent SQLite migration without seeding data. */
+import fs from "node:fs";
+import path from "node:path";
+import { DatabaseSync } from "node:sqlite";
 import { getDb, resetDb, SCHEMA_VERSION } from "../src/lib/db";
 import {
   initializeStrategicPlanConfiguration,
 } from "../src/features/strategy/mutations";
 import { reconcileStrategicMigrationData } from "../src/features/strategy/migration-reconciliation";
 import { EASTERN_STATE_STRATEGIC_CONFIGURATION_FIXTURE } from "./bootstrap/strategic-configuration-fixture";
+import {
+  logMigration,
+  logMigrationFailure,
+} from "./operational-log.mjs";
 
 /** Runs the main workflow. */
 function main(): void {
@@ -62,8 +69,43 @@ function main(): void {
   } else {
     console.log("[migrate] no database-authority content migration is pending.");
   }
+  db.prepare(
+    "DELETE FROM meta WHERE key = 'production_migration_state'",
+  ).run();
   console.log(`[migrate] schema ${actual} ready; existing data left intact.`);
   resetDb();
 }
 
-main();
+/** Marks the database unavailable before any migration transaction begins. */
+function markMigrationStarted(): void {
+  const databasePath =
+    process.env.DATABASE_PATH ??
+    path.resolve(process.cwd(), "data", "kpi.db");
+  fs.mkdirSync(path.dirname(databasePath), { recursive: true });
+  const database = new DatabaseSync(databasePath);
+  try {
+    database.exec(
+      "CREATE TABLE IF NOT EXISTS meta (key TEXT PRIMARY KEY, value TEXT NOT NULL)",
+    );
+    database.prepare(
+      "INSERT OR REPLACE INTO meta (key, value) VALUES ('production_migration_state', 'in_progress')",
+    ).run();
+  } finally {
+    database.close();
+  }
+}
+
+let migrationMarked = false;
+try {
+  markMigrationStarted();
+  migrationMarked = true;
+  logMigration("started");
+  main();
+  logMigration("completed");
+} catch {
+  logMigrationFailure(
+    migrationMarked ? "migration_execution_failed" : "database_marker_failed",
+  );
+  resetDb();
+  process.exitCode = 1;
+}

@@ -71,6 +71,13 @@ class SmokeFakeHandler(http.server.BaseHTTPRequestHandler):
         path = parsed.path
         params = urllib.parse.parse_qs(parsed.query)
 
+        if path == "/api/health/ready":
+            return self._text(
+                200,
+                '{"status":"ready"}',
+                "application/json; charset=utf-8",
+            )
+
         # Auth endpoints (minimal — AUTH_DISABLED mode doesn't hit these,
         # but the fake server needs to return something reasonable)
         if path == "/api/auth/me":

@@ -246,6 +246,8 @@ A repeatable smoke harness lives at `scripts/smoke.sh`. Invoke it directly (no
 npm wrapper) against a running server. The bypass path is dev-only because
 `next start` runs with `NODE_ENV=production` and cannot serve app routes with
 `AUTH_DISABLED=true`.
+TLS certificates are verified. For an HTTPS endpoint signed by a private CA,
+set `SMOKE_CA_BUNDLE` to the CA certificate bundle path.
 
 ```bash
 # Smoke test the bypass-auth flow (no login required).
