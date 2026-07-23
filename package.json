@@ -46,7 +46,7 @@
     "html2canvas": "^1.4.1",
     "iron-session": "^8.0.4",
     "jspdf": "^4.2.1",
-    "lucide-react": "^0.453.0",
+    "lucide-react": "^1.26.0",
     "next": "16.2.11",
     "react": "^19.0.0",
     "react-dom": "^19.0.0",
