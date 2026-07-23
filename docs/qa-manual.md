@@ -71,6 +71,10 @@ AUTH_DISABLED=true PORT=3290 BASE=http://127.0.0.1:3290 bash ./scripts/smoke.sh
 
 - Confirm removed UI routes and `/api/entries`, `/api/breakdowns`, `/api/goals`
   return 404.
+- Confirm anonymous `GET /api/health/ready` returns only
+  `{"status":"ready"}` with HTTP 200 and `Cache-Control: no-store`; a missing,
+  incompatible, unavailable, migration-in-progress, or initialization-pending
+  isolated database must return only `{"status":"unavailable"}` with HTTP 503.
 - Confirm a Viewer sees only Overview and Reports and receives 403 from every
   Admin mutation in the auth regression matrix. Confirm a Board account cannot
   open Setup or mutate Board visibility directly.
@@ -90,6 +94,9 @@ AUTH_DISABLED=true PORT=3290 BASE=http://127.0.0.1:3290 bash ./scripts/smoke.sh
 - Run `DATABASE_PATH=/absolute/path/to/kpi.db npm run db:migrate`; never use
   `db:seed` as a migration.
 - Run the credentialed production/auth-enabled smoke.
+- Run `fly config validate --strict`, then confirm `fly checks list` reports the
+  `/api/health/ready` service check as passing. Configuration validation and
+  local checks do not authorize a deploy.
 - Record before/after traces for Overview, Data Entry, Reports, and Setup on
   desktop and representative mobile widths.
 - Run `npm run perf:profile` with `BASE`, `PERF_EMAIL`, and `PERF_PASSWORD`.

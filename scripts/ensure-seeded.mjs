@@ -2,6 +2,12 @@ import fs from "node:fs";
 import path from "node:path";
 import { spawnSync } from "node:child_process";
 import { DatabaseSync } from "node:sqlite";
+import { checkDatabaseReadiness } from "../src/features/health/readiness-core.mjs";
+import {
+  logMigrationFailure,
+  logStartup,
+  logStartupFailure,
+} from "./operational-log.mjs";
 
 const dbPath = process.env.DATABASE_PATH || path.resolve(process.cwd(), "data", "kpi.db");
 const dbDir = path.dirname(dbPath);
@@ -21,7 +27,8 @@ function readSchemaPolicy() {
   return { expectedSchemaVersion: version, additiveFrom };
 }
 
-const { expectedSchemaVersion, additiveFrom } = readSchemaPolicy();
+logStartup("initialization_started");
+let expectedSchemaVersion = 0;
 
 /** Retrieves existing database. */
 function queryExistingDatabase() {
@@ -104,16 +111,17 @@ function queryExistingDatabase() {
     return {
       needsSeed: false,
       safeToSeed: false,
-      reason: `${categoryCount} categories already seeded`,
+      reason: "database already contains application data",
       schemaVersion,
       categoryCount,
       businessRowCount,
     };
-  } catch (error) {
+  } catch {
     return {
       needsSeed: true,
       safeToSeed: false,
-      reason: `database check failed: ${error.message}`,
+      reason: "database check failed",
+      failureReason: "database_unavailable",
       schemaVersion: 0,
       categoryCount: 0,
       businessRowCount: 0,
@@ -123,54 +131,88 @@ function queryExistingDatabase() {
   }
 }
 
-fs.mkdirSync(dbDir, { recursive: true });
-
-let result = queryExistingDatabase();
-if (!result.needsSeed) {
-  console.log(`[seed] ${result.reason}; leaving existing data intact.`);
+/** Exits successfully only when the shared production preflight is ready. */
+function finishInitializationOrExit() {
+  const readiness = checkDatabaseReadiness(dbPath, expectedSchemaVersion);
+  if (!readiness.ready) {
+    logStartupFailure(readiness.reason);
+    console.error(
+      "[seed] production initialization is incomplete; refusing to start.",
+    );
+    process.exit(1);
+  }
+  logStartup("initialization_completed");
   process.exit(0);
 }
 
-if (
-  result.categoryCount > 0 &&
-  additiveFrom.includes(result.schemaVersion)
-) {
-  console.log(
-    `[seed] schema ${result.schemaVersion} is an additive predecessor; running migration before seed checks.`,
-  );
-  const migration = spawnSync("npm", ["run", "db:migrate"], {
+/** Runs the production database initialization decision. */
+function main() {
+  const schemaPolicy = readSchemaPolicy();
+  expectedSchemaVersion = schemaPolicy.expectedSchemaVersion;
+  fs.mkdirSync(dbDir, { recursive: true });
+
+  let result = queryExistingDatabase();
+  if (!result.needsSeed) {
+    console.log(`[seed] ${result.reason}; leaving existing data intact.`);
+    finishInitializationOrExit();
+  }
+
+  if (
+    result.categoryCount > 0 &&
+    schemaPolicy.additiveFrom.includes(result.schemaVersion)
+  ) {
+    console.log(
+      `[seed] schema ${result.schemaVersion} is an additive predecessor; running migration before seed checks.`,
+    );
+    const migration = spawnSync("npm", ["run", "db:migrate"], {
+      cwd: process.cwd(),
+      env: process.env,
+      stdio: "inherit",
+    });
+    if (migration.status !== 0) {
+      const exitCode = migration.status ?? 1;
+      logMigrationFailure("migration_command_failed", exitCode);
+      logStartupFailure("migration_command_failed", exitCode);
+      process.exit(exitCode);
+    }
+    result = queryExistingDatabase();
+    if (!result.needsSeed) {
+      console.log(`[seed] ${result.reason}; leaving migrated data intact.`);
+      finishInitializationOrExit();
+    }
+    logStartupFailure("migration_postcheck_failed");
+    console.error(
+      "[seed] additive migration did not produce a ready database. Refusing destructive reseed.",
+    );
+    process.exit(1);
+  }
+
+  if (!result.safeToSeed) {
+    logStartupFailure(result.failureReason ?? "unsafe_seed_refused");
+    console.error(
+      "[seed] database state is not safe for an automatic sample reseed; back up and run an explicit migration or npm run db:seed only if replacement is intended.",
+    );
+    process.exit(1);
+  }
+
+  console.log(`[seed] ${result.reason}; running sample seed.`);
+  const seed = spawnSync("npm", ["run", "db:seed"], {
     cwd: process.cwd(),
     env: process.env,
     stdio: "inherit",
   });
-  if (migration.status !== 0) {
-    process.exit(migration.status ?? 1);
+  if (seed.status !== 0) {
+    const exitCode = seed.status ?? 1;
+    logStartupFailure("seed_command_failed", exitCode);
+    process.exit(exitCode);
   }
-  result = queryExistingDatabase();
-  if (!result.needsSeed) {
-    console.log(`[seed] ${result.reason}; leaving migrated data intact.`);
-    process.exit(0);
-  }
-  console.error(
-    `[seed] additive migration did not produce a ready database: ${result.reason}. Refusing destructive reseed.`,
-  );
-  process.exit(1);
+  finishInitializationOrExit();
 }
 
-if (!result.safeToSeed) {
-  console.error(
-    `[seed] ${result.reason}. Refusing destructive sample reseed; back up and run an explicit migration or npm run db:seed only if replacement is intended.`,
-  );
-  process.exit(1);
-}
-
-console.log(`[seed] ${result.reason}; running sample seed.`);
-const seed = spawnSync("npm", ["run", "db:seed"], {
-  cwd: process.cwd(),
-  env: process.env,
-  stdio: "inherit",
-});
-
-if (seed.status !== 0) {
-  process.exit(seed.status ?? 1);
+try {
+  main();
+} catch {
+  logStartupFailure("initialization_failed");
+  console.error("[seed] production initialization failed; refusing to start.");
+  process.exitCode = 1;
 }

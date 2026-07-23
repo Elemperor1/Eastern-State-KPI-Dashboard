@@ -58,6 +58,13 @@ trap 'rm -f "$cookie_jar" "$anonymous_jar"' EXIT
 echo "== Eastern State KPI smoke test =="
 echo "Base: $BASE"
 
+readiness_code=$(curl -sk -o /dev/null -w '%{http_code}' "$BASE/api/health/ready")
+readiness_body=$(curl -sk "$BASE/api/health/ready")
+check "readiness reports the initialized SQLite process ready" \
+  test "$readiness_code" = "200"
+check "readiness response is minimal and privacy-safe" \
+  test "$readiness_body" = '{"status":"ready"}'
+
 if [ "$AUTH_DISABLED" != "true" ]; then
   code=$(curl -sk -o /dev/null -w '%{http_code}' "$BASE/login")
   check "login page renders" test "$code" = "200"

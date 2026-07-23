@@ -41,7 +41,7 @@ describe("ensure-seeded destructive reset guard", () => {
     },
   );
 
-  it("leaves a populated schema-14 database intact when sample_data metadata is absent", () => {
+  it("preserves but refuses an incomplete schema-14 database", () => {
     const databasePath = tempDatabase();
     const db = new DatabaseSync(databasePath);
     db.exec(`
@@ -54,8 +54,10 @@ describe("ensure-seeded destructive reset guard", () => {
 
     const result = runEnsureSeeded(databasePath);
 
-    expect(result.status).toBe(0);
-    expect(result.stdout).toContain("leaving existing data intact");
+    expect(result.status).toBe(1);
+    expect(result.stderr).toContain('"event":"startup_failure"');
+    expect(result.stderr).toContain('"reason":"database_incompatible"');
+    expect(result.stderr).toContain("refusing to start");
     const verify = new DatabaseSync(databasePath);
     expect(
       verify.prepare("SELECT name FROM categories WHERE id = 1").get(),
@@ -70,8 +72,39 @@ describe("ensure-seeded destructive reset guard", () => {
     const result = runEnsureSeeded(databasePath);
 
     expect(result.status).toBe(1);
-    expect(result.stderr).toContain("Refusing destructive sample reseed");
+    expect(result.stderr).toContain('"event":"startup_failure"');
+    expect(result.stderr).toContain('"reason":"database_unavailable"');
+    expect(result.stderr).toContain("not safe for an automatic sample reseed");
+    expect(result.stderr).not.toContain(databasePath);
+    expect(result.stderr).not.toMatch(/file is not a database|stack/i);
   });
+
+  it.each([
+    ["production_migration_state", "in_progress", "migration_in_progress"],
+    [
+      "schema_12_content_migration_pending",
+      "1",
+      "initialization_incomplete",
+    ],
+  ])(
+    "refuses startup when %s remains set",
+    (key, value, expectedReason) => {
+      const databasePath = tempDatabase();
+      expect(runTsx("scripts/seed.ts", databasePath).status).toBe(0);
+      const database = new DatabaseSync(databasePath);
+      database
+        .prepare("INSERT OR REPLACE INTO meta (key, value) VALUES (?, ?)")
+        .run(key, value);
+      database.close();
+
+      const result = runEnsureSeeded(databasePath);
+
+      expect(result.status).toBe(1);
+      expect(result.stderr).toContain('"event":"startup_failure"');
+      expect(result.stderr).toContain(`"reason":"${expectedReason}"`);
+      expect(result.stderr).not.toContain(databasePath);
+    },
+  );
 
   it("refuses to reseed an empty catalog when snapshot audit rows remain", () => {
     const databasePath = tempDatabase();
@@ -88,8 +121,9 @@ describe("ensure-seeded destructive reset guard", () => {
     const result = runEnsureSeeded(databasePath);
 
     expect(result.status).toBe(1);
-    expect(result.stderr).toContain("retains KPI-owned business or audit rows");
-    expect(result.stderr).toContain("Refusing destructive sample reseed");
+    expect(result.stderr).toContain('"event":"startup_failure"');
+    expect(result.stderr).toContain('"reason":"unsafe_seed_refused"');
+    expect(result.stderr).toContain("not safe for an automatic sample reseed");
   });
 
   it("refuses to reseed an empty catalog when Board reporting audit rows remain", () => {
@@ -107,8 +141,9 @@ describe("ensure-seeded destructive reset guard", () => {
     const result = runEnsureSeeded(databasePath);
 
     expect(result.status).toBe(1);
-    expect(result.stderr).toContain("retains KPI-owned business or audit rows");
-    expect(result.stderr).toContain("Refusing destructive sample reseed");
+    expect(result.stderr).toContain('"event":"startup_failure"');
+    expect(result.stderr).toContain('"reason":"unsafe_seed_refused"');
+    expect(result.stderr).toContain("not safe for an automatic sample reseed");
   });
 });
 
