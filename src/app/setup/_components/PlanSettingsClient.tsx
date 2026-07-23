@@ -64,7 +64,7 @@ function payloadFromDraft(
 /** Implements the error hint operation. */
 function errorHint(error: string | undefined, fallback?: ReactNode): ReactNode {
   return error ? (
-    <span className="font-medium text-[var(--color-danger-text)]">{error}</span>
+    <span className="font-medium text-(--color-danger-text)">{error}</span>
   ) : (
     fallback ?? null
   );

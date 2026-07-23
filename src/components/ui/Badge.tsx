@@ -11,9 +11,9 @@ export interface BadgeProps extends React.HTMLAttributes<HTMLSpanElement> {
 
 const variants = {
   default: "bg-ink-100 text-ink-700",
-  success: "bg-[var(--color-success-bg)] text-[var(--color-success-text)]",
-  error: "bg-[var(--color-danger-bg)] text-[var(--color-danger-text)]",
-  warning: "bg-[var(--color-warning-bg)] text-[var(--color-warning-text)]",
+  success: "bg-(--color-success-bg) text-(--color-success-text)",
+  error: "bg-(--color-danger-bg) text-(--color-danger-text)",
+  warning: "bg-(--color-warning-bg) text-(--color-warning-text)",
   incomplete: "bg-ink-100 text-ink-700",
   info: "bg-brand-50 text-brand-800",
   brand: "bg-ink-950 text-white",

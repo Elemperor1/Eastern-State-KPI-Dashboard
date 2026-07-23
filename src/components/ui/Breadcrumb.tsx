@@ -16,7 +16,7 @@ export function Breadcrumb({ href, label, className }: BreadcrumbProps) {
     <div className={cn("mb-4 no-print", className)}>
       <Link
         href={href}
-        className="inline-flex min-h-10 items-center gap-2 rounded-lg pr-3 text-sm font-medium text-ink-600 transition-[color,background-color] duration-[var(--motion-fast)] ease-[var(--ease-out)] hover:text-ink-950 focus:outline-none"
+        className="inline-flex min-h-10 items-center gap-2 rounded-lg pr-3 text-sm font-medium text-ink-600 transition-[color,background-color] duration-(--motion-fast) ease-out hover:text-ink-950 focus:outline-hidden"
       >
         <ArrowLeft className="size-4" aria-hidden />
         {label}

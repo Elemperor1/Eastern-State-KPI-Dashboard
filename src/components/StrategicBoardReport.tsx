@@ -85,7 +85,7 @@ function SummaryMetric({
       </dt>
       <dd
         className={cn(
-          "mt-1 break-words font-semibold tabular-nums text-ink-900",
+          "mt-1 wrap-break-word font-semibold tabular-nums text-ink-900",
           compact ? "text-sm leading-5" : "text-2xl",
         )}
       >
@@ -111,7 +111,7 @@ function ReasonList({
   return (
     <ul className="space-y-1.5 text-sm leading-6 text-ink-700" aria-label={ariaLabel}>
       {reasons.map((reason, index) => (
-        <li key={`${reason}-${index}`} className="break-words">
+        <li key={`${reason}-${index}`} className="wrap-break-word">
           <span aria-hidden>•</span> {reason}
         </li>
       ))}
@@ -164,7 +164,7 @@ function CompletionSummary({
         />
       )}
       {showExcludedReasons && summary.excludedGoalsCount > 0 ? (
-        <div className="mt-4 rounded-lg bg-[var(--color-warning-bg)] p-3">
+        <div className="mt-4 rounded-lg bg-(--color-warning-bg) p-3">
           <p className="mb-2 text-xs font-semibold uppercase tracking-[0.06em] text-ink-700">
             Goals not counted
           </p>
@@ -201,7 +201,6 @@ export function StrategicBoardReport({
         data-raster-export-text
       >
         <PrintReportHeader
-          className="!block"
           organizationName={report.organizationName}
           eyebrow="Strategic plan · Board report"
           title={report.organizationName}
@@ -227,7 +226,7 @@ export function StrategicBoardReport({
             <p className="section-eyebrow">Organization-wide status</p>
             <h2
               id={`${id}-executive-summary`}
-              className="break-words text-2xl font-semibold tracking-[-0.02em] text-ink-900"
+              className="wrap-break-word text-2xl font-semibold tracking-[-0.02em] text-ink-900"
             >
               Executive summary
             </h2>
@@ -298,7 +297,6 @@ export function StrategicBoardReport({
       )}
 
         <PrintReportFooter
-          className="!block"
           notice={`Internal — ${report.organizationName} · For internal use only`}
         />
       </article>
@@ -327,7 +325,7 @@ function PrioritySection({
         <div className="flex flex-wrap items-start justify-between gap-4">
           <div className="min-w-0">
             <p className="section-eyebrow">Strategic priority {priorityIndex + 1}</p>
-            <h2 id={headingId} className="break-words text-2xl font-semibold text-ink-900">
+            <h2 id={headingId} className="wrap-break-word text-2xl font-semibold text-ink-900">
               {priority.name}
             </h2>
           </div>
@@ -384,7 +382,7 @@ function GoalSection({
         <div className="flex flex-wrap items-start justify-between gap-4">
           <div className="min-w-0 max-w-3xl">
             <p className="section-eyebrow">Strategic goal {goalIndex + 1}</p>
-            <h3 id={headingId} className="break-words text-xl font-semibold text-ink-900">
+            <h3 id={headingId} className="wrap-break-word text-xl font-semibold text-ink-900">
               {goal.name}
             </h3>
           </div>
@@ -460,7 +458,7 @@ function KpiSection({
         <div className="flex flex-wrap items-start justify-between gap-4">
           <div className="min-w-0 max-w-3xl">
             <p className="section-eyebrow">Measure {kpiIndex + 1}</p>
-            <h4 id={headingId} className="break-words text-xl font-semibold text-ink-900">
+            <h4 id={headingId} className="wrap-break-word text-xl font-semibold text-ink-900">
               {kpi.name}
             </h4>
           </div>
@@ -479,7 +477,7 @@ function KpiSection({
             <p className="text-[10px] font-semibold uppercase tracking-[0.08em] text-ink-500">
               Calculated result
             </p>
-            <p className="mt-1 break-words text-3xl font-semibold leading-tight text-ink-900">
+            <p className="mt-1 wrap-break-word text-3xl font-semibold leading-tight text-ink-900">
               {kpi.result.displayValue}
             </p>
             {kpi.result.formulaExplanation ? (
@@ -487,7 +485,7 @@ function KpiSection({
                 <p className="text-[10px] font-semibold uppercase tracking-[0.08em] text-ink-500">
                   How this was calculated
                 </p>
-                <p className="mt-1 break-words text-sm leading-6 text-ink-700">
+                <p className="mt-1 wrap-break-word text-sm leading-6 text-ink-700">
                   {kpi.result.formulaExplanation}
                 </p>
               </div>
@@ -524,7 +522,7 @@ function KpiSection({
         </div>
 
         {kpi.unresolvedReasons.length > 0 ? (
-          <div className="mt-5 rounded-lg bg-[var(--color-warning-bg)] p-3">
+          <div className="mt-5 rounded-lg bg-(--color-warning-bg) p-3">
             <p className="mb-2 text-xs font-semibold uppercase tracking-[0.06em] text-ink-700">
               What needs attention
             </p>
@@ -642,7 +640,7 @@ function TargetProgressCard({
             <p className="text-[10px] font-semibold uppercase tracking-[0.08em] text-ink-500">
               Target description
             </p>
-            <p className="mt-1 break-words text-sm font-semibold leading-6 text-ink-900">
+            <p className="mt-1 wrap-break-word text-sm font-semibold leading-6 text-ink-900">
               {progress.targetDisplayText}
             </p>
           </div>
@@ -687,8 +685,8 @@ function ComponentTable({
         <tbody>
           {components.map((component) => (
             <tr key={component.id} className="break-inside-avoid align-top" data-pdf-keep-together>
-              <td className="break-words font-semibold text-ink-900">{component.label}</td>
-              <td className="break-words">
+              <td className="wrap-break-word font-semibold text-ink-900">{component.label}</td>
+              <td className="wrap-break-word">
                 <p>{component.result.displayValue}</p>
                 <div className="mt-2">
                   <StatusBadge label={`${component.label} result state`} value={component.result.state} />
@@ -699,11 +697,11 @@ function ComponentTable({
                   </p>
                 ) : null}
               </td>
-              <td className="break-words text-xs">
+              <td className="wrap-break-word text-xs">
                 {formatBoardReportToken(component.measurementType)}
                 {component.unit ? <span className="mt-1 block text-ink-500">{component.unit}</span> : null}
               </td>
-              <td className="break-words text-xs leading-5">
+              <td className="wrap-break-word text-xs leading-5">
                 {component.progress ? (
                   <>
                     <span className="font-semibold text-ink-900">
@@ -731,7 +729,7 @@ function ComponentTable({
               <td>
                 <StatusBadge label="Setup status" value={component.configurationStatus} />
               </td>
-              <td className="break-words text-xs leading-5">
+              <td className="wrap-break-word text-xs leading-5">
                 {component.unresolvedReasons.length > 0
                   ? component.unresolvedReasons.join("; ")
                   : "None supplied"}
@@ -773,11 +771,11 @@ function DemographicTable({
               : "Overlapping bands"}
           </Chip>
         </div>
-        <div className="mt-3 rounded-lg bg-[var(--color-info-bg)] p-3">
+        <div className="mt-3 rounded-lg bg-(--color-info-bg) p-3">
           <p className="text-xs font-semibold uppercase tracking-[0.06em] text-ink-700">
             Respondent population caveat
           </p>
-          <p className="mt-1 break-words text-sm leading-6 text-ink-700">
+          <p className="mt-1 wrap-break-word text-sm leading-6 text-ink-700">
             {demographics.populationCaveat ??
               "A population-representation caveat was not supplied."}
           </p>
@@ -834,7 +832,7 @@ function DemographicTable({
           {demographics.bands.length > 0 ? (
             demographics.bands.map((band) => (
               <tr key={band.id} className="break-inside-avoid align-top" data-pdf-keep-together>
-                <td className="break-words font-semibold text-ink-900">{band.label}</td>
+                <td className="wrap-break-word font-semibold text-ink-900">{band.label}</td>
                 <td className="tabular-nums">{formatBoardReportNumber(band.count)}</td>
                 <td className="tabular-nums">{formatBoardReportPercentage(band.percentage)}</td>
                 <td>
@@ -901,7 +899,7 @@ function RevenueTable({
           {revenue.streams.length > 0 ? (
             revenue.streams.map((stream) => (
               <tr key={stream.id} className="break-inside-avoid align-top" data-pdf-keep-together>
-                <td className="break-words font-semibold text-ink-900">{stream.label}</td>
+                <td className="wrap-break-word font-semibold text-ink-900">{stream.label}</td>
                 <td className="tabular-nums">{formatBoardReportCurrency(stream.value)}</td>
                 <td className="tabular-nums">
                   {formatBoardReportPercentage(stream.sharePercentage)}

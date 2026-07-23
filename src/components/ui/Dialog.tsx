@@ -27,7 +27,7 @@ export function Dialog({ open, title, description, children, footer, onClose }: 
 
   return createPortal(
     <div
-      className="modal-layer fixed inset-0 z-[70] grid place-items-center px-4"
+      className="modal-layer fixed inset-0 z-70 grid place-items-center px-4"
       data-state={presence.visible ? "open" : "closed"}
       aria-hidden={!open}
       inert={!open}
@@ -45,7 +45,7 @@ export function Dialog({ open, title, description, children, footer, onClose }: 
         aria-labelledby={titleId}
         aria-describedby={description ? descriptionId : undefined}
         tabIndex={-1}
-        className="modal-panel surface-elevated relative w-full max-w-lg overflow-hidden focus:outline-none"
+        className="modal-panel surface-elevated relative w-full max-w-lg overflow-hidden focus:outline-hidden"
       >
         <div className="flex items-start justify-between gap-4 border-b border-ink-100 px-6 py-5">
           <div>

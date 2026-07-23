@@ -12,7 +12,7 @@ describe("interaction and motion contracts", () => {
     expect(css).toContain("--motion-fast: 120ms");
     expect(css).toContain("--motion-standard: 180ms");
     expect(css).toContain("--ease-drawer: cubic-bezier(0.32, 0.72, 0, 1)");
-    expect(css).toContain(".page-enter {\n  animation: none;");
+    expect(css).toMatch(/\.page-enter\s*\{\s*animation: none;/);
     expect(css).not.toContain("@keyframes page-enter");
     expect(css).toContain('transform: translateX(-100%)');
     expect(css).toContain("transform: scale(0.97)");
@@ -30,8 +30,8 @@ describe("interaction and motion contracts", () => {
     expect(css).not.toContain("duration-150");
     expect(css).toContain("transition-duration: var(--motion-fast)");
     expect(primitives).not.toContain("duration-150");
-    expect(primitives).toContain("duration-[var(--motion-fast)]");
-    expect(primitives).toContain("ease-[var(--ease-out)]");
+    expect(primitives).toContain("duration-(--motion-fast)");
+    expect(primitives).toContain("ease-out");
   });
 
   it("shares focus trapping, Escape, presence, and restoration across temporary layers", () => {

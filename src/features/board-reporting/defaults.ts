@@ -19,7 +19,7 @@ export const DEFAULT_BOARD_REPORTING_SCOPE = [
     prioritySlug: "historic-preservation",
     displayTitle: "Priority 2: Advancing Historic Preservation",
     statements: [
-      { text: "Complete the assessment and outline phase of the Conservation Management Plan.", kpiSlugs: ["conservation-plan-revised"] },
+      { text: "Complete the assessment and outline-solid phase of the Conservation Management Plan.", kpiSlugs: ["conservation-plan-revised"] },
       { text: "Assess and document 15% of historic structures to contribute to preservation guidelines and tools.", kpiSlugs: ["historic-structures-assessed"] },
       { text: "Achieve a 10% increase in preservation-specific funding.", kpiSlugs: ["conservation-funds-utilized", "preservation-campaign-donors"] },
     ],

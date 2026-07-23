@@ -62,7 +62,7 @@ export function ConfirmDialog({
 
   return createPortal(
     <div
-      className="modal-layer fixed inset-0 z-[70] grid place-items-center px-4"
+      className="modal-layer fixed inset-0 z-70 grid place-items-center px-4"
       data-state={presence.visible ? "open" : "closed"}
       aria-hidden={!open}
       inert={!open}
@@ -81,10 +81,10 @@ export function ConfirmDialog({
         aria-labelledby={titleId}
         aria-describedby={descriptionId}
         tabIndex={-1}
-        className="modal-panel surface-elevated relative w-full max-w-md p-6 focus:outline-none"
+        className="modal-panel surface-elevated relative w-full max-w-md p-6 focus:outline-hidden"
       >
         <div className="mb-5 flex items-start gap-4">
-          <div className="grid size-10 shrink-0 place-items-center rounded-lg bg-[var(--color-danger-bg)] text-[var(--color-danger-text)]">
+          <div className="grid size-10 shrink-0 place-items-center rounded-lg bg-(--color-danger-bg) text-(--color-danger-text)">
             <AlertTriangle className="size-5" aria-hidden />
           </div>
           <div>

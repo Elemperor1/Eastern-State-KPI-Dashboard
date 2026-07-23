@@ -6,28 +6,371 @@
    font-display is "swap" so content is never held invisible while the
    licensed face loads. Regular and medium are preloaded in layout.tsx;
    the fallback stack keeps first paint readable on slow connections. */
-@font-face {
-  font-family: "Galano Grotesque";
-  font-style: normal;
-  font-weight: 300;
-  font-display: swap;
-  src: url("/fonts/galano-grotesque-light.otf") format("opentype");
+@import 'tailwindcss';
+
+@theme {
+  --color-ink-50: #f5f7f8;
+  --color-ink-100: #e7eef0;
+  --color-ink-200: #cfe0e3;
+  --color-ink-300: #a9c2c8;
+  --color-ink-400: #7a9aa3;
+  --color-ink-500: #557883;
+  --color-ink-600: #3a5e69;
+  --color-ink-700: #234954;
+  --color-ink-800: #113e4a;
+  --color-ink-900: #003649;
+  --color-ink-950: #002130;
+
+  --color-brand-50: #eaf7f8;
+  --color-brand-100: #cfedf0;
+  --color-brand-200: #9cd9de;
+  --color-brand-300: #5fbfc7;
+  --color-brand-400: #36adb6;
+  --color-brand-500: #209ba5;
+  --color-brand-600: #0e818b;
+  --color-brand-700: #005f6f;
+  --color-brand-800: #014a57;
+  --color-brand-900: #003649;
+  --color-brand-950: #001f29;
+
+  --color-accent-50: #fdfbe7;
+  --color-accent-100: #fbf6c2;
+  --color-accent-200: #f8ee88;
+  --color-accent-300: #f7e961;
+  --color-accent-400: #f7f24f;
+  --color-accent-500: #f7f242;
+  --color-accent-600: #d9d62b;
+  --color-accent-700: #a8a51b;
+  --color-accent-800: #6e6c10;
+
+  /* Keep the v3 border fallback in sRGB. html2canvas cannot parse the
+     default v4 OKLCH gray token used by the compatibility border rule. */
+  --color-gray-200: #e5e7eb;
+
+  --font-sans:
+    Galano Grotesque, -apple-system, BlinkMacSystemFont, Segoe UI, sans-serif;
+
+  --shadow-floating: 0 0.5rem 1.5rem rgba(0, 33, 48, 0.18);
 }
 
-@font-face {
-  font-family: "Galano Grotesque";
-  font-style: normal;
-  font-weight: 400;
-  font-display: swap;
-  src: url("/fonts/galano-grotesque-regular.otf") format("opentype");
+/*
+  The default border color has changed to `currentcolor` in Tailwind CSS v4,
+  so we've added these compatibility styles to make sure everything still
+  looks the same as it did with Tailwind CSS v3.
+
+  If we ever want to remove these styles, we need to add an explicit border
+  color utility to any element that depends on these defaults.
+*/
+@layer base {
+  *,
+  ::after,
+  ::before,
+  ::backdrop,
+  ::file-selector-button {
+    border-color: var(--color-gray-200, currentcolor);
+  }
 }
 
-@font-face {
-  font-family: "Galano Grotesque";
-  font-style: normal;
-  font-weight: 500;
-  font-display: swap;
-  src: url("/fonts/galano-grotesque-medium.otf") format("opentype");
+@utility surface {
+  @apply bg-white rounded-xl;
+  box-shadow: var(--shadow-surface);
+}
+
+@utility surface-elevated {
+  @apply bg-white rounded-xl;
+  box-shadow: var(--shadow-elevated);
+}
+
+@utility surface-quiet {
+  @apply rounded-xl;
+  background: #fafcfd;
+  box-shadow: 0 0 0 1px rgba(0, 54, 73, 0.06);
+}
+
+@utility filter-toolbar {
+  @apply flex flex-wrap items-end gap-4 rounded-xl px-4 py-3;
+  background: #eef3f4;
+  box-shadow: inset 0 0 0 1px rgba(0, 54, 73, 0.055);
+}
+
+@utility btn {
+  @apply inline-flex min-h-10 items-center justify-center gap-2 rounded-lg px-4 py-2
+           text-sm font-bold uppercase tracking-[0.02em]
+           disabled:cursor-not-allowed disabled:opacity-45
+           active:scale-[0.96] transition-[scale,background-color,color,box-shadow];
+  transition-duration: var(--motion-fast);
+  transition-timing-function: var(--ease-out);
+
+  &:focus-visible {
+    outline: 3px solid var(--color-focus);
+    outline-offset: 2px;
+  }
+}
+
+@utility input {
+  &:focus-visible {
+    outline: 3px solid var(--color-focus);
+    outline-offset: 2px;
+  }
+  @apply w-full rounded-md bg-white px-3 py-2 text-sm
+           placeholder:text-ink-500 disabled:cursor-not-allowed disabled:bg-[#eef3f4] disabled:text-[#7a9aa3]
+           transition-[box-shadow,background-color];
+  min-height: 44px;
+  color: var(--color-ink);
+  box-shadow: inset 0 0 0 1px var(--color-hairline-cool);
+  transition-duration: var(--motion-fast);
+  transition-timing-function: var(--ease-out);
+
+  &:hover:not(:disabled) {
+    box-shadow: inset 0 0 0 1px #a9c2c8;
+  }
+
+  &:focus {
+    box-shadow:
+      inset 0 2px 10px rgba(0, 0, 0, 0.1),
+      inset 0 0 0 1px var(--color-primary);
+  }
+}
+
+@utility nav-link {
+  &:focus-visible {
+    outline: 3px solid var(--color-focus);
+    outline-offset: 2px;
+  }
+  @apply flex min-h-11 items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium
+           transition-[background-color,color,box-shadow];
+  color: var(--color-on-dark-muted);
+  transition-duration: var(--motion-fast);
+  transition-timing-function: var(--ease-out);
+
+  &:hover {
+    background: rgba(255, 255, 255, 0.08);
+    color: white;
+  }
+}
+
+@utility chip {
+  &:focus-visible {
+    outline: 3px solid var(--color-focus);
+    outline-offset: 2px;
+  }
+  @apply inline-flex min-h-10 items-center justify-center gap-1.5 rounded-lg px-3 py-2
+           text-sm font-medium active:scale-[0.96]
+           transition-[scale,background-color,color,box-shadow];
+  transition-duration: var(--motion-fast);
+  transition-timing-function: var(--ease-out);
+}
+
+@utility icon-button {
+  &:focus-visible {
+    outline: 3px solid var(--color-focus);
+    outline-offset: 2px;
+  }
+}
+
+@utility checkbox-control {
+  &:focus-visible {
+    outline: 3px solid var(--color-focus);
+    outline-offset: 2px;
+  }
+}
+
+@utility btn-primary {
+  /* Primary button — fills with the navy tertiary so the highest
+     action reads as the most authoritative control on either canvas. */
+  @apply btn text-white;
+  background: var(--color-tertiary);
+  box-shadow: 0 1px 2px rgba(0, 33, 48, 0.18);
+
+  &:hover {
+    background: var(--color-ink);
+    box-shadow: 0 0 8px 3px rgba(0, 33, 48, 0.14);
+  }
+}
+
+@utility btn-inverted {
+  @apply btn;
+  background: white;
+  color: var(--color-ink);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
+
+  &:hover {
+    background: var(--color-surface-pressed);
+  }
+}
+
+@utility btn-secondary {
+  @apply btn bg-white;
+  color: var(--color-ink);
+  box-shadow: 0 0 0 1px rgba(0, 54, 73, 0.14);
+
+  &:hover {
+    background: #eef3f4;
+    box-shadow: 0 0 0 1px rgba(0, 54, 73, 0.22);
+  }
+}
+
+@utility btn-ghost {
+  @apply btn;
+  color: var(--color-text-secondary);
+
+  &:hover {
+    background: rgba(0, 54, 73, 0.06);
+    color: var(--color-ink);
+  }
+}
+
+@utility btn-dark-ghost {
+  @apply btn text-white;
+  background: var(--color-on-dark-faint);
+
+  &:hover {
+    background: rgba(255, 255, 255, 0.18);
+  }
+}
+
+@utility btn-danger {
+  @apply btn;
+  color: var(--color-danger-text);
+  background: var(--color-danger-bg);
+  box-shadow: inset 0 0 0 1px rgba(138, 31, 31, 0.15);
+
+  &:hover {
+    background: #fbdede;
+  }
+}
+
+@utility label {
+  @apply mb-1.5 block text-[11px] font-semibold uppercase tracking-[0.08em];
+  color: var(--color-text-secondary);
+}
+
+@utility pill {
+  @apply inline-flex min-h-7 items-center gap-1.5 rounded-sm px-2 py-1
+           text-[10px] font-semibold uppercase tracking-[0.06em];
+}
+
+@utility chip-active {
+  @apply chip text-white;
+  background: var(--color-tertiary);
+  box-shadow: 0 0 0 1px var(--color-tertiary);
+}
+
+@utility chip-inactive {
+  @apply chip bg-white;
+  color: var(--color-text-secondary);
+  box-shadow: 0 0 0 1px rgba(0, 54, 73, 0.12);
+
+  &:hover {
+    background: #eef3f4;
+    color: var(--color-ink);
+  }
+}
+
+@utility nav-link-active {
+  background: white;
+  color: var(--color-ink);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
+
+  &:hover {
+    background: white;
+    color: var(--color-ink);
+  }
+}
+
+@utility section-eyebrow {
+  @apply mb-1 text-[11px] font-semibold uppercase tracking-[0.08em];
+  color: var(--color-secondary);
+}
+
+@utility section-title {
+  @apply text-xl font-semibold leading-tight;
+  color: var(--color-ink);
+}
+
+@utility data-table {
+  @apply w-full text-left text-sm;
+  border-collapse: separate;
+  border-spacing: 0;
+
+  & thead th {
+    @apply px-4 py-3 text-[10px] font-semibold uppercase tracking-[0.08em];
+    color: var(--color-text-tertiary);
+    background: #fafcfd;
+    border-bottom: 1px solid var(--color-hairline-light);
+  }
+
+  & tbody td {
+    @apply px-4 py-3.5;
+    color: var(--color-text-secondary);
+    border-bottom: 1px solid #e1e9ec;
+  }
+
+  & tbody tr:last-child td {
+    border-bottom: 0;
+  }
+}
+
+@utility scroll-hint {
+  @apply relative overflow-x-auto;
+  background:
+    linear-gradient(to right, white 30%, transparent),
+    linear-gradient(to left, white 30%, transparent) 100% 0,
+    radial-gradient(farthest-side at 0 50%, rgba(0, 54, 73, 0.08), transparent),
+    radial-gradient(
+        farthest-side at 100% 50%,
+        rgba(0, 54, 73, 0.08),
+        transparent
+      )
+      100% 0;
+  background-size:
+    28px 100%,
+    28px 100%,
+    12px 100%,
+    12px 100%;
+  background-attachment: local, local, scroll, scroll;
+  background-repeat: no-repeat;
+}
+
+@layer base {
+  @font-face {
+    font-family: 'Galano Grotesque';
+    font-style: normal;
+    font-weight: 300;
+    font-display: swap;
+    src: url('/fonts/galano-grotesque-light.otf') format('opentype');
+  }
+
+  @font-face {
+    font-family: 'Galano Grotesque';
+    font-style: normal;
+    font-weight: 400;
+    font-display: swap;
+    src: url('/fonts/galano-grotesque-regular.otf') format('opentype');
+  }
+
+  @font-face {
+    font-family: 'Galano Grotesque';
+    font-style: normal;
+    font-weight: 500;
+    font-display: swap;
+    src: url('/fonts/galano-grotesque-medium.otf') format('opentype');
+  }
+  @font-face {
+    font-family: 'Galano Grotesque';
+    font-style: normal;
+    font-weight: 600;
+    font-display: swap;
+    src: url('/fonts/galano-grotesque-medium.otf') format('opentype');
+  }
+
+  @font-face {
+    font-family: 'Galano Grotesque';
+    font-style: normal;
+    font-weight: 700;
+    font-display: swap;
+    src: url('/fonts/galano-grotesque-bold.otf') format('opentype');
+  }
 }
 
 /* weight 600 (semibold) is used by Tailwind's `font-semibold` utility.
@@ -35,454 +378,208 @@
    to the medium (500) file and let the browser synthesize the slight
    bolding. This is better than faux-bolding from 400 → 600, which
    produces a much heavier and less accurate result. */
-@font-face {
-  font-family: "Galano Grotesque";
-  font-style: normal;
-  font-weight: 600;
-  font-display: swap;
-  src: url("/fonts/galano-grotesque-medium.otf") format("opentype");
-}
 
-@font-face {
-  font-family: "Galano Grotesque";
-  font-style: normal;
-  font-weight: 700;
-  font-display: swap;
-  src: url("/fonts/galano-grotesque-bold.otf") format("opentype");
-}
+@layer utilities {
+  :root {
+    color-scheme: light;
 
-@tailwind base;
-@tailwind components;
-@tailwind utilities;
+    /* DESIGN.md color system — teal / navy / yellow */
 
-:root {
-  color-scheme: light;
+    /* Brand palette (the three named tokens the user picked) */
+    --color-primary: #209ba5; /* brand primary — medium teal */
+    --color-secondary: #005f6f; /* brand secondary — dark teal */
+    --color-tertiary: #003649; /* brand tertiary — dark navy */
 
-  /* DESIGN.md color system — teal / navy / yellow */
+    /* Ink (sidebar / page chrome / deep text) — anchored on the tertiary navy */
+    --color-ink: #003649;
+    --color-canvas-dark: #003649;
+    --color-canvas-light: #ffffff;
 
-  /* Brand palette (the three named tokens the user picked) */
-  --color-primary: #209ba5;        /* brand primary — medium teal */
-  --color-secondary: #005f6f;      /* brand secondary — dark teal */
-  --color-tertiary: #003649;       /* brand tertiary — dark navy */
+    /* Page surfaces */
+    --color-page: #f5f7f8;
+    --color-surface-muted: #e7eef0;
+    --color-surface-pressed: #cfdadd;
 
-  /* Ink (sidebar / page chrome / deep text) — anchored on the tertiary navy */
-  --color-ink: #003649;
-  --color-canvas-dark: #003649;
-  --color-canvas-light: #ffffff;
+    /* Hairlines + structural neutrals */
+    --color-hairline-cool: #cfe0e3;
+    --color-hairline-light: #e7eef0;
 
-  /* Page surfaces */
-  --color-page: #f5f7f8;
-  --color-surface-muted: #e7eef0;
-  --color-surface-pressed: #cfdadd;
+    /* Text on light canvas */
+    --color-text-primary: #003649;
+    --color-text-secondary: #234954;
+    --color-text-tertiary: #557883;
+    /* On-dark text — the sidebar / dark canvas */
+    --color-on-dark-muted: rgba(255, 255, 255, 0.72);
+    --color-on-dark-faint: rgba(255, 255, 255, 0.12);
 
-  /* Hairlines + structural neutrals */
-  --color-hairline-cool: #cfe0e3;
-  --color-hairline-light: #e7eef0;
-
-  /* Text on light canvas */
-  --color-text-primary: #003649;
-  --color-text-secondary: #234954;
-  --color-text-tertiary: #557883;
-  /* On-dark text — the sidebar / dark canvas */
-  --color-on-dark-muted: rgba(255, 255, 255, 0.72);
-  --color-on-dark-faint: rgba(255, 255, 255, 0.12);
-
-  /* Focus ring — opaque primary teal clears 3:1 against both the white
+    /* Focus ring — opaque primary teal clears 3:1 against both the white
      canvas and the navy shell. */
-  --color-focus: #209ba5;
+    --color-focus: #209ba5;
 
-  /* Semantic colors. Each pair keeps its meaning; the specific teal/
+    /* Semantic colors. Each pair keeps its meaning; the specific teal/
      yellow tint comes from the brand palette so the system stays
      inside the navy → teal → yellow family. */
-  --color-success-bg: #e6f4ee;
-  --color-success-text: #0a4f3a;
-  --color-danger-bg: #fdecec;
-  --color-danger-hover: #fbdede;
-  --color-danger-text: #8a1f1f;
-  --color-info-bg: #eaf7f8;
-  --color-warning-bg: #fdfbe7;
-  --color-warning-text: #6e6c10;
+    --color-success-bg: #e6f4ee;
+    --color-success-text: #0a4f3a;
+    --color-danger-bg: #fdecec;
+    --color-danger-hover: #fbdede;
+    --color-danger-text: #8a1f1f;
+    --color-info-bg: #eaf7f8;
+    --color-warning-bg: #fdfbe7;
+    --color-warning-text: #6e6c10;
 
-  --motion-fast: 120ms;
-  --motion-standard: 180ms;
-  --motion-drawer: 220ms;
-  --ease-out: cubic-bezier(0.23, 1, 0.32, 1);
-  --ease-in-out: cubic-bezier(0.77, 0, 0.175, 1);
-  --ease-drawer: cubic-bezier(0.32, 0.72, 0, 1);
+    --motion-fast: 120ms;
+    --motion-standard: 180ms;
+    --motion-drawer: 220ms;
+    --ease-out: cubic-bezier(0.23, 1, 0.32, 1);
+    --ease-in-out: cubic-bezier(0.77, 0, 0.175, 1);
+    --ease-drawer: cubic-bezier(0.32, 0.72, 0, 1);
 
-  /* Shadows are tinted with the navy (the new "ink" anchor) so card
+    /* Shadows are tinted with the navy (the new "ink" anchor) so card
      floats feel rooted in the brand, not in an off-the-shelf greyscale. */
-  --shadow-surface:
-    0 0 0 1px rgba(0, 54, 73, 0.07),
-    0 1px 2px -1px rgba(0, 54, 73, 0.08),
-    0 4px 14px rgba(0, 54, 73, 0.035);
-  --shadow-elevated:
-    0 0 0 1px rgba(0, 54, 73, 0.08),
-    0 10px 15px -3px rgba(0, 54, 73, 0.1),
-    0 4px 6px -4px rgba(0, 54, 73, 0.1);
+    --shadow-surface:
+      0 0 0 1px rgba(0, 54, 73, 0.07), 0 1px 2px -1px rgba(0, 54, 73, 0.08),
+      0 4px 14px rgba(0, 54, 73, 0.035);
+    --shadow-elevated:
+      0 0 0 1px rgba(0, 54, 73, 0.08), 0 10px 15px -3px rgba(0, 54, 73, 0.1),
+      0 4px 6px -4px rgba(0, 54, 73, 0.1);
 
-  /* Chart palette — teal/navy family. Bright yellow is reserved for
+    /* Chart palette — teal/navy family. Bright yellow is reserved for
      the Sample-data badge and never carries a chart series. */
-  --chart-primary: #209ba5;        /* main stroke / current year */
-  --chart-grid: #e7eef0;
-  --chart-axis: #557883;
-}
+    --chart-primary: #209ba5; /* main stroke / current year */
+    --chart-grid: #e7eef0;
+    --chart-axis: #557883;
+  }
 
-* {
-  box-sizing: border-box;
-}
+  * {
+    box-sizing: border-box;
+  }
 
-html {
-  scroll-behavior: smooth;
-  -webkit-font-smoothing: antialiased;
-  -moz-osx-font-smoothing: grayscale;
-  text-rendering: optimizeLegibility;
-}
+  html {
+    scroll-behavior: smooth;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+    text-rendering: optimizeLegibility;
+  }
 
-body {
-  min-height: 100dvh;
-  margin: 0;
-  background: var(--color-page);
-  color: var(--color-text-primary);
-  font-family: "Galano Grotesque", -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
-  font-feature-settings: "liga" 1, "kern" 1;
-}
+  body {
+    min-height: 100dvh;
+    margin: 0;
+    background: var(--color-page);
+    color: var(--color-text-primary);
+    font-family:
+      'Galano Grotesque',
+      -apple-system,
+      BlinkMacSystemFont,
+      'Segoe UI',
+      sans-serif;
+    font-feature-settings:
+      'liga' 1,
+      'kern' 1;
+  }
 
-::selection {
-  background: var(--color-info-bg);
-  color: var(--color-tertiary);
-}
+  ::selection {
+    background: var(--color-info-bg);
+    color: var(--color-tertiary);
+  }
 
-h1,
-h2,
-h3,
-h4,
-h5,
-h6 {
-  text-wrap: balance;
-}
+  h1,
+  h2,
+  h3,
+  h4,
+  h5,
+  h6 {
+    text-wrap: balance;
+  }
 
-p,
-li,
-figcaption,
-blockquote,
-.text-pretty {
-  text-wrap: pretty;
-}
+  p,
+  li,
+  figcaption,
+  blockquote,
+  .text-pretty {
+    text-wrap: pretty;
+  }
 
-.tabular,
-.tabular-nums {
-  font-variant-numeric: tabular-nums;
-}
+  .tabular,
+  .tabular-nums {
+    font-variant-numeric: tabular-nums;
+  }
 
-.page-content {
-  width: min(100%, 72rem);
-  margin-inline: auto;
-  padding: 2rem;
-}
+  .page-content {
+    width: min(100%, 72rem);
+    margin-inline: auto;
+    padding: 2rem;
+  }
 
-.page-content-wide {
-  width: min(100%, 84rem);
-}
+  .page-content-wide {
+    width: min(100%, 84rem);
+  }
 
-/* Kept as a compatibility hook for route markup. Frequent route and pane
+  /* Kept as a compatibility hook for route markup. Frequent route and pane
    changes are intentionally immediate; temporary layers own their motion. */
-.page-enter {
-  animation: none;
-}
-
-.modal-layer,
-.mobile-drawer-layer {
-  visibility: hidden;
-  pointer-events: none;
-  transition: visibility 0s linear var(--motion-standard);
-}
-
-.modal-layer[data-state="open"],
-.mobile-drawer-layer[data-state="open"] {
-  visibility: visible;
-  pointer-events: auto;
-  transition-delay: 0s;
-}
-
-.modal-scrim,
-.mobile-drawer-scrim {
-  opacity: 0;
-  transition: opacity 140ms var(--ease-out);
-}
-
-.modal-layer[data-state="open"] .modal-scrim,
-.mobile-drawer-layer[data-state="open"] .mobile-drawer-scrim {
-  opacity: 1;
-}
-
-.modal-panel {
-  opacity: 0;
-  transform: scale(0.97);
-  transform-origin: center;
-  transition:
-    opacity 140ms var(--ease-out),
-    transform 140ms var(--ease-out);
-}
-
-.modal-layer[data-state="open"] .modal-panel {
-  opacity: 1;
-  transform: scale(1);
-  transition-duration: var(--motion-standard);
-}
-
-.mobile-drawer-panel {
-  opacity: 0.98;
-  transform: translateX(-100%);
-  transform-origin: left center;
-  transition:
-    opacity 180ms var(--ease-out),
-    transform 180ms var(--ease-out);
-}
-
-.mobile-drawer-layer[data-state="open"] .mobile-drawer-panel {
-  opacity: 1;
-  transform: translateX(0);
-  transition-duration: var(--motion-drawer);
-  transition-timing-function: var(--ease-drawer);
-}
-
-.progress-indicator {
-  transform-origin: left center;
-  transition: transform var(--motion-standard) var(--ease-in-out);
-}
-
-@layer components {
-  .surface {
-    @apply bg-white rounded-xl;
-    box-shadow: var(--shadow-surface);
+  .page-enter {
+    animation: none;
   }
 
-  .surface-elevated {
-    @apply bg-white rounded-xl;
-    box-shadow: var(--shadow-elevated);
+  .modal-layer,
+  .mobile-drawer-layer {
+    visibility: hidden;
+    pointer-events: none;
+    transition: visibility 0s linear var(--motion-standard);
   }
 
-  .surface-quiet {
-    @apply rounded-xl;
-    background: #fafcfd;
-    box-shadow: 0 0 0 1px rgba(0, 54, 73, 0.06);
+  .modal-layer[data-state='open'],
+  .mobile-drawer-layer[data-state='open'] {
+    visibility: visible;
+    pointer-events: auto;
+    transition-delay: 0s;
   }
 
-  .filter-toolbar {
-    @apply flex flex-wrap items-end gap-4 rounded-xl px-4 py-3;
-    background: #eef3f4;
-    box-shadow: inset 0 0 0 1px rgba(0, 54, 73, 0.055);
+  .modal-scrim,
+  .mobile-drawer-scrim {
+    opacity: 0;
+    transition: opacity 140ms var(--ease-out);
   }
 
-  .btn {
-    @apply inline-flex min-h-10 items-center justify-center gap-2 rounded-lg px-4 py-2
-           text-sm font-bold uppercase tracking-[0.02em]
-           disabled:cursor-not-allowed disabled:opacity-45
-           active:scale-[0.96] transition-[scale,background-color,color,box-shadow];
-    transition-duration: var(--motion-fast);
-    transition-timing-function: var(--ease-out);
+  .modal-layer[data-state='open'] .modal-scrim,
+  .mobile-drawer-layer[data-state='open'] .mobile-drawer-scrim {
+    opacity: 1;
   }
 
-  .btn:focus-visible,
-  .input:focus-visible,
-  .nav-link:focus-visible,
-  .chip:focus-visible,
-  .icon-button:focus-visible,
-  .checkbox-control:focus-visible,
-  a:focus-visible {
-    outline: 3px solid var(--color-focus);
-    outline-offset: 2px;
+  .modal-panel {
+    opacity: 0;
+    transform: scale(0.97);
+    transform-origin: center;
+    transition:
+      opacity 140ms var(--ease-out),
+      transform 140ms var(--ease-out);
   }
 
-  /* Primary button — fills with the navy tertiary so the highest
-     action reads as the most authoritative control on either canvas. */
-  .btn-primary {
-    @apply btn text-white;
-    background: var(--color-tertiary);
-    box-shadow: 0 1px 2px rgba(0, 33, 48, 0.18);
+  .modal-layer[data-state='open'] .modal-panel {
+    opacity: 1;
+    transform: scale(1);
+    transition-duration: var(--motion-standard);
   }
 
-  .btn-primary:hover {
-    background: var(--color-ink);
-    box-shadow: 0 0 8px 3px rgba(0, 33, 48, 0.14);
+  .mobile-drawer-panel {
+    opacity: 0.98;
+    transform: translateX(-100%);
+    transform-origin: left center;
+    transition:
+      opacity 180ms var(--ease-out),
+      transform 180ms var(--ease-out);
   }
 
-  .btn-inverted {
-    @apply btn;
-    background: white;
-    color: var(--color-ink);
-    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
+  .mobile-drawer-layer[data-state='open'] .mobile-drawer-panel {
+    opacity: 1;
+    transform: translateX(0);
+    transition-duration: var(--motion-drawer);
+    transition-timing-function: var(--ease-drawer);
   }
 
-  .btn-inverted:hover {
-    background: var(--color-surface-pressed);
-  }
-
-  .btn-secondary {
-    @apply btn bg-white;
-    color: var(--color-ink);
-    box-shadow: 0 0 0 1px rgba(0, 54, 73, 0.14);
-  }
-
-  .btn-secondary:hover {
-    background: #eef3f4;
-    box-shadow: 0 0 0 1px rgba(0, 54, 73, 0.22);
-  }
-
-  .btn-ghost {
-    @apply btn;
-    color: var(--color-text-secondary);
-  }
-
-  .btn-ghost:hover {
-    background: rgba(0, 54, 73, 0.06);
-    color: var(--color-ink);
-  }
-
-  .btn-dark-ghost {
-    @apply btn text-white;
-    background: var(--color-on-dark-faint);
-  }
-
-  .btn-dark-ghost:hover {
-    background: rgba(255, 255, 255, 0.18);
-  }
-
-  .btn-danger {
-    @apply btn;
-    color: var(--color-danger-text);
-    background: var(--color-danger-bg);
-    box-shadow: inset 0 0 0 1px rgba(138, 31, 31, 0.15);
-  }
-
-  .btn-danger:hover {
-    background: #fbdede;
-  }
-
-  .input {
-    @apply w-full rounded-md bg-white px-3 py-2 text-sm
-           placeholder:text-ink-500 disabled:cursor-not-allowed disabled:bg-[#eef3f4] disabled:text-[#7a9aa3]
-           transition-[box-shadow,background-color];
-    min-height: 44px;
-    color: var(--color-ink);
-    box-shadow: inset 0 0 0 1px var(--color-hairline-cool);
-    transition-duration: var(--motion-fast);
-    transition-timing-function: var(--ease-out);
-  }
-
-  .input:hover:not(:disabled) {
-    box-shadow: inset 0 0 0 1px #a9c2c8;
-  }
-
-  .input:focus {
-    box-shadow:
-      inset 0 2px 10px rgba(0, 0, 0, 0.1),
-      inset 0 0 0 1px var(--color-primary);
-  }
-
-  .label {
-    @apply mb-1.5 block text-[11px] font-semibold uppercase tracking-[0.08em];
-    color: var(--color-text-secondary);
-  }
-
-  .pill {
-    @apply inline-flex min-h-7 items-center gap-1.5 rounded px-2 py-1
-           text-[10px] font-semibold uppercase tracking-[0.06em];
-  }
-
-  .chip {
-    @apply inline-flex min-h-10 items-center justify-center gap-1.5 rounded-lg px-3 py-2
-           text-sm font-medium active:scale-[0.96]
-           transition-[scale,background-color,color,box-shadow];
-    transition-duration: var(--motion-fast);
-    transition-timing-function: var(--ease-out);
-  }
-
-  .chip-active {
-    @apply chip text-white;
-    background: var(--color-tertiary);
-    box-shadow: 0 0 0 1px var(--color-tertiary);
-  }
-
-  .chip-inactive {
-    @apply chip bg-white;
-    color: var(--color-text-secondary);
-    box-shadow: 0 0 0 1px rgba(0, 54, 73, 0.12);
-  }
-
-  .chip-inactive:hover {
-    background: #eef3f4;
-    color: var(--color-ink);
-  }
-
-  .nav-link {
-    @apply flex min-h-11 items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium
-           transition-[background-color,color,box-shadow];
-    color: var(--color-on-dark-muted);
-    transition-duration: var(--motion-fast);
-    transition-timing-function: var(--ease-out);
-  }
-
-  .nav-link:hover {
-    background: rgba(255, 255, 255, 0.08);
-    color: white;
-  }
-
-  .nav-link-active {
-    background: white;
-    color: var(--color-ink);
-    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
-  }
-
-  .nav-link-active:hover {
-    background: white;
-    color: var(--color-ink);
-  }
-
-  .section-eyebrow {
-    @apply mb-1 text-[11px] font-semibold uppercase tracking-[0.08em];
-    color: var(--color-secondary);
-  }
-
-  .section-title {
-    @apply text-xl font-semibold leading-tight;
-    color: var(--color-ink);
-  }
-
-  .data-table {
-    @apply w-full text-left text-sm;
-    border-collapse: separate;
-    border-spacing: 0;
-  }
-
-  .data-table thead th {
-    @apply px-4 py-3 text-[10px] font-semibold uppercase tracking-[0.08em];
-    color: var(--color-text-tertiary);
-    background: #fafcfd;
-    border-bottom: 1px solid var(--color-hairline-light);
-  }
-
-  .data-table tbody td {
-    @apply px-4 py-3.5;
-    color: var(--color-text-secondary);
-    border-bottom: 1px solid #e1e9ec;
-  }
-
-  .data-table tbody tr:last-child td {
-    border-bottom: 0;
-  }
-
-  .scroll-hint {
-    @apply relative overflow-x-auto;
-    background:
-      linear-gradient(to right, white 30%, transparent),
-      linear-gradient(to left, white 30%, transparent) 100% 0,
-      radial-gradient(farthest-side at 0 50%, rgba(0, 54, 73, 0.08), transparent),
-      radial-gradient(farthest-side at 100% 50%, rgba(0, 54, 73, 0.08), transparent) 100% 0;
-    background-size: 28px 100%, 28px 100%, 12px 100%, 12px 100%;
-    background-attachment: local, local, scroll, scroll;
-    background-repeat: no-repeat;
+  .progress-indicator {
+    transform-origin: left center;
+    transition: transform var(--motion-standard) var(--ease-in-out);
   }
 }
 

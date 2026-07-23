@@ -56,7 +56,7 @@ export function StrategicAuditTable({
                 <td className="max-w-64 text-sm leading-6 text-ink-700">
                   {[event.parent_priority_name, event.parent_goal_name].filter(Boolean).join(" · ") || "General"}
                 </td>
-                <td className="max-w-48 break-words text-xs text-ink-500">{event.actor_email_snapshot ?? "System"}</td>
+                <td className="max-w-48 wrap-break-word text-xs text-ink-500">{event.actor_email_snapshot ?? "System"}</td>
                 <td className="text-right">
                   <details className="text-left">
                     <summary className="inline-flex min-h-10 cursor-pointer items-center text-sm font-semibold text-brand-800">
@@ -66,11 +66,11 @@ export function StrategicAuditTable({
                       <Badge variant={event.event_type === "archive" || event.event_type === "delete" ? "warning" : event.event_type === "restore" ? "success" : "info"}>{displayToken(event.event_type)}</Badge>
                       <div>
                         <p className="font-semibold text-ink-900">Before</p>
-                        <pre className="mt-1 whitespace-pre-wrap break-words font-sans">{snapshot(event.previous_value)}</pre>
+                        <pre className="mt-1 whitespace-pre-wrap wrap-break-word font-sans">{snapshot(event.previous_value)}</pre>
                       </div>
                       <div>
                         <p className="font-semibold text-ink-900">After</p>
-                        <pre className="mt-1 whitespace-pre-wrap break-words font-sans">{snapshot(event.new_value)}</pre>
+                        <pre className="mt-1 whitespace-pre-wrap wrap-break-word font-sans">{snapshot(event.new_value)}</pre>
                       </div>
                     </div>
                   </details>
