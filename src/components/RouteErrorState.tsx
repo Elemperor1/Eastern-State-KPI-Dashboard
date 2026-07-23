@@ -32,12 +32,12 @@ export function RouteErrorState({ title, reset }: RouteErrorStateProps) {
   }, []);
 
   return (
-    <div className="min-h-[100dvh] bg-ink-50 text-ink-950">
+    <div className="min-h-dvh bg-ink-50 text-ink-950">
       <header className="border-b border-ink-200 bg-white">
-        <div className="mx-auto flex min-h-20 max-w-screen-xl flex-wrap items-center justify-between gap-4 px-6 py-3 lg:px-10">
+        <div className="mx-auto flex min-h-20 max-w-(--breakpoint-xl) flex-wrap items-center justify-between gap-4 px-6 py-3 lg:px-10">
           <Link
             href="/dashboard/overview"
-            className="inline-flex items-center gap-3 rounded-md focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--color-focus)]"
+            className="inline-flex items-center gap-3 rounded-md focus-visible:outline-solid focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-(--color-focus)"
           >
             <BrandMark size="sm" />
             <span className="font-semibold text-ink-950">Strategic Plan</span>
@@ -53,16 +53,16 @@ export function RouteErrorState({ title, reset }: RouteErrorStateProps) {
         </div>
       </header>
 
-      <main className="mx-auto flex min-h-[calc(100dvh-5rem)] max-w-screen-xl items-center px-6 py-12 lg:px-10">
+      <main className="mx-auto flex min-h-[calc(100dvh-5rem)] max-w-(--breakpoint-xl) items-center px-6 py-12 lg:px-10">
         <Card as="section" variant="elevated" className="w-full max-w-2xl p-6 sm:p-8" aria-labelledby="route-error-heading">
-          <div className="flex size-11 items-center justify-center rounded-lg bg-[var(--color-warning-bg)] text-[var(--color-warning-text)]">
+          <div className="flex size-11 items-center justify-center rounded-lg bg-(--color-warning-bg) text-(--color-warning-text)">
             <AlertTriangle className="size-5" aria-hidden />
           </div>
           <h1
             id="route-error-heading"
             ref={headingRef}
             tabIndex={-1}
-            className="mt-5 text-2xl font-semibold tracking-[-0.02em] text-ink-950 focus:outline-none"
+            className="mt-5 text-2xl font-semibold tracking-[-0.02em] text-ink-950 focus:outline-hidden"
           >
             {title}
           </h1>

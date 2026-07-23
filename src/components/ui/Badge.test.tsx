@@ -7,7 +7,7 @@ describe("Badge", () => {
     const warning = renderToStaticMarkup(<Badge variant="warning">Needs attention</Badge>);
     const accent = renderToStaticMarkup(<Badge variant="accent">Sample data</Badge>);
 
-    expect(warning).toContain("var(--color-warning-bg)");
+    expect(warning).toContain("bg-(--color-warning-bg)");
     expect(warning).not.toContain("bg-accent-300");
     expect(accent).toContain("bg-accent-300");
   });

@@ -122,7 +122,7 @@ function issueMessage(value: unknown): string | null {
 
 /** Renders the error hint interface. */
 function ErrorHint({ error, fallback }: { error?: string; fallback?: string }) {
-  if (error) return <span className="font-medium text-[var(--color-danger-text)]">{error}</span>;
+  if (error) return <span className="font-medium text-(--color-danger-text)">{error}</span>;
   return fallback ?? null;
 }
 

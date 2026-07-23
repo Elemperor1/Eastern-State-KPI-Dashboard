@@ -6,7 +6,7 @@ import { Skeleton } from "@/components/ui";
 export function AuthPageSkeleton({ fieldCount = 2 }: { fieldCount?: number }) {
   return (
     <main
-      className="grid min-h-[100dvh] bg-white lg:grid-cols-[minmax(0,1.08fr)_minmax(28rem,0.92fr)]"
+      className="grid min-h-dvh bg-white lg:grid-cols-[minmax(0,1.08fr)_minmax(28rem,0.92fr)]"
       aria-busy="true"
     >
       <span className="sr-only" role="status" aria-live="polite">

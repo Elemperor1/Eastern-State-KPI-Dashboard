@@ -123,7 +123,7 @@ function setupStatusLabel(status: ConfigurationStatus | null): string {
 /** Renders the field hint interface. */
 function FieldHint({ error, fallback }: { error?: string; fallback?: string }) {
   return error ? (
-    <span className="font-medium text-[var(--color-danger-text)]">{error}</span>
+    <span className="font-medium text-(--color-danger-text)">{error}</span>
   ) : (
     fallback ?? null
   );
@@ -471,7 +471,7 @@ export function StrategicGoalsEditorClient({
                     id={`goal-list-item-${goal.id}`}
                     href={`/setup?area=goals&year=${reportingYear}&goal=${goal.id}`}
                     aria-current={selectedGoalId === goal.id ? "page" : undefined}
-                    className={`block px-1 py-4 text-left transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--color-focus)] ${selectedGoalId === goal.id ? "bg-brand-50" : "hover:bg-ink-50"}`}
+                    className={`block px-1 py-4 text-left transition-colors focus-visible:outline-solid focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-(--color-focus) ${selectedGoalId === goal.id ? "bg-brand-50" : "hover:bg-ink-50"}`}
                   >
                     <span className="block font-medium text-ink-950">{goal.name}</span>
                     <span className="mt-1 flex items-center justify-between gap-3 text-sm text-ink-600">
@@ -1094,7 +1094,7 @@ function GoalTargets({
                 key={measure.kpi.id}
                 id={`goal-target-measure-${measure.kpi.id}`}
                 tabIndex={-1}
-                className="py-6 focus:outline-none"
+                className="py-6 focus:outline-hidden"
               >
                 <h3 className="font-semibold text-ink-950">{measure.kpi.name}</h3>
                 <p className="mt-1 text-sm text-ink-600">Finish setting up this measure before adding targets.</p>
@@ -1107,7 +1107,7 @@ function GoalTargets({
               <h3
                 id={`goal-target-measure-${measure.kpi.id}`}
                 tabIndex={-1}
-                className="mb-5 text-lg font-semibold text-ink-950 focus:outline-none"
+                className="mb-5 text-lg font-semibold text-ink-950 focus:outline-hidden"
               >
                 {measure.kpi.name}
               </h3>
@@ -1277,7 +1277,7 @@ function StrategicGoalMembershipForm({
     >
       <div className="flex flex-wrap items-start justify-between gap-2">
         <div className="min-w-0">
-          <p className="break-words text-sm font-semibold leading-5 text-ink-900">
+          <p className="wrap-break-word text-sm font-semibold leading-5 text-ink-900">
             {member.name}
           </p>
           <p className="mt-1 text-xs tabular-nums text-ink-500">

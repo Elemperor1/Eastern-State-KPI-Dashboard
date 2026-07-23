@@ -90,7 +90,7 @@ export default function SetupPasswordPage() {
   if (!ready) return <AuthPageSkeleton fieldCount={3} />;
 
   return (
-    <main className="grid min-h-[100dvh] bg-white lg:grid-cols-[minmax(0,1.08fr)_minmax(28rem,0.92fr)]">
+    <main className="grid min-h-dvh bg-white lg:grid-cols-[minmax(0,1.08fr)_minmax(28rem,0.92fr)]">
       <section
         className="relative hidden overflow-hidden bg-ink-900 px-12 py-10 text-white lg:flex lg:flex-col lg:justify-between"
         style={{ backgroundImage: "url('/starfield.svg')", backgroundSize: "640px 640px" }}
@@ -106,7 +106,7 @@ export default function SetupPasswordPage() {
           <p className="mb-5 text-sm font-medium uppercase tracking-[0.12em] text-white/60">
             Account security
           </p>
-          <p className="max-w-xl text-[clamp(2.75rem,4.5vw,4.5rem)] font-semibold leading-[1] tracking-[-0.04em]">
+          <p className="max-w-xl text-[clamp(2.75rem,4.5vw,4.5rem)] font-semibold leading-none tracking-[-0.04em]">
             Replace your temporary password.
           </p>
           <p className="mt-8 max-w-lg text-base leading-8 text-white/70 text-pretty">
@@ -118,7 +118,7 @@ export default function SetupPasswordPage() {
         </p>
       </section>
 
-      <section className="flex min-h-[100dvh] items-center justify-center px-6 py-12 sm:px-12">
+      <section className="flex min-h-dvh items-center justify-center px-6 py-12 sm:px-12">
         <div className="page-enter w-full max-w-md">
           <div className="mb-10 flex items-center gap-3 lg:hidden">
             <BrandMark size="md" />

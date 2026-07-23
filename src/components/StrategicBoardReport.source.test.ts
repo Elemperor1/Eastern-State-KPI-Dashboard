@@ -51,7 +51,7 @@ describe("StrategicBoardReport render contract", () => {
       8,
     );
     expect(source).toContain("data-raster-export-text");
-    expect(source).toContain("break-words");
+    expect(source).toContain("wrap-break-word");
     expect(source).toContain("data-raster-export-deferred");
     expect(source).toContain('data-raster-export-min-width="1600"');
     expect(source).toContain("board-report-measure");

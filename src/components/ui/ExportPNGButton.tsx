@@ -108,7 +108,7 @@ export function ExportPNGButton({
       {error ? (
         <div
           role="alert"
-          className="absolute right-0 top-[calc(100%+8px)] z-20 w-64 rounded-lg bg-[var(--color-danger-bg)] px-3 py-2 text-xs normal-case leading-5 tracking-normal text-[var(--color-danger-text)] shadow-floating"
+          className="absolute right-0 top-[calc(100%+8px)] z-20 w-64 rounded-lg bg-(--color-danger-bg) px-3 py-2 text-xs normal-case leading-5 tracking-normal text-(--color-danger-text) shadow-floating"
         >
           {error}
         </div>

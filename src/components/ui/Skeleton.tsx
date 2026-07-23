@@ -14,7 +14,7 @@ export function Skeleton({ className, rounded = "md" }: SkeletonProps) {
     <div
       className={cn(
         "animate-pulse bg-ink-200/80",
-        rounded === "sm" && "rounded",
+        rounded === "sm" && "rounded-sm",
         rounded === "md" && "rounded-md",
         rounded === "lg" && "rounded-lg",
         rounded === "xl" && "rounded-xl",
@@ -41,7 +41,7 @@ export function SkeletonCard() {
       <Skeleton className="h-8 w-32 mb-1" />
       <Skeleton className="h-3 w-40 mb-5" />
       <div className="flex items-center justify-between pt-4">
-      <Skeleton className="h-6 w-24 rounded" />
+      <Skeleton className="h-6 w-24 rounded-sm" />
         <Skeleton className="h-4 w-20" />
       </div>
     </Card>

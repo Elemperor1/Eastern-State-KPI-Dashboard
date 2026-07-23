@@ -34,7 +34,7 @@ type Feedback = { variant: "success" | "error"; message: string } | null;
 /** Renders the error hint interface. */
 function ErrorHint({ error, fallback }: { error?: string; fallback?: string }) {
   return error ? (
-    <span className="font-medium text-[var(--color-danger-text)]">{error}</span>
+    <span className="font-medium text-(--color-danger-text)">{error}</span>
   ) : (
     fallback ?? null
   );
@@ -241,7 +241,7 @@ export function StrategicDistributionBandsEditor({
           {archived.map((band) => (
             <Card key={band.id} className="flex flex-wrap items-center justify-between gap-4 p-5">
               <div className="min-w-0">
-                <p className="break-words font-semibold text-ink-900">{band.label}</p>
+                <p className="wrap-break-word font-semibold text-ink-900">{band.label}</p>
                 <p className="mt-1 text-xs text-ink-500">
                   Used from {band.effectiveFromYear}
                   {band.effectiveToYear ? `–${band.effectiveToYear}` : " onward"}

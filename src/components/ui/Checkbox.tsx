@@ -15,7 +15,7 @@ export function Checkbox({ label, description, className, id, ...props }: Checkb
       htmlFor={id}
       className={cn(
         "group flex min-h-10 cursor-pointer items-start gap-3 rounded-lg px-2 py-2 text-sm text-ink-700",
-        "transition-[background-color,color] duration-[var(--motion-fast)] ease-[var(--ease-out)] hover:bg-ink-100/70",
+        "transition-[background-color,color] duration-(--motion-fast) ease-out hover:bg-ink-100/70",
         className,
       )}
     >
@@ -23,7 +23,7 @@ export function Checkbox({ label, description, className, id, ...props }: Checkb
         <input
           id={id}
           type="checkbox"
-          className="checkbox-control peer absolute inset-0 m-0 size-5 cursor-pointer appearance-none rounded border border-ink-400 bg-white checked:border-ink-950 checked:bg-ink-950 disabled:cursor-not-allowed disabled:opacity-50"
+          className="checkbox-control peer absolute inset-0 m-0 size-5 cursor-pointer appearance-none rounded-sm border border-ink-400 bg-white checked:border-ink-950 checked:bg-ink-950 disabled:cursor-not-allowed disabled:opacity-50"
           {...props}
         />
         <Check className="pointer-events-none relative size-3.5 text-white opacity-0 peer-checked:opacity-100" strokeWidth={3} aria-hidden />

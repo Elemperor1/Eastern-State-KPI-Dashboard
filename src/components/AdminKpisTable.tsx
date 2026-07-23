@@ -63,7 +63,7 @@ export function AdminKpisTable({
               id={`measure-list-item-${kpi.id}`}
               href={hrefFor(kpi.id)}
               aria-current={selectedKpiId === kpi.id ? "page" : undefined}
-              className={`block px-4 py-4 transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-[-2px] focus-visible:outline-[var(--color-focus)] ${selectedKpiId === kpi.id ? "bg-brand-50" : "hover:bg-ink-50"}`}
+              className={`block px-4 py-4 transition-colors focus-visible:outline-solid focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-(--color-focus) ${selectedKpiId === kpi.id ? "bg-brand-50" : "hover:bg-ink-50"}`}
             >
               <span className="flex items-start justify-between gap-3">
                 <span className="font-medium text-ink-950">{kpi.name}</span>

@@ -85,7 +85,7 @@ export function ExecutiveOverview({
               <Link
                 key={priority.priorityId}
                 href={`/dashboard/category/${slug}?year=${data.summary.selectedYear}`}
-                className="grid min-h-24 grid-cols-1 gap-3 px-1 py-5 transition-colors hover:bg-ink-50 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--color-focus)] sm:grid-cols-[minmax(0,1fr)_auto] sm:items-center sm:gap-5"
+                className="grid min-h-24 grid-cols-1 gap-3 px-1 py-5 transition-colors hover:bg-ink-50 focus-visible:outline-solid focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-(--color-focus) sm:grid-cols-[minmax(0,1fr)_auto] sm:items-center sm:gap-5"
               >
                 {content}
               </Link>
@@ -144,7 +144,7 @@ export function ExecutiveOverview({
           <ul className="divide-y divide-ink-200 border-y border-ink-200">
             {data.needsAttention.map((item) => (
               <li key={`${item.goalId}:${item.reason}`} className="flex gap-3 py-4">
-                <AlertTriangle className="mt-0.5 size-4 shrink-0 text-[var(--color-warning-text)]" aria-hidden />
+                <AlertTriangle className="mt-0.5 size-4 shrink-0 text-(--color-warning-text)" aria-hidden />
                 <div>
                   <p className="font-medium text-ink-900">{item.goalName}</p>
                   <p className="mt-1 text-sm text-ink-600">{item.priorityName} · {item.reason}</p>

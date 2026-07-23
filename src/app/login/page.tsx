@@ -50,7 +50,7 @@ export default function LoginPage() {
   }
 
   return (
-    <main className="grid min-h-[100dvh] bg-white lg:grid-cols-[minmax(0,1.08fr)_minmax(28rem,0.92fr)]">
+    <main className="grid min-h-dvh bg-white lg:grid-cols-[minmax(0,1.08fr)_minmax(28rem,0.92fr)]">
       <section
         className="relative hidden overflow-hidden bg-ink-900 px-12 py-10 text-white lg:flex lg:flex-col lg:justify-between"
         style={{ backgroundImage: "url('/starfield.svg')", backgroundSize: "640px 640px" }}
@@ -80,7 +80,7 @@ export default function LoginPage() {
         </p>
       </section>
 
-      <section className="flex min-h-[100dvh] items-center justify-center px-6 py-12 sm:px-12">
+      <section className="flex min-h-dvh items-center justify-center px-6 py-12 sm:px-12">
         <div className="page-enter w-full max-w-md">
           <div className="mb-10 flex items-center gap-3 lg:hidden">
             <BrandMark size="md" />

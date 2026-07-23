@@ -11,8 +11,8 @@ interface StatusBannerProps {
 }
 
 const styles = {
-  success: "bg-[var(--color-success-bg)] text-[var(--color-success-text)]",
-  error: "bg-[var(--color-danger-bg)] text-[var(--color-danger-text)]",
+  success: "bg-(--color-success-bg) text-(--color-success-text)",
+  error: "bg-(--color-danger-bg) text-(--color-danger-text)",
   neutral: "bg-brand-50 text-brand-800",
 };
 
@@ -42,7 +42,7 @@ export function StatusBanner({ variant = "neutral", children, onDismiss, classNa
         <button
           type="button"
           onClick={onDismiss}
-          className="icon-button -my-2 -mr-2 grid size-10 shrink-0 place-items-center rounded-lg hover:bg-black/5 focus:outline-none"
+          className="icon-button -my-2 -mr-2 grid size-10 shrink-0 place-items-center rounded-lg hover:bg-black/5 focus:outline-hidden"
           aria-label="Dismiss message"
         >
           <X className="w-3.5 h-3.5" />

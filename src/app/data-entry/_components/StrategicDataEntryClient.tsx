@@ -80,7 +80,7 @@ function issueMessage(value: unknown): string | null {
 /** Renders the error hint interface. */
 function ErrorHint({ error, fallback }: { error?: string; fallback?: string }) {
   return error ? (
-    <span className="font-medium text-[var(--color-danger-text)]">{error}</span>
+    <span className="font-medium text-(--color-danger-text)">{error}</span>
   ) : (
     fallback ?? null
   );
@@ -520,7 +520,7 @@ function Checklist({
           {counts.needsAttention > 0 ? ` · ${counts.needsAttention} need attention` : ""}
         </p>
       </div>
-      <ol className="max-h-[42rem] divide-y divide-ink-100 overflow-y-auto">
+      <ol className="max-h-168 divide-y divide-ink-100 overflow-y-auto">
         {data.kpis.map((kpi) => (
           <li key={kpi.id}>
             <Button
@@ -535,7 +535,7 @@ function Checklist({
               onClick={() => onSelect(kpi.id)}
               aria-current={data.selectedKpiId === kpi.id ? "step" : undefined}
             >
-              <span className="w-full min-w-0 whitespace-normal break-words text-left leading-5">
+              <span className="w-full min-w-0 whitespace-normal wrap-break-word text-left leading-5">
                 {kpi.name}
               </span>
               <Badge

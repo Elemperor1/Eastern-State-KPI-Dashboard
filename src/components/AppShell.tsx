@@ -144,7 +144,7 @@ function AccountBlock({ user }: { user: SessionUser }) {
         <Avatar initials={initials} size="md" variant="brand" className="bg-white/10 text-white" />
         <div className="min-w-0 flex-1">
           <p className="truncate text-sm font-medium text-white">{user.name}</p>
-          <p className="mt-0.5 text-[10px] font-semibold uppercase tracking-[0.1em] text-white/50">
+          <p className="mt-0.5 text-[10px] font-semibold uppercase tracking-widest text-white/50">
             {user.role}
           </p>
         </div>
@@ -319,7 +319,7 @@ export function AppShell({
       <a
         href="#main-content"
         inert={mobileOpen}
-        className="fixed left-4 top-4 z-[80] -translate-y-24 rounded-lg bg-white px-4 py-3 text-sm font-semibold text-ink-950 shadow-floating transition-transform focus:translate-y-0"
+        className="fixed left-4 top-4 z-80 -translate-y-24 rounded-lg bg-white px-4 py-3 text-sm font-semibold text-ink-950 shadow-floating transition-transform focus:translate-y-0"
       >
         Skip to content
       </a>
@@ -331,8 +331,8 @@ export function AppShell({
         <Link href="/dashboard/overview" className="flex min-h-11 min-w-0 items-center gap-3" aria-label={`${organizationShortName} home`}>
           <BrandMark size="sm" />
           <div className="min-w-0">
-            <span className="block break-words text-sm font-semibold leading-tight">{organizationShortName}</span>
-            <span className="block break-words text-[10px] uppercase tracking-[0.1em] text-white/50">{planName}</span>
+            <span className="block wrap-break-word text-sm font-semibold leading-tight">{organizationShortName}</span>
+            <span className="block wrap-break-word text-[10px] uppercase tracking-widest text-white/50">{planName}</span>
           </div>
         </Link>
         <Button
@@ -352,8 +352,8 @@ export function AppShell({
         <Link href="/dashboard/overview" className="mx-4 mb-8 mt-5 flex items-center gap-3" aria-label={`${organizationShortName} home`}>
             <BrandMark size="md" />
           <div className="min-w-0">
-            <span className="block break-words text-sm font-semibold leading-tight">{organizationShortName}</span>
-            <span className="mt-1 block break-words text-[10px] uppercase tracking-[0.1em] text-white/50">
+            <span className="block wrap-break-word text-sm font-semibold leading-tight">{organizationShortName}</span>
+            <span className="mt-1 block wrap-break-word text-[10px] uppercase tracking-widest text-white/50">
               {planName}
             </span>
           </div>
@@ -377,7 +377,7 @@ export function AppShell({
           />
           <aside
             ref={mobileDrawerRef}
-            className="mobile-drawer-panel relative flex h-full w-[min(19rem,86vw)] flex-col bg-ink-900 text-white shadow-floating focus:outline-none"
+            className="mobile-drawer-panel relative flex h-full w-[min(19rem,86vw)] flex-col bg-ink-900 text-white shadow-floating focus:outline-hidden"
             tabIndex={-1}
           >
             <div className="mb-8 flex items-center justify-between px-4 pt-5">
@@ -388,8 +388,8 @@ export function AppShell({
               >
                 <BrandMark size="md" />
                 <div className="min-w-0">
-                  <span className="block break-words text-sm font-semibold">{organizationShortName}</span>
-                  <span className="block break-words text-[10px] uppercase tracking-[0.1em] text-white/50">{planName}</span>
+                  <span className="block wrap-break-word text-sm font-semibold">{organizationShortName}</span>
+                  <span className="block wrap-break-word text-[10px] uppercase tracking-widest text-white/50">{planName}</span>
                 </div>
               </Link>
               <Button
@@ -413,7 +413,7 @@ export function AppShell({
         id="main-content"
         tabIndex={-1}
         inert={mobileOpen}
-        className="min-w-0 pt-16 focus:outline-none lg:ml-60 lg:pt-0"
+        className="min-w-0 pt-16 focus:outline-hidden lg:ml-60 lg:pt-0"
       >
         {children}
       </main>

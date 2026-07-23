@@ -204,7 +204,7 @@ export function UserManagerClient({
                   type="button"
                   variant="ghost"
                   fullWidth
-                  className={`!justify-start ${selection === user.id ? "bg-brand-50" : ""}`}
+                  className={`justify-start! ${selection === user.id ? "bg-brand-50" : ""}`}
                   onClick={() => setSelection(user.id)}
                 >
                   {user.name}

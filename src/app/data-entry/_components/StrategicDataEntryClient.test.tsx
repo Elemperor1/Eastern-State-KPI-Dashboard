@@ -117,7 +117,7 @@ describe("Data Entry", () => {
     );
 
     expect(html).toContain("whitespace-normal");
-    expect(html).toContain("break-words");
+    expect(html).toContain("wrap-break-word");
     expect(html).not.toContain("truncate");
     expect(html).toContain('aria-current="step"');
     expect(html).toContain("ring-brand-200");
