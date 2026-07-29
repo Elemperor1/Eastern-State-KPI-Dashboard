@@ -10,6 +10,7 @@ import {
   upsertStrategyObservation,
 } from "@/features/strategy/server";
 import { assertMutationRequest } from "@/lib/request-guard";
+import { readJsonBody } from "@/lib/request-body";
 
 const DeleteSchema = z.object({ id: z.number().int().positive() }).strict();
 
@@ -38,7 +39,9 @@ export async function POST(req: NextRequest) {
   const guard = assertMutationRequest(req);
   if (guard) return guard;
   try {
-    const input: unknown = await req.json().catch(() => ({}));
+    const bodyResult = await readJsonBody(req);
+    if (!bodyResult.ok) return bodyResult.response;
+    const input: unknown = bodyResult.body;
     const parsed = StrategyObservationSubmissionSchema.safeParse(input);
     if (!parsed.success) {
       return NextResponse.json(
@@ -75,7 +78,9 @@ export async function DELETE(req: NextRequest) {
   }
   const guard = assertMutationRequest(req);
   if (guard) return guard;
-  const parsed = DeleteSchema.safeParse(await req.json().catch(() => ({})));
+  const bodyResult = await readJsonBody(req);
+  if (!bodyResult.ok) return bodyResult.response;
+  const parsed = DeleteSchema.safeParse(bodyResult.body);
   if (!parsed.success) {
     return NextResponse.json(
       { error: "Invalid input", issues: z.flattenError(parsed.error) },

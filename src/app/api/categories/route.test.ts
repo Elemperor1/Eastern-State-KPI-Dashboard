@@ -70,6 +70,7 @@ vi.mock("@/features/catalog/server", async () => {
   };
 });
 
+import { DependentEntriesError } from "@/features/catalog/server";
 import { DELETE, PATCH, POST } from "./route";
 
 const CSRF_TOKEN = "test-csrf-token-0123456789abcdef";
@@ -291,5 +292,85 @@ describe("/api/categories refreshed mutation payloads", () => {
       categories: REFRESHED_CATEGORIES,
       kpis: REFRESHED_KPIS,
     });
+  });
+});
+
+describe("/api/categories catalog string bounds (F-17 R-06: NOV-C1)", () => {
+  it("POST rejects oversized slug, name, and description", async () => {
+    const cases: Array<Record<string, unknown>> = [
+      { slug: `s${"s".repeat(120)}`, name: "Visitor Services" },
+      { slug: "visitor-services", name: "n".repeat(201) },
+      { slug: "visitor-services", name: "Visitor Services", description: "d".repeat(4001) },
+    ];
+    for (const body of cases) {
+      const res = await POST(mutationReq("POST", body));
+      expect(res.status).toBe(400);
+    }
+    expect(createCategoryMock).not.toHaveBeenCalled();
+  });
+
+  it("PATCH rejects oversized name and description", async () => {
+    const cases: Array<Record<string, unknown>> = [
+      { id: 8, name: "n".repeat(201) },
+      { id: 8, description: "d".repeat(4001) },
+    ];
+    for (const body of cases) {
+      const res = await PATCH(mutationReq("PATCH", body));
+      expect(res.status).toBe(400);
+    }
+    expect(updateCategoryMock).not.toHaveBeenCalled();
+  });
+});
+
+describe("/api/categories error hygiene (F-09 R-08 follow-up)", () => {
+  it("POST never echoes raw driver error text and returns a generic 500", async () => {
+    createCategoryMock.mockImplementationOnce(() => {
+      throw new Error("disk I/O error at /var/lib/sqlite/kpi.db");
+    });
+
+    const res = await POST(
+      mutationReq("POST", { slug: "visitor-services", name: "Visitor Services" }),
+    );
+
+    expect(res.status).toBe(500);
+    await expect(res.json()).resolves.toEqual({
+      error: "Could not create category.",
+    });
+  });
+
+  it("POST maps a duplicate slug to a safe 409 without raw constraint text", async () => {
+    createCategoryMock.mockImplementationOnce(() => {
+      throw new Error("UNIQUE constraint failed: categories.slug");
+    });
+
+    const res = await POST(
+      mutationReq("POST", { slug: "visitor-services", name: "Visitor Services" }),
+    );
+
+    expect(res.status).toBe(409);
+    await expect(res.json()).resolves.toEqual({
+      error: "A priority with that slug already exists.",
+    });
+  });
+
+  it("POST maps typed catalog conflicts to 409", async () => {
+    createCategoryMock.mockImplementationOnce(() => {
+      throw new DependentEntriesError("category", 3);
+    });
+
+    const res = await POST(
+      mutationReq("POST", { slug: "visitor-services", name: "Visitor Services" }),
+    );
+
+    expect(res.status).toBe(409);
+  });
+
+  it("DELETE rejects bodies with unknown keys (strict schema)", async () => {
+    const res = await DELETE(
+      mutationReq("DELETE", { id: 8, unexpected: true }),
+    );
+
+    expect(res.status).toBe(400);
+    expect(retireOrDeleteCategoryMock).not.toHaveBeenCalled();
   });
 });

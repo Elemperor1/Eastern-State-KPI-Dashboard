@@ -213,7 +213,13 @@ export function ensureCsrfCookie(
   res: NextResponse,
 ): { token: string; set: boolean } {
   const existing = req.cookies.get(CSRF_COOKIE_NAME)?.value;
-  if (existing && existing.length >= 16) {
+  const rawExisting = readRawCookieValue(req, CSRF_COOKIE_NAME);
+  if (
+    existing &&
+    existing.length >= 16 &&
+    rawExisting !== null &&
+    isClientDecodable(rawExisting)
+  ) {
     return { token: existing, set: false };
   }
   const token = issueCsrfToken();
@@ -224,6 +230,43 @@ export function ensureCsrfCookie(
     path: "/",
   });
   return { token, set: true };
+}
+
+/**
+ * Read a cookie value from the raw Cookie header, bypassing NextRequest's
+ * decoded cookie jar. The jar decodes percent-encoding (a malformed
+ * "%E0%A4%A0" arrives already mangled to "ठ"), so the decodability check
+ * must run against the exact bytes the browser will hand back to
+ * document.cookie.
+ */
+function readRawCookieValue(req: NextRequest, name: string): string | null {
+  const header = req.headers.get("cookie");
+  if (!header) return null;
+  const prefix = `${name}=`;
+  for (const part of header.split(";")) {
+    const trimmed = part.trim();
+    if (trimmed.startsWith(prefix)) {
+      return trimmed.slice(prefix.length);
+    }
+  }
+  return null;
+}
+
+/**
+ * Mirror the client-side readCsrfToken contract (src/lib/api-client.ts):
+ * the browser decodes the cookie with decodeURIComponent, so a malformed
+ * percent-encoded value is treated as absent there. The server must make
+ * the same judgment — keeping an undecodable cookie would strand the tab
+ * with failing mutations and no re-issue path (S086-C1 recovery). Server-
+ * issued tokens contain no "%" sequences, so valid cookies always pass.
+ */
+function isClientDecodable(value: string): boolean {
+  try {
+    decodeURIComponent(value);
+    return true;
+  } catch {
+    return false;
+  }
 }
 
 /**
@@ -253,6 +296,31 @@ export function assertMutationRequest(
   if (tokenReason) {
     logCsrf(tokenReason, req);
     return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+  }
+  return null;
+}
+
+/**
+ * The pre-auth sibling of `assertMutationRequest`, applied to
+ * `/api/auth/login` (S064-C1). Enforces the Origin/Referer same-origin
+ * layer and the exact JSON content-type so a cross-site (or
+ * same-site-sibling) page cannot drive a forced login through the
+ * victim's browser with a CORS-safelisted request. The double-submit
+ * token layer is inapplicable before authentication: the login response
+ * is what issues the CSRF cookie.
+ */
+export function assertLoginRequest(req: NextRequest): NextResponse | null {
+  const originReason = checkOriginOrReferer(req);
+  if (originReason) {
+    logCsrf(originReason, req);
+    return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+  }
+  if (!checkJsonContentType(req)) {
+    logCsrf("bad-content-type", req);
+    return NextResponse.json(
+      { error: "Unsupported Media Type" },
+      { status: 415 },
+    );
   }
   return null;
 }

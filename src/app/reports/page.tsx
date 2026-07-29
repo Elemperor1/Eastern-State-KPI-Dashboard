@@ -9,7 +9,10 @@ import {
   loadStrategicTrendReportData,
   reportingCycleThroughMonth,
 } from "@/features/reporting/server";
-import { reportingCycleForSelection } from "@/features/strategy";
+import {
+  reportingCycleForSelection,
+  resolveStrategicReportingYear,
+} from "@/features/strategy";
 import { getActiveInstallation } from "@/features/installation/server";
 import { firstSearchParam } from "@/lib/search-params";
 import { BoardReportView } from "./BoardReportView";
@@ -35,8 +38,10 @@ export default async function ReportsPage({
     ? "trends"
     : "board";
   const years = listDashboardYears();
-  const rawYear = Number(firstSearchParam(params.year));
-  const year = years.includes(rawYear) ? rawYear : Math.max(...years);
+  const year = resolveStrategicReportingYear(
+    firstSearchParam(params.year),
+    years,
+  );
   const periods = listStrategicReportingPeriods(year, audience);
   const rawPeriod = firstSearchParam(params.period);
   const period = reportingCycleForSelection(rawPeriod, periods);
@@ -45,7 +50,7 @@ export default async function ReportsPage({
   return (
     <AppShell user={user} organizationShortName={installation.organization.shortName} planName={installation.plan.name}>
       <div className="page-content page-content-wide page-enter">
-        <PageHeader title="Reports" />
+        <PageHeader title="Reports" className="reports-product-header" />
         <ReportFilters
           view={view}
           year={year}

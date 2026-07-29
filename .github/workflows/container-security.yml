@@ -100,8 +100,28 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          docker run --rm --entrypoint node "$IMAGE_REF" \
+          docker run --rm "$IMAGE_REF" node \
             ./scripts/production-dependency-guard.mjs --runtime-root /app
+
+      - name: Verify production runtime isolation
+        shell: bash
+        run: |
+          set -euo pipefail
+          volume="eastern-state-kpi-runtime-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
+          docker volume create "$volume"
+          trap 'docker volume rm "$volume"' EXIT
+          docker run --rm --entrypoint sh -v "$volume:/data" "$IMAGE_REF" \
+            -c 'touch /data/root-owned && chown 0:0 /data /data/root-owned'
+          docker run --rm -v "$volume:/app/data" "$IMAGE_REF" sh -c \
+            'test "$(id -u)" -eq 10001 &&
+            test -w /app/data &&
+            test -w /app/data/root-owned &&
+            test ! -e /app/.next/cache &&
+            for package_manager in npm npx corepack yarn yarnpkg pnpm pnpx; do
+              ! command -v "$package_manager" >/dev/null 2>&1 || exit 1
+            done &&
+            test -z "$(find /usr/local -type f \( -name npm -o -name npx -o -name corepack -o -name yarn -o -name yarnpkg -o -name pnpm -o -name pnpx \) -print -quit)" &&
+            touch /app/data/app-owned'
 
       - name: Generate actionable SARIF report
         id: actionable_scan

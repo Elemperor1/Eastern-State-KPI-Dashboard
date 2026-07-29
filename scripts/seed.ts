@@ -2,6 +2,7 @@
  * Resets KPI-owned sample data and seeds the canonical strategic plan.
  * Users are preserved; audit history is reset with the replaced sample rows.
  */
+import path from "node:path";
 import { ensureSeedAdmin } from "../src/features/auth/server";
 import { bootstrapInstallation } from "../src/features/installation/server";
 import {
@@ -27,6 +28,10 @@ import { EASTERN_STATE_STRATEGIC_CONFIGURATION_FIXTURE } from "./bootstrap/strat
 /** Removes or resets strategic plan data. */
 function resetStrategicPlanData(): void {
   const db = getDb();
+  // S053-C1: tombstone for the destructive reset. `meta` survives the
+  // wipe, so the timestamp of the most recent deliberate reset remains
+  // auditable after every audit table has been cleared.
+  db.exec("INSERT OR REPLACE INTO meta (key, value) VALUES ('last_seed_reset_at', datetime('now'));");
   // Schema-10 strategy sidecars use RESTRICT foreign keys so no strategic
   // history or definition can disappear through an ordinary entity delete.
   // `db:seed` is the one explicit disposable-data reset, so clear those rows
@@ -57,8 +62,41 @@ function resetStrategicPlanData(): void {
   db.exec("INSERT OR REPLACE INTO meta (key, value) VALUES ('sample_data', '1');");
 }
 
+/**
+ * S053-C1: `db:seed` wipes every KPI-owned table — including all audit
+ * history — against whatever DATABASE_PATH resolves to, with no
+ * confirmation. Require the operator to name the exact database they
+ * intend to reset via SEED_CONFIRM (the fully-resolved DATABASE_PATH),
+ * and refuse outright under NODE_ENV=production unless `--force` is
+ * passed. Production rollout of an existing database is `db:migrate`;
+ * the seed remains the explicit disposable-data reset for development,
+ * CI, and first-boot container initialization (which passes
+ * SEED_CONFIRM itself after its own safety probe).
+ */
+function assertSeedResetAuthorized(): void {
+  const databasePath = path.resolve(
+    process.env.DATABASE_PATH ?? "./data/kpi.db",
+  );
+  if (process.env.SEED_CONFIRM !== databasePath) {
+    throw new Error(
+      `Refusing to reset KPI data: this deletes every KPI-owned table including all audit history in ${databasePath}. ` +
+        `Set SEED_CONFIRM="${databasePath}" to confirm this exact database, or use npm run db:migrate for an existing database.`,
+    );
+  }
+  if (
+    process.env.NODE_ENV === "production" &&
+    !process.argv.includes("--force")
+  ) {
+    throw new Error(
+      "Refusing to reset KPI data with NODE_ENV=production. Use npm run db:migrate for an existing database; " +
+        "pass --force only for a deliberate disposable reset.",
+    );
+  }
+}
+
 /** Runs the main workflow. */
 function main(): void {
+  assertSeedResetAuthorized();
   console.log("Resetting KPI data...");
   let entryCount = 0;
   let goalCount = 0;

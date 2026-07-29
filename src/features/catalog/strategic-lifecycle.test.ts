@@ -12,8 +12,10 @@ import {
 import { getDb, resetDb } from "@/lib/db";
 import { bootstrapTestInstallation } from "@/features/installation/test-fixture";
 import {
+  archiveCategory,
   archiveKPI,
   countCategoryDependents,
+  CatalogEntityNotFoundError,
   createCategory,
   createKPI,
   createStrategicMeasure,
@@ -23,6 +25,10 @@ import {
   getKPI,
   isStrategicCategory,
   isStrategicKPI,
+  KpiArchivedCategoryError,
+  KpiParentCycleError,
+  KpiSemanticMutationError,
+  KpiStrategicReparentError,
   listCategories,
   listKPIs,
   restoreCategory,
@@ -1072,5 +1078,250 @@ describe("schema-10 strategic catalog lifecycle", () => {
       listKPIs({ includeInactive: true, includeArchived: true })[0],
     ).toMatchObject({ id: kpi.id, archived_at: null, is_active: 0 });
     expect(listKPIs()).toEqual([]);
+  });
+
+  it("refuses to reparent a KPI into an archived category (S029-C1)", () => {
+    const actorId = createCatalogActor();
+    const active = createCategory(
+      { slug: "active-priority", name: "Active Priority" },
+      actorId,
+    );
+    const retired = createCategory(
+      { slug: "retired-priority", name: "Retired Priority" },
+      actorId,
+    );
+    const kpi = createKPI(
+      {
+        category_id: active.id,
+        slug: "movable-kpi",
+        name: "Movable KPI",
+        unit: "items",
+        reporting_frequency: "annual",
+      },
+      actorId,
+    );
+    archiveCategory(retired.id, actorId);
+
+    expect(() =>
+      updateKPI(kpi.id, { category_id: retired.id }, actorId),
+    ).toThrow(KpiArchivedCategoryError);
+    expect(getKPI(kpi.id, { includeArchived: true })).toMatchObject({
+      category_id: active.id,
+    });
+
+    updateKPI(kpi.id, { category_id: active.id }, actorId);
+    expect(getKPI(kpi.id, { includeArchived: true })).toMatchObject({
+      category_id: active.id,
+    });
+  });
+
+  it("reports a missing KPI destination category through the typed catalog contract", () => {
+    const actorId = createCatalogActor();
+    const active = createCategory(
+      { slug: "existing-priority", name: "Existing Priority" },
+      actorId,
+    );
+    const kpi = createKPI(
+      {
+        category_id: active.id,
+        slug: "destination-check-kpi",
+        name: "Destination check KPI",
+        unit: "items",
+        reporting_frequency: "annual",
+      },
+      actorId,
+    );
+    const missingCategoryId = 99_999;
+
+    expect(() =>
+      updateKPI(kpi.id, { category_id: missingCategoryId }, actorId),
+    ).toThrow(
+      new CatalogEntityNotFoundError("category", missingCategoryId),
+    );
+    expect(getKPI(kpi.id, { includeArchived: true })).toMatchObject({
+      category_id: active.id,
+    });
+  });
+
+  it("refuses to reparent a strategic KPI and preserves its lifecycle lineage (NOV-C5)", () => {
+    const { actorId, category, kpi } = seedStrategicCatalog();
+    const destination = createCategory(
+      { slug: "other-priority", name: "Other Priority" },
+      actorId,
+    );
+
+    expect(() =>
+      updateKPI(kpi.id, { category_id: destination.id }, actorId),
+    ).toThrow(KpiStrategicReparentError);
+    expect(getKPI(kpi.id, { includeArchived: true })).toMatchObject({
+      category_id: category.id,
+    });
+  });
+
+  it("refuses semantic field edits once a KPI has legacy recorded rows (S009-C1)", () => {
+    const actorId = createCatalogActor();
+    const category = createCategory(
+      { slug: "recorded-priority", name: "Recorded Priority" },
+      actorId,
+    );
+    const kpi = createKPI(
+      {
+        category_id: category.id,
+        slug: "recorded-kpi",
+        name: "Recorded KPI",
+        unit: "people",
+        reporting_frequency: "annual",
+      },
+      actorId,
+    );
+    getDb()
+      .prepare(
+        `INSERT INTO monthly_entries (kpi_id, year, month, value, updated_by)
+         VALUES (?, 2026, 0, 12, ?)`,
+      )
+      .run(kpi.id, actorId);
+
+    for (const patch of [
+      { direction: "lower" as const },
+      { unit_type: "breakdown" as const },
+      { reporting_frequency: "monthly" as const },
+    ]) {
+      expect(() => updateKPI(kpi.id, patch, actorId)).toThrow(
+        KpiSemanticMutationError,
+      );
+    }
+    expect(getKPI(kpi.id, { includeArchived: true })).toMatchObject({
+      direction: "higher",
+      unit_type: "count",
+      reporting_frequency: "annual",
+    });
+
+    updateKPI(
+      kpi.id,
+      { name: "Renamed KPI", description: "Still editable.", sort_order: 3 },
+      actorId,
+    );
+    expect(getKPI(kpi.id, { includeArchived: true })).toMatchObject({
+      name: "Renamed KPI",
+      description: "Still editable.",
+      sort_order: 3,
+    });
+  });
+
+  it("refuses semantic field edits once a KPI has first-class observations (S009-C1)", () => {
+    const actorId = createCatalogActor();
+    const category = createCategory(
+      { slug: "observed-priority", name: "Observed Priority" },
+      actorId,
+    );
+    const kpi = createKPI(
+      {
+        category_id: category.id,
+        slug: "observed-kpi",
+        name: "Observed KPI",
+        unit: "people",
+        reporting_frequency: "annual",
+      },
+      actorId,
+    );
+    const configurationId = Number(
+      getDb()
+        .prepare(
+          `INSERT INTO kpi_measurement_configs (
+             kpi_id, effective_from_year, effective_to_year, measurement_type,
+             unit, reporting_frequency, aggregation_method, board_level_status,
+             configuration_status, created_by, updated_by
+           ) VALUES (?, 2025, 2029, 'count', 'people', 'annual', 'none',
+                     'not_reported', 'active', ?, ?)`,
+        )
+        .run(kpi.id, actorId, actorId).lastInsertRowid,
+    );
+    getDb()
+      .prepare(
+        `INSERT INTO kpi_observations (
+           kpi_id, configuration_id, year, period_type, period_index,
+           scalar_value, updated_by
+         ) VALUES (?, ?, 2026, 'annual', 0, 42, ?)`,
+      )
+      .run(kpi.id, configurationId, actorId);
+
+    expect(() =>
+      updateKPI(kpi.id, { direction: "lower" }, actorId),
+    ).toThrow(KpiSemanticMutationError);
+    expect(() =>
+      updateKPI(kpi.id, { unit_type: "percent" }, actorId),
+    ).toThrow(KpiSemanticMutationError);
+  });
+
+  it("still allows semantic edits on a KPI without any recorded rows (S009-C1)", () => {
+    const actorId = createCatalogActor();
+    const category = createCategory(
+      { slug: "fresh-priority", name: "Fresh Priority" },
+      actorId,
+    );
+    const kpi = createKPI(
+      {
+        category_id: category.id,
+        slug: "fresh-kpi",
+        name: "Fresh KPI",
+        unit: "people",
+        reporting_frequency: "annual",
+      },
+      actorId,
+    );
+
+    updateKPI(
+      kpi.id,
+      { direction: "lower", unit_type: "percent", reporting_frequency: "monthly" },
+      actorId,
+    );
+    expect(getKPI(kpi.id, { includeArchived: true })).toMatchObject({
+      direction: "lower",
+      unit_type: "percent",
+      reporting_frequency: "monthly",
+    });
+  });
+
+  it("refuses parent assignments that create a hierarchy cycle (S009-C1)", () => {
+    const actorId = createCatalogActor();
+    const category = createCategory(
+      { slug: "hierarchy-priority", name: "Hierarchy Priority" },
+      actorId,
+    );
+    const parent = createKPI(
+      {
+        category_id: category.id,
+        slug: "hierarchy-parent",
+        name: "Hierarchy parent",
+        unit: "items",
+        reporting_frequency: "annual",
+      },
+      actorId,
+    );
+    const child = createKPI(
+      {
+        category_id: category.id,
+        slug: "hierarchy-child",
+        name: "Hierarchy child",
+        unit: "items",
+        reporting_frequency: "annual",
+      },
+      actorId,
+    );
+
+    updateKPI(child.id, { parent_id: parent.id }, actorId);
+    expect(getKPI(child.id, { includeArchived: true })).toMatchObject({
+      parent_id: parent.id,
+    });
+
+    expect(() =>
+      updateKPI(parent.id, { parent_id: child.id }, actorId),
+    ).toThrow(KpiParentCycleError);
+    expect(() =>
+      updateKPI(parent.id, { parent_id: parent.id }, actorId),
+    ).toThrow(KpiParentCycleError);
+    expect(getKPI(parent.id, { includeArchived: true })).toMatchObject({
+      parent_id: null,
+    });
   });
 });

@@ -1,6 +1,11 @@
 import bcrypt from "bcryptjs";
 import crypto from "node:crypto";
 import { getDb, transaction } from "@/lib/db";
+import {
+  NewPasswordSchema,
+  PASSWORD_MAX_BYTES,
+  PASSWORD_MIN_LENGTH,
+} from "@/lib/password-policy";
 import type { Role, SessionUser } from "@/lib/types";
 import {
   createUser,
@@ -153,7 +158,15 @@ function resolveBootstrapPassword(envVar: string): {
 } {
   const provided = process.env[envVar];
   if (provided && provided.trim().length > 0) {
-    return { password: provided, source: envVar };
+    const parsed = NewPasswordSchema.safeParse(provided);
+    if (!parsed.success) {
+      throw new Error(
+        `${envVar} must satisfy the shared password policy: at least ` +
+          `${PASSWORD_MIN_LENGTH} characters and at most ` +
+          `${PASSWORD_MAX_BYTES} UTF-8 bytes.`,
+      );
+    }
+    return { password: parsed.data, source: envVar };
   }
   return { password: generateSeedPassword(), source: "random temporary credential" };
 }

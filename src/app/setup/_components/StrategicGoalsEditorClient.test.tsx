@@ -53,6 +53,7 @@ function goal(
         effectiveFromYear: 2025,
         effectiveToYear: 2029,
         configurationStatus: "active",
+        updatedAt: "2026-01-01 00:00:00",
       },
       {
         id: 102,
@@ -63,6 +64,7 @@ function goal(
         effectiveFromYear: 2025,
         effectiveToYear: 2029,
         configurationStatus: "needs_target",
+        updatedAt: "2026-01-01 00:00:00",
       },
     ],
     ...overrides,

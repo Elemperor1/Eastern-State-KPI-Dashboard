@@ -4,6 +4,11 @@ primary_region = "iad"
 [build]
   dockerfile = "Dockerfile"
 
+[deploy]
+  # SQLite and the in-process login throttle require a single writer/process.
+  # An immediate replacement avoids two release Machines attaching the volume.
+  strategy = "immediate"
+
 [env]
   AUTH_DISABLED = "false"
   DATABASE_PATH = "/app/data/kpi.db"
@@ -21,11 +26,17 @@ primary_region = "iad"
   source = "kpi_data"
   destination = "/app/data"
 
+[[vm]]
+  size = "shared-cpu-1x"
+  memory = "512mb"
+
 [http_service]
   internal_port = 3000
   force_https = true
   auto_stop_machines = "off"
   auto_start_machines = true
+  # SINGLE_MACHINE_SQLITE_CONTRACT: keep the app at exactly one Machine.
+  # Before and after deploy, verify `fly scale count 1` and `fly status`.
   min_machines_running = 1
   processes = ["app"]
 

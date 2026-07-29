@@ -16,6 +16,7 @@
  */
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { NextRequest, NextResponse } from "next/server";
+import { MAX_JSON_BODY_BYTES } from "@/lib/request-body";
 
 // --- Mocks: authz passes; data layer is a no-op ---------------------
 
@@ -224,7 +225,7 @@ const CASES: Case[] = [
   { name: "PATCH /api/strategy/goals", method: "PATCH", path: "/api/strategy/goals", handler: strategyGoals.PATCH, okStatus: 200,
     body: { action: "archive", id: 1 } },
   { name: "PATCH /api/strategy/memberships", method: "PATCH", path: "/api/strategy/memberships", handler: strategyMemberships.PATCH, okStatus: 200,
-    body: { id: 1, role: "informational", weight: 1, display_order: 0 } },
+    body: { id: 1, role: "informational", weight: 1, display_order: 0, expected_revision: "2026-01-15 10:00:00" } },
   { name: "POST /api/users", method: "POST", path: "/api/users", handler: users.POST, okStatus: 201,
     body: { email: "new@x.test", name: "New", password: "password123", role: "viewer" } },
   { name: "PATCH /api/users", method: "PATCH", path: "/api/users", handler: users.PATCH, okStatus: 200,
@@ -361,6 +362,30 @@ describe("D8AD-CAN-004 shared request guard — per-handler", () => {
         const res = await c.handler(req);
         expect(res.status).toBe(403);
       });
+
+      it("negative: oversized declared body → 413 Payload Too Large (NOV-C4/S019-C2/S020-C1 body cap)", async () => {
+        // Valid auth + origin + content-type + CSRF token: the byte cap
+        // is the only failing control, and it must fire before the body
+        // is buffered or parsed. MAX_JSON_BODY_BYTES + 1 also exceeds the
+        // tighter credential cap used by change-password.
+        const req = new NextRequest(
+          new Request(`http://localhost${c.path}`, {
+            method: c.method,
+            headers: {
+              "content-type": "application/json",
+              origin: "http://localhost",
+              "x-csrf-token": TOKEN,
+              cookie: `${CSRF_COOKIE}=${TOKEN}`,
+              "content-length": String(MAX_JSON_BODY_BYTES + 1),
+            },
+            body: JSON.stringify(c.body),
+          }),
+        );
+        const res = await c.handler(req);
+        expect(res.status).toBe(413);
+        expect(await res.json()).toEqual({ error: "Request body too large." });
+        expect(req.bodyUsed).toBe(false);
+      });
     });
   }
 });
@@ -450,5 +475,29 @@ describe("D8AD-CAN-004 shared request guard — guard unit functions", () => {
     const r2 = ensureCsrfCookie(reqPresent, res2);
     expect(r2.set).toBe(false);
     expect(r2.token).toBe(r1.token);
+  });
+
+  it("ensureCsrfCookie re-issues when the stored value cannot be decoded by the client (S086-C1 recovery)", async () => {
+    const { ensureCsrfCookie } = await import("@/lib/request-guard");
+    // A malformed percent-encoded value of length >= 16 ("%xy" is not
+    // valid hex): the client-side readCsrfToken treats it as absent
+    // (decodeURIComponent throws), so the server must re-issue instead of
+    // keeping it — otherwise every mutation from the tab fails 403 with
+    // no recovery path.
+    const malformed = "abc%xyz1234567890";
+    const req = new NextRequest("http://localhost/api/auth/me", {
+      method: "GET",
+      headers: { cookie: `${CSRF_COOKIE}=${malformed}` },
+    });
+    const res = NextResponse.json({});
+    const result = ensureCsrfCookie(req, res);
+    expect(result.set).toBe(true);
+    expect(result.token).not.toBe(malformed);
+    expect(result.token.length).toBeGreaterThanOrEqual(32);
+    const replacementCookie = res.headers.get("set-cookie");
+    expect(replacementCookie).toContain(
+      `${CSRF_COOKIE}=${result.token}`,
+    );
+    expect(replacementCookie).not.toContain(malformed);
   });
 });

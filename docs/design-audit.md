@@ -3,7 +3,7 @@
 > Audit date: June 25, 2026  
 > Authority: `DESIGN.md` is the single source of truth. Accessibility and usability take precedence only where a literal design treatment would create an inaccessible or unusable result.
 >
-> **Status note (post-audit, updated 2026-06-30):** This document captures the *first* redesign (slate-blue → violet/lime/pink + Rubik, completed 2026-06-25). A second redesign has since shipped: the palette is now **teal/navy/yellow** and the font is **Galano Grotesque** (licensed for use by Eastern State Penitentiary Historic Site). The historical text below is preserved as evidence of the migration plan and the typography table is still a useful size/weight reference, but for the live design system always defer to the current `DESIGN.md` and `docs/design-system.md`. The "violet/lime/pink" color tokens and the `Rubik` family have been retired from the codebase.
+> **Status note (post-audit, updated 2026-07-29):** This document captures the *first* redesign (slate-blue → violet/lime/pink + Rubik, completed 2026-06-25). A second redesign has since shipped: the palette is now **teal/navy/yellow** and the font is **Galano Grotesque**. The repository owner attests that the controlling license is privately held and current; the confidential license document is not versioned here. The historical text below is preserved as evidence of the migration plan, but for the live design system always defer to the current `DESIGN.md` and `docs/design-system.md`.
 >
 > Issue 42 and ADR 0022 later replaced the route, card-grid, and admin-flow
 > examples below. Use `docs/product-foundation.md` for the current product

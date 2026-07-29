@@ -1,4 +1,10 @@
-import { expect, test, type Download, type Page } from "@playwright/test";
+import {
+  expect,
+  test,
+  type Download,
+  type Page,
+  type TestInfo,
+} from "@playwright/test";
 import bcrypt from "bcryptjs";
 import { DatabaseSync } from "node:sqlite";
 import { readFile } from "node:fs/promises";
@@ -83,6 +89,195 @@ async function setMeasureLifecycle(
   expect(response.ok(), await response.text()).toBe(true);
 }
 
+interface ReleaseReportingFixture {
+  atomicKpiId: number;
+  components: Array<{ id: number; slug: string }>;
+  distributionKpiId: number;
+  distributionBands: Array<{
+    id: number;
+    slug: string;
+    label: string;
+    displayOrder: number;
+    isUnknown: boolean;
+    isDeclined: boolean;
+    derivedGroup: "white" | "non_white" | null;
+  }>;
+}
+
+/** Loads the stable identities used to arrange release-reporting acceptance state. */
+function loadReleaseReportingFixture(testInfo: TestInfo): ReleaseReportingFixture {
+  const run = e2eDatabaseRunFromMetadata(testInfo.config.metadata);
+  const db = new DatabaseSync(run.databasePath);
+  db.exec("PRAGMA busy_timeout = 5000");
+  try {
+    const atomic = db.prepare(
+      "SELECT id FROM kpis WHERE slug = 'programs-cocreated-community-orgs'",
+    ).get() as { id: number } | undefined;
+    const componentKpi = db.prepare(
+      "SELECT id FROM kpis WHERE slug = 'interpretive-plan-community-feedback'",
+    ).get() as { id: number } | undefined;
+    const distribution = db.prepare(
+      "SELECT id FROM kpis WHERE slug = 'justice-ed-diverse-demographics'",
+    ).get() as { id: number } | undefined;
+    if (!atomic || !componentKpi || !distribution) {
+      throw new Error("Release reporting acceptance measures are missing.");
+    }
+
+    const components = db.prepare(`
+      SELECT component.id, component.slug
+      FROM kpi_components component
+      JOIN kpi_measurement_configs config
+        ON config.id = component.configuration_id
+      WHERE component.kpi_id = ?
+        AND component.archived_at IS NULL
+        AND component.configuration_status <> 'archived'
+        AND config.effective_from_year <= ?
+        AND (config.effective_to_year IS NULL OR config.effective_to_year >= ?)
+        AND config.archived_at IS NULL
+      ORDER BY component.display_order, component.id
+    `).all(componentKpi.id, ENTRY_YEAR, ENTRY_YEAR) as Array<{
+      id: number;
+      slug: string;
+    }>;
+    if (
+      components.length !== 2 ||
+      components[0]?.slug !== "sessions" ||
+      components[1]?.slug !== "participants"
+    ) {
+      throw new Error("Release reporting component fixtures are incomplete.");
+    }
+
+    const distributionBands = db.prepare(`
+      SELECT id, slug, label, display_order, is_unknown, is_declined, derived_group
+      FROM distribution_bands
+      WHERE kpi_id = ?
+        AND component_id IS NULL
+        AND slug IN ('community-partners', 'other-participants')
+        AND effective_from_year <= ?
+        AND (effective_to_year IS NULL OR effective_to_year >= ?)
+        AND archived_at IS NULL
+      ORDER BY display_order, id
+    `).all(distribution.id, ENTRY_YEAR, ENTRY_YEAR) as Array<{
+      id: number;
+      slug: string;
+      label: string;
+      display_order: number;
+      is_unknown: number;
+      is_declined: number;
+      derived_group: "white" | "non_white" | null;
+    }>;
+    if (
+      distributionBands.length !== 2 ||
+      distributionBands[0]?.slug !== "community-partners" ||
+      distributionBands[1]?.slug !== "other-participants"
+    ) {
+      throw new Error("Release reporting distribution fixtures are incomplete.");
+    }
+
+    return {
+      atomicKpiId: atomic.id,
+      components,
+      distributionKpiId: distribution.id,
+      distributionBands: distributionBands.map((band) => ({
+        id: band.id,
+        slug: band.slug,
+        label: band.label,
+        displayOrder: band.display_order,
+        isUnknown: band.is_unknown === 1,
+        isDeclined: band.is_declined === 1,
+        derivedGroup: band.derived_group,
+      })),
+    };
+  } finally {
+    db.close();
+  }
+}
+
+/** Posts one authenticated, same-origin strategic fixture mutation. */
+async function postReleaseReportingFixture(
+  page: Page,
+  testInfo: TestInfo,
+  path: string,
+  data: Record<string, unknown>,
+): Promise<void> {
+  const token = (await page.context().cookies()).find(
+    (cookie) => cookie.name === "eastern_state_kpi_csrf",
+  )?.value;
+  if (!token) throw new Error("The e2e CSRF token is missing.");
+  const baseURL = testInfo.project.use.baseURL;
+  if (typeof baseURL !== "string") throw new Error("The e2e base URL is missing.");
+  const response = await page.request.post(path, {
+    headers: {
+      "content-type": "application/json",
+      origin: new URL(baseURL).origin,
+      "x-csrf-token": token,
+    },
+    data,
+  });
+  expect(response.ok(), await response.text()).toBe(true);
+}
+
+/** Upserts the exact 2029 values consumed by release-facing reporting tests. */
+async function arrangeReleaseReportingTruth(
+  page: Page,
+  testInfo: TestInfo,
+  scope: "overview" | "complete",
+): Promise<void> {
+  const fixture = loadReleaseReportingFixture(testInfo);
+  await postReleaseReportingFixture(
+    page,
+    testInfo,
+    "/api/strategy/observations",
+    {
+      kpi_id: fixture.atomicKpiId,
+      reporting_year: ENTRY_YEAR,
+      value: 17,
+      notes: "Acceptance reporting cycle",
+      source_reference: "Acceptance fixture",
+    },
+  );
+  if (scope === "overview") return;
+
+  await postReleaseReportingFixture(
+    page,
+    testInfo,
+    "/api/strategy/observations",
+    {
+      submission_type: "multi_input",
+      writes: fixture.components.map((component, index) => ({
+        kind: "component_entry",
+        input: {
+          component_id: component.id,
+          reporting_year: ENTRY_YEAR,
+          value: index === 0 ? 3 : 400,
+        },
+      })),
+    },
+  );
+  await postReleaseReportingFixture(
+    page,
+    testInfo,
+    "/api/strategy/distributions",
+    {
+      kpi_id: fixture.distributionKpiId,
+      reporting_year: ENTRY_YEAR,
+      respondent_count: 10,
+      mutually_exclusive: true,
+      bands: fixture.distributionBands.map((band, index) => ({
+        band_id: band.id,
+        slug: band.slug,
+        label: band.label,
+        count: index === 0 ? 6 : 4,
+        display_order: band.displayOrder,
+        is_unknown: band.isUnknown,
+        is_declined: band.isDeclined,
+        derived_group: band.derivedGroup,
+      })),
+      source_reference: "Distribution fixture",
+    },
+  );
+}
+
 test.beforeAll(async ({}, testInfo) => {
   const run = e2eDatabaseRunFromMetadata(testInfo.config.metadata);
   const db = new DatabaseSync(run.databasePath);
@@ -142,7 +337,10 @@ test.beforeAll(async ({}, testInfo) => {
 test.beforeEach(async ({ page }, testInfo) => {
   const password = testInfo.config.metadata.e2eAdminPassword;
   if (!password) throw new Error("The ephemeral e2e admin password is missing.");
+  const baseURL = testInfo.project.use.baseURL;
+  if (typeof baseURL !== "string") throw new Error("The e2e base URL is missing.");
   const response = await page.request.post("/api/auth/login", {
+    headers: { origin: new URL(baseURL).origin },
     data: {
       email: "kerry@easternstate.org",
       password,
@@ -279,13 +477,15 @@ test("recovers from a failed atomic save and persists only after server success"
   await expect(page.getByRole("textbox", { name: "Source" })).toHaveValue("Acceptance fixture");
   await expect(page.getByRole("button", { name: new RegExp(ATOMIC_MEASURE) })).toContainText("Complete");
 
-  const savedUrl = new URL(selectedUrl, page.url());
-  savedUrl.searchParams.set("saved", "1");
-  await page.goto(`${savedUrl.pathname}${savedUrl.search}`);
-  await expect(page.getByRole("status")).toContainText("Saved.");
+  // A crafted ?saved=1 link must not reflect a success state (S062-C1):
+  // the "Saved." banner only appears after a confirmed in-session mutation.
+  const craftedUrl = new URL(selectedUrl, page.url());
+  craftedUrl.searchParams.set("saved", "1");
+  await page.goto(`${craftedUrl.pathname}${craftedUrl.search}`);
+  await expect(page.getByRole("status").filter({ hasText: "Saved." })).toHaveCount(0);
   await page.getByRole("spinbutton", { name: "Value" }).fill("18");
   await expect(page.getByRole("status")).toContainText("Unsaved changes");
-  await expect(page.getByRole("status")).not.toContainText("Saved.");
+  await expect(page.getByRole("status").filter({ hasText: "Saved." })).toHaveCount(0);
   await page.getByRole("spinbutton", { name: "Value" }).fill("17");
   expect(browserErrors.filter((message) => !message.includes("status of 500"))).toEqual([]);
 });
@@ -464,6 +664,7 @@ test("lets an Admin edit the Board view and enforces the saved scope for Board m
 
     await page.context().clearCookies();
     const login = await page.request.post("/api/auth/login", {
+      headers: { origin: new URL(page.url()).origin },
       data: { email, password },
     });
     expect(login.ok(), await login.text()).toBe(true);
@@ -496,6 +697,9 @@ test("lets an Admin edit the Board view and enforces the saved scope for Board m
     const exportText = JSON.stringify(await exportResponse.json());
     expect(exportText).toContain("Attendance increase vs baseline");
     expect(exportText).toContain("Plan adoption by Board");
+    expect(exportText).not.toContain(
+      "Interpretive Site Plan — Visitor & community feedback participation",
+    );
 
     await page.goto("/data-entry");
     await expect(page).toHaveURL(/\/dashboard\/overview$/);
@@ -588,8 +792,9 @@ test("reflows every destination and detail route across the required viewport an
   expect(browserErrors).toEqual([]);
 });
 
-test("keeps Overview concise and reads saved strategic results", async ({ page }) => {
+test("keeps Overview concise and reads saved strategic results", async ({ page }, testInfo) => {
   const browserErrors = collectBrowserErrors(page);
+  await arrangeReleaseReportingTruth(page, testInfo, "overview");
   await page.goto("/dashboard/overview");
   const expectedDefaultYear = Math.max(
     2025,
@@ -822,11 +1027,27 @@ test("uses one flat Setup workspace on desktop and mobile", async ({ page }, tes
   await expect(page.getByRole("heading", { name: "Data changes" })).toBeVisible();
   await expect(page.getByRole("heading", { name: "Setup changes" })).toBeVisible();
   const recentActivity = page.getByRole("region", { name: "Setup changes" });
-  await expect(recentActivity.getByText(ATOMIC_MEASURE).first()).toBeVisible();
+  await expect(
+    recentActivity.getByText("Temporary acceptance measure").first(),
+  ).toBeVisible();
   await expect(recentActivity.getByText("kerry@easternstate.org").first()).toBeVisible();
 
   await page.setViewportSize({ width: 390, height: 844 });
   await page.goto("/dashboard/overview");
+  const skipLink = page.getByRole("link", { name: "Skip to content" });
+  // AppShell intentionally focuses the destination heading after route
+  // navigation. Start this keyboard-order assertion at the skip link itself:
+  // blurring the heading does not reset Chrome's sequential-focus origin.
+  await skipLink.focus();
+  await expect(skipLink).toBeFocused();
+  await expect(skipLink).toHaveCSS("outline-width", "3px");
+  await page.keyboard.press("Tab");
+  const mobileHomeLink = page.getByRole("link", { name: /home$/ }).first();
+  await expect(mobileHomeLink).toBeFocused();
+  await expect(mobileHomeLink).toHaveCSS("outline-width", "3px");
+  await page.keyboard.press("Shift+Tab");
+  await expect(skipLink).toBeFocused();
+  await page.keyboard.press("Tab");
   const mobileMenuButton = page.getByRole("button", { name: "Open navigation" });
   await mobileMenuButton.click();
   const drawer = page.getByRole("complementary");
@@ -874,6 +1095,14 @@ test("uses one flat Setup workspace on desktop and mobile", async ({ page }, tes
   await expect(page.getByRole("heading", { name: "Reporting checklist" })).toBeVisible();
   await expect(checklistItem).toBeFocused();
 
+  await page.setViewportSize({ width: 1_440, height: 1_080 });
+  await page.goto(`/dashboard/category/visitor-experience?year=${ENTRY_YEAR}`);
+  const destinationLink = page.locator("a[href*='/dashboard/metric/']").first();
+  const destinationName = (await destinationLink.locator(":scope > span").first().textContent())?.trim();
+  expect(destinationName).toBeTruthy();
+  await destinationLink.click();
+  await expect(page.getByRole("heading", { name: destinationName! })).toBeFocused();
+
   for (const width of [360, 390, 768, 1440, 1920]) {
     await page.setViewportSize({ width, height: width < 1_000 ? 844 : 1_080 });
     await page.goto("/dashboard/overview");
@@ -891,8 +1120,9 @@ test("uses one flat Setup workspace on desktop and mobile", async ({ page }, tes
   expect(browserErrors.filter((message) => !message.includes("status of 500"))).toEqual([]);
 });
 
-test("keeps visible Board Report, Trends, and exports on one reporting truth", async ({ page }) => {
+test("keeps visible Board Report, Trends, and exports on one reporting truth", async ({ page }, testInfo) => {
   const browserErrors = collectBrowserErrors(page);
+  await arrangeReleaseReportingTruth(page, testInfo, "complete");
   await page.goto(`/reports?view=board&year=${ENTRY_YEAR}&period=annual%3A0`);
   await expect(page.getByRole("heading", { name: "Reports" })).toBeVisible();
   await expect(page.getByLabel("Reporting period")).toHaveValue("annual:0");
@@ -920,6 +1150,8 @@ test("keeps visible Board Report, Trends, and exports on one reporting truth", a
   await page.emulateMedia({ media: "print" });
   await expect(page.locator(".print-report-header")).toBeVisible();
   await expect(page.locator(".print-report-footer")).toBeVisible();
+  await expect(page.locator(".reports-product-header")).toBeHidden();
+  await expect(report.locator('[role="status"]')).toHaveCount(0);
   await expect(page.getByRole("button", { name: "Open browser print dialog" })).toBeHidden();
   await expect(page.locator(".board-report-measure").first()).toHaveCSS(
     "content-visibility",
@@ -1003,6 +1235,53 @@ test("keeps visible Board Report, Trends, and exports on one reporting truth", a
   await expect(page.locator(".recharts-tooltip-wrapper")).toContainText("programs : 17");
 
   expect(browserErrors).toEqual([]);
+});
+
+test("wraps an unbroken measure title and gives unknown slugs a streamed not-found recovery boundary", async ({ page }, testInfo) => {
+  const run = e2eDatabaseRunFromMetadata(testInfo.config.metadata);
+  const db = new DatabaseSync(run.databasePath);
+  const slug = "interpretive-plan-milestones-on-schedule";
+  const row = db.prepare("SELECT name FROM kpis WHERE slug = ?").get(slug) as
+    | { name: string }
+    | undefined;
+  expect(row).toBeDefined();
+
+  try {
+    db.prepare("UPDATE kpis SET name = ? WHERE slug = ?").run(
+      "PathologicallyUnbrokenMeasureTitle",
+      slug,
+    );
+    await page.setViewportSize({ width: 320, height: 844 });
+    const response = await page.goto(`/dashboard/metric/${slug}?year=${ENTRY_YEAR}`);
+    expect(response?.status()).toBe(200);
+    await expect(
+      page.getByRole("heading", { name: "PathologicallyUnbrokenMeasureTitle" }),
+    ).toBeVisible();
+    expect(
+      await page.evaluate(
+        () => document.documentElement.scrollWidth <= window.innerWidth,
+      ),
+    ).toBe(true);
+  } finally {
+    db.prepare("UPDATE kpis SET name = ? WHERE slug = ?").run(row!.name, slug);
+    db.close();
+  }
+
+  const missing = await page.goto("/dashboard/metric/not-a-real-measure");
+  // This dynamic route intentionally streams its loading skeleton, so Next.js
+  // may have committed HTTP 200 before `notFound()` resolves. The framework's
+  // streamed not-found contract is the recovery boundary plus noindex metadata,
+  // which prevents the missing URL from being indexed without sacrificing the
+  // route's immediate loading state.
+  expect(missing?.status()).toBe(200);
+  await expect(page.getByRole("heading", { name: "Page not found" })).toBeFocused();
+  await expect(page.locator('meta[name="robots"]').first()).toHaveAttribute(
+    "content",
+    /noindex/i,
+  );
+  await expect(page.getByRole("link", { name: "Go to Overview" })).toBeVisible();
+  await page.getByRole("link", { name: "Go to Overview" }).click();
+  await expect(page).toHaveURL(/\/dashboard\/overview$/);
 });
 
 test("recovers a route failure and restores focus to the application", async ({ page }, testInfo) => {

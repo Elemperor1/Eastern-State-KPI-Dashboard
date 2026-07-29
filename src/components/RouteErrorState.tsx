@@ -37,7 +37,7 @@ export function RouteErrorState({ title, reset }: RouteErrorStateProps) {
         <div className="mx-auto flex min-h-20 max-w-(--breakpoint-xl) flex-wrap items-center justify-between gap-4 px-6 py-3 lg:px-10">
           <Link
             href="/dashboard/overview"
-            className="inline-flex items-center gap-3 rounded-md focus-visible:outline-solid focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-(--color-focus)"
+            className="inline-flex items-center gap-3 rounded-md focus-visible:outline-solid focus-visible:outline-[3px] focus-visible:outline-offset-2 focus-visible:outline-(--color-focus)"
           >
             <BrandMark size="sm" />
             <span className="font-semibold text-ink-950">Strategic Plan</span>

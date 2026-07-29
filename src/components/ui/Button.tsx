@@ -59,6 +59,7 @@ export const Button = forwardRef<HTMLButtonElement, ButtonProps>(function Button
   children,
   variant = "secondary",
   size = "md",
+  type = "button",
   icon: Icon,
   iconPosition = "left",
   isLoading,
@@ -74,6 +75,7 @@ export const Button = forwardRef<HTMLButtonElement, ButtonProps>(function Button
   return (
     <button
       ref={ref}
+      type={type}
       className={buttonClassName({ variant, size, hasLeftIcon, hasRightIcon, fullWidth, className })}
       disabled={disabled || isLoading}
       aria-busy={isLoading || undefined}

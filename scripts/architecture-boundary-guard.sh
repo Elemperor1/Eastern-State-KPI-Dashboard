@@ -40,58 +40,6 @@ do
   fi
 done
 
-server_self_http_hits="$(
-  find src/app src/features src/lib -type f \( -name '*.ts' -o -name '*.tsx' \) \
-    ! -name '*.test.ts' ! -name '*.test.tsx' \
-    ! -path 'src/lib/api-client.ts' \
-    -print \
-    | sort \
-    | while IFS= read -r file; do
-        awk '
-          BEGIN { client = 0; checked = 0; in_block = 0 }
-          {
-            text = $0
-            trimmed = $0
-            sub(/^[[:space:]]+/, "", trimmed)
-
-            if (!checked) {
-              if (in_block) {
-                if (trimmed ~ /\*\//) {
-                  in_block = 0
-                }
-                next
-              }
-              if (trimmed == "" || trimmed ~ /^\/\//) {
-                next
-              }
-              if (trimmed ~ /^\/\*/) {
-                if (trimmed !~ /\*\//) {
-                  in_block = 1
-                }
-                next
-              }
-              checked = 1
-              if (trimmed ~ /^["\047]use client["\047];?$/) {
-                client = 1
-              }
-            }
-
-            if (client) {
-              next
-            }
-            if (text ~ /apiFetch[[:space:]]*\(/ || (text ~ /fetch[[:space:]]*\(/ && text ~ /\/api\//)) {
-              printf "%s:%d:%s\n", FILENAME, FNR, text
-            }
-          }
-        ' "$file"
-      done \
-    | head -40 || true
-)"
-
-if [ -n "$server_self_http_hits" ]; then
-  flag_failure "server-owned code calls the app's own API boundary" "$server_self_http_hits"
-fi
-
 is_client_component() {
   awk '
     BEGIN { checked = 0; in_block = 0 }
@@ -129,6 +77,61 @@ is_client_component() {
   ' "$1"
 }
 
+# Server-owned code must not call the app's own /api/* boundary. The scan is
+# multiline-aware (finding S048-C5): it flags any apiFetch( call, a fetch(
+# whose argument list contains an /api/ string literal within a 300-char
+# window (catches the Prettier multiline form fetch(\n  "/api/..."\n)), and a
+# bare fetch identifier only when a nearby binding associates it with /api/.
+server_self_http_hits="$(
+  find src/app src/features src/lib -type f \( -name '*.ts' -o -name '*.tsx' \) \
+    ! -name '*.test.ts' ! -name '*.test.tsx' \
+    ! -path 'src/lib/api-client.ts' \
+    -print \
+    | sort \
+    | while IFS= read -r file; do
+        if is_client_component "$file"; then
+          continue
+        fi
+        perl -0777 -ne '
+          my @hits;
+          my %api_bindings;
+          while (/\b(?:const|let|var)\s+([A-Za-z_\$][\w\$]*)\s*=\s*([\s\S]{0,300}?)(?=;|\n)/g) {
+            my ($identifier, $expression, $binding_pos) = ($1, $2, $-[0]);
+            if ($expression =~ /["\x27\x60][^"\x27\x60]{0,300}\/api\//) {
+              push @{$api_bindings{$identifier}}, $binding_pos;
+            }
+          }
+          while (/apiFetch\s*\(/g) {
+            push @hits, $-[0];
+          }
+          while (/fetch\s*\([\s\S]{0,300}?["\x27\x60]\/api\//g) {
+            push @hits, $-[0];
+          }
+          while (/fetch\s*\(\s*([A-Za-z_\$][\w\$]*)\s*[,)]/g) {
+            my ($identifier, $fetch_pos) = ($1, $-[0]);
+            for my $binding_pos (@{$api_bindings{$identifier} || []}) {
+              if ($binding_pos <= $fetch_pos && $fetch_pos - $binding_pos <= 500) {
+                push @hits, $fetch_pos;
+                last;
+              }
+            }
+          }
+          for my $pos (sort { $a <=> $b } @hits) {
+            my $prefix = substr($_, 0, $pos);
+            my $line = 1 + ($prefix =~ tr/\n//);
+            my $text = substr($_, $pos, 60);
+            $text =~ s/\s+/ /g;
+            print "$ARGV:$line: $text\n";
+          }
+        ' "$file"
+      done \
+    | head -40 || true
+)"
+
+if [ -n "$server_self_http_hits" ]; then
+  flag_failure "server-owned code calls the app's own API boundary" "$server_self_http_hits"
+fi
+
 client_server_import_hits="$(
   find src/app src/components src/features -type f \( -name '*.ts' -o -name '*.tsx' \) \
     ! -name '*.test.ts' ! -name '*.test.tsx' \
@@ -136,7 +139,7 @@ client_server_import_hits="$(
     | sort \
     | while IFS= read -r file; do
         if is_client_component "$file"; then
-          grep -n -E "from ['\"](@/lib/db|@/features/[^'\"]+/server|node:sqlite)['\"]|import[[:space:]]*\\([[:space:]]*['\"](@/lib/db|@/features/[^'\"]+/server|node:sqlite)['\"]" "$file" \
+          grep -n -E "from ['\"\`](@/lib/db|@/features/[^'\"\`]+/server|node:sqlite)['\"\`]|import[[:space:]]*\\([[:space:]]*['\"\`](@/lib/db|@/features/[^'\"\`]+/server|node:sqlite)['\"\`]" "$file" \
             | sed "s#^#${file}:#" || true
         fi
       done \
@@ -153,7 +156,7 @@ ui_database_import_hits="$(
     -print \
     | sort \
     | while IFS= read -r file; do
-        grep -n -E "from ['\"](@/lib/db|node:sqlite)['\"]|import[[:space:]]*\\([[:space:]]*['\"](@/lib/db|node:sqlite)['\"]" "$file" \
+        grep -n -E "from ['\"\`](@/lib/db|node:sqlite)['\"\`]|import[[:space:]]*\\([[:space:]]*['\"\`](@/lib/db|node:sqlite)['\"\`]" "$file" \
           | sed "s#^#${file}:#" || true
       done \
     | head -40 || true
@@ -169,9 +172,9 @@ cross_feature_internal_hits="$(
     -print \
     | sort \
     | while IFS= read -r file; do
-        grep -n -E "from ['\"]@/features/[^/'\"]+/[^'\"]+['\"]|import[[:space:]]*\\([[:space:]]*['\"]@/features/[^/'\"]+/[^'\"]+['\"]" "$file" \
+        grep -n -E "from ['\"\`]@/features/[^/'\"\`]+/[^'\"\`]+['\"\`]|import[[:space:]]*\\([[:space:]]*['\"\`]@/features/[^/'\"\`]+/[^'\"\`]+['\"\`]" "$file" \
           | grep -v -E '^[0-9]+:[[:space:]]*(\*|//)' \
-          | grep -v -E "@/features/[^/'\"]+/server['\"]" \
+          | grep -v -E "@/features/[^/'\"\`]+/server['\"\`]" \
           | sed "s#^#${file}:#" || true
       done \
     | head -40 || true
@@ -190,7 +193,7 @@ calculation_dependency_hits="$(
     -print \
     | sort \
     | while IFS= read -r file; do
-        grep -n -E "from ['\"](react|react/|next|next/|@/lib/db|node:sqlite)['\"]|import[[:space:]]*\\([[:space:]]*['\"](react|react/|next|next/|@/lib/db|node:sqlite)['\"]" "$file" \
+        grep -n -E "from ['\"\`](react|react/|next|next/|@/lib/db|node:sqlite)['\"\`]|import[[:space:]]*\\([[:space:]]*['\"\`](react|react/|next|next/|@/lib/db|node:sqlite)['\"\`]" "$file" \
           | sed "s#^#${file}:#" || true
       done \
     | head -40 || true
@@ -208,7 +211,7 @@ runtime_fixture_import_hits="$(
     -print \
     | sort \
     | while IFS= read -r file; do
-        grep -n -E "from ['\"][^'\"]*catalog/(strategic-plan|strategic-config)['\"]|import[[:space:]]*\([[:space:]]*['\"][^'\"]*catalog/(strategic-plan|strategic-config)['\"]" "$file" \
+        grep -n -E "from ['\"\`][^'\"\`]*catalog/(strategic-plan|strategic-config)['\"\`]|import[[:space:]]*\([[:space:]]*['\"\`][^'\"\`]*catalog/(strategic-plan|strategic-config)['\"\`]" "$file" \
           | sed "s#^#${file}:#" || true
       done \
     | head -40 || true

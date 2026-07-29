@@ -28,6 +28,8 @@ export interface StrategicGoalMemberSummary {
   effectiveFromYear: number;
   effectiveToYear: number | null;
   configurationStatus: ConfigurationStatus | null;
+  /** Optimistic-concurrency token (updated_at) loaded with the membership. */
+  updatedAt: string;
 }
 
 export interface StrategicGoalEditorRecord extends PersistedStrategicGoal {
@@ -88,7 +90,7 @@ interface StrategicGoalMembershipMutationResult {
   error: string | null;
   membership?: Pick<
     PersistedGoalMembership,
-    "id" | "role" | "weight" | "display_order"
+    "id" | "role" | "weight" | "display_order" | "updated_at"
   >;
 }
 
@@ -189,6 +191,7 @@ export function strategicGoalMembershipDraftFromData(
 export function buildStrategicGoalMembershipMutation(
   membershipId: number,
   draft: StrategicGoalMembershipDraft,
+  expectedRevision?: string,
 ):
   | {
       ok: true;
@@ -206,6 +209,7 @@ export function buildStrategicGoalMembershipMutation(
     role: draft.role,
     weight,
     display_order: displayOrder,
+    expected_revision: expectedRevision,
   });
   if (!parsed.success) {
     return {
@@ -228,12 +232,17 @@ export function buildStrategicGoalMembershipMutation(
 /** Builds strategic goal membership successor mutation. */
 export function buildStrategicGoalMembershipSuccessorMutation(
   membershipId: number,
+  expectedRevision: string,
   effectiveStartYear: number,
   draft: StrategicGoalMembershipDraft,
   planStartYear: number,
   planEndYear: number,
 ): ReturnType<typeof buildStrategicGoalMembershipMutation> {
-  const built = buildStrategicGoalMembershipMutation(membershipId, draft);
+  const built = buildStrategicGoalMembershipMutation(
+    membershipId,
+    draft,
+    expectedRevision,
+  );
   if (!built.ok) return built;
   if (
     !Number.isInteger(effectiveStartYear) ||
@@ -262,6 +271,7 @@ export function buildStrategicGoalMembershipSuccessorMutation(
       body: {
         action: "create_successor",
         predecessor_id: membershipId,
+        expected_revision: expectedRevision,
         effective_start_year: effectiveStartYear,
         role: update.role,
         weight: update.weight,
@@ -352,6 +362,7 @@ export function buildStrategicGoalSettingsPayload(
     ok: true,
     payload: {
       id: goal.id,
+      expected_revision: goal.updated_at,
       completion_rule: value.completion_rule,
       threshold_count: value.threshold_count,
       threshold_percentage: value.threshold_percentage,

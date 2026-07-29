@@ -20,7 +20,9 @@
 #   - python3 (stdlib only — no pip dependencies)
 #   - bash 4+
 #   - curl
-#   - shellcheck (optional — skipped gracefully if absent)
+#   - shellcheck (required in CI — finding S054-C1: an absent shellcheck must
+#     fail the gate closed when CI=true instead of passing vacuously; locally
+#     it is still skipped with a warning so the dynamic stage can run)
 set -euo pipefail
 
 HERE="$(cd "$(dirname "$0")" && pwd)"
@@ -87,11 +89,16 @@ if command -v shellcheck &>/dev/null; then
     check "ShellCheck: all scripts pass" false
   fi
 else
-  echo "  ⚠  shellcheck not installed — skipping ShellCheck stage."
-  echo "     Install it: brew install shellcheck  (macOS)"
-  echo "                apt install shellcheck    (Debian/Ubuntu)"
-  echo "                dnf install shellcheck    (Fedora)"
-  echo "     CI runners (GitHub Actions, etc.) should install it."
+  if [ "${CI:-}" = "true" ]; then
+    # Fail closed in CI: without ShellCheck this stage provides no coverage.
+    check "ShellCheck: installed in CI (shellcheck not found)" false
+  else
+    echo "  ⚠  shellcheck not installed — skipping ShellCheck stage."
+    echo "     Install it: brew install shellcheck  (macOS)"
+    echo "                apt install shellcheck    (Debian/Ubuntu)"
+    echo "                dnf install shellcheck    (Fedora)"
+    echo "     CI runners (GitHub Actions, etc.) should install it."
+  fi
 fi
 
 # ── Stage 2: Static-pattern guard ───────────────────────────────────────────
@@ -108,10 +115,11 @@ stage_header "Static-pattern guard (bash -c / sh -c / eval reintroduction)"
 #   eval "..."       — evaluates a string as shell code
 #   eval $var        — evaluates an unquoted variable as shell code
 #
-# False-positive notes:
-#   - `eval "$(ssh-agent -s)"` would match, but ssh-agent is not used here.
-#   - If a legitimate eval is needed, add a comment with "shellcheck disable"
-#     on the line above (the guard ignores lines with that marker).
+# No inline exemptions are honored (finding S054-C1): a trailing
+# "shellcheck disable" or "D8AD-CAN-008" substring previously disabled the
+# check for that line, so eval/bash -c could be smuggled past the guard with
+# a comment. Any hit on a non-comment line is a hard failure; remove the
+# string-evaluation pattern instead of annotating it.
 
 VIOLATIONS=0
 scan_pattern() {
@@ -123,7 +131,6 @@ scan_pattern() {
   # grep -rn output includes the filename prefix (file:line:content),
   # which breaks a simple '^\s*#' filter.  awk inspects the actual
   # content portion directly.
-  # We also exclude lines that contain `D8AD-CAN-008` or `shellcheck disable`.
   # The CI gate script itself is excluded because it describes these
   # patterns in strings and function names (false positives).
   local hits
@@ -131,10 +138,7 @@ scan_pattern() {
     find "$dir" -name '*.sh' ! -name 'd8ad-can-008-ci-gate.sh' \
       -exec awk -v pat="$pattern" '
       !/^\s*#/ && $0 ~ pat {
-        if (index($0, "shellcheck disable") == 0 && \
-            index($0, "D8AD-CAN-008") == 0) {
-          print FILENAME ":" NR ":" $0
-        }
+        print FILENAME ":" NR ":" $0
       }
     ' {} + 2>/dev/null || true
   )"
@@ -161,9 +165,8 @@ if [ "$VIOLATIONS" -eq 0 ]; then
 else
   check "static guard: no bash -c / sh -c / eval patterns found" false
   echo "  ⚠  A shell script in scripts/ introduced a string-evaluation pattern."
-  echo "     See the hits above.  If this is a false positive, add a comment:"
-  echo "        # shellcheck disable=SCXXXX  (on the line before)"
-  echo "     Or reference D8AD-CAN-008 in a comment."
+  echo "     See the hits above. No inline exemption markers are honored;"
+  echo "     remove the eval/bash -c/sh -c usage instead of annotating it."
 fi
 
 # ── Stage 3: Dynamic smoke-test against malicious fake server ───────────────-

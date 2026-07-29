@@ -94,6 +94,8 @@ export interface TargetFormDraft {
   configurationStatus: ConfigurationStatus;
   sourceReference: string;
   lastReviewedDate: string;
+  /** Optimistic-concurrency token (updated_at) of the loaded target. */
+  expectedRevision: string | null;
 }
 
 export interface ComponentFormDraft {
@@ -234,6 +236,7 @@ export function buildConfigurationFormPayload(
   draft: ConfigurationFormDraft,
   kpiId: number,
   configurationId: number | null,
+  expectedRevision: string | null = null,
 ): StrategyEditorBuildResult {
   const common = {
     effective_start_year: requiredNumber(draft.effectiveStartYear),
@@ -264,6 +267,7 @@ export function buildConfigurationFormPayload(
   if (!complete.ok || configurationId === null) return complete;
   return parseWithSchema(MeasurementConfigurationUpdateSchema, {
     id: configurationId,
+    expected_revision: expectedRevision ?? undefined,
     ...common,
   });
 }
@@ -327,6 +331,7 @@ export function canCreateMeasurementSuccessor(
 /** Builds successor configuration mutation. */
 export function buildSuccessorConfigurationMutation(
   predecessorId: number,
+  expectedRevision: string,
   payload: Record<string, unknown>,
 ): StrategyEditorMutation {
   return {
@@ -335,6 +340,7 @@ export function buildSuccessorConfigurationMutation(
     body: {
       action: "create_successor",
       predecessor_id: predecessorId,
+      expected_revision: expectedRevision,
       successor: payload,
     },
   };
@@ -376,6 +382,7 @@ export function targetDraftForScope(
     configurationStatus: target?.configuration_status ?? "draft",
     sourceReference: target?.source_reference ?? "",
     lastReviewedDate: target?.last_reviewed_date ?? "",
+    expectedRevision: target?.updated_at ?? null,
   };
 }
 
@@ -450,6 +457,7 @@ export function buildTargetFormPayload(
   }
   return parseWithSchema(StrategicTargetUpdateSchema, {
     id: draft.id,
+    expected_revision: draft.expectedRevision ?? undefined,
     target_scope: draft.scope,
     reporting_year: draft.scope === "annual" ? targetYear : null,
     target_year: targetYear,

@@ -165,6 +165,53 @@ export const PROTECTED_API_ROUTES: ProtectedRoute[] = [
   { method: "PATCH", path: "/api/users/account", gate: "requireAdmin", group: "users", takesReq: true },
 ];
 
+/**
+ * The documented exceptions: API route+method combinations that exist
+ * on disk but are intentionally OUTSIDE the shared
+ * `requireSession`/`requireStaffSession`/`requireAdmin` gate (public
+ * entry points, minimum routes reachable by must_change users, and
+ * the anonymous operational readiness probe). Each entry names the
+ * reason it cannot move behind the shared gate.
+ *
+ * `src/lib/auth-route-table-drift.test.ts` walks
+ * `src/app/api/**​/route.ts` and asserts the on-disk route surface is
+ * EXACTLY `PROTECTED_API_ROUTES` ∪ this table — so adding a route
+ * without registering it in one of the two tables fails loudly
+ * instead of silently escaping the authz replay matrix (S087-C1).
+ */
+export const UNGATED_API_ROUTE_EXCEPTIONS = [
+  {
+    method: "POST",
+    path: "/api/auth/login",
+    reason:
+      "Public entry point: there is no session to gate yet. Throttled per IP and per account.",
+  },
+  {
+    method: "POST",
+    path: "/api/auth/logout",
+    reason:
+      "Uses getSession directly so a stale or revoked cookie can still be destroyed; it only clears the cookie.",
+  },
+  {
+    method: "GET",
+    path: "/api/auth/me",
+    reason:
+      "Minimum route reachable by must_change users; reports {user:null} for absent or revoked sessions instead of gating.",
+  },
+  {
+    method: "POST",
+    path: "/api/auth/change-password",
+    reason:
+      "Minimum route reachable by must_change users performing their forced rotation; gates on getCurrentUser without the must_change 403.",
+  },
+  {
+    method: "GET",
+    path: "/api/health/ready",
+    reason:
+      "Public operational exception: constant-shape readiness probe over an independent read-only SQLite connection; imports no session boundary.",
+  },
+] as const;
+
 type Handler = (req?: NextRequest) => Promise<Response>;
 
 const HANDLERS: Record<string, Handler> = {

@@ -139,9 +139,17 @@ export function StrategicKpiEditorClient({ data }: { data: StrategicKpiEditorDat
         });
         const body = (await response.json().catch(() => ({}))) as {
           error?: string;
+          code?: string;
           issues?: unknown;
         };
         if (!response.ok) {
+          if (response.status === 409 && body.code === "stale_revision") {
+            return {
+              ok: false,
+              error:
+                "This record changed while you were editing it. Reload the page to load the latest version, then reapply your changes.",
+            };
+          }
           const detail = issueMessage(body.issues);
           return {
             ok: false,
@@ -372,6 +380,7 @@ function ConfigurationEditor({
       draft,
       data.kpi.id,
       successorMode ? null : data.configuration?.id ?? null,
+      successorMode ? null : data.configuration?.updated_at ?? null,
     );
     if (!built.ok) {
       setErrors(built.errors);
@@ -385,10 +394,11 @@ function ConfigurationEditor({
     setBusy(true);
     const result = await runMutation(
       successorMode && data.configuration
-        ? buildSuccessorConfigurationMutation(
-            data.configuration.id,
-            built.payload,
-          )
+          ? buildSuccessorConfigurationMutation(
+              data.configuration.id,
+              data.configuration.updated_at,
+              built.payload,
+            )
         : buildConfigurationMutation(
             built.payload,
             data.configuration === null,

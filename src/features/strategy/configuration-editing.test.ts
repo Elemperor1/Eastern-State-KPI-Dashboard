@@ -29,9 +29,11 @@ import { listStrategicAuditEvents } from "./audit";
 import {
   archiveComponent,
   archiveMeasurementConfig,
+  archiveStrategicGoal,
   archiveTarget,
   restoreComponent,
   restoreMeasurementConfig,
+  restoreStrategicGoal,
   restoreTarget,
 } from "./mutations";
 import {
@@ -90,6 +92,20 @@ function getMeasurementRange(id: number) {
        FROM kpi_measurement_configs WHERE id = ?`,
     )
     .get(id);
+}
+
+/** Reads the current optimistic-concurrency token for a strategy row. */
+function currentRevision(
+  table: "goal_kpis" | "kpi_measurement_configs",
+  id: number,
+): string {
+  return String(
+    (
+      getDb()
+        .prepare(`SELECT updated_at FROM ${table} WHERE id = ?`)
+        .get(id) as { updated_at: string }
+    ).updated_at,
+  );
 }
 
 describe("strategic configuration editing repository", () => {
@@ -244,6 +260,7 @@ describe("strategic configuration editing repository", () => {
     const result = createSuccessorMeasurementConfiguration(
       {
         predecessor_id: predecessor.id,
+        expected_revision: predecessor.updated_at,
         successor: configuration(countKpiId, {
           effective_start_year: 2027,
           effective_end_year: 2029,
@@ -297,6 +314,7 @@ describe("strategic configuration editing repository", () => {
       createSuccessorMeasurementConfiguration(
         {
           predecessor_id: predecessor.id,
+          expected_revision: predecessor.updated_at,
           successor: configuration(countKpiId, {
             effective_start_year: 2027,
             measurement_type: "percentage",
@@ -342,6 +360,7 @@ describe("strategic configuration editing repository", () => {
       createSuccessorMeasurementConfiguration(
         {
           predecessor_id: predecessor.id,
+          expected_revision: predecessor.updated_at,
           successor: configuration(countKpiId, {
             effective_start_year: 2027,
             measurement_type: "percentage",
@@ -376,6 +395,7 @@ describe("strategic configuration editing repository", () => {
     createSuccessorMeasurementConfiguration(
       {
         predecessor_id: predecessor.id,
+        expected_revision: predecessor.updated_at,
         successor: configuration(countKpiId, {
           effective_start_year: 2027,
           measurement_type: "percentage",
@@ -477,6 +497,7 @@ describe("strategic configuration editing repository", () => {
       createSuccessorMeasurementConfiguration(
         {
           predecessor_id: distributionConfig.id,
+          expected_revision: distributionConfig.updated_at,
           successor: configuration(countKpiId, {
             effective_start_year: 2027,
           }),
@@ -524,6 +545,7 @@ describe("strategic configuration editing repository", () => {
       createSuccessorMeasurementConfiguration(
         {
           predecessor_id: multiConfig.id,
+          expected_revision: multiConfig.updated_at,
           successor: configuration(multiKpiId, {
             effective_start_year: 2027,
           }),
@@ -600,6 +622,7 @@ describe("strategic configuration editing repository", () => {
     const result = createSuccessorMeasurementConfiguration(
       {
         predecessor_id: predecessor.id,
+        expected_revision: predecessor.updated_at,
         successor: configuration(multiKpiId, {
           measurement_type: "multi_component",
           aggregation_method: "none",
@@ -773,6 +796,7 @@ describe("strategic configuration editing repository", () => {
       const result = createSuccessorMeasurementConfiguration(
         {
           predecessor_id: predecessor.id,
+          expected_revision: predecessor.updated_at,
           successor: configuration(multiKpiId, {
             measurement_type: "multi_component",
             aggregation_method: "sum",
@@ -851,6 +875,7 @@ describe("strategic configuration editing repository", () => {
       createSuccessorMeasurementConfiguration(
         {
           predecessor_id: predecessor.id,
+          expected_revision: predecessor.updated_at,
           successor: configuration(multiKpiId, {
             measurement_type: "multi_component",
             aggregation_method: "sum",
@@ -891,6 +916,7 @@ describe("strategic configuration editing repository", () => {
       createSuccessorMeasurementConfiguration(
         {
           predecessor_id: predecessor.id,
+          expected_revision: predecessor.updated_at,
           successor: configuration(countKpiId, {
             measurement_type: "multi_component",
             aggregation_method: "sum",
@@ -913,6 +939,7 @@ describe("strategic configuration editing repository", () => {
       createSuccessorMeasurementConfiguration(
         {
           predecessor_id: predecessor.id,
+          expected_revision: predecessor.updated_at,
           successor: configuration(countKpiId, {
             effective_start_year: 2030,
             effective_end_year: 2030,
@@ -948,6 +975,7 @@ describe("strategic configuration editing repository", () => {
     const successor = createSuccessorMeasurementConfiguration(
       {
         predecessor_id: predecessor.id,
+        expected_revision: predecessor.updated_at,
         successor: configuration(countKpiId, {
           effective_start_year: 2030,
           effective_end_year: 2030,
@@ -971,6 +999,7 @@ describe("strategic configuration editing repository", () => {
       createSuccessorMeasurementConfiguration(
         {
           predecessor_id: predecessor.id,
+          expected_revision: predecessor.updated_at,
           successor: configuration(countKpiId, {
             effective_start_year: 2027,
             effective_end_year: 2028,
@@ -1003,6 +1032,7 @@ describe("strategic configuration editing repository", () => {
       createSuccessorMeasurementConfiguration(
         {
           predecessor_id: historical.id,
+          expected_revision: historical.updated_at,
           successor: configuration(countKpiId, {
             effective_start_year: 2026,
             effective_end_year: 2029,
@@ -1065,6 +1095,7 @@ describe("strategic configuration editing repository", () => {
       createSuccessorMeasurementConfiguration(
         {
           predecessor_id: predecessor.id,
+          expected_revision: predecessor.updated_at,
           successor: configuration(localKpi, {
             effective_start_year: 2027,
             effective_end_year: 2029,
@@ -1302,6 +1333,7 @@ describe("strategic configuration editing repository", () => {
       createSuccessorMeasurementConfiguration(
         {
           predecessor_id: predecessor.id,
+          expected_revision: predecessor.updated_at,
           successor: configuration(countKpiId, {
             effective_start_year: 2027,
             measurement_type: "percentage",
@@ -1341,6 +1373,7 @@ describe("strategic configuration editing repository", () => {
       createSuccessorMeasurementConfiguration(
         {
           predecessor_id: predecessor.id,
+          expected_revision: predecessor.updated_at,
           successor: configuration(countKpiId, {
             effective_start_year: 2027,
             measurement_type: "count",
@@ -1414,6 +1447,44 @@ describe("strategic configuration editing repository", () => {
     ).toEqual({ configuration_status: "active", archived_at: null });
   });
 
+  it("rejects archiving a measurement configuration that would orphan a defined target", () => {
+    const configurationRow = createMeasurementConfiguration(
+      configuration(countKpiId),
+      actorId,
+    );
+    createStrategicTarget(
+      {
+        kpi_id: countKpiId,
+        target_scope: "full_plan",
+        target_year: 2029,
+        target_value: 25,
+        target_description: "Complete 25 items.",
+        configuration_status: "active",
+      },
+      actorId,
+    );
+
+    expect(() => archiveMeasurementConfig(configurationRow.id, actorId)).toThrow(
+      expect.objectContaining({
+        code: "target_configuration_coverage_conflict",
+      }),
+    );
+    expect(
+      getDb()
+        .prepare(
+          "SELECT configuration_status, archived_at FROM kpi_measurement_configs WHERE id = ?",
+        )
+        .get(configurationRow.id),
+    ).toEqual({ configuration_status: "active", archived_at: null });
+
+    getDb()
+      .prepare("UPDATE kpis SET archived_at = datetime('now') WHERE id = ?")
+      .run(countKpiId);
+    expect(() => archiveMeasurementConfig(configurationRow.id, actorId)).toThrow(
+      expect.objectContaining({ code: "archived_kpi_context" }),
+    );
+  });
+
   it("revalidates full-plan semantic boundaries before restoring a configuration", () => {
     const predecessor = createMeasurementConfiguration(
       configuration(countKpiId, { effective_end_year: 2026 }),
@@ -1462,10 +1533,16 @@ describe("strategic configuration editing repository", () => {
       actorId,
     );
 
-    archiveMeasurementConfig(predecessor.id, actorId);
-    // Simulate a pre-guard/imported archived state. Public target updates now
-    // reject this gap before it can be persisted; restore must still defend
-    // databases that already contain it.
+    getDb()
+      .prepare(
+        `UPDATE kpi_measurement_configs
+         SET configuration_status = 'archived', archived_at = datetime('now')
+         WHERE id = ?`,
+      )
+      .run(predecessor.id);
+    // Simulate a pre-guard/imported archived state. Public configuration
+    // archives and target updates now reject this gap before it can be
+    // persisted; restore must still defend databases that already contain it.
     getDb()
       .prepare(
         `UPDATE kpi_targets
@@ -1779,6 +1856,52 @@ describe("strategic configuration editing repository", () => {
       listStrategicAuditEvents({ entity_type: "strategic_goal", entity_id: goalId })
         .map((event) => event.event_type),
     ).toEqual(["status_change", "update"]);
+  });
+
+  it("refuses a threshold count above the goal's active membership count (S070-C3)", () => {
+    // The fixture goal has exactly two active memberships: a threshold of
+    // 2 is satisfiable; 3 would make the completion rule permanently
+    // unreachable and previously persisted silently.
+    const satisfiable = updateStrategicGoalSettings(
+      {
+        id: goalId,
+        completion_rule: "threshold_count",
+        threshold_count: 2,
+      },
+      actorId,
+    );
+    expect(satisfiable.threshold_count).toBe(2);
+
+    expect(() =>
+      updateStrategicGoalSettings(
+        { id: goalId, threshold_count: 3 },
+        actorId,
+      ),
+    ).toThrow(StrategyEditValidationError);
+    expect(() =>
+      updateStrategicGoalSettings(
+        { id: goalId, threshold_count: 1e15 },
+        actorId,
+      ),
+    ).toThrow(StrategyEditValidationError);
+
+    // The persisted value is unchanged by the refused writes.
+    const persisted = getDb()
+      .prepare("SELECT threshold_count FROM strategic_goals WHERE id = ?")
+      .get(goalId) as { threshold_count: number };
+    expect(persisted.threshold_count).toBe(2);
+
+    // The successor path applies the same cap.
+    expect(() =>
+      createSuccessorStrategicGoal(
+        {
+          predecessor_id: goalId,
+          effective_start_year: 2027,
+          update: { id: goalId, threshold_count: 3 },
+        },
+        actorId,
+      ),
+    ).toThrow(StrategyEditValidationError);
   });
 
   it("freezes goal completion rules after member observations exist", () => {
@@ -2129,6 +2252,7 @@ describe("strategic configuration editing repository", () => {
       createSuccessorStrategicGoalMembership(
         {
           predecessor_id: membershipId,
+          expected_revision: currentRevision("goal_kpis", membershipId),
           effective_start_year: 2026,
           role: "informational",
           weight: 2,
@@ -2148,6 +2272,7 @@ describe("strategic configuration editing repository", () => {
     const result = createSuccessorStrategicGoalMembership(
       {
         predecessor_id: membershipId,
+        expected_revision: currentRevision("goal_kpis", membershipId),
         effective_start_year: 2027,
         role: "informational",
         weight: 2,
@@ -2797,5 +2922,837 @@ describe("strategic configuration editing repository", () => {
         actorId,
       ),
     ).toThrow(expect.objectContaining({ code: "historical_semantics_conflict" }));
+  });
+
+  it("rejects configuration create, update, and restore under an archived KPI (S040-C1)", () => {
+    const created = createMeasurementConfiguration(
+      configuration(countKpiId),
+      actorId,
+    );
+    getDb()
+      .prepare("UPDATE kpis SET archived_at = datetime('now') WHERE id = ?")
+      .run(countKpiId);
+
+    expect(() =>
+      updateMeasurementConfiguration(
+        { id: created.id, owner: "Evaluation team" },
+        actorId,
+      ),
+    ).toThrow(expect.objectContaining({ code: "archived_kpi_context" }));
+
+    getDb()
+      .prepare("UPDATE kpis SET archived_at = datetime('now') WHERE id = ?")
+      .run(multiKpiId);
+    expect(() =>
+      createMeasurementConfiguration(configuration(multiKpiId), actorId),
+    ).toThrow(expect.objectContaining({ code: "archived_kpi_context" }));
+
+    expect(() => archiveMeasurementConfig(created.id, actorId)).toThrow(
+      expect.objectContaining({ code: "archived_kpi_context" }),
+    );
+    getDb()
+      .prepare("UPDATE kpis SET archived_at = NULL WHERE id = ?")
+      .run(countKpiId);
+    archiveMeasurementConfig(created.id, actorId);
+    getDb()
+      .prepare("UPDATE kpis SET archived_at = datetime('now') WHERE id = ?")
+      .run(countKpiId);
+    expect(() => restoreMeasurementConfig(created.id, actorId)).toThrow(
+      expect.objectContaining({ code: "archived_kpi_context" }),
+    );
+    expect(
+      getDb()
+        .prepare(
+          "SELECT archived_at FROM kpi_measurement_configs WHERE id = ?",
+        )
+        .get(created.id),
+    ).not.toEqual({ archived_at: null });
+
+    getDb()
+      .prepare("UPDATE kpis SET archived_at = NULL WHERE id IN (?, ?)")
+      .run(countKpiId, multiKpiId);
+    restoreMeasurementConfig(created.id, actorId);
+    expect(
+      getDb()
+        .prepare(
+          "SELECT archived_at FROM kpi_measurement_configs WHERE id = ?",
+        )
+        .get(created.id),
+    ).toEqual({ archived_at: null });
+  });
+
+  it("rejects configuration and goal edits under an archived Strategic Priority (S040-C1)", () => {
+    getDb()
+      .prepare("UPDATE categories SET archived_at = datetime('now') WHERE id = ?")
+      .run(categoryId);
+
+    expect(() =>
+      createMeasurementConfiguration(configuration(countKpiId), actorId),
+    ).toThrow(expect.objectContaining({ code: "archived_kpi_context" }));
+    expect(() =>
+      updateStrategicGoalSettings(
+        { id: goalId, owner: "New owner" },
+        actorId,
+      ),
+    ).toThrow(expect.objectContaining({ code: "archived_goal_context" }));
+
+    getDb()
+      .prepare("UPDATE categories SET archived_at = NULL WHERE id = ?")
+      .run(categoryId);
+    const updated = updateStrategicGoalSettings(
+      { id: goalId, owner: "New owner" },
+      actorId,
+    );
+    expect(updated.owner).toBe("New owner");
+  });
+
+  it("rejects component restore when its display order was taken by a successor (S013-C1)", () => {
+    const config = createMeasurementConfiguration(
+      configuration(multiKpiId, {
+        measurement_type: "multi_component",
+        aggregation_method: "sum",
+        configuration_status: "draft",
+      }),
+      actorId,
+    );
+    /** Builds a component create payload sharing display order zero. */
+    const componentInput = (slug: string, label: string) => ({
+      configuration_id: config.id,
+      slug,
+      label,
+      measurement_type: "count",
+      unit: "items",
+      display_order: 0,
+      configuration_status: "draft",
+    });
+    const retired = createStrategyComponent(
+      componentInput("retired-component", "Retired component"),
+      actorId,
+    );
+    archiveComponent(retired.id, actorId);
+    createStrategyComponent(
+      componentInput("successor-component", "Successor component"),
+      actorId,
+    );
+
+    expect(() => restoreComponent(retired.id, actorId)).toThrow(
+      expect.objectContaining({ code: "component_order_conflict" }),
+    );
+    expect(
+      getDb()
+        .prepare("SELECT archived_at FROM kpi_components WHERE id = ?")
+        .get(retired.id),
+    ).not.toEqual({ archived_at: null });
+  });
+
+  it("rejects component restore while its configuration or KPI is archived (S040-C1)", () => {
+    const config = createMeasurementConfiguration(
+      configuration(multiKpiId, {
+        measurement_type: "multi_component",
+        aggregation_method: "sum",
+        configuration_status: "draft",
+      }),
+      actorId,
+    );
+    const component = createStrategyComponent(
+      {
+        configuration_id: config.id,
+        slug: "restorable-component",
+        label: "Restorable component",
+        measurement_type: "count",
+        unit: "items",
+        display_order: 0,
+        configuration_status: "draft",
+      },
+      actorId,
+    );
+    archiveComponent(component.id, actorId);
+    archiveMeasurementConfig(config.id, actorId);
+
+    expect(() => restoreComponent(component.id, actorId)).toThrow(
+      expect.objectContaining({ code: "archived_component_context" }),
+    );
+
+    restoreMeasurementConfig(config.id, actorId);
+    getDb()
+      .prepare("UPDATE kpis SET archived_at = datetime('now') WHERE id = ?")
+      .run(multiKpiId);
+    expect(() => restoreComponent(component.id, actorId)).toThrow(
+      expect.objectContaining({ code: "archived_kpi_context" }),
+    );
+
+    getDb()
+      .prepare("UPDATE kpis SET archived_at = NULL WHERE id = ?")
+      .run(multiKpiId);
+    restoreComponent(component.id, actorId);
+    expect(
+      getDb()
+        .prepare("SELECT archived_at FROM kpi_components WHERE id = ?")
+        .get(component.id),
+    ).toEqual({ archived_at: null });
+  });
+
+  it("freezes component definition mutations under an archived KPI or priority lineage (ISSUE-1)", () => {
+    const config = createMeasurementConfiguration(
+      configuration(multiKpiId, {
+        measurement_type: "multi_component",
+        aggregation_method: "sum",
+        configuration_status: "draft",
+      }),
+      actorId,
+    );
+    /** Builds a component create payload for the multi-component config. */
+    const componentInput = (slug: string, displayOrder: number) => ({
+      configuration_id: config.id,
+      slug,
+      label: slug,
+      measurement_type: "count" as const,
+      unit: "items",
+      display_order: displayOrder,
+      configuration_status: "draft" as const,
+    });
+    const existing = createStrategyComponent(
+      componentInput("existing-component", 0),
+      actorId,
+    );
+
+    getDb()
+      .prepare("UPDATE kpis SET archived_at = datetime('now') WHERE id = ?")
+      .run(multiKpiId);
+
+    expect(() =>
+      createStrategyComponent(componentInput("late-component", 1), actorId),
+    ).toThrow(expect.objectContaining({ code: "archived_kpi_context" }));
+    expect(() =>
+      updateStrategyComponent(
+        { id: existing.id, label: "Renamed while hidden" },
+        actorId,
+      ),
+    ).toThrow(expect.objectContaining({ code: "archived_kpi_context" }));
+    expect(() =>
+      reorderStrategyComponents(
+        { configuration_id: config.id, ordered_component_ids: [existing.id] },
+        actorId,
+      ),
+    ).toThrow(expect.objectContaining({ code: "archived_kpi_context" }));
+    expect(() => archiveComponent(existing.id, actorId)).toThrow(
+      expect.objectContaining({ code: "archived_kpi_context" }),
+    );
+
+    getDb()
+      .prepare("UPDATE kpis SET archived_at = NULL WHERE id = ?")
+      .run(multiKpiId);
+    getDb()
+      .prepare("UPDATE categories SET archived_at = datetime('now') WHERE id = ?")
+      .run(categoryId);
+    expect(() =>
+      createStrategyComponent(componentInput("late-component", 1), actorId),
+    ).toThrow(expect.objectContaining({ code: "archived_kpi_context" }));
+
+    getDb()
+      .prepare("UPDATE categories SET archived_at = NULL WHERE id = ?")
+      .run(categoryId);
+    const created = createStrategyComponent(
+      componentInput("late-component", 1),
+      actorId,
+    );
+    expect(created.configuration_id).toBe(config.id);
+    const renamed = updateStrategyComponent(
+      { id: existing.id, label: "Renamed in the open" },
+      actorId,
+    );
+    expect(renamed.label).toBe("Renamed in the open");
+  });
+
+  it("gates target writes and restores on the full KPI and priority lineage (ISSUE-2)", () => {
+    createMeasurementConfiguration(configuration(countKpiId), actorId);
+    const multiConfig = createMeasurementConfiguration(
+      configuration(multiKpiId, {
+        measurement_type: "multi_component",
+        aggregation_method: "sum",
+        configuration_status: "active",
+      }),
+      actorId,
+    );
+    const component = createStrategyComponent(
+      {
+        configuration_id: multiConfig.id,
+        slug: "scoped-component",
+        label: "Scoped component",
+        measurement_type: "count",
+        unit: "items",
+        display_order: 0,
+        configuration_status: "draft",
+      },
+      actorId,
+    );
+    const componentTarget = createStrategicTarget(
+      {
+        component_id: component.id,
+        target_scope: "full_plan",
+        target_year: 2029,
+        target_value: 10,
+        configuration_status: "active",
+      },
+      actorId,
+    );
+    const kpiTarget = createStrategicTarget(
+      {
+        kpi_id: countKpiId,
+        target_scope: "full_plan",
+        target_year: 2029,
+        target_value: 75,
+        configuration_status: "active",
+      },
+      actorId,
+    );
+    const kpiAnnualTarget = createStrategicTarget(
+      {
+        kpi_id: countKpiId,
+        target_scope: "annual",
+        reporting_year: 2026,
+        target_year: 2026,
+        target_value: 70,
+        configuration_status: "active",
+      },
+      actorId,
+    );
+    const componentAnnualTarget = createStrategicTarget(
+      {
+        component_id: component.id,
+        target_scope: "annual",
+        reporting_year: 2026,
+        target_year: 2026,
+        target_value: 8,
+        configuration_status: "active",
+      },
+      actorId,
+    );
+
+    getDb()
+      .prepare("UPDATE kpis SET archived_at = datetime('now') WHERE id = ?")
+      .run(multiKpiId);
+    expect(() =>
+      createStrategicTarget(
+        {
+          component_id: component.id,
+          target_scope: "annual",
+          reporting_year: 2028,
+          target_year: 2028,
+          target_value: 5,
+          configuration_status: "active",
+        },
+        actorId,
+      ),
+    ).toThrow(expect.objectContaining({ code: "archived_target_subject" }));
+    expect(() =>
+      updateStrategicTarget(
+        { id: componentTarget.id, target_value: 12 },
+        actorId,
+      ),
+    ).toThrow(expect.objectContaining({ code: "archived_target_subject" }));
+    getDb()
+      .prepare("UPDATE kpis SET archived_at = NULL WHERE id = ?")
+      .run(multiKpiId);
+
+    getDb()
+      .prepare("UPDATE categories SET archived_at = datetime('now') WHERE id = ?")
+      .run(categoryId);
+    expect(() =>
+      createStrategicTarget(
+        {
+          kpi_id: countKpiId,
+          target_scope: "annual",
+          reporting_year: 2028,
+          target_year: 2028,
+          target_value: 50,
+          configuration_status: "active",
+        },
+        actorId,
+      ),
+    ).toThrow(expect.objectContaining({ code: "archived_target_subject" }));
+    expect(() =>
+      updateStrategicTarget({ id: kpiTarget.id, target_value: 80 }, actorId),
+    ).toThrow(expect.objectContaining({ code: "archived_target_subject" }));
+
+    for (const target of [
+      kpiTarget,
+      kpiAnnualTarget,
+      componentTarget,
+      componentAnnualTarget,
+    ]) {
+      expect(() => archiveTarget(target.id, actorId)).toThrow(
+        expect.objectContaining({ code: "archived_kpi_context" }),
+      );
+    }
+
+    getDb()
+      .prepare("UPDATE categories SET archived_at = NULL WHERE id = ?")
+      .run(categoryId);
+    archiveTarget(kpiTarget.id, actorId);
+    getDb()
+      .prepare("UPDATE categories SET archived_at = datetime('now') WHERE id = ?")
+      .run(categoryId);
+    expect(() => restoreTarget(kpiTarget.id, actorId)).toThrow(
+      expect.objectContaining({ code: "archived_target_subject" }),
+    );
+    expect(
+      getDb()
+        .prepare("SELECT archived_at FROM kpi_targets WHERE id = ?")
+        .get(kpiTarget.id),
+    ).not.toEqual({ archived_at: null });
+
+    getDb()
+      .prepare("UPDATE categories SET archived_at = NULL WHERE id = ?")
+      .run(categoryId);
+    restoreTarget(kpiTarget.id, actorId);
+    expect(
+      getDb()
+        .prepare("SELECT archived_at FROM kpi_targets WHERE id = ?")
+        .get(kpiTarget.id),
+    ).toEqual({ archived_at: null });
+  });
+
+  it("reports an archived KPI configuration as archived rather than missing", () => {
+    const configurationRow = createMeasurementConfiguration(
+      configuration(countKpiId),
+      actorId,
+    );
+    archiveMeasurementConfig(configurationRow.id, actorId);
+
+    expect(() =>
+      createStrategicTarget(
+        {
+          kpi_id: countKpiId,
+          target_scope: "annual",
+          reporting_year: 2026,
+          target_year: 2026,
+          target_value: 25,
+          configuration_status: "active",
+        },
+        actorId,
+      ),
+    ).toThrow(expect.objectContaining({ code: "archived_target_subject" }));
+  });
+
+  it("gates goal successor creation and goal restore on the priority lineage (ISSUE-3)", () => {
+    getDb()
+      .prepare("UPDATE categories SET archived_at = datetime('now') WHERE id = ?")
+      .run(categoryId);
+
+    expect(() =>
+      createSuccessorStrategicGoal(
+        {
+          predecessor_id: goalId,
+          effective_start_year: 2027,
+          update: { id: goalId, owner: "Successor owner" },
+        },
+        actorId,
+      ),
+    ).toThrow(expect.objectContaining({ code: "archived_goal_context" }));
+    expect(() => archiveStrategicGoal(goalId, actorId)).toThrow(
+      expect.objectContaining({ code: "archived_goal_context" }),
+    );
+
+    getDb()
+      .prepare("UPDATE categories SET archived_at = NULL WHERE id = ?")
+      .run(categoryId);
+    archiveStrategicGoal(goalId, actorId);
+    getDb()
+      .prepare("UPDATE categories SET archived_at = datetime('now') WHERE id = ?")
+      .run(categoryId);
+    expect(() => restoreStrategicGoal(goalId, actorId)).toThrow(
+      expect.objectContaining({ code: "archived_goal_context" }),
+    );
+    expect(
+      getDb()
+        .prepare("SELECT archived_at FROM strategic_goals WHERE id = ?")
+        .get(goalId),
+    ).not.toEqual({ archived_at: null });
+
+    getDb()
+      .prepare("UPDATE categories SET archived_at = NULL WHERE id = ?")
+      .run(categoryId);
+    restoreStrategicGoal(goalId, actorId);
+    expect(
+      getDb()
+        .prepare("SELECT archived_at FROM strategic_goals WHERE id = ?")
+        .get(goalId),
+    ).toEqual({ archived_at: null });
+    const successor = createSuccessorStrategicGoal(
+      {
+        predecessor_id: goalId,
+        effective_start_year: 2027,
+        update: { id: goalId, owner: "Successor owner" },
+      },
+      actorId,
+    );
+    expect(successor.successor.plan_start_year).toBe(2027);
+  });
+
+  it("refuses stale-revision updates and preserves the first writer (S070-C2)", () => {
+    /** Reads the current optimistic-concurrency token for a row. */
+    const revisionOf = (table: string, id: number): string =>
+      String(
+        (
+          getDb()
+            .prepare(`SELECT updated_at FROM ${table} WHERE id = ?`)
+            .get(id) as { updated_at: string }
+        ).updated_at,
+      );
+
+    const goalRevision = revisionOf("strategic_goals", goalId);
+    updateStrategicGoalSettings(
+      { id: goalId, expected_revision: goalRevision, owner: "Alice (editor A)" },
+      actorId,
+    );
+    const goalRevisionAfterA = revisionOf("strategic_goals", goalId);
+    expect(goalRevisionAfterA).not.toBe(goalRevision);
+    expect(() =>
+      updateStrategicGoalSettings(
+        {
+          id: goalId,
+          expected_revision: goalRevision,
+          owner: null,
+          due_date: "2027-12-31",
+        },
+        actorId,
+      ),
+    ).toThrow(expect.objectContaining({ code: "stale_revision" }));
+    expect(
+      getDb()
+        .prepare("SELECT owner, due_date FROM strategic_goals WHERE id = ?")
+        .get(goalId),
+    ).toEqual({ owner: "Alice (editor A)", due_date: null });
+
+    const membershipRevision = revisionOf("goal_kpis", membershipId);
+    updateStrategicGoalMembership(
+      { id: membershipId, expected_revision: membershipRevision, display_order: 7 },
+      actorId,
+    );
+    expect(() =>
+      updateStrategicGoalMembership(
+        { id: membershipId, expected_revision: membershipRevision, display_order: 3 },
+        actorId,
+      ),
+    ).toThrow(expect.objectContaining({ code: "stale_revision" }));
+    expect(
+      getDb()
+        .prepare("SELECT display_order FROM goal_kpis WHERE id = ?")
+        .get(membershipId),
+    ).toEqual({ display_order: 7 });
+    expect(() =>
+      createSuccessorStrategicGoalMembership(
+        {
+          predecessor_id: membershipId,
+          expected_revision: membershipRevision,
+          effective_start_year: 2027,
+          role: "informational",
+          weight: 2,
+          display_order: 3,
+        },
+        actorId,
+      ),
+    ).toThrow(expect.objectContaining({ code: "stale_revision" }));
+    expect(
+      getDb()
+        .prepare("SELECT effective_to_year FROM goal_kpis WHERE id = ?")
+        .get(membershipId),
+    ).toEqual({ effective_to_year: 2029 });
+
+    const config = createMeasurementConfiguration(
+      configuration(countKpiId),
+      actorId,
+    );
+    const configRevision = revisionOf("kpi_measurement_configs", config.id);
+    updateMeasurementConfiguration(
+      { id: config.id, expected_revision: configRevision, unit: "visitors" },
+      actorId,
+    );
+    expect(() =>
+      updateMeasurementConfiguration(
+        {
+          id: config.id,
+          expected_revision: configRevision,
+          unit: "visits",
+          owner: "editor B",
+        },
+        actorId,
+      ),
+    ).toThrow(expect.objectContaining({ code: "stale_revision" }));
+    expect(
+      getDb()
+        .prepare(
+          "SELECT unit, owner FROM kpi_measurement_configs WHERE id = ?",
+        )
+        .get(config.id),
+    ).toEqual({ unit: "visitors", owner: null });
+    expect(() =>
+      createSuccessorMeasurementConfiguration(
+        {
+          predecessor_id: config.id,
+          expected_revision: configRevision,
+          successor: configuration(countKpiId, {
+            effective_start_year: 2027,
+            effective_end_year: 2029,
+            unit: "visits",
+          }),
+        },
+        actorId,
+      ),
+    ).toThrow(expect.objectContaining({ code: "stale_revision" }));
+    expect(getMeasurementRange(config.id)).toEqual({
+      effective_from_year: 2025,
+      effective_to_year: 2029,
+    });
+
+    const target = createStrategicTarget(
+      {
+        kpi_id: countKpiId,
+        target_scope: "full_plan",
+        target_year: 2029,
+        target_value: 100,
+        configuration_status: "active",
+      },
+      actorId,
+    );
+    const targetRevision = revisionOf("kpi_targets", target.id);
+    updateStrategicTarget(
+      { id: target.id, expected_revision: targetRevision, target_value: 250 },
+      actorId,
+    );
+    expect(() =>
+      updateStrategicTarget(
+        {
+          id: target.id,
+          expected_revision: targetRevision,
+          target_value: 100,
+          target_description: "Editor B note",
+        },
+        actorId,
+      ),
+    ).toThrow(expect.objectContaining({ code: "stale_revision" }));
+    expect(
+      getDb()
+        .prepare(
+          "SELECT target_value, target_description FROM kpi_targets WHERE id = ?",
+        )
+        .get(target.id),
+    ).toEqual({ target_value: 250, target_description: null });
+
+    expect(() =>
+      createSuccessorStrategicGoal(
+        {
+          predecessor_id: goalId,
+          effective_start_year: 2027,
+          update: {
+            id: goalId,
+            expected_revision: goalRevision,
+            owner: "Stale successor",
+          },
+        },
+        actorId,
+      ),
+    ).toThrow(expect.objectContaining({ code: "stale_revision" }));
+
+    const withoutRevision = updateStrategicGoalSettings(
+      { id: goalId, resolution_notes: "Direct feature call without CAS." },
+      actorId,
+    );
+    expect(withoutRevision.resolution_notes).toBe(
+      "Direct feature call without CAS.",
+    );
+  });
+
+  it("requires a predecessor revision at both successor feature boundaries", () => {
+    const predecessor = createMeasurementConfiguration(
+      configuration(countKpiId),
+      actorId,
+    );
+
+    expect(() =>
+      createSuccessorMeasurementConfiguration(
+        {
+          predecessor_id: predecessor.id,
+          successor: configuration(countKpiId, {
+            effective_start_year: 2027,
+            effective_end_year: 2029,
+          }),
+        },
+        actorId,
+      ),
+    ).toThrow(StrategyEditValidationError);
+    expect(getMeasurementRange(predecessor.id)).toEqual({
+      effective_from_year: 2025,
+      effective_to_year: 2029,
+    });
+
+    expect(() =>
+      createSuccessorStrategicGoalMembership(
+        {
+          predecessor_id: membershipId,
+          effective_start_year: 2027,
+          role: "informational",
+          weight: 2,
+          display_order: 3,
+        },
+        actorId,
+      ),
+    ).toThrow(StrategyEditValidationError);
+    expect(
+      getDb()
+        .prepare("SELECT effective_to_year FROM goal_kpis WHERE id = ?")
+        .get(membershipId),
+    ).toEqual({ effective_to_year: 2029 });
+  });
+
+  it("monotonically advances the predecessor revision when a configuration is split", () => {
+    const predecessor = createMeasurementConfiguration(
+      configuration(countKpiId),
+      actorId,
+    );
+    getDb()
+      .prepare(
+        `UPDATE kpi_measurement_configs
+         SET updated_at = datetime('now', '+1 minute')
+         WHERE id = ?`,
+      )
+      .run(predecessor.id);
+    const oldRevision = String(
+      (
+        getDb()
+          .prepare(
+            "SELECT updated_at FROM kpi_measurement_configs WHERE id = ?",
+          )
+          .get(predecessor.id) as { updated_at: string }
+      ).updated_at,
+    );
+
+    createSuccessorMeasurementConfiguration(
+      {
+        predecessor_id: predecessor.id,
+        expected_revision: oldRevision,
+        successor: configuration(countKpiId, {
+          effective_start_year: 2027,
+          effective_end_year: 2029,
+          unit: "visitors",
+        }),
+      },
+      actorId,
+    );
+
+    const newRevision = String(
+      (
+        getDb()
+          .prepare(
+            "SELECT updated_at FROM kpi_measurement_configs WHERE id = ?",
+          )
+          .get(predecessor.id) as { updated_at: string }
+      ).updated_at,
+    );
+    expect(newRevision > oldRevision).toBe(true);
+    expect(() =>
+      updateMeasurementConfiguration(
+        {
+          id: predecessor.id,
+          expected_revision: oldRevision,
+          owner: "Stale editor",
+        },
+        actorId,
+      ),
+    ).toThrow(expect.objectContaining({ code: "stale_revision" }));
+  });
+
+  it("monotonically advances membership revisions when a goal successor splits its members", () => {
+    getDb()
+      .prepare(
+        `UPDATE goal_kpis
+         SET updated_at = datetime('now', '+1 minute')
+         WHERE id = ?`,
+      )
+      .run(membershipId);
+    const oldRevision = String(
+      (
+        getDb()
+          .prepare("SELECT updated_at FROM goal_kpis WHERE id = ?")
+          .get(membershipId) as { updated_at: string }
+      ).updated_at,
+    );
+
+    createSuccessorStrategicGoal(
+      {
+        predecessor_id: goalId,
+        effective_start_year: 2027,
+        update: { id: goalId, owner: "Successor owner" },
+      },
+      actorId,
+    );
+
+    const newRevision = String(
+      (
+        getDb()
+          .prepare("SELECT updated_at FROM goal_kpis WHERE id = ?")
+          .get(membershipId) as { updated_at: string }
+      ).updated_at,
+    );
+    expect(newRevision > oldRevision).toBe(true);
+    expect(() =>
+      updateStrategicGoalMembership(
+        {
+          id: membershipId,
+          expected_revision: oldRevision,
+          display_order: 5,
+        },
+        actorId,
+      ),
+    ).toThrow(expect.objectContaining({ code: "stale_revision" }));
+  });
+
+  it("monotonically advances the predecessor revision when a membership is split", () => {
+    getDb()
+      .prepare(
+        `UPDATE goal_kpis
+         SET updated_at = datetime('now', '+1 minute')
+         WHERE id = ?`,
+      )
+      .run(membershipId);
+    const oldRevision = String(
+      (
+        getDb()
+          .prepare("SELECT updated_at FROM goal_kpis WHERE id = ?")
+          .get(membershipId) as { updated_at: string }
+      ).updated_at,
+    );
+
+    createSuccessorStrategicGoalMembership(
+      {
+        predecessor_id: membershipId,
+        expected_revision: oldRevision,
+        effective_start_year: 2027,
+        role: "informational",
+        weight: 2,
+        display_order: 5,
+      },
+      actorId,
+    );
+
+    const newRevision = String(
+      (
+        getDb()
+          .prepare("SELECT updated_at FROM goal_kpis WHERE id = ?")
+          .get(membershipId) as { updated_at: string }
+      ).updated_at,
+    );
+    expect(newRevision > oldRevision).toBe(true);
+    expect(() =>
+      updateStrategicGoalMembership(
+        {
+          id: membershipId,
+          expected_revision: oldRevision,
+          display_order: 7,
+        },
+        actorId,
+      ),
+    ).toThrow(expect.objectContaining({ code: "stale_revision" }));
   });
 });

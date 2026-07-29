@@ -1,14 +1,31 @@
 import { type NextRequest, NextResponse } from "next/server";
 import { z } from "@/lib/zod";
+import {
+  NewPasswordSchema,
+  PasswordVerifySchema,
+} from "@/lib/password-policy";
 import { verifyCredentials } from "@/features/auth/server";
-import { updateUserPasswordIfCurrent } from "@/features/users/server";
+import {
+  updateUserPasswordIfCurrent,
+  UserNotFoundError,
+} from "@/features/users/server";
 import { getCurrentUser, getSession } from "@/features/auth/session";
 import { assertMutationRequest } from "@/lib/request-guard";
+import { CREDENTIAL_BODY_MAX_BYTES, readJsonBody } from "@/lib/request-body";
+import {
+  clearFailures,
+  lockedMsRemaining,
+  pruneExpired,
+  recordFailure,
+} from "@/lib/login-throttle";
+import { logAuthThrottle } from "@/lib/operational-log";
 
 const ChangePasswordSchema = z
   .object({
-    currentPassword: z.string().min(1),
-    newPassword: z.string().min(8),
+    // Shared credential ceiling (S025-C1): bounds the synchronous bcryptjs
+    // UTF-8 encode on both the reauthentication compare and the new hash.
+    currentPassword: PasswordVerifySchema,
+    newPassword: NewPasswordSchema,
   })
   .refine((data) => data.currentPassword !== data.newPassword, {
     error: "The new password must be different from the current password.",
@@ -64,9 +81,9 @@ export async function POST(req: NextRequest) {
     );
   }
 
-  const parsed = ChangePasswordSchema.safeParse(
-    await req.json().catch(() => ({})),
-  );
+  const bodyResult = await readJsonBody(req, CREDENTIAL_BODY_MAX_BYTES);
+  if (!bodyResult.ok) return bodyResult.response;
+  const parsed = ChangePasswordSchema.safeParse(bodyResult.body);
   if (!parsed.success) {
     return NextResponse.json(
       { error: parsed.error.issues[0]?.message ?? "Invalid input." },
@@ -75,25 +92,82 @@ export async function POST(req: NextRequest) {
   }
   const { currentPassword, newPassword } = parsed.data;
 
+  // Credential-verification throttle, uniform with /api/auth/login but in
+  // its own key space: the current-password compare is a full bcrypt
+  // verification, and without a lockout a stolen must_change_password
+  // session gets unlimited distinguishable online guesses at the current
+  // credential. The lock is checked BEFORE the compare so throttled
+  // attempts are cheap; a correct password clears the counter, exactly
+  // like the login route's anti-lockout property.
+  pruneExpired();
+  const throttleKey = `pwchg:${user.email.toLowerCase().trim()}`;
+  const lockedMs = lockedMsRemaining(throttleKey);
+  if (lockedMs > 0) {
+    logAuthThrottle("change_password_lockout");
+    return NextResponse.json(
+      {
+        error:
+          "Too many failed attempts. Please wait a few minutes and try again.",
+      },
+      {
+        status: 429,
+        headers: {
+          "Retry-After": String(Math.max(1, Math.ceil(lockedMs / 1000))),
+        },
+      },
+    );
+  }
+
   // Re-authenticate so a captured session cookie alone cannot rotate
   // the password. verifyCredentials() rejects the reserved bypass
   // email, which is unreachable here anyway.
   const reauthenticated = await verifyCredentials(user.email, currentPassword);
   if (!reauthenticated) {
+    const { lockedUntil } = recordFailure(throttleKey);
+    if (lockedUntil > Date.now()) {
+      logAuthThrottle("change_password_lockout");
+    }
+    // Uniform with /api/auth/login: the attempt that TRIPS the threshold
+    // is a normal 401 with a Retry-After hint; subsequent attempts are
+    // refused with 429 before the compare (above).
+    const headers: Record<string, string> = {};
+    if (lockedUntil > Date.now()) {
+      headers["Retry-After"] = String(
+        Math.max(1, Math.ceil((lockedUntil - Date.now()) / 1000)),
+      );
+    }
     return NextResponse.json(
       { error: "Your current password is incorrect." },
-      { status: 401 },
+      { status: 401, headers },
     );
   }
+  clearFailures(throttleKey);
 
   // Atomic: hash + must_change=0 + sessions_valid_after=now in one
   // transaction. The watermark bump invalidates all prior sessions.
-  const changed = updateUserPasswordIfCurrent(
-    user.id,
-    reauthenticated.passwordHash,
-    newPassword,
-    false,
-  );
+  let changed: boolean;
+  try {
+    changed = updateUserPasswordIfCurrent(
+      user.id,
+      reauthenticated.passwordHash,
+      newPassword,
+      false,
+      { id: user.id, email: user.email },
+    );
+  } catch (err) {
+    // The account row vanished between session validation and the write
+    // (narrow race): the session can never be valid again, so destroy it
+    // and answer as if reauthentication failed rather than surfacing a 500.
+    if (err instanceof UserNotFoundError) {
+      const session = await getSession();
+      session.destroy();
+      return NextResponse.json(
+        { error: "Your account is no longer available. Sign in again." },
+        { status: 401 },
+      );
+    }
+    throw err;
+  }
   if (!changed) {
     const session = await getSession();
     session.destroy();

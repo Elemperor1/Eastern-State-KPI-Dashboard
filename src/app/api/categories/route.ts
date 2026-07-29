@@ -2,6 +2,8 @@ import { type NextRequest, NextResponse } from "next/server";
 import { z } from "@/lib/zod";
 import { authErrorResponse, requireAdmin } from "@/features/auth/session";
 import { assertMutationRequest } from "@/lib/request-guard";
+import { readJsonBody } from "@/lib/request-body";
+import { logUnexpectedServerError } from "@/lib/operational-log";
 import {
   archiveCategory,
   CatalogEntityNotFoundError,
@@ -21,9 +23,12 @@ import {
 import { PlanSettingsUpdateActionSchema } from "@/features/installation/validation";
 
 const CreateSchema = z.object({
-  slug: z.string().min(1).regex(/^[a-z0-9-]+$/),
-  name: z.string().min(1),
-  description: z.string().optional().nullable(),
+  // Catalog-string maxima mirror the strategic-layer caps (slug 120 /
+  // name 200 / description 4000, NOV-C1): values persist verbatim and are
+  // duplicated into immutable audit snapshots.
+  slug: z.string().min(1).max(120).regex(/^[a-z0-9-]+$/),
+  name: z.string().min(1).max(200),
+  description: z.string().max(4000).optional().nullable(),
   sort_order: z.number().int().optional(),
 });
 
@@ -45,7 +50,9 @@ export async function POST(req: NextRequest) {
   }
   const guard = assertMutationRequest(req);
   if (guard) return guard;
-  const parsed = CreateSchema.safeParse(await req.json().catch(() => ({})));
+  const bodyResult = await readJsonBody(req);
+  if (!bodyResult.ok) return bodyResult.response;
+  const parsed = CreateSchema.safeParse(bodyResult.body);
   if (!parsed.success) {
     return NextResponse.json(
       { error: "Invalid input", issues: z.flattenError(parsed.error) },
@@ -56,8 +63,36 @@ export async function POST(req: NextRequest) {
     const category = createCategory(parsed.data, user.id);
     return NextResponse.json({ category, ...refreshedCatalogPayload() }, { status: 201 });
   } catch (err) {
-    const message = err instanceof Error ? err.message : "Could not create category";
-    return NextResponse.json({ error: message }, { status: 400 });
+    // F-09 R-08 follow-up: never echo raw SQLite/driver error text (for
+    // example a UNIQUE constraint message) to the client. Typed catalog
+    // errors map to client-safe statuses; anything else is an unexpected
+    // server failure — generic 500, logged with bounded context only.
+    if (err instanceof CatalogEntityNotFoundError) {
+      return NextResponse.json(
+        { error: err.message, code: err.code },
+        { status: 404 },
+      );
+    }
+    if (err instanceof DependentEntriesError) {
+      return NextResponse.json({ error: err.message, code: err.code }, { status: 409 });
+    }
+    // Routine client conflict (duplicate slug): safe 409, mirroring the
+    // users route — never the raw constraint text.
+    if (err instanceof Error && /unique constraint failed/i.test(err.message)) {
+      return NextResponse.json(
+        { error: "A priority with that slug already exists." },
+        { status: 409 },
+      );
+    }
+    logUnexpectedServerError({
+      method: "POST",
+      route: "/api/categories",
+      routeType: "route",
+    });
+    return NextResponse.json(
+      { error: "Could not create category." },
+      { status: 500 },
+    );
   }
 }
 
@@ -72,8 +107,8 @@ const UpdateSchema = z.union([
   z
     .object({
       id: z.number().int().positive(),
-      name: z.string().min(1).optional(),
-      description: z.string().nullable().optional(),
+      name: z.string().min(1).max(200).optional(),
+      description: z.string().max(4000).nullable().optional(),
       sort_order: z.number().int().optional(),
     })
     .strict(),
@@ -89,7 +124,9 @@ export async function PATCH(req: NextRequest) {
   }
   const guard = assertMutationRequest(req);
   if (guard) return guard;
-  const parsed = UpdateSchema.safeParse(await req.json().catch(() => ({})));
+  const bodyResult = await readJsonBody(req);
+  if (!bodyResult.ok) return bodyResult.response;
+  const parsed = UpdateSchema.safeParse(bodyResult.body);
   if (!parsed.success) {
     return NextResponse.json({ error: "Invalid input" }, { status: 400 });
   }
@@ -133,7 +170,7 @@ export async function PATCH(req: NextRequest) {
   }
 }
 
-const DeleteSchema = z.object({ id: z.number().int().positive() });
+const DeleteSchema = z.object({ id: z.number().int().positive() }).strict();
 
 /** Removes or resets the selected state. */
 export async function DELETE(req: NextRequest) {
@@ -145,7 +182,9 @@ export async function DELETE(req: NextRequest) {
   }
   const guard = assertMutationRequest(req);
   if (guard) return guard;
-  const parsed = DeleteSchema.safeParse(await req.json().catch(() => ({})));
+  const bodyResult = await readJsonBody(req);
+  if (!bodyResult.ok) return bodyResult.response;
+  const parsed = DeleteSchema.safeParse(bodyResult.body);
   if (!parsed.success) {
     return NextResponse.json({ error: "Invalid input" }, { status: 400 });
   }

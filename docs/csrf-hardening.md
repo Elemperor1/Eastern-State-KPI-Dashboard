@@ -122,6 +122,7 @@ In scope (the guard runs on every state-changing handler):
 | `/api/strategy/targets` | POST, PATCH |
 | `/api/strategy/goals` | PATCH |
 | `/api/strategy/memberships` | PATCH |
+| `/api/strategy/board-reporting` | PATCH |
 
 Out of scope (deliberate, documented exclusions):
 
@@ -131,15 +132,26 @@ Out of scope (deliberate, documented exclusions):
   in-scope list.
 - `POST /api/auth/login` — the credential entry point; it is not
   cookie-authenticated (no session to forge against) and is throttle-
-  gated. CSRF protection of login is out of scope (login CSRF would
-  force-login a victim, which is not the D8AD-CAN-004 administrative-
-  mutation threat). Login does, however, *issue* the CSRF cookie on
+  gated. The double-submit token layer remains out of scope (a
+  force-login attacker cannot read the victim's cookie to mint a
+  matching token, and forced login is not the D8AD-CAN-004
+  administrative-mutation threat). Since S064-C1 the route does run
+  `assertLoginRequest` (`src/lib/request-guard.ts`): the same
+  Origin/Referer same-origin check (sections 1–3 checks 1 and 2, deny
+  when both headers are absent) plus the exact `application/json`
+  content-type requirement, closing the CORS-safelisted `text/plain`
+  force-login form. Login does, however, *issue* the CSRF cookie on
   success.
 - `POST /api/auth/logout` — a low-impact session end (forced-logout
   CSRF), not an administrative mutation. Excluded to keep the change
   focused; the session cookie's `SameSite=Lax` already bounds the
   exposure to same-site-sibling top-level forms, and logout carries no
-  data-integrity consequence.
+  data-integrity consequence. Logout expires the browser's cookie but
+  deliberately does not advance the per-user revocation watermark, so a
+  previously copied sealed cookie remains usable until its normal expiry
+  or a password/role/status lifecycle change revokes it. Operators should
+  use a password reset, role change, or disable action when server-side
+  revocation of all sessions is required.
 
 ## Security assumptions (req 10)
 
@@ -213,8 +225,8 @@ Out of scope (deliberate, documented exclusions):
 - `src/lib/csrf-hardening.test.ts` exercises every in-scope handler
   with positive (valid Origin + JSON + token → 2xx) and
   negative (cross-site Origin, same-site-sibling Origin, `text/plain`,
-  urlencoded, multipart, missing/mismatched token, missing/opaque
-  Origin, Referer fallback accept/reject) cases, plus unit tests for
+  urlencoded and multipart bodies, absent or mismatched CSRF values,
+  missing or opaque Origin, and Referer fallback accept/reject) cases, plus unit tests for
   the guard functions.
 - The existing auth-regression / auth-workflow / session-revocation
   suites send the CSRF-passing headers by default

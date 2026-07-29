@@ -37,11 +37,18 @@ export interface StrategicMetricPageData {
 export interface StrategicTrendReportData {
   organizationSlug: string;
   years: number[];
+  excludedMeasures: Array<{
+    kpiId: number;
+    kpiName: string;
+    priorityName: string;
+    reason: "archived";
+  }>;
   series: Array<{
     kpiId: number;
     kpiName: string;
     priorityName: string;
     unit: string | null;
+    restoredWithHiddenData: boolean;
     points: Array<{ year: number; value: number | null }>;
   }>;
 }

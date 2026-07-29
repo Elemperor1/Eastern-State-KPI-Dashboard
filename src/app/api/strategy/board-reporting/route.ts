@@ -8,6 +8,7 @@ import {
   updateBoardReportingScope,
 } from "@/features/board-reporting";
 import { assertMutationRequest } from "@/lib/request-guard";
+import { readJsonBody } from "@/lib/request-body";
 
 /** Updates the complete Board reporting visibility configuration atomically. */
 export async function PATCH(req: NextRequest) {
@@ -19,9 +20,9 @@ export async function PATCH(req: NextRequest) {
   }
   const guard = assertMutationRequest(req);
   if (guard) return guard;
-  const parsed = BoardReportingScopeUpdateSchema.safeParse(
-    await req.json().catch(() => ({})),
-  );
+  const bodyResult = await readJsonBody(req);
+  if (!bodyResult.ok) return bodyResult.response;
+  const parsed = BoardReportingScopeUpdateSchema.safeParse(bodyResult.body);
   if (!parsed.success) {
     return NextResponse.json(
       { error: "Invalid Board visibility settings", issues: z.flattenError(parsed.error) },

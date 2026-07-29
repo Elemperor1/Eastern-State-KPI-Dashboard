@@ -5,6 +5,7 @@ import {
   StrategicTargetCreateSchema,
   StrategicTargetUpdateSchema,
   StrategyEntityLifecycleSchema,
+  withExpectedRevision,
 } from "@/features/strategy";
 import {
   archiveTarget,
@@ -14,6 +15,7 @@ import {
   updateStrategicTarget,
 } from "@/features/strategy/server";
 import { assertMutationRequest } from "@/lib/request-guard";
+import { readJsonBody } from "@/lib/request-body";
 import {
   invalidStrategyInput,
   strategyEditErrorResponse,
@@ -21,7 +23,10 @@ import {
 
 const PatchSchema = z.discriminatedUnion("action", [
   z
-    .object({ action: z.literal("update"), update: StrategicTargetUpdateSchema })
+    .object({
+      action: z.literal("update"),
+      update: withExpectedRevision(StrategicTargetUpdateSchema),
+    })
     .strict(),
   z
     .object({ action: z.literal("archive"), ...StrategyEntityLifecycleSchema.shape })
@@ -30,6 +35,24 @@ const PatchSchema = z.discriminatedUnion("action", [
     .object({ action: z.literal("restore"), ...StrategyEntityLifecycleSchema.shape })
     .strict(),
 ]);
+
+/**
+ * Parses a targets payload, mapping any non-Zod parse throw (such as a
+ * recursion RangeError from deeply nested structured_target JSON,
+ * S044-C4) to a generic 400 instead of an uncaught 500. The schema-level
+ * depth/entry bound makes this unreachable in practice; it stays as a
+ * fail-closed backstop.
+ */
+function safeParseTargetPayload<Schema extends z.ZodType>(
+  schema: Schema,
+  body: unknown,
+) {
+  try {
+    return schema.safeParse(body);
+  } catch {
+    return null;
+  }
+}
 
 /** Implements the authorize operation. */
 async function authorize(req: NextRequest) {
@@ -44,9 +67,10 @@ async function authorize(req: NextRequest) {
 export async function POST(req: NextRequest) {
   const auth = await authorize(req);
   if (auth.response) return auth.response;
-  const parsed = StrategicTargetCreateSchema.safeParse(
-    await req.json().catch(() => ({})),
-  );
+  const bodyResult = await readJsonBody(req);
+  if (!bodyResult.ok) return bodyResult.response;
+  const parsed = safeParseTargetPayload(StrategicTargetCreateSchema, bodyResult.body);
+  if (!parsed) return invalidStrategyInput({ formErrors: ["Invalid structured target."], fieldErrors: {} });
   if (!parsed.success) return invalidStrategyInput(z.flattenError(parsed.error));
   try {
     return NextResponse.json(
@@ -64,7 +88,10 @@ export async function POST(req: NextRequest) {
 export async function PATCH(req: NextRequest) {
   const auth = await authorize(req);
   if (auth.response) return auth.response;
-  const parsed = PatchSchema.safeParse(await req.json().catch(() => ({})));
+  const bodyResult = await readJsonBody(req);
+  if (!bodyResult.ok) return bodyResult.response;
+  const parsed = safeParseTargetPayload(PatchSchema, bodyResult.body);
+  if (!parsed) return invalidStrategyInput({ formErrors: ["Invalid structured target."], fieldErrors: {} });
   if (!parsed.success) return invalidStrategyInput(z.flattenError(parsed.error));
   try {
     if (parsed.data.action === "update") {

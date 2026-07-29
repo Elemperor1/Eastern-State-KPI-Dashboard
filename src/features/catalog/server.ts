@@ -234,6 +234,91 @@ export class DependentEntriesError extends Error {
   }
 }
 
+/**
+ * Thrown when an admin attempts to reparent a KPI into an archived category.
+ * The KPI would vanish from every default lister while staying writable,
+ * which hides a live measure without archiving it.
+ */
+export class KpiArchivedCategoryError extends Error {
+  readonly code = "KPI_ARCHIVED_CATEGORY" as const;
+  readonly kpiId: number;
+  readonly categoryId: number;
+
+  /** Creates a new instance with the supplied state. */
+  constructor(kpiId: number, categoryId: number) {
+    super(
+      `Cannot move KPI into category ${categoryId}: the category is archived. Restore the category first.`,
+    );
+    this.name = "KpiArchivedCategoryError";
+    this.kpiId = kpiId;
+    this.categoryId = categoryId;
+  }
+}
+
+/**
+ * Thrown when an admin attempts to move a strategic measure to another
+ * Priority. Goal memberships, effective configurations, Board scope links,
+ * value-audit lineage, and archived-interval disclosure all bind that measure
+ * to its original Priority; changing only `kpis.category_id` would split those
+ * invariants and hide historical lifecycle context.
+ */
+export class KpiStrategicReparentError extends Error {
+  readonly code = "KPI_STRATEGIC_REPARENT_BLOCKED" as const;
+  readonly kpiId: number;
+
+  /** Creates a new instance with the supplied state. */
+  constructor(kpiId: number) {
+    super(
+      "Strategic measures cannot be moved between Priorities. Create a new measure in the destination Priority and archive the old measure instead.",
+    );
+    this.name = "KpiStrategicReparentError";
+    this.kpiId = kpiId;
+  }
+}
+
+/**
+ * Thrown when an admin attempts to change calculation-relevant metadata
+ * (unit_type, reporting_frequency, direction) on a KPI that already has
+ * recorded rows. In-place semantic edits strand or reinterpret stored data;
+ * the strategic contract is to create an effective-dated successor instead.
+ */
+export class KpiSemanticMutationError extends Error {
+  readonly code = "KPI_SEMANTIC_MUTATION_BLOCKED" as const;
+  readonly kpiId: number;
+  readonly fields: string[];
+  readonly dependents: number;
+
+  /** Creates a new instance with the supplied state. */
+  constructor(kpiId: number, fields: string[], dependents: number) {
+    super(
+      `Cannot edit ${fields.join(", ")} on this measure: ${dependents} recorded value${dependents === 1 ? "" : "s"} already use the current definition. Create a successor measure instead of editing it in place.`,
+    );
+    this.name = "KpiSemanticMutationError";
+    this.kpiId = kpiId;
+    this.fields = fields;
+    this.dependents = dependents;
+  }
+}
+
+/**
+ * Thrown when a parent_id assignment would make a KPI its own ancestor.
+ * Cycles break per-subtree accounting by making two KPIs simultaneously
+ * ancestor and descendant of each other.
+ */
+export class KpiParentCycleError extends Error {
+  readonly code = "KPI_PARENT_CYCLE" as const;
+  readonly kpiId: number;
+
+  /** Creates a new instance with the supplied state. */
+  constructor(kpiId: number) {
+    super(
+      `Cannot set this parent: the assignment would make KPI ${kpiId} its own ancestor.`,
+    );
+    this.name = "KpiParentCycleError";
+    this.kpiId = kpiId;
+  }
+}
+
 /** Number of live monthly + breakdown entries for a KPI, including descendants. */
 function countKPIDependents(id: number): number {
   const db = getDb();
@@ -551,6 +636,7 @@ export function updateKPI(
   if (!fields.length) return;
   transaction(() => {
     const before = rawKpiWithContext(id);
+    assertKpiUpdateIntegrity(id, before, patch);
     getDb()
       .prepare(`UPDATE kpis SET ${fields.join(", ")} WHERE id = ?`)
       .run(...values, id);
@@ -559,6 +645,102 @@ export function updateKPI(
       recordLegacyKpiEvent(before, after, "update", actorId);
     }
   });
+}
+
+/** Semantic fields whose in-place edit would reinterpret recorded values. */
+const KPI_SEMANTIC_FIELDS = [
+  "unit_type",
+  "reporting_frequency",
+  "direction",
+] as const;
+
+/**
+ * Count every recorded value row owned by a KPI across legacy
+ * (monthly/breakdown) and first-class (observation/component/distribution)
+ * storage. Any recorded row pins the KPI's semantic fields.
+ */
+function countKpiRecordedValues(id: number): number {
+  const row = getDb()
+    .prepare(
+      `SELECT
+         (SELECT COUNT(*) FROM monthly_entries WHERE kpi_id = ?) +
+         (SELECT COUNT(*) FROM breakdown_entries WHERE kpi_id = ?) +
+         (SELECT COUNT(*) FROM kpi_observations WHERE kpi_id = ?) +
+         (SELECT COUNT(*) FROM distribution_observations WHERE kpi_id = ?) +
+         (SELECT COUNT(*)
+          FROM kpi_component_entries entry
+          JOIN kpi_components component ON component.id = entry.component_id
+          WHERE component.kpi_id = ?) AS n`,
+    )
+    .get(id, id, id, id, id) as { n: number };
+  return Number(row.n);
+}
+
+/**
+ * Enforce write-side lifecycle and semantic integrity for `updateKPI`:
+ * reparenting into an archived category, in-place semantic edits after data
+ * exists, and parent hierarchy cycles are all refused before any row change.
+ */
+function assertKpiUpdateIntegrity(
+  id: number,
+  before: Record<string, unknown>,
+  patch: Partial<{
+    category_id: number;
+    parent_id: number | null;
+    name: string;
+    unit: string;
+    unit_type: UnitType;
+    reporting_frequency: ReportingFrequency;
+    direction: Direction;
+    description: string | null;
+    sort_order: number;
+    is_active: number;
+  }>,
+): void {
+  const db = getDb();
+  if (
+    patch.category_id !== undefined &&
+    patch.category_id !== Number(before.category_id)
+  ) {
+    const destination = db
+      .prepare("SELECT archived_at FROM categories WHERE id = ?")
+      .get(patch.category_id) as { archived_at: string | null } | undefined;
+    if (!destination) {
+      throw new CatalogEntityNotFoundError("category", patch.category_id);
+    }
+    if (isStrategicKPI(id)) {
+      throw new KpiStrategicReparentError(id);
+    }
+    if (destination.archived_at !== null) {
+      throw new KpiArchivedCategoryError(id, patch.category_id);
+    }
+  }
+  const changedSemanticFields = KPI_SEMANTIC_FIELDS.filter(
+    (field) =>
+      patch[field] !== undefined &&
+      String(patch[field]) !== String(before[field]),
+  );
+  if (changedSemanticFields.length > 0) {
+    const dependents = countKpiRecordedValues(id);
+    if (dependents > 0) {
+      throw new KpiSemanticMutationError(id, changedSemanticFields, dependents);
+    }
+  }
+  if (patch.parent_id !== undefined && patch.parent_id !== null) {
+    const visited = new Set<number>([id]);
+    let current: number | null = patch.parent_id;
+    while (current !== null) {
+      if (visited.has(current)) {
+        throw new KpiParentCycleError(id);
+      }
+      visited.add(current);
+      const row = db
+        .prepare("SELECT parent_id FROM kpis WHERE id = ?")
+        .get(current) as { parent_id: number | null } | undefined;
+      if (!row) break;
+      current = row.parent_id == null ? null : Number(row.parent_id);
+    }
+  }
 }
 
 /** Removes or resets kpi. */
@@ -755,7 +937,12 @@ export function isStrategicKPI(id: number): boolean {
          EXISTS (
            SELECT 1 FROM descendants k
            WHERE EXISTS (SELECT 1 FROM goal_kpis WHERE kpi_id = k.id) OR
-                 EXISTS (SELECT 1 FROM kpi_measurement_configs WHERE kpi_id = k.id)
+                 EXISTS (SELECT 1 FROM kpi_measurement_configs WHERE kpi_id = k.id) OR
+                 EXISTS (
+                   SELECT 1
+                   FROM board_reporting_statement_kpis board_link
+                   WHERE board_link.kpi_id = k.id
+                 )
          )
        THEN 1 ELSE 0 END AS strategic`,
     )

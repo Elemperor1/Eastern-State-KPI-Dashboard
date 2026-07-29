@@ -121,6 +121,7 @@ export default function LoginPage() {
                 type="password"
                 autoComplete="current-password"
                 required
+                maxLength={256}
                 placeholder="Enter your password"
                 value={password}
                 onChange={(event) => setPassword(event.target.value)}

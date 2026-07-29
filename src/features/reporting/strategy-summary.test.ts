@@ -72,6 +72,75 @@ describe("strategic dashboard summary", () => {
     });
   });
 
+  it("discloses archived goal members instead of silently dropping them (NOV-C5)", () => {
+    const goals = [
+      goal({
+        id: 10,
+        slug: "disclosing-goal",
+        name: "Disclosing goal",
+        members: [member(1, target(5, 2029))],
+        archived_members: [
+          { kpi_id: 9, kpi_slug: "retired-measure", kpi_name: "Retired measure" },
+        ],
+      }),
+    ];
+
+    const summary = buildStrategicDashboardSummary({
+      goals,
+      kpis,
+      selectedYear: 2026,
+      throughMonth: 2,
+      actuals,
+    });
+
+    const result = summary.goals[0]!.result;
+    expect(result.excludedKpis).toContainEqual({
+      id: "9",
+      label: "Retired measure",
+      reason: "archived",
+    });
+    expect(result.exclusionReasons).toContain("archived");
+    expect(result.totalEligibleKpisCount).toBe(1);
+    expect(summary.goals[0]!.kpis[0]!.restoredWithHiddenData).toBe(false);
+
+    const withMarker = buildStrategicDashboardSummary({
+      goals,
+      kpis,
+      selectedYear: 2026,
+      throughMonth: 2,
+      actuals,
+      hiddenValueKpiIds: new Set([1]),
+    });
+    expect(withMarker.goals[0]!.kpis[0]!.restoredWithHiddenData).toBe(true);
+  });
+
+  it("does not disclose a stale archived member when the same KPI is active", () => {
+    const activeMember = member(1, target(5, 2029));
+    const summary = buildStrategicDashboardSummary({
+      goals: [
+        goal({
+          members: [activeMember],
+          archived_members: [
+            {
+              kpi_id: activeMember.kpi_id,
+              kpi_slug: activeMember.kpi.slug,
+              kpi_name: activeMember.kpi.name,
+            },
+          ],
+        }),
+      ],
+      kpis,
+      selectedYear: 2026,
+      throughMonth: 2,
+      actuals,
+    });
+
+    expect(summary.goals[0]!.result.excludedKpis).not.toContainEqual(
+      expect.objectContaining({ id: String(activeMember.kpi_id) }),
+    );
+    expect(summary.goals[0]!.result.exclusionReasons).not.toContain("archived");
+  });
+
   it("keeps a configured target with no actual as eligible not-started progress", () => {
     const summary = buildStrategicDashboardSummary({
       goals: [goal({ members: [member(2, target(10, 2029))] })],

@@ -28,6 +28,24 @@ function joinedValues(values: readonly unknown[], separator = " | "): string {
     .join(separator);
 }
 
+/**
+ * Attacker-controlled input is reflected into error messages that are
+ * serialized verbatim into 400 response bodies (F-17 remediation R-06:
+ * S091-C1 enum values, S091-C2 unrecognized keys). Without a cap, a
+ * multi-megabyte invalid value is echoed back whole. Truncate each
+ * reflected value and cap how many keys a single message echoes; the
+ * structured 400 contract (`{error, issues}`) is unchanged.
+ */
+const ECHO_VALUE_MAX_LENGTH = 200;
+const ECHO_MAX_KEYS = 20;
+
+/** Truncates attacker-controlled text reflected into an error message. */
+function truncateEcho(value: string): string {
+  return value.length > ECHO_VALUE_MAX_LENGTH
+    ? `${value.slice(0, ECHO_VALUE_MAX_LENGTH)}…`
+    : value;
+}
+
 /** Implements the literal value operation. */
 function literalValue(value: unknown): string {
   return JSON.stringify(value, (_key, candidate: unknown) =>
@@ -74,9 +92,15 @@ const zod3CompatibleError: z.core.$ZodErrorMap = (issue) => {
           ? "Required"
           : `Expected ${joinedValues(issue.values)}, received ${parsedType(issue.input)}`;
       }
-      return `Invalid enum value. Expected ${joinedValues(issue.values)}, received '${String(issue.input)}'`;
-    case "unrecognized_keys":
-      return `Unrecognized key(s) in object: ${joinedValues(issue.keys, ", ")}`;
+      return `Invalid enum value. Expected ${joinedValues(issue.values)}, received '${truncateEcho(String(issue.input))}'`;
+    case "unrecognized_keys": {
+      const reflectedKeys = issue.keys.map((key) => truncateEcho(String(key)));
+      const shownKeys = reflectedKeys.slice(0, ECHO_MAX_KEYS);
+      const hiddenKeys = reflectedKeys.length - shownKeys.length;
+      return `Unrecognized key(s) in object: ${joinedValues(shownKeys, ", ")}${
+        hiddenKeys > 0 ? `, … (+${hiddenKeys} more)` : ""
+      }`;
+    }
     case "invalid_union":
       if (Array.isArray(issue.options) && issue.options.length > 0) {
         return `Invalid discriminator value. Expected ${joinedValues(issue.options)}`;

@@ -1,3 +1,65 @@
+# Schema 15 Migration Notes
+
+## Supported upgrade paths
+
+Schemas 9, 10, 11, 12, 13, and 14 are supported additive predecessors of
+schema 15. For any of them, stop writes, back up SQLite (including WAL/SHM
+state), and run
+`DATABASE_PATH=/absolute/path/to/kpi.db npm run db:migrate`; never use
+`db:seed` for the upgrade. Schema 8 also migrates additively through the same
+explicit, backed-up command, but is deliberately excluded from automatic boot
+migration. Schema 7 and older cross the intentional schema-8 catalog
+replacement boundary: KPI-owned data and `entry_history` are reset while users
+are preserved, and the replacement catalog must be seeded deliberately after
+backup. ADR 0020 records that older boundary.
+
+## Schema 15 user lifecycle audit
+
+Schema 15 additively creates `user_lifecycle_audit_events`, the immutable
+audit log for account lifecycle changes. Every account creation, admin
+password reset, self-service password change, role change, disable/enable,
+and deletion writes exactly one event inside the same transaction as the
+mutation it describes; the event and the change commit or roll back
+together. Events snapshot the subject's email, name, and role plus the
+actor's id/email (`System` for seed/CLI flows) and NEVER contain password
+hashes or credentials. `subject_user_id` deliberately carries no foreign
+key so deletion events keep pointing at the removed account id.
+
+The migration does not rebuild or rewrite users, installation ownership,
+priorities, measures, strategic configuration, observations, board
+reporting, or legacy archive rows.
+
+Two operator-facing behaviors land with this schema:
+
+- **Last-active-administrator guard.** Role changes away from admin,
+  disables, and deletions are refused with HTTP 409 when the subject is the
+  last active administrator; admin self-deletion is refused outright. The
+  check runs inside the mutation transaction, so concurrent requests cannot
+  race past it. Operator recovery for a database with no usable admin is
+  `npm run setup:admin`, which now CREATES the named account as an active
+  admin when it does not exist and no usable active administrator remains,
+  and re-enables it when disabled. If an active administrator exists,
+  missing-account creation is refused unless
+  `SETUP_ADMIN_CREATE_CONFIRM` exactly matches the requested normalized
+  email.
+- **Admin-created users rotate at first login.** Accounts created in
+  Setup → People are issued a temporary credential with
+  `must_change_password = 1`, identical to an admin-issued reset.
+
+Back up SQLite and run `DATABASE_PATH=/absolute/path/to/kpi.db npm run
+db:migrate`; do not run `db:seed` for this upgrade.
+
+## Newer-than-supported databases are refused explicitly
+
+`getDb()` and `npm run db:migrate` now refuse a database whose persisted
+`schema_version` is NEWER than the application's declared schema version,
+with an explicit "upgrade the application" error, before any migration or
+reset path runs. Previously such a database fell through to the legacy
+reset path, which only avoided data loss incidentally (foreign-key
+enforcement made the DROPs fail when KPI rows existed). The refusal is
+fail-closed and non-destructive: every row and the persisted version are
+left untouched so a newer application release can still open the database.
+
 # Schema 14 Migration Notes
 
 ## Schema 14 editable Board visibility
@@ -138,11 +200,13 @@ repopulated from the fixture merely because strategic rows are absent.
 
 ## Startup safety
 
-`src/lib/schema-version.json` declares schemas 9, 10, and 11 as additive
-predecessors. `scripts/ensure-seeded.mjs` runs `npm run db:migrate` first for
-either version, rechecks the database, and refuses destructive reseeding if the
-migration does not produce a ready database. A production schema mismatch
-therefore cannot fall through to the sample seed.
+`src/lib/schema-version.json` declares schemas 9–14 as additive boot-time
+predecessors of schema 15. `scripts/ensure-seeded.mjs` runs
+`npm run db:migrate` first for any of those versions, rechecks the database,
+and refuses destructive reseeding if the migration does not produce a ready
+database. A production schema mismatch therefore cannot fall through to the
+sample seed. Schema 8 remains an explicit operator-run migration as described
+under “Additive predecessor policy at boot” below.
 
 The public migration entrypoint records
 `meta.production_migration_state = in_progress` before schema or content work
@@ -180,6 +244,9 @@ manually deleting the marker.
 
 Automated tests cover:
 
+- chained additive migration to schema 15 from the supported predecessor
+  shapes, including direct schema 13 → 14 → 15 and schema 14 → 15 preservation
+  checks;
 - clean schema-12 initialization with empty installation rows until explicit bootstrap;
 - populated schema-11 ownership migration with stable descendant IDs;
 - a real schema-9-shaped database with preserved legacy rows, IDs, and history;
@@ -215,10 +282,10 @@ operator-owned customization preservation.
 
 ## Rollback
 
-The safest rollback is to stop the app, restore the pre-migration schema-11
-backup (or the schema-9/10 backup when crossing several versions), and deploy the
-matching prior application. Do not attempt an in-place downgrade by dropping
-columns or reconstructing strategic tables in production.
+The safest rollback is to stop the app, restore the exact pre-migration backup
+for the predecessor schema (9–14, or the explicitly migrated schema-8 backup),
+and deploy the matching prior application. Do not attempt an in-place downgrade
+by dropping columns or reconstructing strategic tables in production.
 
 ## Seed behavior
 
@@ -228,3 +295,18 @@ migration. The seed owns an initial fixture, not live authority. The one-time
 production upgrade may consume the same explicit input only for a genuinely
 empty strategic sidecar; after initialization, operator-managed database rows
 remain authoritative.
+
+## Additive predecessor policy at boot (DB-001 note)
+
+`src/lib/schema-version.json` lists `additiveFrom: [9, 10, 11, 12, 13, 14]`.
+This is the boot-time auto-migration policy consumed by
+`scripts/ensure-seeded.mjs` — not the complete set of additively migratable
+versions. `migrateSchema` in `src/lib/db.ts` also migrates schema 8 → 9
+additively (the `kpi_goals.baseline_year` rebuild), but schema 8 is
+deliberately excluded from automatic boot migration so a schema-8 volume
+receives explicit operator handling instead of a silent boot-time upgrade.
+To upgrade a schema-8 database, back it up and run
+`DATABASE_PATH=/absolute/path/to/kpi.db npm run db:migrate` manually; the
+migration chain carries it to the current schema. This asymmetry is
+documented so the omission of 8 from `additiveFrom` is not mistaken for
+drift.

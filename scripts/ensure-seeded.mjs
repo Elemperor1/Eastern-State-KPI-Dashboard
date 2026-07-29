@@ -2,7 +2,10 @@ import fs from "node:fs";
 import path from "node:path";
 import { spawnSync } from "node:child_process";
 import { DatabaseSync } from "node:sqlite";
-import { checkDatabaseReadiness } from "../src/features/health/readiness-core.mjs";
+import {
+  checkDatabaseReadiness,
+  REQUIRED_TABLES,
+} from "../src/features/health/readiness-core.mjs";
 import {
   logMigrationFailure,
   logStartup,
@@ -12,6 +15,28 @@ import {
 const dbPath = process.env.DATABASE_PATH || path.resolve(process.cwd(), "data", "kpi.db");
 const dbDir = path.dirname(dbPath);
 const schemaVersionPath = path.resolve(process.cwd(), "src", "lib", "schema-version.json");
+const tsxCliPath = path.resolve(
+  process.cwd(),
+  "node_modules",
+  "tsx",
+  "dist",
+  "cli.mjs",
+);
+
+/**
+ * Runs a repository TypeScript operator script without depending on npm.
+ *
+ * The production image deliberately removes package-manager executables after
+ * installing dependencies. `tsx` is a pinned runtime dependency, so startup
+ * invokes its CLI through the current Node executable directly.
+ */
+function runTypeScriptOperatorScript(script, args = [], env = process.env) {
+  return spawnSync(process.execPath, [tsxCliPath, script, ...args], {
+    cwd: process.cwd(),
+    env,
+    stdio: "inherit",
+  });
+}
 
 /** Retrieves schema policy. */
 function readSchemaPolicy() {
@@ -52,28 +77,14 @@ function queryExistingDatabase() {
     const categoryRow = db.prepare("SELECT COUNT(*) AS count FROM categories").get();
     const schemaVersion = Number(schemaRow?.value ?? 0);
     const categoryCount = Number(categoryRow?.count ?? 0);
-    const businessTables = [
-      "organizations",
-      "strategic_plans",
-      "installation_audit_events",
-      "categories",
-      "kpis",
-      "monthly_entries",
-      "breakdown_entries",
-      "kpi_goals",
-      "entry_history",
-      "strategic_goals",
-      "kpi_measurement_configs",
-      "kpi_observations",
-      "kpi_component_entries",
-      "distribution_observations",
-      "strategic_audit_events",
-      "board_reporting_scopes",
-      "board_reporting_priorities",
-      "board_reporting_statements",
-      "board_reporting_statement_kpis",
-      "board_reporting_audit_events",
-    ];
+    // Mirror the readiness gate's required-table list so a database that
+    // retains rows in ANY KPI-owned sidecar (for example orphaned targets or
+    // distribution values after an out-of-band catalog wipe) refuses the
+    // automatic destructive reseed. meta/users are excluded: meta is
+    // bookkeeping and the seed preserves/provisions users.
+    const businessTables = REQUIRED_TABLES.filter(
+      (table) => table !== "meta" && table !== "users",
+    );
     const businessRowCount = businessTables.reduce((total, table) => {
       const exists = db
         .prepare(
@@ -164,11 +175,7 @@ function main() {
     console.log(
       `[seed] schema ${result.schemaVersion} is an additive predecessor; running migration before seed checks.`,
     );
-    const migration = spawnSync("npm", ["run", "db:migrate"], {
-      cwd: process.cwd(),
-      env: process.env,
-      stdio: "inherit",
-    });
+    const migration = runTypeScriptOperatorScript("scripts/migrate.ts");
     if (migration.status !== 0) {
       const exitCode = migration.status ?? 1;
       logMigrationFailure("migration_command_failed", exitCode);
@@ -196,10 +203,18 @@ function main() {
   }
 
   console.log(`[seed] ${result.reason}; running sample seed.`);
-  const seed = spawnSync("npm", ["run", "db:seed"], {
-    cwd: process.cwd(),
-    env: process.env,
-    stdio: "inherit",
+  // This is the only automatic production seed path. Reaching it means the
+  // probe above proved the database missing/empty and safe to initialize; pass
+  // the seed command's explicit production acknowledgement together with the
+  // exact resolved-path confirmation below. Any populated, unreadable, or
+  // incompatible database has already failed closed.
+  const seedArgs = ["--force"];
+  const seed = runTypeScriptOperatorScript("scripts/seed.ts", seedArgs, {
+    // S053-C1: the seed requires SEED_CONFIRM naming the exact database.
+    // This probe has already established the reset is safe, so confirm
+    // the resolved path on the operator's behalf.
+    ...process.env,
+    SEED_CONFIRM: path.resolve(dbPath),
   });
   if (seed.status !== 0) {
     const exitCode = seed.status ?? 1;

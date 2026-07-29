@@ -2,11 +2,14 @@ import { type NextRequest, NextResponse } from "next/server";
 import { z } from "@/lib/zod";
 import { authErrorResponse, requireAdmin } from "@/features/auth/session";
 import { assertMutationRequest } from "@/lib/request-guard";
+import { readJsonBody } from "@/lib/request-body";
 import {
   findUserById,
   listUsers,
   setUserDisabled,
   updateUserRole,
+  UserLifecycleGuardError,
+  UserNotFoundError,
 } from "@/features/users/server";
 
 /**
@@ -52,7 +55,9 @@ export async function PATCH(req: NextRequest) {
   }
   const guard = assertMutationRequest(req);
   if (guard) return guard;
-  const parsed = AccountSchema.safeParse(await req.json().catch(() => ({})));
+  const bodyResult = await readJsonBody(req);
+  if (!bodyResult.ok) return bodyResult.response;
+  const parsed = AccountSchema.safeParse(bodyResult.body);
   if (!parsed.success) {
     return NextResponse.json(
       { error: "Invalid input", issues: z.flattenError(parsed.error) },
@@ -84,14 +89,25 @@ export async function PATCH(req: NextRequest) {
 
   try {
     if (role !== undefined && role !== target.role) {
-      updateUserRole(id, role);
+      updateUserRole(id, role, actor);
     }
     if (disabled !== undefined && disabled !== target.disabled) {
-      setUserDisabled(id, disabled);
+      setUserDisabled(id, disabled, actor);
     }
   } catch (err) {
-    const message = err instanceof Error ? err.message : "Could not update account.";
-    return NextResponse.json({ error: message }, { status: 400 });
+    if (err instanceof UserLifecycleGuardError) {
+      // Operator-facing guard refusal (e.g. removing the last active
+      // administrator); the message is written for the admin UI.
+      return NextResponse.json({ error: err.message }, { status: 409 });
+    }
+    if (err instanceof UserNotFoundError) {
+      return NextResponse.json({ error: "User not found." }, { status: 404 });
+    }
+    // Never echo raw driver/database messages to the client.
+    return NextResponse.json(
+      { error: "Could not update account." },
+      { status: 400 },
+    );
   }
 
   return NextResponse.json({ ok: true, user: findUserById(id), ...refreshedUsersPayload() });

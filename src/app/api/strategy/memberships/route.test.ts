@@ -78,13 +78,22 @@ describe("PATCH /api/strategy/memberships", () => {
       role: "informational",
       weight: 2,
       display_order: 3,
+      expected_revision: "2026-01-15 10:00:00",
     };
     const response = await PATCH(request(body));
     expect(response.status).toBe(200);
     expect(updateMembershipMock).toHaveBeenCalledWith(body, 7);
     await expect(response.json()).resolves.toEqual({
-      membership: expect.objectContaining(body),
+      membership: expect.objectContaining({ id: 41, role: "informational" }),
     });
+  });
+
+  it("rejects membership updates without an expected_revision (S070-C2)", async () => {
+    const response = await PATCH(
+      request({ id: 41, role: "informational", weight: 2, display_order: 3 }),
+    );
+    expect(response.status).toBe(400);
+    expect(updateMembershipMock).not.toHaveBeenCalled();
   });
 
   it("rejects non-positive weight and unknown fields before the feature call", async () => {
@@ -97,10 +106,45 @@ describe("PATCH /api/strategy/memberships", () => {
     expect(updateMembershipMock).not.toHaveBeenCalled();
   });
 
+  it("rejects an oversized weight before the feature call (S019-C1)", async () => {
+    // The 1e9 weight that silently dominated goal completion in the live
+    // validation run is now rejected at both the update and successor
+    // boundaries.
+    expect(
+      (
+        await PATCH(
+          request({
+            id: 41,
+            weight: 1e9,
+            expected_revision: "2026-01-15 10:00:00",
+          }),
+        )
+      ).status,
+    ).toBe(400);
+    expect(
+      (
+        await PATCH(
+          request({
+            action: "create_successor",
+            predecessor_id: 41,
+            expected_revision: "2026-01-15 10:00:00",
+            effective_start_year: 2027,
+            role: "required",
+            weight: 1e9,
+            display_order: 3,
+          }),
+        )
+      ).status,
+    ).toBe(400);
+    expect(updateMembershipMock).not.toHaveBeenCalled();
+    expect(successorMembershipMock).not.toHaveBeenCalled();
+  });
+
   it("creates a future successor membership atomically", async () => {
     const body = {
       action: "create_successor",
       predecessor_id: 41,
+      expected_revision: "2026-01-15 10:00:00",
       effective_start_year: 2027,
       role: "informational",
       weight: 2,
@@ -112,6 +156,7 @@ describe("PATCH /api/strategy/memberships", () => {
     expect(successorMembershipMock).toHaveBeenCalledWith(
       {
         predecessor_id: 41,
+        expected_revision: "2026-01-15 10:00:00",
         effective_start_year: 2027,
         role: "informational",
         weight: 2,
@@ -119,6 +164,22 @@ describe("PATCH /api/strategy/memberships", () => {
       },
       7,
     );
+  });
+
+  it("rejects a successor membership without the predecessor revision", async () => {
+    const response = await PATCH(
+      request({
+        action: "create_successor",
+        predecessor_id: 41,
+        effective_start_year: 2027,
+        role: "informational",
+        weight: 2,
+        display_order: 3,
+      }),
+    );
+
+    expect(response.status).toBe(400);
+    expect(successorMembershipMock).not.toHaveBeenCalled();
   });
 
   it("runs authorization before CSRF and rejects a forged origin", async () => {

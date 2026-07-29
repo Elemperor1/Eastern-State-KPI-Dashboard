@@ -4,6 +4,7 @@ import { authErrorResponse, requireAdmin } from "@/features/auth/session";
 import {
   StrategicGoalSettingsUpdateSchema,
   StrategyEntityLifecycleSchema,
+  withExpectedRevision,
 } from "@/features/strategy";
 import {
   archiveStrategicGoal,
@@ -13,6 +14,7 @@ import {
   updateStrategicGoalSettings,
 } from "@/features/strategy/server";
 import { assertMutationRequest } from "@/lib/request-guard";
+import { readJsonBody } from "@/lib/request-body";
 import {
   invalidStrategyInput,
   strategyEditErrorResponse,
@@ -20,14 +22,17 @@ import {
 
 const PatchSchema = z.discriminatedUnion("action", [
   z
-    .object({ action: z.literal("update"), update: StrategicGoalSettingsUpdateSchema })
+    .object({
+      action: z.literal("update"),
+      update: withExpectedRevision(StrategicGoalSettingsUpdateSchema),
+    })
     .strict(),
   z
     .object({
       action: z.literal("create_successor"),
       predecessor_id: z.number().int().positive(),
       effective_start_year: z.number().int().min(1900).max(2100),
-      update: StrategicGoalSettingsUpdateSchema,
+      update: withExpectedRevision(StrategicGoalSettingsUpdateSchema),
     })
     .strict(),
   z
@@ -48,7 +53,9 @@ export async function PATCH(req: NextRequest) {
   }
   const guard = assertMutationRequest(req);
   if (guard) return guard;
-  const parsed = PatchSchema.safeParse(await req.json().catch(() => ({})));
+  const bodyResult = await readJsonBody(req);
+  if (!bodyResult.ok) return bodyResult.response;
+  const parsed = PatchSchema.safeParse(bodyResult.body);
   if (!parsed.success) return invalidStrategyInput(z.flattenError(parsed.error));
   try {
     if (parsed.data.action === "update") {

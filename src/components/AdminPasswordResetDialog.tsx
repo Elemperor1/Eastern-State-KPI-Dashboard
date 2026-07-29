@@ -43,13 +43,14 @@ export function AdminPasswordResetDialog({
         </>
       }
     >
-      <FormField htmlFor="reset-password" label="New temporary password" hint="Minimum 8 characters">
+      <FormField htmlFor="reset-password" label="New temporary password" hint="8 to 256 characters">
         <Input
           id="reset-password"
           type="password"
           autoFocus
           autoComplete="new-password"
           minLength={8}
+          maxLength={256}
           value={password}
           onChange={(event) => onPasswordChange(event.target.value)}
         />

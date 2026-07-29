@@ -101,6 +101,8 @@ describe("/api/strategy/distribution-bands", () => {
       include_archived: true,
     });
     await expect(response.json()).resolves.toEqual({ bands: [BAND] });
+    // PFM-C1: role-scoped band data must never be stored by any cache.
+    expect(response.headers.get("cache-control")).toBe("private, no-store");
   });
 
   it("rejects invalid numeric query coercions without calling the repository", async () => {

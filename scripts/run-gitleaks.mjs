@@ -1,14 +1,18 @@
 import {
   dockerArgs,
   fail,
-  findExecutable,
-  requireDocker,
+  resolveScanner,
   run,
 } from "./security-tooling.mjs";
 
 const GITLEAKS_VERSION = "8.30.1";
 const GITLEAKS_IMAGE =
   `ghcr.io/gitleaks/gitleaks:v${GITLEAKS_VERSION}@sha256:c00b6bd0aeb3071cbcb79009cb16a60dd9e0a7c60e2be9ab65d25e6bc8abbb7f`;
+// Finding S052-C2: an explicit --config pins the ruleset (the file extends
+// the scanner's built-in defaults) so a repo-root .gitleaks.toml or a
+// GITLEAKS_CONFIG* environment variable cannot silently replace it.
+const GITLEAKS_CONFIG = "security/gitleaks.toml";
+const strippedEnvPrefixes = ["GITLEAKS_CONFIG"];
 const shaPattern = /^[0-9a-f]{7,64}$/u;
 
 /** Implements the scan revision operation. */
@@ -37,26 +41,23 @@ try {
     "git",
     "--redact",
     "--no-banner",
+    `--config=${GITLEAKS_CONFIG}`,
     `--log-opts=${scanRevision()}`,
     ".",
   ];
-  const gitleaks = findExecutable("gitleaks");
-  if (gitleaks) {
-    run(gitleaks, args);
-  } else {
-    const docker = requireDocker();
-    run(
-      docker,
-      dockerArgs(
-        GITLEAKS_IMAGE,
-        args,
-        { network: false },
-      ),
-    );
-  }
+  const scanner = resolveScanner("gitleaks", GITLEAKS_VERSION);
+  run(
+    scanner.docker,
+    dockerArgs(
+      GITLEAKS_IMAGE,
+      args,
+      { network: false },
+    ),
+    { stripEnvPrefixes: strippedEnvPrefixes },
+  );
 } catch (error) {
   fail(
     error,
-    `Install Gitleaks ${GITLEAKS_VERSION}, or run Docker, then retry. Findings are always redacted.`,
+    `Start Docker to run the digest-pinned Gitleaks ${GITLEAKS_VERSION} image, then retry. Findings are always redacted.`,
   );
 }

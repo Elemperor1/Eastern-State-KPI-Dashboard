@@ -1,4 +1,5 @@
 import fs from "node:fs";
+import { createRequire } from "node:module";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
 import { parse } from "yaml";
@@ -21,6 +22,7 @@ type WorkflowJob = {
   if?: string;
   "runs-on"?: unknown;
   "timeout-minutes"?: number;
+  permissions?: Record<string, unknown>;
   steps?: WorkflowStep[];
 };
 
@@ -215,6 +217,128 @@ describe("security workflow policy", () => {
     );
   });
 
+  it("keeps the production runtime non-root, writable, and free of build cache", () => {
+    const dockerfile = read("Dockerfile");
+    const workflow = read(".github/workflows/container-security.yml");
+    const initialization = read("scripts/ensure-seeded.mjs");
+
+    expect(dockerfile).toContain("rm -rf /app/data /app/.next/cache");
+    expect(dockerfile).toContain(
+      'ENTRYPOINT ["/app/scripts/container-entrypoint.sh"]',
+    );
+    expect(dockerfile).toContain("chown app:app /app/data");
+    expect(dockerfile).toContain("rm -rf /usr/local/lib/node_modules/npm");
+    expect(dockerfile).toContain("/usr/local/lib/node_modules/corepack");
+    expect(dockerfile).toContain('CMD ["bash", "./scripts/start-production.sh"]');
+    expect(workflow).toContain("root-owned");
+    expect(workflow).toContain('test "$(id -u)" -eq 10001');
+    expect(workflow).toContain("test -w /app/data/root-owned");
+    expect(workflow).toContain("test ! -e /app/.next/cache");
+    expect(workflow).toContain(
+      "for package_manager in npm npx corepack yarn yarnpkg pnpm pnpx",
+    );
+    expect(workflow).toContain(
+      "test -z \"$(find /usr/local -type f",
+    );
+    expect(initialization).not.toMatch(/spawnSync\(\s*["']npm["']/u);
+    expect(initialization).toContain("process.execPath");
+    expect(initialization).toContain('"tsx"');
+    expect(initialization).toContain('"cli.mjs"');
+  });
+
+  it("records the private-license boundary for the committed brand fonts", () => {
+    const fontDirectory = path.join(root, "public", "fonts");
+    const fontAssets = fs
+      .readdirSync(fontDirectory)
+      .filter((fileName) =>
+        [".otf", ".ttf", ".woff", ".woff2"].includes(
+          path.extname(fileName).toLowerCase(),
+        ),
+      );
+    const fontPolicy = read("public/fonts/LICENSE.txt");
+    const designSystem = read("docs/design-system.md");
+    const layout = read("src/app/layout.tsx");
+    const stylesheet = read("src/app/globals.css");
+
+    expect(fontAssets.sort()).toEqual([
+      "galano-grotesque-bold.otf",
+      "galano-grotesque-light.otf",
+      "galano-grotesque-medium.otf",
+      "galano-grotesque-regular.otf",
+    ]);
+    expect(fontPolicy).toContain("Privately held");
+    expect(fontPolicy).toContain("repository owner attested");
+    expect(fontPolicy).toContain("This notice is not the license");
+    expect(fontPolicy).not.toContain("License file:   (pending");
+    expect(designSystem).toContain(
+      "Galano Grotesque (licensed brand face, © 2014 René Bieder) for every non-code product UI role",
+    );
+    expect(designSystem).toContain("Monaco is the sole exception");
+    expect(layout).toMatch(/\/fonts\/.*\.otf/u);
+    expect(stylesheet).toMatch(/@font-face|\/fonts\/.*\.otf/u);
+  });
+
+  it("documents post-deploy recovery when bootstrap passwords were unset", () => {
+    const runbook = read("docs/operator-provisioning.md");
+
+    expect(runbook).toContain(
+      "If its `BOOTSTRAP_*_PASSWORD` was unset at first database access",
+    );
+    expect(runbook).toContain(
+      "fly ssh console --app eastern-state-kpi-dashboard",
+    );
+    expect(runbook).toContain(
+      'read -r -s -p "New password: " SETUP_ADMIN_PASSWORD',
+    );
+    expect(runbook).toContain(
+      'SETUP_ADMIN_EMAIL="kerry@easternstate.org" npm run setup:admin',
+    );
+    expect(runbook).toMatch(/there is no\s+password to recover or share/u);
+  });
+
+  it("pins the reviewed Fly VM and single-Machine deployment contract", () => {
+    const fly = read("fly.toml");
+    const runbook = read("docs/production-observability.md");
+
+    expect(fly).toMatch(/\[deploy\][\s\S]*?strategy = "immediate"/u);
+    expect(fly).toMatch(
+      /\[\[vm\]\][\s\S]*?size = "shared-cpu-1x"[\s\S]*?memory = "512mb"/u,
+    );
+    expect(fly).toContain("SINGLE_MACHINE_SQLITE_CONTRACT");
+    expect(runbook).toContain(
+      "fly scale count 1 --process-group app --app eastern-state-kpi-dashboard",
+    );
+    for (const inventoryCommand of [
+      "fly scale show --app eastern-state-kpi-dashboard",
+      "fly status --app eastern-state-kpi-dashboard",
+      "fly machine list --app eastern-state-kpi-dashboard",
+      "fly volumes list --app eastern-state-kpi-dashboard",
+    ]) {
+      expect(runbook).toContain(inventoryCommand);
+    }
+    expect(runbook).toContain(
+      "fly volumes snapshots create <volume-id> --app eastern-state-kpi-dashboard",
+    );
+    expect(runbook).toContain(
+      "fly volumes snapshots list <volume-id> --app eastern-state-kpi-dashboard",
+    );
+    expect(runbook).toContain("unmanaged Machine");
+    expect(runbook).toContain("other process groups");
+
+    const initialInventory = runbook.indexOf(
+      "fly scale show --app eastern-state-kpi-dashboard",
+    );
+    const snapshot = runbook.indexOf(
+      "fly volumes snapshots create <volume-id> --app eastern-state-kpi-dashboard",
+    );
+    const scaleDown = runbook.indexOf(
+      "fly scale count 1 --process-group app --app eastern-state-kpi-dashboard",
+    );
+    expect(initialInventory).toBeGreaterThan(-1);
+    expect(snapshot).toBeGreaterThan(initialInventory);
+    expect(scaleDown).toBeGreaterThan(snapshot);
+  });
+
   it("publishes only actionable container findings to code scanning", () => {
     const workflow = read(".github/workflows/container-security.yml");
     const sarif = workflow.slice(
@@ -286,6 +410,245 @@ describe("security workflow policy", () => {
     expect(verification).toContain('if [[ "$final_run_status" != "completed" || "$final_run_conclusion" != "success" ]]');
   });
 
+  it("pins top-level and per-job permissions for every workflow", () => {
+    // Finding S052-C4: GITHUB_TOKEN privilege drift (write scopes, OIDC
+    // id-token minting) must fail this suite, not pass silently. Every
+    // workflow's top-level map and every job-level override is pinned
+    // exactly; adding or widening a permission requires editing this map.
+    const expected: Record<
+      string,
+      { top: Record<string, unknown>; jobs: Record<string, Record<string, unknown> | undefined> }
+    > = {
+      "codeql.yml": {
+        top: { contents: "read" },
+        jobs: { analyze: { contents: "read", "security-events": "write" } },
+      },
+      "container-security.yml": {
+        top: { contents: "read" },
+        jobs: {
+          scan_scope: undefined,
+          trivy: { contents: "read", "security-events": "write" },
+          container_security: undefined,
+        },
+      },
+      "dependency-review.yml": {
+        top: { contents: "read" },
+        jobs: { "dependency-review": undefined },
+      },
+      "quality.yml": {
+        top: { contents: "read" },
+        jobs: {
+          typecheck: undefined,
+          lint: undefined,
+          "unit-tests": undefined,
+          build: undefined,
+          e2e: undefined,
+          dependencies: undefined,
+          secrets: undefined,
+          semgrep: undefined,
+        },
+      },
+      "release-security.yml": {
+        top: { actions: "read", contents: "read" },
+        jobs: { verify_container: undefined },
+      },
+      "scorecard.yml": {
+        top: { contents: "read" },
+        jobs: {
+          analysis: {
+            contents: "read",
+            "security-events": "write",
+            "id-token": "write",
+          },
+        },
+      },
+    };
+
+    const seen = new Set<string>();
+    for (const [filename, workflow] of workflowEntries()) {
+      const policy = expected[filename];
+      expect(policy, `no permissions policy pinned for ${filename}`).toBeDefined();
+      seen.add(filename);
+      expect(workflow.permissions, `${filename} top-level permissions`).toEqual(policy.top);
+      const actualJobs = Object.fromEntries(
+        Object.entries(workflow.jobs ?? {}).map(([jobId, job]) => [jobId, job.permissions]),
+      );
+      expect(actualJobs, `${filename} per-job permissions`).toEqual(policy.jobs);
+    }
+    expect([...seen].sort()).toEqual(Object.keys(expected).sort());
+  });
+
+  it("keeps the gitleaks ruleset pinned, explicit, and unshadowable", () => {
+    // Finding S052-C2: gitleaks v8 auto-loads <target>/.gitleaks.toml when
+    // --config is absent, and GITLEAKS_CONFIG* env vars redirect the scan.
+    // The gate must pass an explicit pinned config, no repo-root override
+    // file may exist, and the runner must strip the env lever.
+    for (const override of [".gitleaks.toml", ".gitleaks.yaml", ".gitleaks.yml"]) {
+      expect(
+        fs.existsSync(path.join(root, override)),
+        `${override} would silently replace the gitleaks ruleset`,
+      ).toBe(false);
+    }
+
+    const runner = read("scripts/run-gitleaks.mjs");
+    expect(runner).toContain('--config=${GITLEAKS_CONFIG}');
+    expect(runner).toContain('"security/gitleaks.toml"');
+    expect(runner).toContain('"GITLEAKS_CONFIG"');
+    expect(runner).toContain("stripEnvPrefixes");
+
+    const tooling = read("scripts/security-tooling.mjs");
+    expect(tooling).toContain("stripEnvPrefixes");
+
+    const pinnedConfig = read("security/gitleaks.toml");
+    expect(pinnedConfig).toContain("useDefault = true");
+  });
+
+  it("uses vendored Semgrep packs with the container network disabled", () => {
+    // Finding S046-C1: registry packs (p/nodejs, p/react) fetched at scan
+    // time make gate coverage mutable. The runner must reference only the
+    // vendored snapshots and run the container with no network.
+    const runner = read("scripts/run-semgrep.mjs");
+    expect(runner).not.toContain('"p/nodejs"');
+    expect(runner).not.toContain('"p/react"');
+    expect(runner).not.toMatch(/["']p\//u);
+    expect(runner).toContain('"security/semgrep/p-nodejs.yml"');
+    expect(runner).toContain('"security/semgrep/p-react.yml"');
+    expect(runner).toContain("network: false");
+    expect(fs.existsSync(path.join(root, "security/semgrep/p-nodejs.yml"))).toBe(true);
+    expect(fs.existsSync(path.join(root, "security/semgrep/p-react.yml"))).toBe(true);
+    expect(fs.existsSync(path.join(root, "security/semgrep/SNAPSHOT.md"))).toBe(true);
+  });
+
+  it("documents the OSV live advisory data variance", () => {
+    // Finding S052-C3: the OSV gate queries live api.osv.dev data at scan
+    // time; the variance and its corroborating controls must be documented.
+    const doc = read("security/osv-advisory-data.md");
+    expect(doc).toContain("api.osv.dev");
+    const runner = read("scripts/run-osv-scanner.mjs");
+    expect(runner).toContain("security/osv-advisory-data.md");
+  });
+
+  it("keeps the brace-expansion advisory exception exact, owned, and expiring", () => {
+    const config = read("osv-scanner.toml");
+    const lock = JSON.parse(read("package-lock.json")) as {
+      packages?: Record<
+        string,
+        {
+          version?: string;
+          dev?: boolean;
+          integrity?: string;
+          dependencies?: Record<string, string>;
+        }
+      >;
+    };
+    const packages = lock.packages ?? {};
+    expect(config).toContain('id = "GHSA-mh99-v99m-4gvg"');
+    expect(config).toContain("ignoreUntil = 2026-08-29");
+    expect(config).toContain("Owner: repository maintainer");
+    expect(config).toContain("brace-expansion@1.1.17");
+    expect(config.match(/\[\[IgnoredVulns\]\]/gu)).toHaveLength(1);
+
+    const legacyBraceEntries = Object.entries(packages)
+      .filter(
+        ([packagePath, metadata]) =>
+          packagePath.endsWith("/brace-expansion") &&
+          metadata.version !== "5.0.8",
+      )
+      .map(([packagePath, metadata]) => ({
+        packagePath,
+        version: metadata.version,
+        dev: metadata.dev,
+      }));
+    expect(legacyBraceEntries).toEqual([
+      {
+        packagePath: "node_modules/minimatch/node_modules/brace-expansion",
+        version: "1.1.17",
+        dev: true,
+      },
+    ]);
+    expect(packages["node_modules/minimatch"]).toMatchObject({
+      version: "3.1.5",
+      dev: true,
+      dependencies: { "brace-expansion": "^1.1.7" },
+    });
+    const exactArtifactPath =
+      "node_modules/minimatch/node_modules/brace-expansion";
+    expect(packages[exactArtifactPath]).toMatchObject({
+      version: "1.1.17",
+      dev: true,
+      integrity:
+        "sha512-w+aeW/mkgM4PyRMOJCgi3fOrTm5Q8QY1OSfn2TO2iuDj3ezIHqejmuxbjfPrqUkgqRew1iqkyAn0tr0ZwHD9+w==",
+    });
+    const installedSource = read(`${exactArtifactPath}/index.js`);
+    expect(installedSource).toContain("EXPANSION_MAX_LENGTH = 4000000");
+    expect(installedSource).toContain("maxLength");
+
+    const requireFromTest = createRequire(import.meta.url);
+    const expand = requireFromTest(path.join(root, exactArtifactPath)) as (
+      value: string,
+      options: { maxLength: number },
+    ) => string[];
+    const maxLength = 1_000;
+    const expanded = expand("{a,b}".repeat(30), { maxLength });
+    const totalCharacters = expanded.reduce(
+      (sum, value) => sum + value.length,
+      0,
+    );
+    expect(expanded.length).toBeGreaterThan(0);
+    expect(totalCharacters).toBeLessThanOrEqual(maxLength);
+    for (const plugin of [
+      "eslint-plugin-import",
+      "eslint-plugin-jsx-a11y",
+      "eslint-plugin-react",
+    ]) {
+      expect(
+        packages[`node_modules/eslint-config-next/node_modules/${plugin}`],
+      ).toMatchObject({
+        dev: true,
+        dependencies: { minimatch: "^3.1.2" },
+      });
+    }
+  });
+
+  it("fails closed when the committed OpenKnowledge MCP launcher has no local bundle", () => {
+    // Finding S045-C2: the committed .mcp.json must never auto-execute
+    // unpinned remote code (npx -y @inkeep/open-knowledge@latest). The
+    // launcher uses the pinned local app bundle or exits 127 with an
+    // install hint.
+    const config = read(".mcp.json");
+    expect(config).not.toContain("@latest");
+    expect(config).not.toContain("exec npx");
+    expect(config).not.toContain("npx");
+    expect(config).toContain("OpenKnowledge.app");
+    expect(config).toContain("exit 127");
+  });
+
+  it("gates dependency install scripts against the lockfile", () => {
+    // Finding S046-C2: validate before npm runs, install with scripts disabled,
+    // then replay only the exact approved lifecycle package identities.
+    const pkg = JSON.parse(read("package.json")) as { scripts?: Record<string, string> };
+    const quality = read(".github/workflows/quality.yml");
+    const dockerfile = read("Dockerfile");
+    const installer = read("scripts/install-dependencies.mjs");
+
+    expect(pkg.scripts?.["install:controlled"]).toBe("node scripts/install-dependencies.mjs");
+    expect(pkg.scripts?.["install-scripts:guard"]).toBe("node scripts/install-scripts-guard.mjs");
+    expect(pkg.scripts?.["quality:guards"]).toContain("install-scripts:guard");
+    expect(fs.existsSync(path.join(root, "scripts/install-scripts-guard.mjs"))).toBe(true);
+    expect(fs.existsSync(path.join(root, "scripts/install-dependencies.mjs"))).toBe(true);
+    expect(quality.match(/node scripts\/install-dependencies\.mjs/gu)).toHaveLength(5);
+    expect(quality).not.toMatch(/-\s+run:\s+npm ci(?:\s|$)/u);
+    expect(dockerfile.match(/node \.\/scripts\/install-dependencies\.mjs/gu)).toHaveLength(2);
+    expect(dockerfile).not.toMatch(/(?:RUN|&&)\s+npm ci(?:\s|$)/u);
+    expect(dockerfile).toContain(
+      "node ./scripts/install-dependencies.mjs --omit=dev --omit=peer",
+    );
+    expect(installer).toContain(
+      '["ci", "--ignore-scripts", "--no-audit", "--no-fund", ...omitArgs]',
+    );
+    expect(installer).toContain('"--ignore-scripts=false"');
+  });
+
   it("uses the digest-pinned Semgrep image without an in-workflow pip install", () => {
     const runner = read("scripts/run-semgrep.mjs");
     const quality = read(".github/workflows/quality.yml");
@@ -294,10 +657,12 @@ describe("security workflow policy", () => {
       /semgrep\/semgrep:\$\{SEMGREP_VERSION\}@sha256:[0-9a-f]{64}/u,
     );
     expect(runner).toContain(
-      'dockerArgs(SEMGREP_IMAGE, ["semgrep", ...scanArgs])',
+      'dockerArgs(SEMGREP_IMAGE, ["semgrep", ...scanArgs], {',
     );
     expect(quality).not.toContain("pip install");
     expect(quality).not.toContain("actions/setup-python");
+    expect(runner).not.toContain('scanner.kind === "local"');
+    expect(runner).not.toContain("scanner.executable");
   });
 
   it("pins Docker fallback scanners to reviewed image digests", () => {

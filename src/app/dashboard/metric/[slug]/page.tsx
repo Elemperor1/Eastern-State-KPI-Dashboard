@@ -1,4 +1,4 @@
-import { redirect } from "next/navigation";
+import { notFound, redirect } from "next/navigation";
 import { AppShell } from "@/components/AppShell";
 import { ReportingYearFilter } from "@/components/ReportingYearFilter";
 import { SampleDataBadge } from "@/components/SampleDataBadge";
@@ -12,7 +12,10 @@ import {
 } from "@/components/ui";
 import { getCurrentUserReadOnly } from "@/features/auth/session";
 import { listDashboardYears, loadStrategicMetricPageData } from "@/features/reporting/server";
-import { strategyPeriods } from "@/features/strategy";
+import {
+  resolveStrategicReportingYear,
+  strategyPeriods,
+} from "@/features/strategy";
 import {
   formatBoardReportMetricValue,
   formatBoardReportPercentage,
@@ -114,13 +117,15 @@ export default async function StrategicMeasurePage({
 
   const years = listDashboardYears();
   const installation = getActiveInstallation();
-  const requestedYear = Number(firstValue(query.year));
-  const selectedYear = years.includes(requestedYear) ? requestedYear : Math.max(...years);
+  const selectedYear = resolveStrategicReportingYear(
+    firstValue(query.year),
+    years,
+  );
   const data = loadStrategicMetricPageData(slug, {
     year: selectedYear,
     audience: user.role === "board" ? "board" : "staff",
   });
-  if (!data) redirect("/dashboard/overview");
+  if (!data) notFound();
 
   return (
     <AppShell user={user} organizationShortName={installation.organization.shortName} planName={installation.plan.name}>

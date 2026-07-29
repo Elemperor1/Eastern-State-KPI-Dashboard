@@ -24,7 +24,7 @@ acceptable optimization.
 - PNG/PDF preparation temporarily forces every deferred Measure visible before
   measuring and capturing the complete report, then restores the screen state.
 - Galano Grotesque uses `font-display: swap`; regular and medium remain
-  preloaded, so slow font delivery no longer creates an invisible-text window.
+  preloaded, so slow font delivery does not create an invisible-text window.
 
 ## Before and after
 

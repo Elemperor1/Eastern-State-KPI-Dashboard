@@ -7,27 +7,34 @@ const {
   isSampleDataEnabledMock,
   listCalculatedStrategyActualsMock,
   listKPIsMock,
+  listKpiIdsWithArchivedIntervalValuesMock,
   listStrategicAuditEventsMock,
   listStrategicAuditIdentitiesForKpiMock,
   listStrategicGoalsMock,
+  listStrategicGoalsForReportingDisclosureMock,
   getActiveInstallationMock,
-  getBoardReportingScopeMock,
+  getBoardReportingDisclosureScopeMock,
 } = vi.hoisted(() => ({
   isSampleDataEnabledMock: vi.fn(),
   listCalculatedStrategyActualsMock: vi.fn(),
   listKPIsMock: vi.fn(),
+  listKpiIdsWithArchivedIntervalValuesMock: vi.fn(),
   listStrategicAuditEventsMock: vi.fn(),
   listStrategicAuditIdentitiesForKpiMock: vi.fn(),
   listStrategicGoalsMock: vi.fn(),
+  listStrategicGoalsForReportingDisclosureMock: vi.fn(),
   getActiveInstallationMock: vi.fn(),
-  getBoardReportingScopeMock: vi.fn(),
+  getBoardReportingDisclosureScopeMock: vi.fn(),
 }));
 
 vi.mock("@/features/catalog/server", () => ({ listKPIs: listKPIsMock }));
 vi.mock("@/features/strategy/server", () => ({
+  listKpiIdsWithArchivedIntervalValues: listKpiIdsWithArchivedIntervalValuesMock,
   listStrategicAuditEvents: listStrategicAuditEventsMock,
   listStrategicAuditIdentitiesForKpi: listStrategicAuditIdentitiesForKpiMock,
   listStrategicGoals: listStrategicGoalsMock,
+  listStrategicGoalsForReportingDisclosure:
+    listStrategicGoalsForReportingDisclosureMock,
 }));
 vi.mock("./strategy-actuals-server", () => ({
   listCalculatedStrategyActuals: listCalculatedStrategyActualsMock,
@@ -39,7 +46,7 @@ vi.mock("@/features/installation/server", () => ({
   getActiveInstallation: getActiveInstallationMock,
 }));
 vi.mock("@/features/board-reporting", () => ({
-  getBoardReportingScope: getBoardReportingScopeMock,
+  getBoardReportingDisclosureScope: getBoardReportingDisclosureScopeMock,
 }));
 
 import {
@@ -181,11 +188,13 @@ beforeEach(() => {
   vi.clearAllMocks();
   listKPIsMock.mockReturnValue([metric]);
   listStrategicGoalsMock.mockReturnValue([goal]);
+  listStrategicGoalsForReportingDisclosureMock.mockReturnValue([goal]);
   listCalculatedStrategyActualsMock.mockReturnValue([actual(2026, "annual", 0, 12)]);
   listStrategicAuditIdentitiesForKpiMock.mockReturnValue([
     { entity_type: "kpi", entity_id: metric.id },
   ]);
   listStrategicAuditEventsMock.mockReturnValue([]);
+  listKpiIdsWithArchivedIntervalValuesMock.mockReturnValue(new Set<number>());
   isSampleDataEnabledMock.mockReturnValue(true);
   getActiveInstallationMock.mockReturnValue({
     organization: {
@@ -197,7 +206,7 @@ beforeEach(() => {
     plan: { id: 2, startYear: 2025, endYear: 2029 },
     years: [2025, 2026, 2027, 2028, 2029],
   });
-  getBoardReportingScopeMock.mockReturnValue({
+  getBoardReportingDisclosureScopeMock.mockReturnValue({
     id: 1,
     planId: 2,
     revision: 1,
@@ -256,11 +265,11 @@ describe("strategic reporting server", () => {
       })),
     };
     listKPIsMock.mockReturnValue([metric, boardMetric]);
-    listStrategicGoalsMock.mockReturnValue([goal, boardGoal]);
-    getBoardReportingScopeMock.mockReturnValue({
-      ...getBoardReportingScopeMock(),
+    listStrategicGoalsForReportingDisclosureMock.mockReturnValue([goal, boardGoal]);
+    getBoardReportingDisclosureScopeMock.mockReturnValue({
+      ...getBoardReportingDisclosureScopeMock(),
       priorities: [{
-        ...getBoardReportingScopeMock().priorities[0],
+        ...getBoardReportingDisclosureScopeMock().priorities[0],
         displayTitle: "Board learning focus",
       }],
     });
@@ -299,11 +308,11 @@ describe("strategic reporting server", () => {
       priority_name: "Preservation",
       members: [{ ...sharedMember, id: 702, goal_id: 701 }],
     };
-    listStrategicGoalsMock.mockReturnValue([
+    listStrategicGoalsForReportingDisclosureMock.mockReturnValue([
       { ...goal, members: [{ ...sharedMember, id: 703, goal_id: goal.id }] },
       otherGoal,
     ]);
-    getBoardReportingScopeMock.mockReturnValue({
+    getBoardReportingDisclosureScopeMock.mockReturnValue({
       id: 1,
       planId: 2,
       revision: 2,
@@ -338,6 +347,159 @@ describe("strategic reporting server", () => {
     expect(report.priorities).toHaveLength(1);
     expect(report.priorities[0]?.name).toBe("Board preservation");
     expect(report.priorities[0]?.goals.flatMap((item) => item.kpis)).toHaveLength(1);
+  });
+
+  it("keeps scoped archived-only goals so Board reports disclose exclusions", () => {
+    const archivedGoal: StrategicGoalReadModel = {
+      ...goal,
+      priority_slug: "justice-education",
+      priority_name: "Support Learning through Justice Education",
+      members: [],
+      archived_members: [{
+        kpi_id: 11,
+        kpi_slug: "justice-ed-online-digital-attendance",
+        kpi_name: "Online digital attendance",
+      }, {
+        kpi_id: 12,
+        kpi_slug: "unapproved-archived-measure",
+        kpi_name: "Unapproved archived measure",
+      }],
+    };
+    listStrategicGoalsForReportingDisclosureMock.mockReturnValue([archivedGoal]);
+    listKPIsMock.mockReturnValue([]);
+    listCalculatedStrategyActualsMock.mockReturnValue([]);
+
+    const report = loadBoardReportPageData({
+      year: 2026,
+      audience: "board",
+    }).report;
+
+    expect(report.priorities).toHaveLength(1);
+    expect(report.priorities[0]?.goals).toHaveLength(1);
+    expect(report.priorities[0]?.goals[0]?.excludedKpisCount).toBe(1);
+    expect(report.priorities[0]?.goals[0]?.excludedReasons).toContain(
+      "One or more measures are archived",
+    );
+  });
+
+  it("keeps archived-Priority exclusions in staff Overview reporting", () => {
+    const archivedGoal: StrategicGoalReadModel = {
+      ...goal,
+      members: [],
+      archived_members: [{
+        kpi_id: metric.id,
+        kpi_slug: metric.slug,
+        kpi_name: metric.name,
+      }],
+    };
+    listStrategicGoalsMock.mockReturnValue([]);
+    listStrategicGoalsForReportingDisclosureMock.mockReturnValue([archivedGoal]);
+    listKPIsMock.mockReturnValue([]);
+    listCalculatedStrategyActualsMock.mockReturnValue([]);
+
+    const data = loadExecutiveOverviewPageData({
+      year: 2026,
+      audience: "staff",
+    });
+
+    expect(data.summary.goals).toHaveLength(1);
+    expect(data.summary.goals[0]?.result.excludedKpisCount).toBe(1);
+    expect(data.summary.goals[0]?.result.exclusionReasons).toContain("archived");
+    expect(data.needsAttention).toContainEqual({
+      goalId: String(archivedGoal.id),
+      goalName: archivedGoal.name,
+      priorityName: archivedGoal.priority_name,
+      reason: "One or more measures are archived",
+    });
+  });
+
+  it("keeps scoped archived exclusions in staff and Board Trends (NOV-C5)", () => {
+    const archivedGoal: StrategicGoalReadModel = {
+      ...goal,
+      priority_slug: "justice-education",
+      priority_name: "Support Learning through Justice Education",
+      members: [],
+      archived_members: [{
+        kpi_id: 11,
+        kpi_slug: "justice-ed-online-digital-attendance",
+        kpi_name: "Online digital attendance",
+      }, {
+        kpi_id: 12,
+        kpi_slug: "unapproved-archived-measure",
+        kpi_name: "Unapproved archived measure",
+      }],
+    };
+    listStrategicGoalsForReportingDisclosureMock.mockReturnValue([archivedGoal]);
+    listCalculatedStrategyActualsMock.mockReturnValue([]);
+
+    const staff = loadStrategicTrendReportData({
+      year: 2026,
+      audience: "staff",
+    });
+    expect(staff.excludedMeasures).toEqual([
+      {
+        kpiId: 11,
+        kpiName: "Online digital attendance",
+        priorityName: "Support Learning through Justice Education",
+        reason: "archived",
+      },
+      {
+        kpiId: 12,
+        kpiName: "Unapproved archived measure",
+        priorityName: "Support Learning through Justice Education",
+        reason: "archived",
+      },
+    ]);
+
+    const board = loadStrategicTrendReportData({
+      year: 2026,
+      audience: "board",
+    });
+    expect(board.excludedMeasures).toEqual([
+      expect.objectContaining({
+        kpiId: 11,
+        kpiName: "Online digital attendance",
+      }),
+    ]);
+  });
+
+  it("does not describe an active trend series as an archived exclusion", () => {
+    listStrategicGoalsForReportingDisclosureMock.mockReturnValue([
+      {
+        ...goal,
+        archived_members: [{
+          kpi_id: metric.id,
+          kpi_slug: metric.slug,
+          kpi_name: metric.name,
+        }],
+      },
+    ]);
+
+    const data = loadStrategicTrendReportData({
+      year: 2026,
+      audience: "staff",
+    });
+
+    expect(data.series).toEqual([
+      expect.objectContaining({ kpiId: metric.id }),
+    ]);
+    expect(data.excludedMeasures).toEqual([]);
+  });
+
+  it("marks restored hidden-data series in Trends (NOV-C5)", () => {
+    listKpiIdsWithArchivedIntervalValuesMock.mockReturnValue(
+      new Set([metric.id]),
+    );
+
+    const data = loadStrategicTrendReportData({
+      year: 2026,
+      audience: "staff",
+    });
+
+    expect(data.series[0]).toMatchObject({
+      kpiId: metric.id,
+      restoredWithHiddenData: true,
+    });
   });
 
   it("uses only strategic plan years and configured reporting periods", () => {

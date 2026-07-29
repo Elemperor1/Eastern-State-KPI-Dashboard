@@ -24,7 +24,10 @@
     "docstrings:guard": "node scripts/docstring-coverage.mjs",
     "docstrings:fix": "node scripts/docstring-coverage.mjs --fix",
     "design-system:guard": "bash ./scripts/design-tokens-guard.sh && bash ./scripts/design-system-guard.sh && bash ./scripts/auth-bypass-guard.sh && bash ./scripts/architecture-boundary-guard.sh",
-    "quality:guards": "npm run design-system:guard && npm run hygiene:guard && npm run docstrings:guard && npm run production-dependencies:guard && bash ./scripts/d8ad-can-008-ci-gate.sh",
+    "quality:guards": "npm run design-system:guard && npm run deployment-config:guard && npm run hygiene:guard && npm run docstrings:guard && npm run production-dependencies:guard && npm run install-scripts:guard && bash ./scripts/d8ad-can-008-ci-gate.sh",
+    "deployment-config:guard": "node scripts/deployment-config-guard.mjs",
+    "install:controlled": "node scripts/install-dependencies.mjs",
+    "install-scripts:guard": "node scripts/install-scripts-guard.mjs",
     "design-system:test": "npm run quality:guards && npm run typecheck && AUTH_DISABLED= npm run build",
     "test": "vitest run",
     "test:ci": "vitest run --reporter=default",
@@ -69,7 +72,7 @@
     "eslint-import-resolver-typescript": "^4.4.5",
     "globals": "^17.7.0",
     "jsdom": "^29.1.1",
-    "postcss": "^8.5.10",
+    "postcss": "^8.5.18",
     "tailwindcss": "^4.3.3",
     "typescript": "^5.6.3",
     "typescript-eslint": "^8.65.0",
@@ -80,12 +83,11 @@
     "core-js@3.49.0": true,
     "esbuild@0.28.1": true,
     "fsevents@2.3.3": true,
-    "sharp@0.35.3": true,
     "unrs-resolver@1.12.2": true,
     "fsevents@2.3.2": true
   },
   "overrides": {
-    "postcss": "^8.5.10",
+    "postcss": "^8.5.18",
     "sharp": "$sharp"
   }
 }

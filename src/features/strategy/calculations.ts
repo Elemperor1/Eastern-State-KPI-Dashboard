@@ -170,10 +170,6 @@ export interface MeasurementResult {
   measurementType: MeasurementType | null;
   /** Raw-input formula used for normalized average measurements. */
   averageMethod?: AverageMethod;
-  /** Explicit compatibility provenance when a value was retained, not recalculated. */
-  calculationProvenance?:
-    | "legacy_direct_percentage"
-    | "legacy_direct_value";
   value: number | null;
   normalizedPercentage: number | null;
   numerator: number | null;
@@ -380,6 +376,11 @@ export function roundFinite(
   if (!Number.isFinite(value) || !isValidPrecision(precision)) return null;
   const factor = 10 ** precision;
   const rounded = Math.round((value + Number.EPSILON) * factor) / factor;
+  // Re-check AFTER scaling: a finite-but-huge input (e.g. 1e308) overflows
+  // to Infinity at `* 10**precision`. Returning Infinity here would let
+  // callers emit state "ok" / status "exceeded" beside a value that JSON
+  // serializes as null; null routes them to NON_FINITE_RESULT instead.
+  if (!Number.isFinite(rounded)) return null;
   return Object.is(rounded, -0) ? 0 : rounded;
 }
 
@@ -1045,11 +1046,20 @@ function calculateScalar(input: ScalarMeasurementInput, precision: number): Meas
       issues: [value.issue],
     });
   }
+  const roundedValue = roundFinite(value.value as number, precision);
+  if (roundedValue === null) {
+    return result({
+      state: "invalid",
+      measurementType: input.measurementType,
+      precision,
+      issues: [invalid("NON_FINITE_RESULT", "Measurement produced a non-finite result.")],
+    });
+  }
   return result({
     state: "ok",
     measurementType: input.measurementType,
     precision,
-    value: roundFinite(value.value as number, precision),
+    value: roundedValue,
   });
 }
 
@@ -1719,9 +1729,6 @@ function result(overrides: Partial<MeasurementResult>): MeasurementResult {
     ...(overrides.averageMethod
       ? { averageMethod: overrides.averageMethod }
       : {}),
-    ...(overrides.calculationProvenance
-      ? { calculationProvenance: overrides.calculationProvenance }
-      : {}),
     ...(overrides.distribution ? { distribution: overrides.distribution } : {}),
     ...(overrides.components ? { components: overrides.components } : {}),
     ...(overrides.aggregationMethod ? { aggregationMethod: overrides.aggregationMethod } : {}),
@@ -1761,7 +1768,10 @@ function goalResult(
     totalEligibleKpisCount: overrides.totalEligibleKpisCount ?? 0,
     excludedKpisCount: excludedKpis.length,
     excludedKpis,
-    exclusionReasons: overrides.exclusionReasons ?? [],
+    exclusionReasons: unique([
+      ...(overrides.exclusionReasons ?? []),
+      ...excludedKpis.map((item) => item.reason),
+    ]),
     issues: overrides.issues ?? [],
   };
 }

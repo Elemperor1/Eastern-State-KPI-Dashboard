@@ -162,7 +162,11 @@ a decision-review walkthrough, and an Admin recovery task—not another redesign
   preserve uncertainty honestly.
 - The Admin role combines data entry, configuration, access, and audit powers.
   Whether those duties need separation is unknown.
-- There is no verified offline workflow or concurrent-edit conflict contract.
+- There is no verified offline workflow. Strategic Goal settings and
+  successors, Goal–KPI Membership settings and successors, Measurement
+  Definition settings and successors, and Target settings use optimistic
+  revision tokens and refuse stale writes. Other Setup mutations and Data
+  Entry value writes do not currently have that concurrent-edit contract.
 - Linear annual pacing is valid only for evenly paced Measures; it must not be
   applied by default to milestones or seasonal work.
 
@@ -391,7 +395,7 @@ semantics remains visible with its reason; it is never silently skipped.
 | Export failure | Name the failed format and provide a usable fallback such as Print → Save as PDF. |
 | Permission | Hide unavailable navigation, redirect protected pages safely, return 401/403 from APIs, and never present an impossible CTA. |
 | Offline | The product is online-required. A disconnected save retains the in-memory draft and explains retry; no offline persistence or later synchronization is promised. |
-| Concurrent edit | No conflict-resolution contract is verified. Do not claim protection. Until a versioned policy is designed, treat last-write behavior as a risk and rely on Activity only for evidence, not prevention. |
+| Concurrent edit | Strategic Goal settings/successors, Goal–KPI Membership settings/successors, Measurement Definition settings/successors, and Target settings carry the loaded `updated_at` revision and refuse stale writes with a conflict response. Preserve the draft, explain that setup changed, and reload before retrying. Other Setup mutations and Data Entry value writes have no equivalent version token, so do not claim conflict prevention there; Activity remains evidence, not prevention. |
 | Unknown/not found | A missing Priority/Measure returns to Overview today. A future surface should explain the missing object without exposing implementation detail. |
 | Route failure | Add route-level error boundaries with retry for the four destinations; skeletons alone do not cover rejected server loads. |
 
@@ -462,8 +466,8 @@ Assumptions and unknowns requiring validation:
 - whether Viewer and Admin are sufficient permission roles;
 - whether Targets are best edited in Goal context or need a Measure-context
   editing affordance as well;
-- acceptable concurrent-edit behavior and whether version conflicts are
-  required;
+- acceptable concurrent-edit behavior on the remaining unversioned Setup and
+  Data Entry mutation surfaces;
 - whether an offline capture/import path is needed; and
 - which Board Report sections are required in meetings versus retained only as
   complete evidence.

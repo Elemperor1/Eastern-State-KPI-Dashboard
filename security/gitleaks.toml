@@ -1,0 +1,13 @@
+# Gitleaks gate configuration (finding S052-C2).
+#
+# Passed explicitly via --config by scripts/run-gitleaks.mjs so a repo-root
+# .gitleaks.toml can never silently replace the ruleset (gitleaks v8 only
+# auto-loads <target>/.gitleaks.toml when --config is absent), and so
+# GITLEAKS_CONFIG* environment variables cannot redirect the scan (the runner
+# strips them from the child environment).
+#
+# useDefault = true pins the scan to the exact built-in default ruleset of
+# the digest-pinned scanner image. Add only additive, reviewed exceptions
+# below; prefer .gitleaksignore for path excludes.
+[extend]
+useDefault = true

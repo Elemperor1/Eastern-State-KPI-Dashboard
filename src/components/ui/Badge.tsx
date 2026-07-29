@@ -17,7 +17,7 @@ const variants = {
   incomplete: "bg-ink-100 text-ink-700",
   info: "bg-brand-50 text-brand-800",
   brand: "bg-ink-950 text-white",
-  accent: "bg-accent-300 text-ink-950",
+  accent: "bg-accent-500 text-ink-950",
 };
 
 /** Renders the badge interface. */

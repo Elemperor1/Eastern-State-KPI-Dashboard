@@ -15,11 +15,15 @@ interface PageHeaderProps {
 export function PageHeader({ eyebrow, title, subtitle, actions, className, children }: PageHeaderProps) {
   return (
     <header className={cn("mb-8 flex flex-wrap items-start justify-between gap-5", className)}>
-      <div className="max-w-3xl">
+      <div className="min-w-0 max-w-3xl">
         {eyebrow ? (
           <p className="section-eyebrow">{eyebrow}</p>
         ) : null}
-        <h1 className="text-[30px] font-medium leading-[1.2] tracking-[-0.02em] text-ink-900 text-balance">
+        <h1
+          data-page-title
+          tabIndex={-1}
+          className="text-[30px] font-medium leading-[1.2] tracking-[-0.02em] text-ink-900 text-balance [overflow-wrap:anywhere] hyphens-auto focus:outline-hidden"
+        >
           {title}
         </h1>
         {subtitle ? (

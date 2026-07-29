@@ -184,8 +184,16 @@ function initializeDefaultScope(): void {
   });
 }
 
-/** Reads the persisted Board reporting scope without initializing content. */
-function readScope(planId: number): BoardReportingScope {
+/**
+ * Reads the persisted Board reporting scope without initializing content.
+ * Disclosure mode retains persisted links to archived catalog entities so a
+ * Board report can explain their exclusion; the ordinary/Admin read remains
+ * limited to currently linkable catalog rows.
+ */
+function readScope(
+  planId: number,
+  includeArchivedCatalogForDisclosure = false,
+): BoardReportingScope {
   const db = getDb();
   const scopeRow = db.prepare(
     "SELECT id, plan_id, revision FROM board_reporting_scopes WHERE plan_id = ?",
@@ -218,10 +226,14 @@ function readScope(planId: number): BoardReportingScope {
        ON link.statement_id = statement.id
      LEFT JOIN kpis kpi
        ON kpi.id = link.kpi_id
-      AND kpi.is_active = 1 AND kpi.archived_at IS NULL
       AND kpi.category_id = board_priority.priority_id
+      ${
+        includeArchivedCatalogForDisclosure
+          ? "AND (kpi.is_active = 1 OR kpi.archived_at IS NOT NULL)"
+          : "AND kpi.is_active = 1 AND kpi.archived_at IS NULL"
+      }
      WHERE board_priority.scope_id = ?
-       AND priority.archived_at IS NULL
+       ${includeArchivedCatalogForDisclosure ? "" : "AND priority.archived_at IS NULL"}
      ORDER BY board_priority.display_order, board_priority.id,
               statement.display_order, statement.id,
               link.display_order, kpi.id`,
@@ -277,6 +289,17 @@ function readScope(planId: number): BoardReportingScope {
 export function getBoardReportingScope(): BoardReportingScope {
   initializeDefaultScope();
   return readScope(getActiveInstallation().plan.id);
+}
+
+/**
+ * Retrieves the persisted Board scope for report disclosure. Unlike the Admin
+ * editor model, this retains archived priority/measure links so the reporting
+ * pipeline can surface an explicit archived exclusion instead of silently
+ * dropping an approved Board measure.
+ */
+export function getBoardReportingDisclosureScope(): BoardReportingScope {
+  initializeDefaultScope();
+  return readScope(getActiveInstallation().plan.id, true);
 }
 
 /** Retrieves the Admin editor model and every linkable active measure. */

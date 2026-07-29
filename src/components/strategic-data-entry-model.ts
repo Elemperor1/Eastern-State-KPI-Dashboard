@@ -475,7 +475,10 @@ export function buildStrategicDataEntryMutation(
     body.denominator =
       fixedDenominator === null
         ? readNumber(draft.denominator, "denominator", errors, {
-            nonnegative: true,
+            // A zero denominator can never produce a reportable value;
+            // reject it at entry instead of persisting a row the kernel
+            // renders invalid while the checklist shows complete.
+            positive: true,
           })
         : null;
   } else if (measurementType === "average") {

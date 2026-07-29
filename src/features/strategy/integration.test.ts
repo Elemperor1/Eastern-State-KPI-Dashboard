@@ -472,13 +472,15 @@ describe("strategy persistence integration", () => {
     const affectedTargets = getDb()
       .prepare(
         `SELECT id FROM kpi_targets
-         WHERE kpi_id = ?
+         WHERE kpi_id IN (?, ?)
             OR component_id IN (
               SELECT id FROM kpi_components WHERE configuration_id = ?
             )
          ORDER BY id`,
       )
-      .all(component.kpi_id, component.configuration_id) as Array<{ id: number }>;
+      .all(member.kpi_id, component.kpi_id, component.configuration_id) as Array<{
+        id: number;
+      }>;
     const target = affectedTargets[0] ?? (getDb()
       .prepare("SELECT id FROM kpi_targets ORDER BY id LIMIT 1")
       .get() as { id: number });

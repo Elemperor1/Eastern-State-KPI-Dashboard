@@ -37,6 +37,15 @@ describe("Impeccable responsive and semantic regressions", () => {
     expect(priority).toContain("flex w-full items-center justify-between");
   });
 
+  it("discloses archived and otherwise excluded measures on Priority detail", () => {
+    const priority = source("./dashboard/category/[slug]/page.tsx");
+
+    expect(priority).toContain("goal.excludedReasons.length > 0");
+    expect(priority).toContain("goal.excludedKpisCount");
+    expect(priority).toContain("not counted");
+    expect(priority).toContain("goal.excludedReasons.map");
+  });
+
   it("uses Sample yellow only through the explicit Sample badge variant", () => {
     const entry = source("./data-entry/_components/StrategicDataEntryClient.tsx");
     const report = source("../components/StrategicBoardReport.tsx");
@@ -76,5 +85,64 @@ describe("Impeccable responsive and semantic regressions", () => {
     expect(globals).not.toContain("font-display: block");
     expect(globals).toContain("content-visibility: auto");
     expect(globals).toMatch(/@media print[\s\S]*?\.board-report-measure[\s\S]*?content-visibility: visible/);
+  });
+
+  it("wraps pathological page titles and moves SPA focus to the destination heading", () => {
+    const pageHeader = source("../components/ui/PageHeader.tsx");
+    const shell = source("../components/AppShell.tsx");
+
+    expect(pageHeader).toContain("[overflow-wrap:anywhere]");
+    expect(pageHeader).toContain("hyphens-auto");
+    expect(pageHeader).toContain("data-page-title");
+    expect(pageHeader).toContain("tabIndex={-1}");
+    expect(shell).toContain('querySelector<HTMLElement>("[data-page-title]")');
+    expect(shell).toContain("document.getElementById(fragmentId)");
+    expect(shell).toContain("fragmentTarget.focus()");
+    expect(shell).toContain("document.activeElement === fragmentTarget");
+    expect(shell).toContain("(destinationHeading ?? main)?.focus()");
+    expect(shell).toContain(
+      'window.sessionStorage.setItem(ROUTE_RECOVERY_FOCUS_KEY, "heading")',
+    );
+    expect(shell).toContain(
+      "window.sessionStorage.removeItem(ROUTE_RECOVERY_FOCUS_KEY)",
+    );
+  });
+
+  it("uses one 3px focus-ring contract for links, tabs, and shell chrome", () => {
+    const globals = source("./globals.css");
+    const setup = source("./setup/page.tsx");
+    const priority = source("./dashboard/category/[slug]/page.tsx");
+    const overview = source("./dashboard/overview/ExecutiveOverview.tsx");
+
+    expect(globals).toMatch(/a:focus-visible\s*\{[\s\S]*?outline: 3px solid var\(--color-focus\)/);
+    for (const route of [setup, priority, overview]) {
+      expect(route).not.toContain("focus-visible:outline-" + "2");
+    }
+  });
+
+  it("keeps static report placeholders out of live regions and hides product chrome in print", () => {
+    const report = source("../components/StrategicBoardReport.tsx");
+    const reportsPage = source("./reports/page.tsx");
+    const globals = source("./globals.css");
+
+    expect(report).not.toContain('role="status"');
+    expect(reportsPage).toContain('className="reports-product-header"');
+    expect(globals).toMatch(/@media print[\s\S]*?\.reports-product-header[\s\S]*?display: none !important/);
+  });
+
+  it("returns a real not-found boundary for unknown priority and measure slugs", () => {
+    const priority = source("./dashboard/category/[slug]/page.tsx");
+    const measure = source("./dashboard/metric/[slug]/page.tsx");
+    const notFound = source("./not-found.tsx");
+    const recovery = source("../components/NotFoundState.tsx");
+
+    for (const route of [priority, measure]) {
+      expect(route).toContain('import { notFound, redirect } from "next/navigation"');
+      expect(route).toContain("if (!data) notFound()");
+      expect(route).not.toContain('if (!data) redirect("/dashboard/overview")');
+    }
+    expect(notFound).toContain("<NotFoundState />");
+    expect(recovery).toContain("Page not found");
+    expect(recovery).toContain('href="/dashboard/overview"');
   });
 });

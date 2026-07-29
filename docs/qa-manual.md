@@ -18,6 +18,15 @@ AUTH_DISABLED=true PORT=3290 BASE=http://127.0.0.1:3290 bash ./scripts/smoke.sh
 The harness verifies TLS certificates. For an HTTPS endpoint signed by a
 private CA, set `SMOKE_CA_BUNDLE` to the CA certificate bundle path.
 
+The harness sends credentials and performs authenticated mutations, so it
+refuses a non-loopback `BASE` host (S053-C3) unless the operator sets
+`SMOKE_ALLOW_REMOTE_BASE=true` explicitly. `SMOKE_PASSWORD` is streamed to
+the login request on stdin (S053-C2); it never appears on a command line,
+where it would be visible in the process list. For the default loopback path,
+the harness also ignores proxy environment variables and user curl
+configuration so authenticated local traffic cannot be silently rerouted.
+An explicitly allowed remote base retains the operator's curl proxy behavior.
+
 ## Overview
 
 - Open `/dashboard/overview?year=2026` at 1280 px and 390 px.

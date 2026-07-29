@@ -243,6 +243,7 @@ export function StrategicGoalsEditorClient({
       });
       const body = (await response.json().catch(() => ({}))) as {
         error?: string;
+        code?: string;
         issues?: unknown;
         goal?: Partial<StrategicGoalEditorRecord>;
         successor?: Partial<StrategicGoalEditorRecord> & {
@@ -251,6 +252,13 @@ export function StrategicGoalsEditorClient({
         };
       };
       if (!response.ok) {
+        if (response.status === 409 && body.code === "stale_revision") {
+          return {
+            ok: false,
+            error:
+              "This record changed while you were editing it. Reload the page to load the latest version, then reapply your changes.",
+          };
+        }
         const detail = issueMessage(body.issues);
         return {
           ok: false,
@@ -314,15 +322,24 @@ export function StrategicGoalsEditorClient({
       });
       const body = (await response.json().catch(() => ({}))) as {
         error?: string;
+        code?: string;
         issues?: unknown;
         membership?: {
           id: number;
           role: "required" | "informational";
           weight: number;
           display_order: number;
+          updated_at: string;
         };
       };
       if (!response.ok) {
+        if (response.status === 409 && body.code === "stale_revision") {
+          return {
+            ok: false,
+            error:
+              "This record changed while you were editing it. Reload the page to load the latest version, then reapply your changes.",
+          };
+        }
         const detail = issueMessage(body.issues);
         return {
           ok: false,
@@ -344,6 +361,7 @@ export function StrategicGoalsEditorClient({
                       role: saved.role,
                       weight: saved.weight,
                       displayOrder: saved.display_order,
+                      updatedAt: saved.updated_at,
                     }
                   : member,
               )
@@ -471,7 +489,7 @@ export function StrategicGoalsEditorClient({
                     id={`goal-list-item-${goal.id}`}
                     href={`/setup?area=goals&year=${reportingYear}&goal=${goal.id}`}
                     aria-current={selectedGoalId === goal.id ? "page" : undefined}
-                    className={`block px-1 py-4 text-left transition-colors focus-visible:outline-solid focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-(--color-focus) ${selectedGoalId === goal.id ? "bg-brand-50" : "hover:bg-ink-50"}`}
+                    className={`block px-1 py-4 text-left transition-colors focus-visible:outline-solid focus-visible:outline-[3px] focus-visible:outline-offset-2 focus-visible:outline-(--color-focus) ${selectedGoalId === goal.id ? "bg-brand-50" : "hover:bg-ink-50"}`}
                   >
                     <span className="block font-medium text-ink-950">{goal.name}</span>
                     <span className="mt-1 flex items-center justify-between gap-3 text-sm text-ink-600">
@@ -795,7 +813,11 @@ export function StrategicGoalSettingsForm({
                         id="strategic-goal-threshold-value"
                         type="number"
                         min={draft.thresholdMode === "count" ? 1 : 0.01}
-                        max={draft.thresholdMode === "percentage" ? 100 : undefined}
+                        max={
+                          draft.thresholdMode === "percentage"
+                            ? 100
+                            : Math.max(1, goal.members.length)
+                        }
                         step={draft.thresholdMode === "count" ? 1 : 0.1}
                         value={draft.thresholdValue}
                         aria-invalid={Boolean(
@@ -1236,12 +1258,13 @@ function StrategicGoalMembershipForm({
     const built = successorMode
       ? buildStrategicGoalMembershipSuccessorMutation(
           member.id,
+          member.updatedAt,
           Number(successorStartYear),
           draft,
           planYears[0]!,
           planYears.at(-1)!,
         )
-      : buildStrategicGoalMembershipMutation(member.id, draft);
+      : buildStrategicGoalMembershipMutation(member.id, draft, member.updatedAt);
     if (!built.ok) {
       setErrors(built.errors);
       setFeedback({

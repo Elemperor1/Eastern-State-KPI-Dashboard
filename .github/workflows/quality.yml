@@ -32,7 +32,7 @@ jobs:
         with:
           node-version: ${{ env.NODE_VERSION }}
           cache: npm
-      - run: npm ci
+      - run: node scripts/install-dependencies.mjs
       - run: npm run typecheck
 
   lint:
@@ -47,7 +47,7 @@ jobs:
         with:
           node-version: ${{ env.NODE_VERSION }}
           cache: npm
-      - run: npm ci
+      - run: node scripts/install-dependencies.mjs
       - run: npm run lint
 
   unit-tests:
@@ -62,7 +62,7 @@ jobs:
         with:
           node-version: ${{ env.NODE_VERSION }}
           cache: npm
-      - run: npm ci
+      - run: node scripts/install-dependencies.mjs
       - run: npm run test:ci
         env:
           AUTH_DISABLED: ""
@@ -80,7 +80,7 @@ jobs:
         with:
           node-version: ${{ env.NODE_VERSION }}
           cache: npm
-      - run: npm ci
+      - run: node scripts/install-dependencies.mjs
       - run: npm run design-system:test
         env:
           AUTH_DISABLED: ""
@@ -98,7 +98,7 @@ jobs:
         with:
           node-version: ${{ env.NODE_VERSION }}
           cache: npm
-      - run: npm ci
+      - run: node scripts/install-dependencies.mjs
       - name: Install Google Chrome and browser dependencies
         run: npx playwright install --with-deps chrome
       - run: npm run test:e2e

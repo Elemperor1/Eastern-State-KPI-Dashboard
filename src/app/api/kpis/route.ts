@@ -6,11 +6,17 @@ import {
   MEASUREMENT_TYPES,
 } from "@/features/strategy";
 import { assertMutationRequest } from "@/lib/request-guard";
+import { readJsonBody } from "@/lib/request-body";
+import { logUnexpectedServerError } from "@/lib/operational-log";
 import {
   archiveKPI,
   CatalogEntityNotFoundError,
   createStrategicMeasure,
   DependentEntriesError,
+  KpiArchivedCategoryError,
+  KpiParentCycleError,
+  KpiSemanticMutationError,
+  KpiStrategicReparentError,
   listCategories,
   listKPIs,
   restoreKPI,
@@ -37,13 +43,16 @@ const CreateSchema = z.object({
     .int()
     .min(1900)
     .max(2100),
-  slug: z.string().min(1).regex(/^[a-z0-9-]+$/),
-  name: z.string().min(1),
-  unit: z.string().trim().min(1),
+  // Catalog-string maxima mirror the strategic-layer caps (slug 120 /
+  // name 200 / unit 80 / description 4000, NOV-C1): these values persist
+  // verbatim and are duplicated into immutable audit snapshots.
+  slug: z.string().min(1).max(120).regex(/^[a-z0-9-]+$/),
+  name: z.string().min(1).max(200),
+  unit: z.string().trim().min(1).max(80),
   measurement_type: z.enum(MEASUREMENT_TYPES),
   reporting_frequency: z.enum(EXPLICIT_STRATEGY_REPORTING_FREQUENCIES),
   direction: DirectionEnum,
-  description: z.string().nullable().optional(),
+  description: z.string().max(4000).nullable().optional(),
 }).strict();
 
 /** Implements the post operation. */
@@ -56,7 +65,9 @@ export async function POST(req: NextRequest) {
   }
   const guard = assertMutationRequest(req);
   if (guard) return guard;
-  const parsed = CreateSchema.safeParse(await req.json().catch(() => ({})));
+  const bodyResult = await readJsonBody(req);
+  if (!bodyResult.ok) return bodyResult.response;
+  const parsed = CreateSchema.safeParse(bodyResult.body);
   if (!parsed.success) {
     return NextResponse.json({ error: "Invalid input", issues: z.flattenError(parsed.error) }, { status: 400 });
   }
@@ -64,8 +75,49 @@ export async function POST(req: NextRequest) {
     const created = createStrategicMeasure(parsed.data, user.id);
     return NextResponse.json({ ...created, ...refreshedCatalogPayload() }, { status: 201 });
   } catch (err) {
-    const message = err instanceof Error ? err.message : "Could not create KPI";
-    return NextResponse.json({ error: message }, { status: 400 });
+    // Typed catalog errors map to client-safe statuses (mirroring PATCH);
+    // anything else is an unexpected server failure: never echo raw
+    // SQLite/driver/feature error text to the client (F-09 R-08), return
+    // a generic 500, and log only bounded non-sensitive context.
+    if (
+      err instanceof KpiSemanticMutationError ||
+      err instanceof KpiArchivedCategoryError ||
+      err instanceof KpiStrategicReparentError
+    ) {
+      return NextResponse.json(
+        { error: err.message, code: err.code },
+        { status: 409 },
+      );
+    }
+    if (err instanceof KpiParentCycleError) {
+      return NextResponse.json(
+        { error: err.message, code: err.code },
+        { status: 400 },
+      );
+    }
+    if (err instanceof DependentEntriesError) {
+      return NextResponse.json({ error: err.message, code: err.code }, { status: 409 });
+    }
+    if (err instanceof CatalogEntityNotFoundError) {
+      return NextResponse.json(
+        { error: err.message, code: err.code },
+        { status: 404 },
+      );
+    }
+    // Routine client conflict (duplicate slug): safe 409, mirroring the
+    // users route — never the raw constraint text.
+    if (err instanceof Error && /unique constraint failed/i.test(err.message)) {
+      return NextResponse.json(
+        { error: "A measure with that slug already exists." },
+        { status: 409 },
+      );
+    }
+    logUnexpectedServerError({
+      method: "POST",
+      route: "/api/kpis",
+      routeType: "route",
+    });
+    return NextResponse.json({ error: "Could not create KPI." }, { status: 500 });
   }
 }
 
@@ -81,12 +133,12 @@ const UpdateSchema = z.union([
       id: z.number().int().positive(),
       category_id: z.number().int().positive().optional(),
       parent_id: z.number().int().positive().nullable().optional(),
-      name: z.string().min(1).optional(),
-      unit: z.string().optional(),
+      name: z.string().min(1).max(200).optional(),
+      unit: z.string().trim().min(1).max(80).optional(),
       unit_type: UnitTypeEnum.optional(),
       reporting_frequency: FrequencyEnum.optional(),
       direction: DirectionEnum.optional(),
-      description: z.string().nullable().optional(),
+      description: z.string().max(4000).nullable().optional(),
       sort_order: z.number().int().optional(),
       is_active: z.union([z.literal(0), z.literal(1)]).optional(),
     })
@@ -103,7 +155,9 @@ export async function PATCH(req: NextRequest) {
   }
   const guard = assertMutationRequest(req);
   if (guard) return guard;
-  const parsed = UpdateSchema.safeParse(await req.json().catch(() => ({})));
+  const bodyResult = await readJsonBody(req);
+  if (!bodyResult.ok) return bodyResult.response;
+  const parsed = UpdateSchema.safeParse(bodyResult.body);
   if (!parsed.success) {
     return NextResponse.json({ error: "Invalid input", issues: z.flattenError(parsed.error) }, { status: 400 });
   }
@@ -124,6 +178,22 @@ export async function PATCH(req: NextRequest) {
     updateKPI(id, patch, user.id);
     return NextResponse.json({ ok: true, ...refreshedCatalogPayload() });
   } catch (err) {
+    if (
+      err instanceof KpiSemanticMutationError ||
+      err instanceof KpiArchivedCategoryError ||
+      err instanceof KpiStrategicReparentError
+    ) {
+      return NextResponse.json(
+        { error: err.message, code: err.code },
+        { status: 409 },
+      );
+    }
+    if (err instanceof KpiParentCycleError) {
+      return NextResponse.json(
+        { error: err.message, code: err.code },
+        { status: 400 },
+      );
+    }
     if (err instanceof CatalogEntityNotFoundError) {
       return NextResponse.json(
         { error: err.message, code: err.code },
@@ -134,7 +204,7 @@ export async function PATCH(req: NextRequest) {
   }
 }
 
-const DeleteSchema = z.object({ id: z.number().int().positive() });
+const DeleteSchema = z.object({ id: z.number().int().positive() }).strict();
 
 /** Removes or resets the selected state. */
 export async function DELETE(req: NextRequest) {
@@ -146,7 +216,9 @@ export async function DELETE(req: NextRequest) {
   }
   const guard = assertMutationRequest(req);
   if (guard) return guard;
-  const parsed = DeleteSchema.safeParse(await req.json().catch(() => ({})));
+  const bodyResult = await readJsonBody(req);
+  if (!bodyResult.ok) return bodyResult.response;
+  const parsed = DeleteSchema.safeParse(bodyResult.body);
   if (!parsed.success) {
     return NextResponse.json({ error: "Invalid input" }, { status: 400 });
   }

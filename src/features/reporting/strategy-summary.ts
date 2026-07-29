@@ -24,6 +24,11 @@ export interface StrategicKpiProgressSummary {
   measurementType: string | null;
   configurationStatus: string;
   boardLevelStatus: string | null;
+  /**
+   * NOV-C5 disclosure: true when this measure holds values recorded while
+   * it was archived, so a restore cannot quietly resurface hidden data.
+   */
+  restoredWithHiddenData: boolean;
   currentValue: number | null;
   currentCalculation: MeasurementResult | null;
   annualActual: number | null;
@@ -82,6 +87,11 @@ export interface BuildStrategicDashboardSummaryInput {
   planStartYear?: number;
   throughMonth?: number;
   actuals?: StrategicActualValue[];
+  /**
+   * Measures with values recorded inside an archived interval; surfaced as
+   * the restored-with-hidden-data marker on their KPI summaries (NOV-C5).
+   */
+  hiddenValueKpiIds?: ReadonlySet<number>;
 }
 
 /**
@@ -97,6 +107,7 @@ export function buildStrategicDashboardSummary({
   planStartYear,
   throughMonth = 12,
   actuals = [],
+  hiddenValueKpiIds,
 }: BuildStrategicDashboardSummaryInput): StrategicDashboardSummary {
   const effectivePlanStartYear = planStartYear ?? Math.min(
     selectedYear,
@@ -187,6 +198,7 @@ export function buildStrategicDashboardSummary({
         measurementType,
         configurationStatus,
         boardLevelStatus: config?.board_level_status ?? null,
+        restoredWithHiddenData: hiddenValueKpiIds?.has(member.kpi_id) ?? false,
         currentValue,
         currentCalculation,
         annualActual: currentValue,
@@ -206,15 +218,32 @@ export function buildStrategicDashboardSummary({
 
     const result = calculateStrategicGoalCompletion({
       goal,
-      kpis: goal.members.map((member, index) => ({
-        id: String(member.kpi_id),
-        label: member.kpi.name,
-        role: member.role,
-        configurationStatus:
-          member.configuration?.configuration_status ?? "needs_definition",
-        progress: kpiSummaries[index]?.completionProgress ?? null,
-        weight: member.weight,
-      })),
+      kpis: [
+        ...goal.members.map((member, index) => ({
+          id: String(member.kpi_id),
+          label: member.kpi.name,
+          role: member.role,
+          configurationStatus:
+            member.configuration?.configuration_status ?? "needs_definition",
+          progress: kpiSummaries[index]?.completionProgress ?? null,
+          weight: member.weight,
+        })),
+        ...(goal.archived_members ?? [])
+          .filter(
+            (archivedMember) =>
+              !goal.members.some(
+                (member) => member.kpi_id === archivedMember.kpi_id,
+              ),
+          )
+          .map((member) => ({
+            id: String(member.kpi_id),
+            label: member.kpi_name,
+            role: "required" as const,
+            configurationStatus: "archived" as const,
+            progress: null,
+            weight: 0,
+          })),
+      ],
     });
 
     return {
@@ -581,16 +610,30 @@ function combinePeriodValues(
   const annual = finite.filter((row) => row.periodIndex === 0);
   if (annual.length > 0) return annual.at(-1)?.value ?? null;
 
-  const additive = new Set(["count", "cumulative", "currency"]);
-  if (
-    additive.has(measurementType ?? "") &&
-    (reportingFrequency === "monthly" || reportingFrequency === "quarterly")
-  ) {
+  if (isAdditiveReportingCombination(measurementType, reportingFrequency)) {
     return finite.reduce((sum, row) => sum + row.value, 0);
   }
 
   finite.sort((a, b) => a.periodIndex - b.periodIndex);
   return finite.at(-1)?.value ?? null;
+}
+
+/**
+ * True when included period values combine ADDITIVELY into the year-to-date
+ * aggregate (count/cumulative/currency at monthly or quarterly frequency).
+ * This is the single authority for the summary layer's YTD sum and for the
+ * Board adapter's headline Result, which must agree for those combinations
+ * (F-07: latest-period Result beside a YTD progress column diverged).
+ */
+export function isAdditiveReportingCombination(
+  measurementType: string | null,
+  reportingFrequency: string | null,
+): boolean {
+  const additive = new Set(["count", "cumulative", "currency"]);
+  return (
+    additive.has(measurementType ?? "") &&
+    (reportingFrequency === "monthly" || reportingFrequency === "quarterly")
+  );
 }
 
 /** Implements the period included operation. */

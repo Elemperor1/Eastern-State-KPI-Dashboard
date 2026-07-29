@@ -1,4 +1,4 @@
-import { spawnSync } from "node:child_process";
+import { spawn, spawnSync } from "node:child_process";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
@@ -26,6 +26,98 @@ describe("production migration entrypoint", () => {
     expect(migrated.stderr).toContain('"reason":"migration_execution_failed"');
     expect(migrated.stderr).not.toContain(databasePath);
     expect(migrated.stderr).not.toMatch(/no such table|stack|scripts\/migrate\.ts:/i);
+    const verify = new DatabaseSync(databasePath, { readOnly: true });
+    expect(
+      verify
+        .prepare(
+          "SELECT value FROM meta WHERE key = 'production_migration_state'",
+        )
+        .get(),
+    ).toEqual({ value: "in_progress" });
+    verify.close();
+  });
+
+  it("waits for a short competing writer and then marks and completes the migration", async () => {
+    const databasePath = path.join(directory, "short-writer-contention.db");
+    expect(runTsx("scripts/seed.ts", databasePath).status).toBe(0);
+
+    const locker = spawn(
+      process.execPath,
+      [
+        "-e",
+        [
+          "const { DatabaseSync } = require('node:sqlite');",
+          "const db = new DatabaseSync(process.argv[1]);",
+          "db.exec('BEGIN IMMEDIATE');",
+          "process.stdout.write('locked\\n');",
+          "setTimeout(() => { db.exec('ROLLBACK'); db.close(); }, 1200);",
+        ].join(" "),
+        databasePath,
+      ],
+      { stdio: ["ignore", "pipe", "pipe"] },
+    );
+    await new Promise<void>((resolve, reject) => {
+      let output = "";
+      locker.stdout.setEncoding("utf8");
+      locker.stdout.on("data", (chunk: string) => {
+        output += chunk;
+        if (output.includes("locked\n")) resolve();
+      });
+      locker.once("error", reject);
+      locker.once("exit", (code) => {
+        if (!output.includes("locked\n")) {
+          reject(new Error(`writer exited before locking (${String(code)})`));
+        }
+      });
+    });
+
+    const startedAt = Date.now();
+    const migrated = runTsx("scripts/migrate.ts", databasePath);
+    const elapsedMs = Date.now() - startedAt;
+
+    expect(migrated.status, migrated.stderr).toBe(0);
+    expect(elapsedMs).toBeGreaterThanOrEqual(500);
+    const verify = new DatabaseSync(databasePath, { readOnly: true });
+    expect(
+      verify
+        .prepare(
+          "SELECT value FROM meta WHERE key = 'production_migration_state'",
+        )
+        .get(),
+    ).toBeUndefined();
+    expect(verify.prepare("PRAGMA foreign_key_check").all()).toEqual([]);
+    verify.close();
+  });
+
+  it("uses the application default database when DATABASE_PATH is empty", () => {
+    const workingDirectory = fs.mkdtempSync(
+      path.join(directory, "empty-database-path-"),
+    );
+    const dataDirectory = path.join(workingDirectory, "data");
+    fs.mkdirSync(dataDirectory, { recursive: true });
+    const databasePath = path.join(dataDirectory, "kpi.db");
+    const database = new DatabaseSync(databasePath);
+    database.exec(`
+      CREATE TABLE meta (key TEXT PRIMARY KEY, value TEXT NOT NULL);
+      INSERT INTO meta (key, value) VALUES ('schema_version', '14');
+    `);
+    database.close();
+
+    const migrated = spawnSync(
+      path.join(process.cwd(), "node_modules", ".bin", "tsx"),
+      [path.join(process.cwd(), "scripts", "migrate.ts")],
+      {
+        cwd: workingDirectory,
+        env: {
+          ...process.env,
+          DATABASE_PATH: "",
+          TSX_TSCONFIG_PATH: path.join(process.cwd(), "tsconfig.json"),
+        },
+        encoding: "utf8",
+      },
+    );
+
+    expect(migrated.status, migrated.stderr).toBe(1);
     const verify = new DatabaseSync(databasePath, { readOnly: true });
     expect(
       verify
@@ -668,7 +760,14 @@ function readById(
 function runTsx(script: string, databasePath: string) {
   return spawnSync(path.join(process.cwd(), "node_modules", ".bin", "tsx"), [script], {
     cwd: process.cwd(),
-    env: { ...process.env, DATABASE_PATH: databasePath },
+    // S053-C1: the destructive seed requires SEED_CONFIRM naming the
+    // exact resolved database; these disposable test databases are
+    // deliberate reset targets.
+    env: {
+      ...process.env,
+      DATABASE_PATH: databasePath,
+      SEED_CONFIRM: databasePath,
+    },
     encoding: "utf8",
   });
 }
@@ -717,8 +816,141 @@ function restoreLegacyGovernmentSignature(
   ).run(configurationId);
   db.prepare(
     `UPDATE kpi_measurement_configs
-     SET aggregation_method = 'sum',
-         unresolved_question = 'Finalize city and state support targets as portions of contributed revenue.'
-     WHERE id = ?`,
+    SET aggregation_method = 'sum',
+        unresolved_question = 'Finalize city and state support targets as portions of contributed revenue.'
+    WHERE id = ?`,
   ).run(configurationId);
 }
+
+describe("db:migrate newer-schema refusal", () => {
+  const directory = fs.mkdtempSync(path.join(os.tmpdir(), "kpi-migrate-newer-"));
+
+  afterAll(() => fs.rmSync(directory, { recursive: true, force: true }));
+
+  it("treats a valid database with no schema-version row as fresh", () => {
+    const databasePath = path.join(directory, "fresh.db");
+    const db = new DatabaseSync(databasePath);
+    db.exec(`
+      CREATE TABLE meta (key TEXT PRIMARY KEY, value TEXT NOT NULL);
+      INSERT INTO meta (key, value) VALUES ('operator_note', 'keep');
+    `);
+    db.close();
+
+    const result = runTsx("scripts/migrate.ts", databasePath);
+
+    expect(result.status, result.stderr).toBe(0);
+    const verify = new DatabaseSync(databasePath, { readOnly: true });
+    expect(
+      verify.prepare("SELECT value FROM meta WHERE key = 'schema_version'").get(),
+    ).toEqual({ value: "15" });
+    expect(
+      verify.prepare("SELECT value FROM meta WHERE key = 'operator_note'").get(),
+    ).toEqual({ value: "keep" });
+    expect(
+      verify
+        .prepare(
+          "SELECT value FROM meta WHERE key = 'production_migration_state'",
+        )
+        .get(),
+    ).toBeUndefined();
+    verify.close();
+  });
+
+  it("refuses a newer database before the migration boundary and leaves it untouched", () => {
+    const databasePath = path.join(directory, "newer.db");
+    const db = new DatabaseSync(databasePath);
+    db.exec(`
+      CREATE TABLE meta (key TEXT PRIMARY KEY, value TEXT NOT NULL);
+      INSERT INTO meta (key, value) VALUES ('schema_version', '16');
+      CREATE TABLE users (id INTEGER PRIMARY KEY, email TEXT NOT NULL);
+      INSERT INTO users (email) VALUES ('keep@example.org');
+    `);
+    db.close();
+
+    const result = runTsx("scripts/migrate.ts", databasePath);
+
+    expect(result.status).toBe(1);
+    expect(result.stderr).toContain("newer than this application supports");
+    const verify = new DatabaseSync(databasePath, { readOnly: true });
+    expect(verify.prepare("SELECT email FROM users WHERE id = 1").get()).toEqual({
+      email: "keep@example.org",
+    });
+    // The refusal happens before the migration boundary, so the
+    // production_migration_state marker is never written.
+    expect(
+      verify
+        .prepare(
+          "SELECT value FROM meta WHERE key = 'production_migration_state'",
+        )
+        .get(),
+    ).toBeUndefined();
+    verify.close();
+  });
+
+  it("refuses malformed SQLite before the migration marker and preserves its bytes", () => {
+    const databasePath = path.join(directory, "malformed.db");
+    const original = Buffer.from("not a sqlite database");
+    fs.writeFileSync(databasePath, original);
+
+    const result = runTsx("scripts/migrate.ts", databasePath);
+
+    expect(result.status).toBe(1);
+    expect(result.stderr).toContain('"reason":"schema_probe_failed"');
+    expect(fs.readFileSync(databasePath)).toEqual(original);
+  });
+
+  it("refuses a malformed schema version without writing a marker or changing schema", () => {
+    const databasePath = path.join(directory, "malformed-schema-version.db");
+    const db = new DatabaseSync(databasePath);
+    db.exec(`
+      CREATE TABLE meta (key TEXT PRIMARY KEY, value TEXT NOT NULL);
+      INSERT INTO meta (key, value) VALUES ('schema_version', 'not-a-number');
+      CREATE TABLE preserve_me (id INTEGER PRIMARY KEY, value TEXT NOT NULL);
+      INSERT INTO preserve_me (id, value) VALUES (1, 'keep');
+    `);
+    const beforeSchema = db
+      .prepare(
+        "SELECT name, sql FROM sqlite_master WHERE type = 'table' ORDER BY name",
+      )
+      .all();
+    db.close();
+
+    const result = runTsx("scripts/migrate.ts", databasePath);
+
+    expect(result.status).toBe(1);
+    expect(result.stderr).toContain('"reason":"schema_probe_failed"');
+    const verify = new DatabaseSync(databasePath, { readOnly: true });
+    expect(
+      verify
+        .prepare(
+          "SELECT name, sql FROM sqlite_master WHERE type = 'table' ORDER BY name",
+        )
+        .all(),
+    ).toEqual(beforeSchema);
+    expect(
+      verify.prepare("SELECT value FROM meta WHERE key = 'schema_version'").get(),
+    ).toEqual({ value: "not-a-number" });
+    expect(
+      verify
+        .prepare(
+          "SELECT value FROM meta WHERE key = 'production_migration_state'",
+        )
+        .get(),
+    ).toBeUndefined();
+    expect(verify.prepare("SELECT * FROM preserve_me").all()).toEqual([
+      { id: 1, value: "keep" },
+    ]);
+    verify.close();
+  });
+
+  it("classifies an unopenable database path as a schema-probe failure", () => {
+    const databasePath = path.join(directory, "database-is-a-directory");
+    fs.mkdirSync(databasePath);
+
+    const result = runTsx("scripts/migrate.ts", databasePath);
+
+    expect(result.status).toBe(1);
+    expect(result.stderr).toContain('"reason":"schema_probe_failed"');
+    expect(fs.readdirSync(databasePath)).toEqual([]);
+  });
+});

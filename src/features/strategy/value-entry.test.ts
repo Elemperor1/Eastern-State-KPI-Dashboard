@@ -1087,4 +1087,424 @@ describe("strategy value-entry persistence", () => {
     expect(JSON.stringify(deletes)).toContain("Participants graduating");
     expect(JSON.stringify(deletes)).toContain("KPI visitor-upgrades");
   });
+
+  it("refuses value deletes under an archived KPI or priority lineage (ISSUE-4)", () => {
+    const scalar = seedKpi("archived-delete-scalar", "cumulative", "cumulative");
+    const observation = upsertStrategyObservation(
+      { kpi_id: scalar.kpiId, reporting_year: 2026, value: 2 },
+      null,
+    );
+    const multi = seedKpi("archived-delete-multi", "multi_component", "annual");
+    const componentId = seedComponent(multi, "count", "Participants served");
+    const component = upsertStrategyComponentEntry(
+      { component_id: componentId, reporting_year: 2026, value: 12 },
+      null,
+    );
+    const distributionKpi = seedKpi(
+      "archived-delete-distribution",
+      "distribution",
+      "annual",
+    );
+    const distribution = upsertStrategyDistribution(
+      {
+        kpi_id: distributionKpi.kpiId,
+        reporting_year: 2026,
+        respondent_count: 5,
+        bands: [
+          { slug: "known", label: "Known income", count: 4, display_order: 0 },
+          { slug: "unknown", label: "Unknown", count: 1, display_order: 1, is_unknown: true },
+        ],
+      },
+      null,
+    );
+
+    getDb()
+      .prepare("UPDATE kpis SET archived_at = datetime('now') WHERE id = ?")
+      .run(scalar.kpiId);
+    expect(() => deleteStrategyObservation(observation.id, null)).toThrowError(
+      /Restore the measure and its Strategic Priority before deleting values/,
+    );
+    getDb()
+      .prepare("UPDATE kpis SET archived_at = datetime('now') WHERE id = ?")
+      .run(multi.kpiId);
+    expect(() => deleteStrategyComponentEntry(component.id, null)).toThrowError(
+      /Restore the measure and its Strategic Priority before deleting values/,
+    );
+    getDb()
+      .prepare("UPDATE kpis SET archived_at = datetime('now') WHERE id = ?")
+      .run(distributionKpi.kpiId);
+    expect(() => deleteStrategyDistribution(distribution.id, null)).toThrowError(
+      /Restore the measure and its Strategic Priority before deleting values/,
+    );
+
+    expect(
+      getDb().prepare("SELECT COUNT(*) AS count FROM kpi_observations").get(),
+    ).toEqual({ count: 1 });
+    expect(
+      getDb().prepare("SELECT COUNT(*) AS count FROM kpi_component_entries").get(),
+    ).toEqual({ count: 1 });
+    expect(
+      getDb()
+        .prepare("SELECT COUNT(*) AS count FROM distribution_observations")
+        .get(),
+    ).toEqual({ count: 1 });
+    expect(listStrategicAuditEvents({ event_type: "delete" })).toEqual([]);
+
+    getDb()
+      .prepare("UPDATE kpis SET archived_at = NULL WHERE id IN (?, ?, ?)")
+      .run(scalar.kpiId, multi.kpiId, distributionKpi.kpiId);
+    getDb()
+      .prepare(
+        `UPDATE categories SET archived_at = datetime('now')
+         WHERE id = (SELECT category_id FROM kpis WHERE id = ?)`,
+      )
+      .run(scalar.kpiId);
+    expect(() => deleteStrategyObservation(observation.id, null)).toThrowError(
+      /Restore the measure and its Strategic Priority before deleting values/,
+    );
+    getDb()
+      .prepare("UPDATE categories SET archived_at = NULL WHERE archived_at IS NOT NULL")
+      .run();
+
+    deleteStrategyObservation(observation.id, null);
+    deleteStrategyComponentEntry(component.id, null);
+    deleteStrategyDistribution(distribution.id, null);
+    expect(
+      getDb().prepare("SELECT COUNT(*) AS count FROM kpi_observations").get(),
+    ).toEqual({ count: 0 });
+    expect(
+      getDb().prepare("SELECT COUNT(*) AS count FROM kpi_component_entries").get(),
+    ).toEqual({ count: 0 });
+    expect(
+      getDb()
+        .prepare("SELECT COUNT(*) AS count FROM distribution_observations")
+        .get(),
+    ).toEqual({ count: 0 });
+  });
+
+  it("rejects value writes for archived KPIs and KPIs under archived categories (S007-C1)", () => {
+    const archivedKpi = seedKpi("retired-measure", "count", "annual");
+    getDb()
+      .prepare("UPDATE kpis SET archived_at = datetime('now') WHERE id = ?")
+      .run(archivedKpi.kpiId);
+
+    expect(() =>
+      upsertStrategyObservation(
+        { kpi_id: archivedKpi.kpiId, reporting_year: 2026, value: 7 },
+        null,
+      ),
+    ).toThrow(StrategyValueEntryValidationError);
+    expect(
+      getDb().prepare("SELECT COUNT(*) AS n FROM kpi_observations").get(),
+    ).toEqual({ n: 0 });
+
+    const archivedCategoryKpi = seedKpi("retired-priority-measure", "count", "annual");
+    getDb()
+      .prepare(
+        `UPDATE categories SET archived_at = datetime('now')
+         WHERE id = (SELECT category_id FROM kpis WHERE id = ?)`,
+      )
+      .run(archivedCategoryKpi.kpiId);
+
+    expect(() =>
+      upsertStrategyObservation(
+        { kpi_id: archivedCategoryKpi.kpiId, reporting_year: 2026, value: 3 },
+        null,
+      ),
+    ).toThrow(StrategyValueEntryValidationError);
+
+    const componentKpi = seedKpi("retired-component-measure", "multi_component", "annual");
+    const componentId = seedComponent(componentKpi, "count", "Participants");
+    getDb()
+      .prepare("UPDATE kpis SET archived_at = datetime('now') WHERE id = ?")
+      .run(componentKpi.kpiId);
+    expect(() =>
+      upsertStrategyComponentEntry(
+        { component_id: componentId, reporting_year: 2026, value: 5 },
+        null,
+      ),
+    ).toThrow(StrategyValueEntryValidationError);
+
+    const distributionKpi = seedKpi("retired-distribution-measure", "distribution", "annual");
+    getDb()
+      .prepare("UPDATE kpis SET archived_at = datetime('now') WHERE id = ?")
+      .run(distributionKpi.kpiId);
+    expect(() =>
+      upsertStrategyDistribution(
+        {
+          kpi_id: distributionKpi.kpiId,
+          reporting_year: 2026,
+          respondent_count: 1,
+          bands: [
+            { slug: "known", label: "Known", count: 1, display_order: 0 },
+          ],
+        },
+        null,
+      ),
+    ).toThrow(StrategyValueEntryValidationError);
+  });
+
+  it("freezes distribution-band definitions for archived KPIs and priorities (S007-C1 follow-up)", () => {
+    const { kpiId } = seedKpi("frozen-band-measure", "distribution", "annual");
+    const band = createStrategyDistributionBand(
+      {
+        kpi_id: kpiId,
+        effective_from_year: 2025,
+        effective_to_year: 2029,
+        slug: "known",
+        label: "Known",
+        display_order: 0,
+      },
+      null,
+    );
+
+    getDb()
+      .prepare("UPDATE kpis SET archived_at = datetime('now') WHERE id = ?")
+      .run(kpiId);
+
+    expect(() =>
+      createStrategyDistributionBand(
+        {
+          kpi_id: kpiId,
+          effective_from_year: 2025,
+          effective_to_year: 2029,
+          slug: "other",
+          label: "Other",
+          display_order: 1,
+        },
+        null,
+      ),
+    ).toThrow(StrategyValueEntryValidationError);
+    expect(() =>
+      updateStrategyDistributionBand(
+        {
+          id: band.id,
+          kpi_id: kpiId,
+          component_id: null,
+          slug: band.slug,
+          label: "Renamed",
+          effective_from_year: 2025,
+          effective_to_year: 2029,
+          display_order: 0,
+          is_unknown: false,
+          is_declined: false,
+          derived_group: null,
+        },
+        null,
+      ),
+    ).toThrow(StrategyValueEntryValidationError);
+    expect(() =>
+      reorderStrategyDistributionBands(
+        { kpi_id: kpiId, reporting_year: 2026, ordered_band_ids: [band.id] },
+        null,
+      ),
+    ).toThrow(StrategyValueEntryValidationError);
+    expect(() => archiveStrategyDistributionBand(band.id, null)).toThrow(
+      StrategyValueEntryValidationError,
+    );
+    // The band stays active (hidden with its KPI) after the refused archive.
+    expect(
+      getDb()
+        .prepare("SELECT archived_at FROM distribution_bands WHERE id = ?")
+        .get(band.id),
+    ).toEqual({ archived_at: null });
+
+    const restoreCase = seedKpi("frozen-band-restore", "distribution", "annual");
+    const retiredBand = createStrategyDistributionBand(
+      {
+        kpi_id: restoreCase.kpiId,
+        effective_from_year: 2025,
+        effective_to_year: 2029,
+        slug: "retired",
+        label: "Retired",
+        display_order: 0,
+      },
+      null,
+    );
+    // Positive control: archiving works while the lineage is active.
+    archiveStrategyDistributionBand(retiredBand.id, null);
+    getDb()
+      .prepare("UPDATE kpis SET archived_at = datetime('now') WHERE id = ?")
+      .run(restoreCase.kpiId);
+    expect(() => restoreStrategyDistributionBand(retiredBand.id, null)).toThrow(
+      StrategyValueEntryValidationError,
+    );
+
+    // Positive control: restoring the KPI unfreezes its band definitions.
+    // (Runs before the priority case because seedKpi shares one category —
+    // archiving it below would keep this KPI's lineage frozen.)
+    getDb()
+      .prepare("UPDATE kpis SET archived_at = NULL WHERE id = ?")
+      .run(kpiId);
+    expect(() => archiveStrategyDistributionBand(band.id, null)).not.toThrow();
+
+    const priorityCase = seedKpi("frozen-priority-band", "distribution", "annual");
+    getDb()
+      .prepare(
+        `UPDATE categories SET archived_at = datetime('now')
+         WHERE id = (SELECT category_id FROM kpis WHERE id = ?)`,
+      )
+      .run(priorityCase.kpiId);
+    expect(() =>
+      createStrategyDistributionBand(
+        {
+          kpi_id: priorityCase.kpiId,
+          effective_from_year: 2025,
+          effective_to_year: 2029,
+          slug: "orphan",
+          label: "Orphan",
+          display_order: 0,
+        },
+        null,
+      ),
+    ).toThrow(StrategyValueEntryValidationError);
+  });
+
+  it("rejects value writes against configurations that are not active or ready (S044-C1)", () => {
+    const { kpiId, configurationId } = seedKpi("draft-measure", "count", "annual");
+    for (const status of ["draft", "needs_definition", "needs_target"]) {
+      getDb()
+        .prepare(
+          "UPDATE kpi_measurement_configs SET configuration_status = ? WHERE id = ?",
+        )
+        .run(status, configurationId);
+      expect(() =>
+        upsertStrategyObservation(
+          { kpi_id: kpiId, reporting_year: 2026, value: 1 },
+          null,
+        ),
+      ).toThrow(StrategyValueEntryValidationError);
+    }
+    expect(
+      getDb().prepare("SELECT COUNT(*) AS n FROM kpi_observations").get(),
+    ).toEqual({ n: 0 });
+
+    getDb()
+      .prepare(
+        "UPDATE kpi_measurement_configs SET configuration_status = 'ready' WHERE id = ?",
+      )
+      .run(configurationId);
+    const readyWrite = upsertStrategyObservation(
+      { kpi_id: kpiId, reporting_year: 2026, value: 1 },
+      null,
+    );
+    expect(readyWrite.scalar_value).toBe(1);
+  });
+
+  it("rejects duplicate band ids in one distribution submission (S016-C1)", () => {
+    const { kpiId } = seedKpi("duplicate-band", "distribution", "annual");
+    const band = createStrategyDistributionBand(
+      {
+        kpi_id: kpiId,
+        component_id: null,
+        effective_from_year: 2025,
+        effective_to_year: 2029,
+        slug: "known",
+        label: "Known",
+        display_order: 0,
+      },
+      null,
+    );
+    const duplicateSubmission = {
+      kpi_id: kpiId,
+      reporting_year: 2026,
+      respondent_count: 100,
+      mutually_exclusive: true,
+      bands: [
+        {
+          band_id: band.id,
+          slug: "known",
+          label: "Known",
+          count: 60,
+          display_order: 0,
+        },
+        {
+          band_id: band.id,
+          slug: "known-again",
+          label: "Known again",
+          count: 40,
+          display_order: 1,
+        },
+      ],
+    };
+
+    expect(() =>
+      upsertStrategyDistribution(duplicateSubmission, null),
+    ).toThrow(StrategyValueEntryValidationError);
+    expect(
+      getDb().prepare("SELECT COUNT(*) AS n FROM distribution_observations").get(),
+    ).toEqual({ n: 0 });
+
+    upsertStrategyDistribution(
+      {
+        kpi_id: kpiId,
+        reporting_year: 2026,
+        respondent_count: 30,
+        mutually_exclusive: true,
+        bands: [
+          {
+            band_id: band.id,
+            slug: "known",
+            label: "Known",
+            count: 30,
+            display_order: 0,
+          },
+        ],
+      },
+      null,
+    );
+    expect(() =>
+      upsertStrategyDistribution(
+        { ...duplicateSubmission, respondent_count: 100 },
+        null,
+      ),
+    ).toThrow(StrategyValueEntryValidationError);
+    const stored = listStrategyDistributions({
+      kpi_id: kpiId,
+      reporting_year: 2026,
+    });
+    expect(stored).toHaveLength(1);
+    expect(stored[0]?.bands).toHaveLength(1);
+    expect(stored[0]?.bands[0]?.count).toBe(30);
+  });
+
+  it("rejects band id and slug mismatches in distribution submissions (S016-C1)", () => {
+    const { kpiId } = seedKpi("mismatched-band", "distribution", "annual");
+    const band = createStrategyDistributionBand(
+      {
+        kpi_id: kpiId,
+        component_id: null,
+        effective_from_year: 2025,
+        effective_to_year: 2029,
+        slug: "known",
+        label: "Known",
+        display_order: 0,
+      },
+      null,
+    );
+
+    expect(() =>
+      upsertStrategyDistribution(
+        {
+          kpi_id: kpiId,
+          reporting_year: 2026,
+          respondent_count: 10,
+          mutually_exclusive: true,
+          bands: [
+            {
+              band_id: band.id,
+              slug: "not-the-band-slug",
+              label: "Known",
+              count: 10,
+              display_order: 0,
+            },
+          ],
+        },
+        null,
+      ),
+    ).toThrow(StrategyValueEntryValidationError);
+    expect(
+      getDb().prepare("SELECT COUNT(*) AS n FROM distribution_observations").get(),
+    ).toEqual({ n: 0 });
+  });
 });

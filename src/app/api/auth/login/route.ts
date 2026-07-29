@@ -1,18 +1,25 @@
 import { type NextRequest, NextResponse } from "next/server";
 import { z } from "@/lib/zod";
+import { PasswordVerifySchema } from "@/lib/password-policy";
 import { verifyCredentials } from "@/features/auth/server";
 import { getSession, AuthError } from "@/features/auth/session";
-import { ensureCsrfCookie } from "@/lib/request-guard";
+import { assertLoginRequest, ensureCsrfCookie } from "@/lib/request-guard";
+import { CREDENTIAL_BODY_MAX_BYTES, readJsonBody } from "@/lib/request-body";
 import {
   clearFailures,
   lockedMsRemaining,
   pruneExpired,
   recordFailure,
+  verifyBudgetAllows,
 } from "@/lib/login-throttle";
+import { logAuthThrottle } from "@/lib/operational-log";
 
 const LoginSchema = z.object({
-  email: z.email(),
-  password: z.string().min(1),
+  // Bounded so a megabyte-scale body cannot reach the synchronous bcryptjs
+  // UTF-8 encode (S004-C1): the schema rejects before throttle accounting
+  // and before any credential work.
+  email: z.email().max(320),
+  password: PasswordVerifySchema,
 });
 
 /**
@@ -55,24 +62,20 @@ export async function POST(req: NextRequest) {
   pruneExpired();
 
   try {
-    const body: unknown = await req.json().catch(() => ({}));
-    const parsed = LoginSchema.safeParse(body);
-    if (!parsed.success) {
-      return NextResponse.json(
-        { error: "Please provide a valid email and password." },
-        { status: 400 },
-      );
-    }
-    const { email, password } = parsed.data;
-    const normalizedEmail = email.toLowerCase().trim();
+    // S064-C1: pre-auth CSRF hardening — Origin/Referer same-origin +
+    // exact JSON content-type, so a cross-site page cannot drive a
+    // forced login through the victim's browser with a CORS-safelisted
+    // request. The double-submit token layer starts after auth (the
+    // response below is what issues the cookie).
+    const guard = assertLoginRequest(req);
+    if (guard) return guard;
 
-    // Throttle check. The route blocks if EITHER the source IP or
-    // the target account is currently locked out. The check happens
-    // before the bcrypt compare so a throttled attempt does not pay
-    // the cost of a verification.
+    // S004-C1 body axis: the per-IP lockout is evaluated BEFORE the body
+    // is parsed, so a locked-out source is refused without paying even a
+    // capped parse. The account axis is checked after parsing because the
+    // account key derives from the submitted email.
     const ip = clientIp(req);
     const ipKey = `ip:${ip}`;
-    const acctKey = `acct:${normalizedEmail}`;
     const ipLockedMs = lockedMsRemaining(ipKey);
     if (ipLockedMs > 0) {
       const retryAfterSec = Math.max(
@@ -91,12 +94,68 @@ export async function POST(req: NextRequest) {
       );
     }
 
+    // The credential payload is tiny by contract (bounded email +
+    // password), so the tight credential body cap applies before any
+    // parse work on the pre-auth surface.
+    const bodyResult = await readJsonBody(req, CREDENTIAL_BODY_MAX_BYTES);
+    if (!bodyResult.ok) return bodyResult.response;
+
+    const parsed = LoginSchema.safeParse(bodyResult.body);
+    if (!parsed.success) {
+      return NextResponse.json(
+        { error: "Please provide a valid email and password." },
+        { status: 400 },
+      );
+    }
+    const { email, password } = parsed.data;
+    const normalizedEmail = email.toLowerCase().trim();
+
+    // Account-axis throttle check. The route blocks if the target
+    // account is currently locked out (the source-IP axis ran before the
+    // body parse, above). The check happens before the bcrypt compare so
+    // a throttled attempt does not pay the cost of a verification.
+    const acctKey = `acct:${normalizedEmail}`;
+    const compareKey = `cmpl:${normalizedEmail}`;
+    // Evaluate the account lock BEFORE the credential comparison. An
+    // already-locked account still admits a bounded number of compares
+    // per lockout window (LOGIN_VERIFY_BUDGET) so the legitimate
+    // holder's correct password clears the lock, but distributed
+    // wrong-password traffic stops paying full bcrypt cost per attempt
+    // once the budget is spent.
+    const accountNow = Date.now();
+    const acctLockedMs = lockedMsRemaining(acctKey, accountNow);
+    const acctLockedUntil = accountNow + acctLockedMs;
+    if (
+      acctLockedMs > 0 &&
+      !verifyBudgetAllows(compareKey, acctLockedUntil, accountNow)
+    ) {
+      logAuthThrottle("login_verify_budget_exceeded");
+      return NextResponse.json(
+        {
+          error:
+            "Too many failed attempts. Please wait a few minutes and try again.",
+        },
+        {
+          status: 429,
+          headers: {
+            "Retry-After": String(Math.max(1, Math.ceil(acctLockedMs / 1000))),
+          },
+        },
+      );
+    }
+
     const verified = await verifyCredentials(email, password);
-    const acctLockedMs = lockedMsRemaining(acctKey);
     if (!verified) {
-      // Account-wide abuse tracking throttles wrong guesses, but it is
-      // checked only after credential verification so an anonymous actor
-      // cannot lock the legitimate holder out with the correct password.
+      // Record the source-IP failure for EVERY wrong attempt — including
+      // attempts against an already account-locked account — so a
+      // distributed attacker cannot keep every source IP below its own
+      // lockout threshold.
+      const { lockedUntil: ipLockedUntil } = recordFailure(ipKey);
+      // Account-wide abuse tracking throttles wrong guesses. The account
+      // lock was evaluated before the compare (above); the compare still
+      // ran within its budget, so a correct password clears the lock and
+      // an anonymous actor cannot lock the legitimate holder out with
+      // the correct password.
       if (acctLockedMs > 0) {
         return NextResponse.json(
           {
@@ -113,12 +172,11 @@ export async function POST(req: NextRequest) {
           },
         );
       }
-      // Record the failure on both key spaces. The lockout, if
-      // triggered, applies to whichever key first crosses the
-      // threshold. Only emit Retry-After if at least one key is
-      // now locked — a single failed attempt that hasn't tripped
-      // the threshold should look identical to a normal 401.
-      const { lockedUntil: ipLockedUntil } = recordFailure(ipKey);
+      // Record the account failure. The lockout, if triggered, applies
+      // to whichever key first crosses the threshold. Only emit
+      // Retry-After if at least one key is now locked — a single failed
+      // attempt that hasn't tripped the threshold should look identical
+      // to a normal 401.
       const acctResult = recordFailure(acctKey);
       const now = Date.now();
       const lockoutMsLeft = Math.max(
@@ -142,6 +200,7 @@ export async function POST(req: NextRequest) {
     // source-IP failures may describe spraying against other accounts and
     // must survive an unrelated successful login.
     clearFailures(acctKey);
+    clearFailures(compareKey);
 
     const session = await getSession();
     session.user = user;

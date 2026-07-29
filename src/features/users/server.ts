@@ -1,8 +1,143 @@
 import bcrypt from "bcryptjs";
-import { getDb, transaction } from "@/lib/db";
+import { getDb, transaction, type DB } from "@/lib/db";
 import type { Role, User } from "@/lib/types";
 
 const SALT_ROUNDS = 10;
+
+/**
+ * Error thrown when an account mutation is refused because it would remove
+ * the last active administrator or target the actor's own account. Routes
+ * map this to 409 (guard refusals are operator-facing and safe to show).
+ */
+export class UserLifecycleGuardError extends Error {}
+
+/**
+ * Error thrown when an account mutation targets the actor's own account.
+ * A specialization of UserLifecycleGuardError so routes can answer 400
+ * (client error on the request itself) while genuine guard refusals stay
+ * 409 Conflict.
+ */
+export class UserSelfTargetError extends UserLifecycleGuardError {}
+
+/** Error thrown when an account mutation targets a missing account. */
+export class UserNotFoundError extends Error {}
+
+/**
+ * The authenticated principal responsible for a user lifecycle mutation.
+ * `null` (or an omitted actor) records a System-attributed event — used by
+ * seed/bootstrap and operator CLI flows that act outside a session.
+ */
+export interface UserLifecycleActor {
+  id: number | null;
+  email: string | null;
+}
+
+export type UserLifecycleEventType =
+  | "create"
+  | "password_reset"
+  | "password_change"
+  | "role_change"
+  | "disable"
+  | "enable"
+  | "delete";
+
+interface UserLifecycleSubject {
+  id: number;
+  email: string;
+  name: string;
+  role: Role;
+  disabled: boolean;
+  created_at: string;
+}
+
+/**
+ * Appends one immutable user lifecycle audit event. Callers must invoke this
+ * inside the same transaction as the mutation it describes so the audit row
+ * and the change commit or roll back together. NEVER pass password hashes or
+ * credentials in previousValue/newValue.
+ */
+function recordUserLifecycleEvent(
+  db: DB,
+  input: {
+    eventType: UserLifecycleEventType;
+    subject: UserLifecycleSubject;
+    actor?: UserLifecycleActor | null;
+    previousValue?: Record<string, unknown> | null;
+    newValue?: Record<string, unknown> | null;
+  },
+): void {
+  db.prepare(
+    `INSERT INTO user_lifecycle_audit_events (
+       subject_user_id, subject_email_snapshot, subject_name_snapshot,
+       subject_role_snapshot, event_type, previous_value_json, new_value_json,
+       actor_id, actor_email_snapshot
+     ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+  ).run(
+    input.subject.id,
+    input.subject.email,
+    input.subject.name,
+    input.subject.role,
+    input.eventType,
+    input.previousValue == null ? null : JSON.stringify(input.previousValue),
+    input.newValue == null ? null : JSON.stringify(input.newValue),
+    input.actor?.id ?? null,
+    input.actor?.email ?? "System",
+  );
+}
+
+/**
+ * Reads the mutation subject inside the caller's transaction, throwing a
+ * typed UserNotFoundError when the account no longer exists so routes can
+ * answer 404 instead of silently no-oping.
+ */
+function readSubjectForUpdate(db: DB, id: number): UserLifecycleSubject {
+  const row = asUserRow(db.prepare("SELECT * FROM users WHERE id = ?").get(id));
+  if (!row) {
+    throw new UserNotFoundError("User not found.");
+  }
+  return {
+    id: row.id,
+    email: row.email,
+    name: row.name,
+    role: row.role,
+    disabled: row.disabled !== 0,
+    created_at: row.created_at,
+  };
+}
+
+/**
+ * Refuses a role change, disable, or deletion that would remove the LAST
+ * active administrator (D8AD zero-admin guard). Must run inside the same
+ * transaction as the mutation it protects: the app holds a single writer
+ * connection, so the check and the write are atomic with respect to every
+ * other application write. Without this guard a single self-inflicted or
+ * raced admin removal leaves zero admins, and the only recovery is
+ * out-of-band database surgery.
+ */
+function assertNotLastActiveAdmin(
+  db: DB,
+  subjectId: number,
+  action: string,
+): void {
+  const subject = db
+    .prepare("SELECT role, disabled FROM users WHERE id = ?")
+    .get(subjectId) as { role: Role; disabled: number } | undefined;
+  if (!subject || subject.role !== "admin" || Number(subject.disabled) !== 0) {
+    return;
+  }
+  const others = db
+    .prepare(
+      `SELECT COUNT(*) AS count FROM users
+       WHERE role = 'admin' AND disabled = 0 AND id != ?`,
+    )
+    .get(subjectId) as { count: number };
+  if (Number(others.count) === 0) {
+    throw new UserLifecycleGuardError(
+      `Refusing to ${action} the last active administrator. ` +
+        `Promote or re-enable another admin first; operator recovery is npm run setup:admin.`,
+    );
+  }
+}
 
 interface UserRow {
   id: number;
@@ -115,9 +250,10 @@ export function createUser(input: {
   role: Role;
   /** When true the account is created with a temporary credential
    *  that must be rotated at first login (bootstrap / invited users).
-   *  Defaults to false for normal admin-created users. */
+   *  The library default is false; the admin API always passes true so
+   *  UI-created accounts rotate at first login. */
   mustChangePassword?: boolean;
-}): User {
+}, actor?: UserLifecycleActor | null): User {
   const db = getDb();
   const hash = bcrypt.hashSync(input.password, SALT_ROUNDS);
   const email = normalizeEmail(input.email);
@@ -137,19 +273,40 @@ export function createUser(input: {
   // change that wraps this in an upsert or that runs through a
   // SAVEPOINT-containing transaction could break that assumption
   // silently. The key-based readback is robust to either case.
-  db.prepare(
-    `INSERT INTO users (email, name, password_hash, role, must_change_password, sessions_valid_after)
-     VALUES (?, ?, ?, ?, ?, ?)`,
-  ).run(email, name, hash, input.role, mustChange, now);
-  const row = db
-    .prepare("SELECT * FROM users WHERE email = ?")
-    .get(email) as Record<string, unknown> | undefined;
-  if (!row) {
-    throw new Error(
-      `createUser: row not found after insert for email=${email}`,
-    );
-  }
-  return rowToUser(asUserRow(row)!);
+  return transaction(() => {
+    db.prepare(
+      `INSERT INTO users (email, name, password_hash, role, must_change_password, sessions_valid_after)
+       VALUES (?, ?, ?, ?, ?, ?)`,
+    ).run(email, name, hash, input.role, mustChange, now);
+    const row = db
+      .prepare("SELECT * FROM users WHERE email = ?")
+      .get(email) as Record<string, unknown> | undefined;
+    if (!row) {
+      throw new Error(
+        `createUser: row not found after insert for email=${email}`,
+      );
+    }
+    const subject = asUserRow(row)!;
+    recordUserLifecycleEvent(db, {
+      eventType: "create",
+      subject: {
+        id: subject.id,
+        email: subject.email,
+        name: subject.name,
+        role: subject.role,
+        disabled: subject.disabled !== 0,
+        created_at: subject.created_at,
+      },
+      actor,
+      newValue: {
+        email,
+        name,
+        role: input.role,
+        must_change_password: mustChange === 1,
+      },
+    });
+    return rowToUser(subject);
+  });
 }
 
 /** Retrieves users. */
@@ -177,11 +334,13 @@ export function updateUserPassword(
   id: number,
   newPassword: string,
   mustChange: boolean,
+  actor?: UserLifecycleActor | null,
 ): void {
   const db = getDb();
   const hash = bcrypt.hashSync(newPassword, SALT_ROUNDS);
   const now = Date.now();
   transaction(() => {
+    const subject = readSubjectForUpdate(db, id);
     db.prepare(
       `UPDATE users
        SET password_hash = ?,
@@ -189,6 +348,12 @@ export function updateUserPassword(
            sessions_valid_after = MAX(?, sessions_valid_after + 1)
        WHERE id = ?`,
     ).run(hash, mustChange ? 1 : 0, now, id);
+    recordUserLifecycleEvent(db, {
+      eventType: "password_reset",
+      subject,
+      actor,
+      newValue: { must_change_password: mustChange },
+    });
   });
 }
 
@@ -203,11 +368,13 @@ export function updateUserPasswordIfCurrent(
   expectedPasswordHash: string,
   newPassword: string,
   mustChange: boolean,
+  actor?: UserLifecycleActor | null,
 ): boolean {
   const db = getDb();
   const hash = bcrypt.hashSync(newPassword, SALT_ROUNDS);
   const now = Date.now();
   return transaction(() => {
+    const subject = readSubjectForUpdate(db, id);
     const result = db.prepare(
       `UPDATE users
        SET password_hash = ?,
@@ -215,7 +382,16 @@ export function updateUserPasswordIfCurrent(
            sessions_valid_after = MAX(?, sessions_valid_after + 1)
        WHERE id = ? AND password_hash = ?`,
     ).run(hash, mustChange ? 1 : 0, now, id, expectedPasswordHash);
-    return result.changes === 1;
+    if (result.changes !== 1) {
+      return false;
+    }
+    recordUserLifecycleEvent(db, {
+      eventType: "password_change",
+      subject,
+      actor,
+      newValue: { must_change_password: mustChange },
+    });
+    return true;
   });
 }
 
@@ -223,16 +399,34 @@ export function updateUserPasswordIfCurrent(
  * Change a user's role and bump the revocation watermark atomically and
  * monotonically so every currently issued session is invalidated immediately.
  */
-export function updateUserRole(id: number, role: Role): void {
+export function updateUserRole(
+  id: number,
+  role: Role,
+  actor?: UserLifecycleActor | null,
+): void {
   const db = getDb();
   const now = Date.now();
   transaction(() => {
+    const subject = readSubjectForUpdate(db, id);
+    if (subject.role === role) {
+      return;
+    }
+    if (role !== "admin") {
+      assertNotLastActiveAdmin(db, id, "change the role of");
+    }
     db.prepare(
       `UPDATE users
        SET role = ?,
            sessions_valid_after = MAX(?, sessions_valid_after + 1)
        WHERE id = ?`,
     ).run(role, now, id);
+    recordUserLifecycleEvent(db, {
+      eventType: "role_change",
+      subject,
+      actor,
+      previousValue: { role: subject.role },
+      newValue: { role },
+    });
   });
 }
 
@@ -240,24 +434,68 @@ export function updateUserRole(id: number, role: Role): void {
  * Enable or disable a user account and bump the revocation watermark atomically
  * and monotonically.
  */
-export function setUserDisabled(id: number, disabled: boolean): void {
+export function setUserDisabled(
+  id: number,
+  disabled: boolean,
+  actor?: UserLifecycleActor | null,
+): void {
   const db = getDb();
   const now = Date.now();
   transaction(() => {
+    const subject = readSubjectForUpdate(db, id);
+    if (disabled) {
+      assertNotLastActiveAdmin(db, id, "disable");
+    }
     db.prepare(
       `UPDATE users
        SET disabled = ?,
            sessions_valid_after = MAX(?, sessions_valid_after + 1)
        WHERE id = ?`,
     ).run(disabled ? 1 : 0, now, id);
+    recordUserLifecycleEvent(db, {
+      eventType: disabled ? "disable" : "enable",
+      subject,
+      actor,
+      previousValue: { disabled: subject.disabled },
+      newValue: { disabled },
+    });
   });
 }
 
 /**
  * Delete a user. Deletion invalidates sessions by row absence; referencing
- * entry/audit rows are SET NULL by the database foreign-key rule.
+ * entry/audit rows are SET NULL by the database foreign-key rule. The
+ * deletion is refused when it targets the actor's own account or the last
+ * active administrator, and a missing account raises UserNotFoundError so
+ * routes answer 404 instead of reporting a phantom success. An immutable
+ * lifecycle audit event with the full non-secret subject snapshot is
+ * written in the same transaction BEFORE the row is removed.
  */
-export function deleteUser(id: number): void {
+export function deleteUser(
+  id: number,
+  actor?: UserLifecycleActor | null,
+): void {
   const db = getDb();
-  db.prepare("DELETE FROM users WHERE id = ?").run(id);
+  transaction(() => {
+    const subject = readSubjectForUpdate(db, id);
+    if (actor?.id != null && actor.id === id) {
+      throw new UserSelfTargetError(
+        "You cannot delete your own account.",
+      );
+    }
+    assertNotLastActiveAdmin(db, id, "delete");
+    recordUserLifecycleEvent(db, {
+      eventType: "delete",
+      subject,
+      actor,
+      previousValue: {
+        email: subject.email,
+        name: subject.name,
+        role: subject.role,
+        disabled: subject.disabled,
+        created_at: subject.created_at,
+      },
+    });
+    db.prepare("DELETE FROM users WHERE id = ?").run(id);
+  });
 }

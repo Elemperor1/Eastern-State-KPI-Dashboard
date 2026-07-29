@@ -7,9 +7,11 @@ used by GitHub Actions.
 ## Toolchain baseline
 
 - Package manager: npm with `package-lock.json` lockfile version 3.
-- Declared runtime: Node.js 24 or newer and npm 11.18. CI and Docker use Node
-  24; Docker installs the declared npm release instead of retaining the base
-  image's older bundled npm.
+- Declared runtime: Node.js 24 or newer and npm 11.x (`>=11 <12`). CI uses that
+  declared npm major; Docker pins the currently reviewed npm 11.18.0 artifact
+  instead of retaining the base image's older bundled npm during build/install
+  stages. npm, Corepack, and their package-manager shims are removed from the
+  final runtime image, which starts `scripts/start-production.sh` directly.
 - Application: Next.js 16 App Router, React 19, and strict TypeScript.
 - Lint: ESLint 10 flat config with Next.js/React Hooks rules and
   `typescript-eslint` project service.
@@ -28,7 +30,7 @@ Review and code-scanning availability before making those checks required.
 
 | Command | Purpose |
 | --- | --- |
-| `npm ci` | Install exactly the committed lockfile. |
+| `npm run install:controlled` | Validate the exact lifecycle-script allowlist, install the committed lockfile with scripts disabled, then rebuild only approved exact package identities. |
 | `npm run typecheck` | Run `tsc --noEmit` with the repository TypeScript project. |
 | `npm run lint` | Run repository guards and type-aware ESLint; warnings fail. |
 | `npm run lint:fix` | Apply safe ESLint fixes explicitly; never used by CI. |
@@ -40,8 +42,8 @@ Review and code-scanning availability before making those checks required.
 | `npm run check:all` | `check`, production build, and E2E tests. |
 | `npm run security:dependencies` | Scan the committed lockfile with OSV-Scanner 2.3.8. |
 | `npm run security:secrets` | Scan Git history or the supplied commit range with Gitleaks 8.30.1. |
-| `npm run security:semgrep` | Run Semgrep 1.164.0 maintained packs and local rules. |
-| `npm run security:scan` | Run all three local security scanners. |
+| `npm run security:semgrep` | Run Semgrep 1.164.0 vendored pack snapshots and local rules. |
+| `npm run security:scan` | Run all three repository security scanners. |
 | `npm run production-dependencies:guard` | Reject known vulnerable lockfile ranges and verify runtime dependency ownership. |
 
 `npm run design-system:test` remains the existing combined design, auth,
@@ -132,11 +134,11 @@ observability, or live infrastructure validation.
 
 ### Semgrep
 
-Semgrep runs the maintained `p/nodejs` and `p/react` packs plus `.semgrep.yml`.
-Only error-severity findings block. Local rules reject dynamic code evaluation
-and `dangerouslySetInnerHTML`; the maintained packs add framework-aware
-injection, XSS, request, redirect, subprocess, and session checks without
-duplicating the TypeScript compiler.
+Semgrep runs reviewed snapshots of the `p/nodejs` and `p/react` packs from
+`security/semgrep/` plus `.semgrep.yml`. Only error-severity findings block.
+Local rules reject dynamic code evaluation and `dangerouslySetInnerHTML`; the
+vendored packs add framework-aware injection, XSS, request, redirect,
+subprocess, and session checks without duplicating the TypeScript compiler.
 
 `.semgrepignore` excludes generated/build output, scanner reports, vendored
 code, caches, and only the D8AD-CAN-004 fixture directory that intentionally
@@ -145,16 +147,20 @@ Semgrep finding suppressions. Review every new finding; use a narrow rule/path
 exception only after recording why the code is safe and when the exception
 will be removed.
 
-The wrapper uses an installed Semgrep 1.164.0, an isolated pinned `pipx`
-environment, or the pinned Docker image in that order. Registry packs require
-network access on first use.
+The wrapper requires the digest-pinned Semgrep 1.164.0 Docker image and runs it
+with networking disabled. It deliberately rejects local scanner binaries:
+matching `--version` output does not authenticate executable bytes. Rules never
+resolve from the registry during a gate run. The OSV-Scanner and Gitleaks
+wrappers use the same digest-pinned-container-only provenance boundary.
 
 ### Dependencies
 
 OSV-Scanner 2.3.8 scans `package-lock.json`, including production and
 development packages, and fails on every active known vulnerability regardless
-of severity. Withdrawn advisories are handled by OSV metadata. `npm audit` may
-remain a supplemental observation but is not the blocking policy.
+of severity unless an exact, expiring exception is recorded in
+`osv-scanner.toml`. Withdrawn advisories are handled by OSV metadata.
+`npm audit` may remain a supplemental observation but is not the blocking
+policy.
 
 The offline production-dependency guard complements OSV with fixed regression
 boundaries for the release-candidate advisories and manifest ownership. It
@@ -163,11 +169,26 @@ image optimization and seed/migration tooling to remain production dependencies,
 and requires Next's transitive `sharp` request to follow the validated direct
 version. OSV remains authoritative for newly disclosed advisories.
 
-`osv-scanner.toml` contains no ignores. Any future `[[IgnoredVulns]]` entry must
-include the exact advisory ID, a technical justification, an owner in the
-reason, and `ignoreUntil` as the expiration/review date. Never add a blanket
-package or severity exclusion, and never perform an automatic major upgrade
-solely to hide a finding.
+`osv-scanner.toml` contains one time-bounded exception for
+`GHSA-mh99-v99m-4gvg`: the single legacy copy is exactly
+`minimatch@3.1.5` → `brace-expansion@1.1.17`, shared by the
+`eslint-config-next` copies of `eslint-plugin-import`,
+`eslint-plugin-jsx-a11y`, and `eslint-plugin-react`. It is development-only and
+receives repository-owned static lint patterns, never request or runtime input.
+The exact installed 1.1.17 artifact contains the advisory's `maxLength` bound,
+and a policy regression executes that artifact with a deliberately small bound
+to prove its output stays within it. Authoritative advisory metadata still
+classifies every version through 5.0.7 as affected and recognizes only 5.0.8 as
+patched, so this is a temporary, artifact-specific risk acceptance—not a claim
+that the 1.x release line is generally fixed. The policy test locks the ignored
+path, artifact integrity, versions, consumers, executable bound, and
+development-only flags so a different or runtime copy cannot hide behind the
+advisory-global scanner exception. The exception expires on 2026-08-29 for
+upstream/advisory re-review. Every `[[IgnoredVulns]]` entry must include the
+exact advisory ID, a technical justification, an owner in the reason, and
+`ignoreUntil` as the expiration/review date. Never add a blanket package or
+severity exclusion, and never perform an automatic major upgrade solely to
+hide a finding.
 
 Dependabot checks npm and GitHub Actions weekly. Minor/patch development
 updates are grouped, and open pull requests are capped to keep review volume
@@ -201,11 +222,16 @@ table artifact and job-summary evidence. Code-scanning SARIF and the blocking
 pass contain only fixable `HIGH` and `CRITICAL` findings, so the alert backlog
 stays actionable without discarding lower-severity or unfixed evidence.
 
-The image is assembled from a dedicated dependency stage. That stage removes
-the root `devDependencies` declarations from its disposable manifest, then runs
-lock-enforcing `npm ci --omit=dev --omit=peer`. The final image retains the
-original manifest, while the derived install prevents development tools that
-also satisfy optional framework peers from leaking back into production.
+The image is assembled from a dedicated dependency stage. Before any lifecycle
+script can run, `scripts/install-dependencies.mjs` validates every lockfile
+`hasInstallScript` row against the exact `package.json` allowlist, runs
+lock-enforcing `npm ci --ignore-scripts`, verifies the installed package
+identities, and deterministically rebuilds only those approved identities.
+The production dependency stage removes the root `devDependencies`
+declarations from its disposable manifest, then invokes that wrapper with
+`--omit=dev --omit=peer`. The final image retains the original manifest, while
+the derived install prevents development tools that also satisfy optional
+framework peers from leaking back into production.
 Both the Docker build and the workflow re-run the production-dependency guard
 against the final image: every lock entry marked development-only must be absent,
 while Next, React, jsPDF, sharp, and the `tsx` seed/migration runner must remain.

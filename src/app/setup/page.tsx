@@ -81,7 +81,7 @@ export default async function SetupPage({ searchParams }: { searchParams: Promis
               href={`/setup?area=${item.value}`}
               aria-current={area === item.value ? "page" : undefined}
               className={cn(
-                "min-h-11 shrink-0 border-b-2 px-4 py-3 text-sm font-semibold transition-colors focus-visible:outline-solid focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-(--color-focus)",
+                "min-h-11 shrink-0 border-b-2 px-4 py-3 text-sm font-semibold transition-colors focus-visible:outline-solid focus-visible:outline-[3px] focus-visible:outline-offset-2 focus-visible:outline-(--color-focus)",
                 area === item.value
                   ? "border-brand-600 text-brand-800"
                   : "border-transparent text-ink-600 hover:text-ink-950",
@@ -178,6 +178,7 @@ function GoalsArea({ params, year }: { params: Params; year: number }) {
       effectiveFromYear: member.effective_from_year,
       effectiveToYear: member.effective_to_year,
       configurationStatus: member.configuration?.configuration_status ?? null,
+      updatedAt: member.updated_at,
     })),
   }));
   const requestedGoalId = Number(firstSearchParam(params.goal));

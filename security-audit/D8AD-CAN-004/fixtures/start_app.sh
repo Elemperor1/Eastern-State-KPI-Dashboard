@@ -18,9 +18,10 @@ set -euo pipefail
 
 WORKTREE="${WORKTREE:-/tmp/eskpi-baseline}"
 DATA_DIR="${DATA_DIR:-/tmp/eskpi-baseline-data}"
-DB_PATH="$DATA_DIR/kpi.db"
 SESSION_SECRET="${SESSION_SECRET:-a]${RANDOM}-very-long-session-secret-0123456789abcdef0123456789abcdef}"
 mkdir -p "$DATA_DIR"
+DATA_DIR="$(cd "$DATA_DIR" && pwd -P)"
+DB_PATH="$DATA_DIR/kpi.db"
 
 # Fresh DB each run -> deterministic seed.
 rm -f "$DB_PATH" "$DB_PATH"-wal "$DB_PATH"-shm 2>/dev/null || true
@@ -28,6 +29,7 @@ rm -f "$DB_PATH" "$DB_PATH"-wal "$DB_PATH"-shm 2>/dev/null || true
 cd "$WORKTREE"
 
 export DATABASE_PATH="$DB_PATH"
+export SEED_CONFIRM="$DB_PATH"
 export SESSION_SECRET
 export SESSION_SECURE=false
 export TRUST_PROXY=false

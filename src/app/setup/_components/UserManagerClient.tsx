@@ -38,6 +38,7 @@ export function UserManagerClient({
   const [deleteTarget, setDeleteTarget] = useState<User | null>(null);
   const [resetTarget, setResetTarget] = useState<User | null>(null);
   const [disableTarget, setDisableTarget] = useState<User | null>(null);
+  const [roleChangeTarget, setRoleChangeTarget] = useState<{ user: User; role: Role } | null>(null);
   const [newPassword, setNewPassword] = useState("");
   const [resetting, setResetting] = useState(false);
   const [accountBusy, setAccountBusy] = useState<number | null>(null);
@@ -153,8 +154,8 @@ export function UserManagerClient({
   }
 
   /** Implements the change role operation. */
-  async function changeRole(id: number, role: Role, name: string) {
-    await patchAccount(id, { role }, buildRoleChangeSuccessMessage(name, role));
+  async function changeRole(id: number, role: Role, name: string): Promise<boolean> {
+    return patchAccount(id, { role }, buildRoleChangeSuccessMessage(name, role));
   }
 
   /** Implements the disable user operation. */
@@ -269,14 +270,12 @@ export function UserManagerClient({
                     id={`person-role-${selectedUser.id}`}
                     value={selectedUser.role}
                     disabled={isCurrentAdminUser(selectedUser, currentUserId) || accountBusy === selectedUser.id}
-                    onChange={(event) =>
-                      runEventHandler(
-                        changeRole,
-                        selectedUser.id,
-                        event.target.value as Role,
-                        selectedUser.name,
-                      )
-                    }
+                    onChange={(event) => {
+                      const role = event.target.value as Role;
+                      if (role !== selectedUser.role) {
+                        setRoleChangeTarget({ user: selectedUser, role });
+                      }
+                    }}
                   >
                     {ADMIN_USER_ROLE_OPTIONS.map((role) => (
                       <option key={role.value} value={role.value}>{role.label}</option>
@@ -347,6 +346,20 @@ export function UserManagerClient({
           const target = disableTarget;
           if (target && await disableUser(target.id, target.name)) {
             setDisableTarget(null);
+          }
+        }}
+      />
+
+      <ConfirmDialog
+        open={Boolean(roleChangeTarget)}
+        title={`Change role for ${roleChangeTarget?.user.name ?? "this user"}?`}
+        description={`Their access becomes ${ADMIN_USER_ROLE_OPTIONS.find((option) => option.value === roleChangeTarget?.role)?.label ?? roleChangeTarget?.role ?? "the selected role"} and they are signed out of every active session immediately.`}
+        confirmLabel="Change role"
+        onClose={() => setRoleChangeTarget(null)}
+        onConfirm={async () => {
+          const target = roleChangeTarget;
+          if (target && await changeRole(target.user.id, target.role, target.user.name)) {
+            setRoleChangeTarget(null);
           }
         }}
       />
