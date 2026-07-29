@@ -413,6 +413,37 @@ describe("strategic reporting server", () => {
     });
   });
 
+  it("omits informational memberships from actionable Overview reasons", () => {
+    listStrategicGoalsForReportingDisclosureMock.mockReturnValue([
+      {
+        ...goal,
+        members: goal.members.map((member) => ({
+          ...member,
+          role: "informational" as const,
+        })),
+      },
+    ]);
+    listKPIsMock.mockReturnValue([metric]);
+    listCalculatedStrategyActualsMock.mockReturnValue([]);
+
+    const data = loadExecutiveOverviewPageData({
+      year: 2026,
+      audience: "staff",
+    });
+
+    expect(data.summary.goals[0]?.result.excludedKpis).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ reason: "informational" }),
+      ]),
+    );
+    expect(data.summary.goals[0]?.result.exclusionReasons).not.toContain(
+      "informational",
+    );
+    expect(data.needsAttention.map((item) => item.reason)).not.toContain(
+      "This measure provides context and does not count toward completion",
+    );
+  });
+
   it("keeps scoped archived exclusions in staff and Board Trends (NOV-C5)", () => {
     const archivedGoal: StrategicGoalReadModel = {
       ...goal,

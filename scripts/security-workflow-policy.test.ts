@@ -530,6 +530,7 @@ describe("security workflow policy", () => {
 
   it("keeps the brace-expansion advisory exception exact, owned, and expiring", () => {
     const config = read("osv-scanner.toml");
+    const dependencyReview = read(".github/workflows/dependency-review.yml");
     const lock = JSON.parse(read("package-lock.json")) as {
       packages?: Record<
         string,
@@ -547,6 +548,11 @@ describe("security workflow policy", () => {
     expect(config).toContain("Owner: repository maintainer");
     expect(config).toContain("brace-expansion@1.1.17");
     expect(config.match(/\[\[IgnoredVulns\]\]/gu)).toHaveLength(1);
+    expect(dependencyReview).toContain(
+      "allow-ghsas: GHSA-mh99-v99m-4gvg",
+    );
+    expect(dependencyReview.match(/allow-ghsas:/gu)).toHaveLength(1);
+    expect(Date.now()).toBeLessThan(Date.parse("2026-08-30T00:00:00Z"));
 
     const legacyBraceEntries = Object.entries(packages)
       .filter(

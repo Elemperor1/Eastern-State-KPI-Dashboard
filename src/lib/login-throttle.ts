@@ -1,10 +1,15 @@
 /**
  * In-memory login throttling.
  *
- * Tracks failed login attempts by two key spaces:
+ * Tracks failed credential attempts in separate key spaces:
  *   - `ip:<address>` — slows online guessing from a single source.
  *   - `acct:<email>` — slows credential stuffing against a known
  *     account, even when the attacker rotates source IPs.
+ *   - `pwchg:<email>` — slows current-password guesses from a captured
+ *     temporary-credential session.
+ * Bounded compare budgets use companion `cmpl:` (login) and `pwcmp:`
+ * (password change) key spaces so the two entry points cannot consume or
+ * reset one another's budget.
  *
  * When *either* counter for a given login attempt exceeds the
  * threshold within the failure window, subsequent attempts for that
@@ -189,7 +194,7 @@ export function recordFailure(key: string, now: number = Date.now()): {
   const { threshold, windowMs, lockoutMs, maxEntries } = resolvedConfig();
   let entry = store.get(key);
   if (entry?.kind === "verify_budget") {
-    // The documented key spaces are disjoint (`ip:`/`acct:` versus `cmpl:`).
+    // Failure counters and compare-budget key spaces are disjoint.
     // Fail closed if an internal caller violates that contract rather than
     // replacing an unexpired compare budget.
     return { failures: 1, lockedUntil: 0 };
@@ -233,13 +238,13 @@ export function clearFailures(key: string): void {
 }
 
 /**
- * Bounded pre-verify compare budget, in a separate `cmpl:` key space from
- * the failure counters. Callers consult this BEFORE running an expensive
- * credential comparison for an identity whose account lock is already
- * active: the first LOGIN_VERIFY_BUDGET compares per exact lockout epoch are
- * admitted (so the legitimate holder's correct password still clears the
- * lock), and further attempts are refused cheaply so distributed
- * wrong-password traffic stops paying bcrypt against the locked account.
+ * Bounded pre-verify compare budget, in a key space separate from failure
+ * counters. Callers consult this BEFORE running an expensive credential
+ * comparison for an identity whose lock is already active: the first
+ * LOGIN_VERIFY_BUDGET compares per exact lockout epoch are admitted (so the
+ * legitimate holder's correct password still clears the lock), and further
+ * attempts are refused cheaply so wrong-password traffic stops paying bcrypt
+ * against the locked identity.
  * Returns true when the compare may proceed (and consumes one budget
  * slot), false when the budget for the current lockout epoch is spent.
  */

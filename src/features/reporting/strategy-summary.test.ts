@@ -190,6 +190,41 @@ describe("strategic dashboard summary", () => {
     expect(summary.goals[0]?.kpis[0]?.fullPlanProgress.actualProgressPercentage).toBe(80);
   });
 
+  it("marks an overflowing additive year-to-date aggregate invalid", () => {
+    const summary = buildStrategicDashboardSummary({
+      goals: [
+        goal({
+          members: [member(2, target(10, 2029), "active", "monthly")],
+        }),
+      ],
+      kpis,
+      selectedYear: 2026,
+      throughMonth: 2,
+      actuals: [
+        scalarActual(2, 2026, "monthly", 1, Number.MAX_VALUE),
+        scalarActual(2, 2026, "monthly", 2, Number.MAX_VALUE),
+      ],
+    });
+    const kpi = summary.goals[0]?.kpis[0];
+
+    expect(kpi?.currentValue).toBeNull();
+    expect(kpi?.currentCalculation).toMatchObject({
+      state: "invalid",
+      value: null,
+      issues: [{ code: "NON_FINITE_RESULT" }],
+    });
+    expect(kpi?.annualProgress).toMatchObject({
+      state: "invalid",
+      currentValue: null,
+      issues: [{ code: "NON_FINITE_VALUE" }],
+    });
+    expect(kpi?.fullPlanProgress).toMatchObject({
+      state: "invalid",
+      currentValue: null,
+      issues: [{ code: "NON_FINITE_VALUE" }],
+    });
+  });
+
   it("keeps selected-year actual separate from cumulative full-plan actual", () => {
     const cumulativeMember = member(1, target(5, 2029));
     cumulativeMember.configuration!.measurement_type = "cumulative";

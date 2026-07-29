@@ -158,6 +158,38 @@ describe("strategic board adapter", () => {
     expect(kpi?.annualProgress?.actualValue).toBe(6);
   });
 
+  it("marks an overflowing additive year-to-date Result invalid", () => {
+    const summary = summaryFixture();
+    const kpiSummary = summary.goals[0]!.kpis[0]!;
+    kpiSummary.measurementType = "count";
+    kpiSummary.currentValue = Number.POSITIVE_INFINITY;
+    kpiSummary.currentCalculation = {
+      state: "ok",
+      measurementType: "count",
+      value: Number.MAX_VALUE,
+      normalizedPercentage: null,
+      numerator: null,
+      denominator: null,
+      respondentCount: null,
+      precision: 0,
+      issues: [],
+    };
+    const goal = goalFixture();
+    goal.members[0]!.configuration!.measurement_type = "count";
+    goal.members[0]!.configuration!.reporting_frequency = "monthly";
+
+    const report = buildStrategicBoardReportFromSummary({
+      summary,
+      goals: [goal],
+    });
+
+    expect(report.priorities[0]?.goals[0]?.kpis[0]?.result).toMatchObject({
+      state: "invalid",
+      value: null,
+      displayValue: "Needs review",
+    });
+  });
+
   it("still shows the latest-period result for non-additive frequencies", () => {
     const summary = summaryFixture();
     const kpiSummary = summary.goals[0]!.kpis[0]!;

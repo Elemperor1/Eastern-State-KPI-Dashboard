@@ -155,7 +155,9 @@ export function buildStrategicDashboardSummary({
       const fullPlanTargetValue = targetPolicy.fullPlan.value;
 
       const annualAndPlanProgress = calculateAnnualAndPlanProgress({
-        annualActual: currentValue,
+        annualActual: currentActual.invalidAggregate
+          ? Number.NaN
+          : currentValue,
         annualTarget: annualTargetValue,
         elapsedFraction: pacingElapsedFraction(
           config?.reporting_frequency ?? null,
@@ -163,7 +165,9 @@ export function buildStrategicDashboardSummary({
         ),
         annualBaseline:
           annualTarget?.baseline_value ?? config?.baseline_value ?? null,
-        cumulativeActual,
+        cumulativeActual: cumulativeActual.invalidAggregate
+          ? Number.NaN
+          : cumulativeActual.value,
         fullPlanTarget: fullPlanTargetValue,
         fullPlanBaseline:
           fullPlanTarget?.baseline_value ?? config?.baseline_value ?? null,
@@ -202,7 +206,7 @@ export function buildStrategicDashboardSummary({
         currentValue,
         currentCalculation,
         annualActual: currentValue,
-        cumulativeActual,
+        cumulativeActual: cumulativeActual.value,
         annualTarget: annualTargetValue,
         annualTargetDescription: annualTarget?.target_description ?? null,
         annualPacingTarget: annualAndPlanProgress.pacingTarget,
@@ -487,6 +491,7 @@ function needsDefinitionProgress(precision: number): ProgressResult {
 interface ResolvedActual {
   value: number | null;
   calculation: MeasurementResult | null;
+  invalidAggregate: boolean;
 }
 
 /** Retrieves actual. */
@@ -508,21 +513,56 @@ function resolveActual({
   const direct = firstClassActuals.filter(
     (actual) => actual.kpiId === kpiId && actual.year === selectedYear,
   );
+  const combined = combinePeriodValues(
+    direct.map((actual) => ({
+      periodType: actual.periodType,
+      periodIndex: actual.periodIndex,
+      value: actual.value,
+    })),
+    measurementType,
+    reportingFrequency,
+    throughMonth,
+  );
+  const latestCalculation = direct
+    .filter((actual) => periodIncluded(actual, throughMonth))
+    .sort((a, b) => periodSortKey(a) - periodSortKey(b))
+    .at(-1)?.calculation ?? null;
   return {
-    value: combinePeriodValues(
-      direct.map((actual) => ({
-        periodType: actual.periodType,
-        periodIndex: actual.periodIndex,
-        value: actual.value,
-      })),
+    value: combined.value,
+    calculation: combined.invalid
+      ? invalidAggregateCalculation(measurementType, latestCalculation)
+      : latestCalculation,
+    invalidAggregate: combined.invalid,
+  };
+}
+
+/** Builds an explicit invalid result for an overflowing period aggregate. */
+function invalidAggregateCalculation(
+  measurementType: MeasurementType | null,
+  latest: MeasurementResult | null,
+): MeasurementResult {
+  return {
+    ...(latest ?? {
       measurementType,
-      reportingFrequency,
-      throughMonth,
-    ),
-    calculation: direct
-      .filter((actual) => periodIncluded(actual, throughMonth))
-      .sort((a, b) => periodSortKey(a) - periodSortKey(b))
-      .at(-1)?.calculation ?? null,
+      value: null,
+      normalizedPercentage: null,
+      numerator: null,
+      denominator: null,
+      respondentCount: null,
+      precision: 2,
+    }),
+    state: "invalid",
+    measurementType,
+    value: null,
+    normalizedPercentage: null,
+    issues: [
+      ...(latest?.issues ?? []),
+      {
+        kind: "invalid",
+        code: "NON_FINITE_RESULT",
+        message: "Year-to-date aggregation produced a non-finite result.",
+      },
+    ],
   };
 }
 
@@ -543,48 +583,64 @@ function resolveCumulativeActual({
   planStartYear: number;
   throughMonth: number;
   firstClassActuals: StrategicActualValue[];
-}): number | null {
+}): { value: number | null; invalidAggregate: boolean } {
   if (reportingFrequency === "cumulative" || reportingFrequency === "one_time") {
     for (let year = selectedYear; year >= planStartYear; year -= 1) {
-      const value = resolveActual({
+      const actual = resolveActual({
         kpiId,
         measurementType,
         reportingFrequency,
         selectedYear: year,
         throughMonth: year === selectedYear ? throughMonth : 12,
         firstClassActuals,
-      }).value;
-      if (value !== null) return value;
+      });
+      if (actual.invalidAggregate) {
+        return { value: null, invalidAggregate: true };
+      }
+      if (actual.value !== null) {
+        return { value: actual.value, invalidAggregate: false };
+      }
     }
-    return null;
+    return { value: null, invalidAggregate: false };
   }
 
   if (measurementType === "cumulative" && reportingFrequency === "annual") {
     const values: number[] = [];
     for (let year = planStartYear; year <= selectedYear; year += 1) {
-      const value = resolveActual({
+      const actual = resolveActual({
         kpiId,
         measurementType,
         reportingFrequency,
         selectedYear: year,
         throughMonth: 12,
         firstClassActuals,
-      }).value;
-      if (value !== null) values.push(value);
+      });
+      if (actual.invalidAggregate) {
+        return { value: null, invalidAggregate: true };
+      }
+      if (actual.value !== null) values.push(actual.value);
     }
-    return values.length === 0
-      ? null
-      : values.reduce((sum, value) => sum + value, 0);
+    if (values.length === 0) {
+      return { value: null, invalidAggregate: false };
+    }
+    const value = values.reduce((sum, item) => sum + item, 0);
+    return Number.isFinite(value)
+      ? { value, invalidAggregate: false }
+      : { value: null, invalidAggregate: true };
   }
 
-  return resolveActual({
+  const actual = resolveActual({
     kpiId,
     measurementType,
     reportingFrequency,
     selectedYear,
     throughMonth,
     firstClassActuals,
-  }).value;
+  });
+  return {
+    value: actual.value,
+    invalidAggregate: actual.invalidAggregate,
+  };
 }
 
 /** Implements the combine period values operation. */
@@ -597,7 +653,7 @@ function combinePeriodValues(
   measurementType: MeasurementType | null,
   reportingFrequency: string | null,
   throughMonth: number,
-): number | null {
+): { value: number | null; invalid: boolean } {
   const finite = rows
     .filter(
       (row) =>
@@ -605,17 +661,22 @@ function combinePeriodValues(
         periodIncluded(row, throughMonth),
     )
     .map((row) => ({ periodIndex: row.periodIndex, value: Number(row.value) }));
-  if (finite.length === 0) return null;
+  if (finite.length === 0) return { value: null, invalid: false };
 
   const annual = finite.filter((row) => row.periodIndex === 0);
-  if (annual.length > 0) return annual.at(-1)?.value ?? null;
+  if (annual.length > 0) {
+    return { value: annual.at(-1)?.value ?? null, invalid: false };
+  }
 
   if (isAdditiveReportingCombination(measurementType, reportingFrequency)) {
-    return finite.reduce((sum, row) => sum + row.value, 0);
+    const value = finite.reduce((sum, row) => sum + row.value, 0);
+    return Number.isFinite(value)
+      ? { value, invalid: false }
+      : { value: null, invalid: true };
   }
 
   finite.sort((a, b) => a.periodIndex - b.periodIndex);
-  return finite.at(-1)?.value ?? null;
+  return { value: finite.at(-1)?.value ?? null, invalid: false };
 }
 
 /**

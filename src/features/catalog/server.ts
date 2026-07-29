@@ -319,6 +319,28 @@ export class KpiParentCycleError extends Error {
   }
 }
 
+export type StrategicMeasureContextErrorCode =
+  | "STRATEGIC_MEASURE_GOAL_NOT_FOUND"
+  | "STRATEGIC_MEASURE_CONTEXT_ARCHIVED"
+  | "STRATEGIC_MEASURE_REPORTING_YEAR_OUT_OF_RANGE";
+
+/**
+ * Thrown when a strategic measure cannot be created in the requested Goal,
+ * Priority, or Reporting Year context. These are expected client mistakes,
+ * not unexpected persistence failures, so the API maps each bounded code to
+ * a stable 4xx response.
+ */
+export class StrategicMeasureContextError extends Error {
+  /** Creates a new instance with the supplied state. */
+  constructor(
+    public readonly code: StrategicMeasureContextErrorCode,
+    message: string,
+  ) {
+    super(message);
+    this.name = "StrategicMeasureContextError";
+  }
+}
+
 /** Number of live monthly + breakdown entries for a KPI, including descendants. */
 function countKPIDependents(id: number): number {
   const db = getDb();
@@ -523,7 +545,10 @@ export function createStrategicMeasure(
   return transaction(() => {
     const goal = getStrategicGoalRecord(input.goal_id);
     if (!goal) {
-      throw new Error(`Strategic goal ${input.goal_id} was not found.`);
+      throw new StrategicMeasureContextError(
+        "STRATEGIC_MEASURE_GOAL_NOT_FOUND",
+        `Strategic goal ${input.goal_id} was not found.`,
+      );
     }
     const priority = getCategory(goal.priority_id, { includeArchived: true });
     if (
@@ -532,7 +557,8 @@ export function createStrategicMeasure(
       goal.archived_at !== null ||
       goal.configuration_status === "archived"
     ) {
-      throw new Error(
+      throw new StrategicMeasureContextError(
+        "STRATEGIC_MEASURE_CONTEXT_ARCHIVED",
         "Restore the goal and Strategic Priority before adding a measure.",
       );
     }
@@ -540,7 +566,8 @@ export function createStrategicMeasure(
       input.reporting_year < goal.plan_start_year ||
       input.reporting_year > goal.plan_end_year
     ) {
-      throw new Error(
+      throw new StrategicMeasureContextError(
+        "STRATEGIC_MEASURE_REPORTING_YEAR_OUT_OF_RANGE",
         `Reporting year must be between ${goal.plan_start_year} and ${goal.plan_end_year}.`,
       );
     }

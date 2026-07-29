@@ -632,6 +632,11 @@ describe("strategy calculation kernel", () => {
         "needs_definition",
         "needs_target",
       ]);
+      expect(result.exclusionReasons).not.toContain("informational");
+      expect(result.exclusionReasons).toEqual([
+        "needs_definition",
+        "needs_target",
+      ]);
     });
 
     it("calculates weighted-average completion with an explicit threshold", () => {

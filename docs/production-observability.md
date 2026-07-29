@@ -45,6 +45,24 @@ intended for scheduled or operator-invoked checks; it is read-only,
 bounded by the same 250 ms lock budget, and returns a constant-shape
 result with no raw SQLite error text.
 
+The probe is wired to the real `db:integrity` operator command. Run it after
+each production deployment and during the weekly database check; a healthy
+database exits 0, while an unavailable or damaged database exits 1 with only a
+bounded reason code:
+
+```bash
+# Repository checkout or an isolated restored backup:
+DATABASE_PATH=/absolute/path/to/kpi.db npm run db:integrity
+
+# Live Fly Machine (the runtime image retains Node and this operator script):
+fly ssh console --app eastern-state-kpi-dashboard \
+  -C "node ./scripts/check-database-integrity.mjs"
+```
+
+This command is the deep database signal. `/api/health/ready` intentionally
+remains the cheap, anonymous liveness/readiness signal and must not be changed
+to execute `PRAGMA quick_check`.
+
 The response never varies by failure reason. It does not expose accounts,
 Organization or Strategic Plan content, row counts, paths, schema details,
 exceptions, stacks, secrets, `AUTH_DISABLED`, cookies, credentials, or session

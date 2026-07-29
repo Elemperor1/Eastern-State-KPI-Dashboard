@@ -1,4 +1,5 @@
 import bcrypt from "bcryptjs";
+import { isReservedAuthEmail } from "@/lib/reserved-auth-identities";
 import { getDb, transaction, type DB } from "@/lib/db";
 import type { Role, User } from "@/lib/types";
 
@@ -127,11 +128,14 @@ function assertNotLastActiveAdmin(
   }
   const others = db
     .prepare(
-      `SELECT COUNT(*) AS count FROM users
+      `SELECT email FROM users
        WHERE role = 'admin' AND disabled = 0 AND id != ?`,
     )
-    .get(subjectId) as { count: number };
-  if (Number(others.count) === 0) {
+    .all(subjectId) as { email: string }[];
+  const hasOtherDurableAdmin = others.some(
+    ({ email }) => !isReservedAuthEmail(email),
+  );
+  if (!hasOtherDurableAdmin) {
     throw new UserLifecycleGuardError(
       `Refusing to ${action} the last active administrator. ` +
         `Promote or re-enable another admin first; operator recovery is npm run setup:admin.`,

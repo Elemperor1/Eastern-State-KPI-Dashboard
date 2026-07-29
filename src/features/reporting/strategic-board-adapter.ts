@@ -200,19 +200,28 @@ export function buildStrategicBoardReportFromSummary({
                 kpiSummary.measurementType,
               );
               const calculation = kpiSummary.currentCalculation;
-              const resultState = calculation?.state ??
-                (kpiSummary.currentValue === null ? "missing" : "ok");
+              const usesAdditiveYtd = isAdditiveReportingCombination(
+                kpiSummary.measurementType,
+                config?.reporting_frequency ?? null,
+              );
+              const additiveYtdInvalid =
+                usesAdditiveYtd &&
+                kpiSummary.currentValue !== null &&
+                !Number.isFinite(kpiSummary.currentValue);
+              const resultState = additiveYtdInvalid
+                ? "invalid"
+                : calculation?.state ??
+                  (kpiSummary.currentValue === null ? "missing" : "ok");
               // For additive monthly/quarterly measures the summary's
               // currentValue is the year-to-date SUM of included periods
               // while currentCalculation describes only the LATEST
               // period. The headline Result must be the YTD aggregate so
               // the row is internally consistent with its own Annual
               // Actual / progress columns (F-07).
-              const resultValue = isAdditiveReportingCombination(
-                kpiSummary.measurementType,
-                config?.reporting_frequency ?? null,
-              )
-                ? kpiSummary.currentValue
+              const resultValue = usesAdditiveYtd
+                ? additiveYtdInvalid
+                  ? null
+                  : kpiSummary.currentValue
                 : calculation
                   ? calculation.value
                   : kpiSummary.currentValue;

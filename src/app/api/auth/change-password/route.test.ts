@@ -89,6 +89,7 @@ beforeEach(() => {
   vi.stubEnv("LOGIN_LOCKOUT_THRESHOLD", "3");
   vi.stubEnv("LOGIN_LOCKOUT_WINDOW_MS", "1000");
   vi.stubEnv("LOGIN_LOCKOUT_DURATION_MS", "2000");
+  vi.stubEnv("LOGIN_VERIFY_BUDGET", "2");
 });
 
 afterEach(() => {
@@ -96,7 +97,7 @@ afterEach(() => {
 });
 
 describe("POST /api/auth/change-password throttle integration", () => {
-  it("throttles repeated wrong current-password guesses and stops verifying once locked", async () => {
+  it("throttles repeated wrong current-password guesses after a bounded locked-account verification budget", async () => {
     verifyCredentialsMock.mockResolvedValue(null);
     const body = { currentPassword: "wrong-pass", newPassword: "NewPass!2026" };
 
@@ -110,12 +111,20 @@ describe("POST /api/auth/change-password throttle integration", () => {
     // The attempt that tripped the threshold carries the Retry-After hint.
     expect(verifyCredentialsMock).toHaveBeenCalledTimes(3);
 
-    // The NEXT attempt is throttled with 429 BEFORE the bcrypt compare.
+    // A locked account still admits only the configured number of compares,
+    // preserving a chance for the legitimate holder to clear the lock.
+    for (let i = 0; i < 2; i++) {
+      const admitted = await POST(changeReq(body));
+      expect(admitted.status).toBe(429);
+      expect(admitted.headers.get("Retry-After")).not.toBeNull();
+    }
+    expect(verifyCredentialsMock).toHaveBeenCalledTimes(5);
+
+    // Once the budget is spent, the next attempt is refused before bcrypt.
     const blocked = await POST(changeReq(body));
     expect(blocked.status).toBe(429);
-    expect(blocked.headers.get("Retry-After")).not.toBeNull();
     expect(Number(blocked.headers.get("Retry-After"))).toBeGreaterThan(0);
-    expect(verifyCredentialsMock).toHaveBeenCalledTimes(3);
+    expect(verifyCredentialsMock).toHaveBeenCalledTimes(5);
   });
 
   it("clears the failure counter after a correct current password", async () => {
@@ -147,6 +156,43 @@ describe("POST /api/auth/change-password throttle integration", () => {
       changeReq({ currentPassword: "wrong-pass", newPassword: "NewPass!2026" }),
     );
     expect(after.status).toBe(401);
+  });
+
+  it("admits a correct current password during lockout and clears failure and verification-budget state", async () => {
+    verifyCredentialsMock
+      .mockResolvedValueOnce(null)
+      .mockResolvedValueOnce(null)
+      .mockResolvedValueOnce(null)
+      .mockResolvedValueOnce({
+        user: USER,
+        credentialVersion: 7,
+        passwordHash: "$2a$10$test",
+      })
+      .mockResolvedValueOnce(null);
+    updateUserPasswordIfCurrentMock.mockReturnValue(true);
+
+    const wrongBody = {
+      currentPassword: "wrong-pass",
+      newPassword: "NewPass!2026",
+    };
+    for (let i = 0; i < 3; i++) {
+      expect((await POST(changeReq(wrongBody))).status).toBe(401);
+    }
+
+    const recovered = await POST(
+      changeReq({
+        currentPassword: "correct-pass",
+        newPassword: "NewPass!2026",
+      }),
+    );
+    expect(recovered.status).toBe(200);
+    expect(verifyCredentialsMock).toHaveBeenCalledTimes(4);
+
+    // Both the pwchg: failure counter and its compare-budget companion were
+    // cleared, so the next wrong attempt starts a fresh 401 sequence.
+    const after = await POST(changeReq(wrongBody));
+    expect(after.status).toBe(401);
+    expect(verifyCredentialsMock).toHaveBeenCalledTimes(5);
   });
 
   it("does not consume a failure slot for malformed bodies", async () => {

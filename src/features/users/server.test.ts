@@ -2,6 +2,7 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { BYPASS_USER_EMAIL } from "@/lib/reserved-auth-identities";
 import { getDb, resetDb } from "@/lib/db";
 import {
   createUser,
@@ -158,6 +159,32 @@ describe("user lifecycle guards and audit trail", () => {
     expect(() =>
       updateUserRole(first.id, "viewer", asActor(second)),
     ).not.toThrow();
+  });
+
+  it("does not count the reserved auth-bypass identity as another active administrator", () => {
+    createAdmin(BYPASS_USER_EMAIL);
+    const realAdmin = createAdmin("real-admin@example.org");
+    const viewer = createUser({
+      email: "viewer@example.org",
+      name: "Viewer",
+      password: "ViewerPass!2026",
+      role: "viewer",
+    });
+
+    expect(() =>
+      updateUserRole(realAdmin.id, "viewer", asActor(realAdmin)),
+    ).toThrow(UserLifecycleGuardError);
+    expect(() =>
+      setUserDisabled(realAdmin.id, true, asActor(realAdmin)),
+    ).toThrow(UserLifecycleGuardError);
+    expect(() => deleteUser(realAdmin.id, asActor(viewer))).toThrow(
+      UserLifecycleGuardError,
+    );
+
+    expect(findUserByEmail("real-admin@example.org")).toMatchObject({
+      role: "admin",
+      disabled: false,
+    });
   });
 
   it("allows demoting an admin when another active admin remains and audits it", () => {

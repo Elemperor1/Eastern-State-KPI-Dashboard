@@ -1770,7 +1770,9 @@ function goalResult(
     excludedKpis,
     exclusionReasons: unique([
       ...(overrides.exclusionReasons ?? []),
-      ...excludedKpis.map((item) => item.reason),
+      ...excludedKpis
+        .filter((item) => item.reason !== "informational")
+        .map((item) => item.reason),
     ]),
     issues: overrides.issues ?? [],
   };

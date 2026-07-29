@@ -36,6 +36,11 @@ function useFixturePath(): void {
   process.env.PATH = `${fixtureDir}:/usr/bin:/bin`;
 }
 
+/** Points PATH at the fixture directory only, proving no host tool can leak in. */
+function useIsolatedFixturePath(): void {
+  process.env.PATH = fixtureDir;
+}
+
 beforeEach(() => {
   fixtureDir = mkdtempSync(join(tmpdir(), "r09-scanner-fixture-"));
   repositoryFixtureDir = null;
@@ -91,7 +96,7 @@ describe("resolveScanner", () => {
 
   it("refuses a local binary when Docker is absent from PATH", () => {
     makeExecutable(SCANNER_NAME, `echo "${SCANNER_NAME} version ${PINNED_VERSION}"`);
-    useFixturePath();
+    useIsolatedFixturePath();
     expect(() => resolveScanner(SCANNER_NAME, PINNED_VERSION)).toThrow(
       /Docker is unavailable/u,
     );

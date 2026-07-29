@@ -196,15 +196,17 @@ export function loadExecutiveOverviewPageData({
   const needsAttention = Array.from(
     new Map(
       summary.goals.flatMap((goal) =>
-        goal.result.exclusionReasons.map((reason) => [
-          `${goal.goalId}:${reason}`,
-          {
-            goalId: goal.goalId,
-            goalName: goal.goalName,
-            priorityName: goal.priorityName,
-            reason: humanizeReportingReason(reason),
-          },
-        ] as const),
+        goal.result.exclusionReasons
+          .filter((reason) => reason !== "informational")
+          .map((reason) => [
+            `${goal.goalId}:${reason}`,
+            {
+              goalId: goal.goalId,
+              goalName: goal.goalName,
+              priorityName: goal.priorityName,
+              reason: humanizeReportingReason(reason),
+            },
+          ] as const),
       ),
     ).values(),
   ).slice(0, 5);

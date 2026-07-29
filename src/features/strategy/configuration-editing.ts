@@ -1828,11 +1828,10 @@ function goalHasRecordedManualResult(goal: RawRow): boolean {
 
 /**
  * A threshold-count completion rule is only meaningful when the threshold
- * is reachable: a count above the goal's active membership count is
- * permanently unsatisfiable and previously persisted silently, leaving
- * Board-visible progress stuck at incomplete with no validation error
- * (S070-C3). The member count is read inside the caller's transaction so
- * the check and the write commit or roll back together.
+ * is reachable in every year of the goal: a count above the minimum number
+ * of simultaneously active required memberships is unsatisfiable for at
+ * least part of the goal range. The member count is read inside the caller's
+ * transaction so the check and the write commit or roll back together.
  */
 function assertThresholdCountSatisfiable(
   merged: { completion_rule: string; threshold_count: number | null },
@@ -1844,29 +1843,64 @@ function assertThresholdCountSatisfiable(
     merged.threshold_count > memberCount
   ) {
     throw new StrategyEditValidationError(
-      "Threshold count cannot exceed the goal's included measures.",
+      "Threshold count cannot exceed the goal's simultaneously required measures.",
       [
         {
           path: "threshold_count",
           message:
             `Threshold count ${merged.threshold_count} exceeds the goal's ` +
-            `${memberCount} included measure${memberCount === 1 ? "" : "s"}.`,
+            `minimum of ${memberCount} simultaneously required ` +
+            `measure${memberCount === 1 ? "" : "s"}.`,
         },
       ],
     );
   }
 }
 
-/** Counts the goal's active (non-archived) memberships. */
-function activeGoalMembershipCount(goalId: number): number {
-  const row = getDb()
+/** Finds the minimum simultaneous required memberships across a goal range. */
+function minimumRequiredGoalMembershipCount(
+  goalId: number,
+  startYear: number,
+  endYear: number,
+): number {
+  const memberships = getDb()
     .prepare(
-      `SELECT COUNT(*) AS member_count
+      `SELECT effective_from_year, effective_to_year
        FROM goal_kpis
-       WHERE goal_id = ? AND archived_at IS NULL`,
+       WHERE goal_id = ? AND archived_at IS NULL AND is_required = 1`,
     )
-    .get(goalId) as { member_count: number };
-  return Number(row.member_count);
+    .all(goalId) as Array<{
+    effective_from_year: number;
+    effective_to_year: number | null;
+  }>;
+  let minimum = Number.POSITIVE_INFINITY;
+  for (let year = startYear; year <= endYear; year += 1) {
+    const count = memberships.filter(
+      (membership) =>
+        membership.effective_from_year <= year &&
+        (membership.effective_to_year === null ||
+          membership.effective_to_year >= year),
+    ).length;
+    minimum = Math.min(minimum, count);
+  }
+  return Number.isFinite(minimum) ? minimum : 0;
+}
+
+/** Revalidates a persisted goal after a membership mutation. */
+function assertPersistedGoalThresholdSatisfiable(goalId: number): void {
+  const goal = rawGoal(goalId);
+  assertThresholdCountSatisfiable(
+    {
+      completion_rule: String(goal.completion_rule),
+      threshold_count:
+        goal.threshold_count == null ? null : Number(goal.threshold_count),
+    },
+    minimumRequiredGoalMembershipCount(
+      goalId,
+      Number(goal.plan_start_year),
+      Number(goal.plan_end_year),
+    ),
+  );
 }
 
 /** Implements the merged strategic goal operation. */
@@ -1968,7 +2002,14 @@ export function updateStrategicGoalSettings(
         "Historical values already use this goal's completion semantics. In-place rule and threshold changes are not allowed.",
       );
     }
-    assertThresholdCountSatisfiable(merged, activeGoalMembershipCount(patch.id));
+    assertThresholdCountSatisfiable(
+      merged,
+      minimumRequiredGoalMembershipCount(
+        patch.id,
+        Number(before.plan_start_year),
+        Number(before.plan_end_year),
+      ),
+    );
     if (!rowChanged(before, values)) return asStrategicGoal(before);
     getDb()
       .prepare(
@@ -2087,22 +2128,14 @@ export function createSuccessorStrategicGoal(
     }
 
     const merged = mergedStrategicGoal(before, parsed.update);
-    // The successor inherits only the memberships that overlap its
-    // effective range, so the threshold cap uses that overlapping count.
-    const successorMemberCount = (
-      getDb()
-        .prepare(
-          `SELECT COUNT(*) AS member_count
-           FROM goal_kpis
-           WHERE goal_id = ? AND archived_at IS NULL
-             AND effective_from_year <= ?
-             AND (effective_to_year IS NULL OR effective_to_year >= ?)`,
-        )
-        .get(parsed.predecessor_id, predecessorEnd, successorStart) as {
-        member_count: number;
-      }
-    ).member_count;
-    assertThresholdCountSatisfiable(merged, Number(successorMemberCount));
+    assertThresholdCountSatisfiable(
+      merged,
+      minimumRequiredGoalMembershipCount(
+        parsed.predecessor_id,
+        successorStart,
+        predecessorEnd,
+      ),
+    );
     const successorSlug = availableSuccessorGoalSlug(
       String(before.slug),
       successorStart,
@@ -2527,6 +2560,7 @@ export function updateStrategicGoalMembership(
          WHERE id = ?`,
       )
       .run(...Object.values(values), actorId, patch.id);
+    assertPersistedGoalThresholdSatisfiable(Number(before.goal_id));
     const after = rawGoalMembership(patch.id);
     recordStrategicAuditEvent({
       entity_type: "goal_membership",
@@ -2670,6 +2704,7 @@ export function createSuccessorStrategicGoalMembership(
         actorId,
         actorId,
       );
+    assertPersistedGoalThresholdSatisfiable(Number(before.goal_id));
     const predecessor = rawGoalMembership(parsed.predecessor_id);
     const successor = rawGoalMembership(Number(inserted.lastInsertRowid));
     const fields = [

@@ -1904,6 +1904,38 @@ describe("strategic configuration editing repository", () => {
     ).toThrow(StrategyEditValidationError);
   });
 
+  it("caps threshold count at the minimum simultaneous required memberships", () => {
+    getDb()
+      .prepare(
+        `UPDATE goal_kpis
+         SET effective_from_year = 2027
+         WHERE goal_id = ? AND kpi_id = ?`,
+      )
+      .run(goalId, multiKpiId);
+
+    expect(() =>
+      updateStrategicGoalSettings(
+        {
+          id: goalId,
+          completion_rule: "threshold_count",
+          threshold_count: 2,
+        },
+        actorId,
+      ),
+    ).toThrow(StrategyEditValidationError);
+
+    expect(
+      updateStrategicGoalSettings(
+        {
+          id: goalId,
+          completion_rule: "threshold_count",
+          threshold_count: 1,
+        },
+        actorId,
+      ),
+    ).toMatchObject({ threshold_count: 1 });
+  });
+
   it("freezes goal completion rules after member observations exist", () => {
     updateStrategicGoalSettings(
       {
@@ -2198,6 +2230,50 @@ describe("strategic configuration editing repository", () => {
         weight: 2.5,
         display_order: 7,
       },
+    });
+  });
+
+  it("preserves threshold reachability across membership role versioning", () => {
+    updateStrategicGoalSettings(
+      {
+        id: goalId,
+        completion_rule: "threshold_count",
+        threshold_count: 2,
+      },
+      actorId,
+    );
+
+    expect(() =>
+      updateStrategicGoalMembership(
+        { id: membershipId, role: "informational" },
+        actorId,
+      ),
+    ).toThrow(StrategyEditValidationError);
+    expect(() =>
+      createSuccessorStrategicGoalMembership(
+        {
+          predecessor_id: membershipId,
+          expected_revision: currentRevision("goal_kpis", membershipId),
+          effective_start_year: 2027,
+          role: "informational",
+          weight: 1,
+          display_order: 0,
+        },
+        actorId,
+      ),
+    ).toThrow(StrategyEditValidationError);
+
+    expect(
+      getDb()
+        .prepare(
+          `SELECT is_required, effective_from_year, effective_to_year
+           FROM goal_kpis WHERE id = ?`,
+        )
+        .get(membershipId),
+    ).toEqual({
+      is_required: 1,
+      effective_from_year: 2025,
+      effective_to_year: 2029,
     });
   });
 

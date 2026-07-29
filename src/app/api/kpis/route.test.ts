@@ -72,6 +72,7 @@ import {
   KpiParentCycleError,
   KpiSemanticMutationError,
   KpiStrategicReparentError,
+  StrategicMeasureContextError,
 } from "@/features/catalog/server";
 
 const CSRF_TOKEN = "test-csrf-token-0123456789abcdef";
@@ -357,6 +358,46 @@ describe("/api/kpis generic error bodies (F-09 R-08: S029-C3, API-001/003/004)",
     { thrown: new KpiParentCycleError(22), status: 400 },
   ])(
     "POST maps typed catalog errors to a client-safe $status without a server-error log",
+    async ({ thrown, status }) => {
+      createStrategicMeasureMock.mockImplementation(() => {
+        throw thrown;
+      });
+
+      const res = await POST(mutationReq("POST", createBody));
+
+      expect(res.status).toBe(status);
+      await expect(res.json()).resolves.toEqual({
+        error: thrown.message,
+        code: thrown.code,
+      });
+      expect(logUnexpectedServerErrorMock).not.toHaveBeenCalled();
+    },
+  );
+
+  it.each([
+    {
+      thrown: new StrategicMeasureContextError(
+        "STRATEGIC_MEASURE_GOAL_NOT_FOUND",
+        "Strategic goal 999 was not found.",
+      ),
+      status: 404,
+    },
+    {
+      thrown: new StrategicMeasureContextError(
+        "STRATEGIC_MEASURE_CONTEXT_ARCHIVED",
+        "Restore the goal and Strategic Priority before adding a measure.",
+      ),
+      status: 409,
+    },
+    {
+      thrown: new StrategicMeasureContextError(
+        "STRATEGIC_MEASURE_REPORTING_YEAR_OUT_OF_RANGE",
+        "Reporting year must be between 2025 and 2029.",
+      ),
+      status: 400,
+    },
+  ])(
+    "POST maps invalid strategic measure context to a client-safe $status",
     async ({ thrown, status }) => {
       createStrategicMeasureMock.mockImplementation(() => {
         throw thrown;

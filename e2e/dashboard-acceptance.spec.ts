@@ -1097,11 +1097,14 @@ test("uses one flat Setup workspace on desktop and mobile", async ({ page }, tes
 
   await page.setViewportSize({ width: 1_440, height: 1_080 });
   await page.goto(`/dashboard/category/visitor-experience?year=${ENTRY_YEAR}`);
-  const destinationLink = page.locator("a[href*='/dashboard/metric/']").first();
-  const destinationName = (await destinationLink.locator(":scope > span").first().textContent())?.trim();
-  expect(destinationName).toBeTruthy();
+  // The test intentionally removed the first needs-attention measure's
+  // configuration above. Use a known unaffected destination for this
+  // navigation-focus assertion instead of whichever link sorts first.
+  const destinationLink = page.getByRole("link", {
+    name: new RegExp(COMPONENT_MEASURE),
+  });
   await destinationLink.click();
-  await expect(page.getByRole("heading", { name: destinationName! })).toBeFocused();
+  await expect(page.getByRole("heading", { name: COMPONENT_MEASURE })).toBeFocused();
 
   for (const width of [360, 390, 768, 1440, 1920]) {
     await page.setViewportSize({ width, height: width < 1_000 ? 844 : 1_080 });

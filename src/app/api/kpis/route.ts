@@ -21,6 +21,7 @@ import {
   listKPIs,
   restoreKPI,
   retireOrDeleteKPI,
+  StrategicMeasureContextError,
   updateKPI,
 } from "@/features/catalog/server";
 
@@ -79,6 +80,18 @@ export async function POST(req: NextRequest) {
     // anything else is an unexpected server failure: never echo raw
     // SQLite/driver/feature error text to the client (F-09 R-08), return
     // a generic 500, and log only bounded non-sensitive context.
+    if (err instanceof StrategicMeasureContextError) {
+      const status =
+        err.code === "STRATEGIC_MEASURE_GOAL_NOT_FOUND"
+          ? 404
+          : err.code === "STRATEGIC_MEASURE_CONTEXT_ARCHIVED"
+            ? 409
+            : 400;
+      return NextResponse.json(
+        { error: err.message, code: err.code },
+        { status },
+      );
+    }
     if (
       err instanceof KpiSemanticMutationError ||
       err instanceof KpiArchivedCategoryError ||

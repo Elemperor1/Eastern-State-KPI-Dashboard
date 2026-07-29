@@ -35,6 +35,7 @@ import {
   restoreKPI,
   retireOrDeleteCategory,
   retireOrDeleteKPI,
+  StrategicMeasureContextError,
   updateCategory,
   updateKPI,
 } from "./server";
@@ -99,6 +100,20 @@ function seedStrategicCatalog() {
                'not_reported', 'active', ?, ?)`,
   ).run(kpi.id, actorId, actorId);
   return { actorId, category, kpi, goalId };
+}
+
+/** Captures the typed failure from a strategic-measure create attempt. */
+function captureStrategicMeasureContextError(
+  input: Parameters<typeof createStrategicMeasure>[0],
+  actorId: number,
+): StrategicMeasureContextError {
+  try {
+    createStrategicMeasure(input, actorId);
+  } catch (error) {
+    expect(error).toBeInstanceOf(StrategicMeasureContextError);
+    return error as StrategicMeasureContextError;
+  }
+  throw new Error("Expected strategic measure context validation to fail.");
 }
 
 describe("schema-10 strategic catalog lifecycle", () => {
@@ -236,6 +251,68 @@ describe("schema-10 strategic catalog lifecycle", () => {
         (event) => event.entity_display_name.includes("New learning measure"),
       ).map((event) => event.entity_type),
     ).toEqual(expect.arrayContaining(["kpi", "goal_membership", "measurement_config"]));
+  });
+
+  it("uses typed failures for every invalid strategic measure context", () => {
+    const db = getDb();
+    const actorId = createCatalogActor();
+    const category = createCategory(
+      { slug: "measure-context", name: "Measure context", sort_order: 1 },
+      actorId,
+    );
+    const goalId = Number(
+      db.prepare(
+        `INSERT INTO strategic_goals (
+           priority_id, slug, name, plan_start_year, plan_end_year,
+           configuration_status, created_by, updated_by
+         ) VALUES (?, 'measure-context-goal', 'Measure context goal',
+                   2025, 2029, 'active', ?, ?)`,
+      ).run(category.id, actorId, actorId).lastInsertRowid,
+    );
+    const baseInput = {
+      goal_id: goalId,
+      reporting_year: 2026,
+      slug: "measure-context-kpi",
+      name: "Measure context KPI",
+      unit: "people",
+      measurement_type: "count" as const,
+      reporting_frequency: "annual" as const,
+      direction: "higher" as const,
+    };
+
+    expect(
+      captureStrategicMeasureContextError(
+        { ...baseInput, goal_id: 999_999 },
+        actorId,
+      ),
+    ).toMatchObject({
+      code: "STRATEGIC_MEASURE_GOAL_NOT_FOUND",
+    });
+
+    db.prepare(
+      "UPDATE strategic_goals SET archived_at = datetime('now') WHERE id = ?",
+    ).run(goalId);
+    expect(
+      captureStrategicMeasureContextError(baseInput, actorId),
+    ).toMatchObject({
+      code: "STRATEGIC_MEASURE_CONTEXT_ARCHIVED",
+    });
+
+    db.prepare("UPDATE strategic_goals SET archived_at = NULL WHERE id = ?").run(
+      goalId,
+    );
+    expect(
+      captureStrategicMeasureContextError(
+        { ...baseInput, reporting_year: 2030 },
+        actorId,
+      ),
+    ).toMatchObject({
+      code: "STRATEGIC_MEASURE_REPORTING_YEAR_OUT_OF_RANGE",
+    });
+
+    expect(
+      db.prepare("SELECT id FROM kpis WHERE slug = ?").get(baseInput.slug),
+    ).toBeUndefined();
   });
 
   it("rolls back the catalog row when strategic setup validation fails", () => {

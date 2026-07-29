@@ -17,6 +17,7 @@ import {
   lockedMsRemaining,
   pruneExpired,
   recordFailure,
+  verifyBudgetAllows,
 } from "@/lib/login-throttle";
 import { logAuthThrottle } from "@/lib/operational-log";
 
@@ -97,12 +98,19 @@ export async function POST(req: NextRequest) {
   // verification, and without a lockout a stolen must_change_password
   // session gets unlimited distinguishable online guesses at the current
   // credential. The lock is checked BEFORE the compare so throttled
-  // attempts are cheap; a correct password clears the counter, exactly
-  // like the login route's anti-lockout property.
+  // attempts are bounded; a correct password within that bounded budget
+  // clears the counter, exactly like the login route's anti-lockout property.
   pruneExpired();
-  const throttleKey = `pwchg:${user.email.toLowerCase().trim()}`;
-  const lockedMs = lockedMsRemaining(throttleKey);
-  if (lockedMs > 0) {
+  const normalizedEmail = user.email.toLowerCase().trim();
+  const throttleKey = `pwchg:${normalizedEmail}`;
+  const compareKey = `pwcmp:${normalizedEmail}`;
+  const throttleNow = Date.now();
+  const lockedMs = lockedMsRemaining(throttleKey, throttleNow);
+  const lockedUntil = throttleNow + lockedMs;
+  if (
+    lockedMs > 0 &&
+    !verifyBudgetAllows(compareKey, lockedUntil, throttleNow)
+  ) {
     logAuthThrottle("change_password_lockout");
     return NextResponse.json(
       {
@@ -123,6 +131,21 @@ export async function POST(req: NextRequest) {
   // email, which is unreachable here anyway.
   const reauthenticated = await verifyCredentials(user.email, currentPassword);
   if (!reauthenticated) {
+    if (lockedMs > 0) {
+      logAuthThrottle("change_password_lockout");
+      return NextResponse.json(
+        {
+          error:
+            "Too many failed attempts. Please wait a few minutes and try again.",
+        },
+        {
+          status: 429,
+          headers: {
+            "Retry-After": String(Math.max(1, Math.ceil(lockedMs / 1000))),
+          },
+        },
+      );
+    }
     const { lockedUntil } = recordFailure(throttleKey);
     if (lockedUntil > Date.now()) {
       logAuthThrottle("change_password_lockout");
@@ -142,6 +165,7 @@ export async function POST(req: NextRequest) {
     );
   }
   clearFailures(throttleKey);
+  clearFailures(compareKey);
 
   // Atomic: hash + must_change=0 + sessions_valid_after=now in one
   // transaction. The watermark bump invalidates all prior sessions.

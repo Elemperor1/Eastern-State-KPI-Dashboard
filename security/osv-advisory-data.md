@@ -53,6 +53,8 @@ advisory's `maxLength` bound, but current advisory metadata recognizes only
 5.0.8 as patched. `scripts/security-workflow-policy.test.ts` therefore locks
 the sole ignored path, versions, three consumers, and development-only flags;
 any new or downgraded copy fails the repository policy even while the scanner
-exception exists. The repository maintainer owns the exception and must remove
-it when advisory metadata or the upstream lint chain converges, or re-review it
-at expiry.
+exception exists. The pull-request dependency-review workflow carries the same
+single exact GHSA allowance so its independently live advisory gate applies the
+same reviewed decision. The repository maintainer owns both exceptions and must
+remove them when advisory metadata or the upstream lint chain converges, or
+re-review them at expiry.
