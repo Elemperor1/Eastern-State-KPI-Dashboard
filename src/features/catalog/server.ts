@@ -95,10 +95,10 @@ function asKpiWithCategory(row: Record<string, unknown>): KPIWithCategory {
 
 /** Retrieves categories. */
 export function listCategories(
-  options: { includeArchived?: boolean } = {},
+  options: { includeArchived?: boolean; planId?: number } = {},
 ): Category[] {
   const db = getDb();
-  const planId = getActiveInstallation().plan.id;
+  const planId = options.planId ?? getActiveInstallation().plan.id;
   const rows = db
     .prepare(
       `SELECT * FROM categories
@@ -113,10 +113,10 @@ export function listCategories(
 /** Retrieves category. */
 export function getCategory(
   id: number,
-  options: { includeArchived?: boolean } = {},
+  options: { includeArchived?: boolean; planId?: number } = {},
 ): Category | null {
   const db = getDb();
-  const planId = getActiveInstallation().plan.id;
+  const planId = options.planId ?? getActiveInstallation().plan.id;
   const row = db
     .prepare(
       `SELECT * FROM categories WHERE id = ? AND plan_id = ?
@@ -131,10 +131,10 @@ export function getCategory(
 /** Retrieves category by slug. */
 export function getCategoryBySlug(
   slug: string,
-  options: { includeArchived?: boolean } = {},
+  options: { includeArchived?: boolean; planId?: number } = {},
 ): Category | null {
   const db = getDb();
-  const planId = getActiveInstallation().plan.id;
+  const planId = options.planId ?? getActiveInstallation().plan.id;
   const row = db
     .prepare(
       `SELECT * FROM categories WHERE slug = ? AND plan_id = ?
@@ -196,6 +196,7 @@ export function updateCategory(
   if (!fields.length) return;
   transaction(() => {
     const before = rawCategory(id);
+    assertLegacyCatalogMutationIsActivePlan(Number(before.plan_id));
     getDb()
       .prepare(`UPDATE categories SET ${fields.join(", ")} WHERE id = ?`)
       .run(...values, id);
@@ -402,9 +403,10 @@ export function listKPIs(opts?: {
   includeInactive?: boolean;
   parentsOnly?: boolean;
   includeArchived?: boolean;
+  planId?: number;
 }): KPIWithCategory[] {
   const db = getDb();
-  const planId = getActiveInstallation().plan.id;
+  const planId = opts?.planId ?? getActiveInstallation().plan.id;
   const where: string[] = ["c.plan_id = ?"];
   if (!opts?.includeInactive) where.push("k.is_active = 1");
   if (opts?.parentsOnly) where.push("k.parent_id IS NULL");
@@ -429,10 +431,10 @@ export function listKPIs(opts?: {
 /** Retrieves kpi. */
 export function getKPI(
   id: number,
-  options: { includeArchived?: boolean } = {},
+  options: { includeArchived?: boolean; planId?: number } = {},
 ): KPIWithCategory | null {
   const db = getDb();
-  const planId = getActiveInstallation().plan.id;
+  const planId = options.planId ?? getActiveInstallation().plan.id;
   const row = db
     .prepare(
       `SELECT k.*, c.name as category_name, c.slug as category_slug,
@@ -663,6 +665,7 @@ export function updateKPI(
   if (!fields.length) return;
   transaction(() => {
     const before = rawKpiWithContext(id);
+    assertLegacyCatalogMutationIsActivePlan(Number(before.plan_id));
     assertKpiUpdateIntegrity(id, before, patch);
     getDb()
       .prepare(`UPDATE kpis SET ${fields.join(", ")} WHERE id = ?`)
@@ -792,6 +795,34 @@ export class CatalogEntityNotFoundError extends Error {
   }
 }
 
+/**
+ * Refuses legacy catalog mutations against Draft, Archived, or Cancelled Plan
+ * records. Draft editing is owned by Setup → Plans, whose record revision and
+ * Whole-Plan Revision checks prevent one Admin from silently overwriting
+ * another Admin's work.
+ */
+export class CatalogPlanLifecycleError extends Error {
+  readonly code = "CATALOG_PLAN_LIFECYCLE_BLOCKED" as const;
+
+  /** Creates a bounded, nontechnical conflict for an out-of-scope Plan. */
+  constructor() {
+    super(
+      "This record belongs to a Plan that is not Active. Make Draft changes in Setup → Plans, where concurrent edits are protected.",
+    );
+    this.name = "CatalogPlanLifecycleError";
+  }
+}
+
+/** Requires a catalog row to belong to the Active Plan. */
+function assertLegacyCatalogMutationIsActivePlan(planId: number): void {
+  const row = getDb()
+    .prepare("SELECT lifecycle_state FROM strategic_plans WHERE id = ?")
+    .get(planId) as { lifecycle_state: string } | undefined;
+  if (row?.lifecycle_state !== "active") {
+    throw new CatalogPlanLifecycleError();
+  }
+}
+
 /** Implements the raw category operation. */
 function rawCategory(id: number): Record<string, unknown> {
   const row = getDb()
@@ -847,7 +878,7 @@ function recordLegacyCategoryEvent(
 function rawKpiWithContext(id: number): Record<string, unknown> {
   const row = getDb()
     .prepare(
-      `SELECT k.*, c.name AS category_name,
+      `SELECT k.*, c.plan_id AS plan_id, c.name AS category_name,
               (
                 SELECT g.name
                 FROM goal_kpis membership

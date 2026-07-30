@@ -28,6 +28,9 @@ import { EASTERN_STATE_STRATEGIC_CONFIGURATION_FIXTURE } from "./bootstrap/strat
 /** Removes or resets strategic plan data. */
 function resetStrategicPlanData(): void {
   const db = getDb();
+  db.exec(
+    "INSERT OR REPLACE INTO meta (key, value) VALUES ('seed_reset_internal_write', '1');",
+  );
   // S053-C1: tombstone for the destructive reset. `meta` survives the
   // wipe, so the timestamp of the most recent deliberate reset remains
   // auditable after every audit table has been cleared.
@@ -36,6 +39,14 @@ function resetStrategicPlanData(): void {
   // history or definition can disappear through an ordinary entity delete.
   // `db:seed` is the one explicit disposable-data reset, so clear those rows
   // deliberately in dependency order before replacing the legacy sample set.
+  db.exec("DELETE FROM activation_recovery_audit_events;");
+  db.exec("DELETE FROM plan_activation_operations;");
+  db.exec("DELETE FROM strategic_plan_lifecycle_events;");
+  db.exec("DELETE FROM plan_readiness_overrides;");
+  db.exec("DELETE FROM plan_question_decisions;");
+  db.exec("DELETE FROM plan_item_reviews;");
+  db.exec("DELETE FROM successor_lineage;");
+  db.exec("DELETE FROM plan_section_reviews;");
   db.exec("DELETE FROM board_reporting_audit_events;");
   db.exec("DELETE FROM board_reporting_scopes;");
   db.exec("INSERT OR REPLACE INTO meta (key, value) VALUES ('board_reporting_scope_initialized', '0');");
@@ -57,8 +68,12 @@ function resetStrategicPlanData(): void {
   db.exec("DELETE FROM kpis;");
   db.exec("DELETE FROM categories;");
   db.exec("DELETE FROM installation_audit_events;");
+  db.exec("UPDATE strategic_plans SET predecessor_plan_id = NULL;");
   db.exec("DELETE FROM strategic_plans;");
   db.exec("DELETE FROM organizations;");
+  db.exec(
+    "INSERT OR REPLACE INTO meta (key, value) VALUES ('seed_reset_internal_write', '0');",
+  );
   db.exec("INSERT OR REPLACE INTO meta (key, value) VALUES ('sample_data', '1');");
 }
 
@@ -101,7 +116,7 @@ function main(): void {
   let entryCount = 0;
   let goalCount = 0;
 
-  transaction(() => {
+  const strategicConfiguration = transaction(() => {
     resetStrategicPlanData();
     bootstrapInstallation(EASTERN_STATE_INSTALLATION_FIXTURE);
 
@@ -179,12 +194,13 @@ function main(): void {
         }
       }
     }
+    const configuration = initializeStrategicPlanConfiguration(
+      EASTERN_STATE_STRATEGIC_CONFIGURATION_FIXTURE,
+    );
+    ensureSeedAdmin();
+    return configuration;
   });
 
-  const strategicConfiguration = initializeStrategicPlanConfiguration(
-    EASTERN_STATE_STRATEGIC_CONFIGURATION_FIXTURE,
-  );
-  ensureSeedAdmin();
   const kpis = listKPIs();
   console.log(
     `\nSeed complete. ${kpis.length} KPIs and ${strategicConfiguration.goals.created + strategicConfiguration.goals.updated + strategicConfiguration.goals.unchanged} strategic goals ready across ${STRATEGIC_PLAN_YEARS[0]}–${STRATEGIC_PLAN_YEARS[STRATEGIC_PLAN_YEARS.length - 1]} (${entryCount} values, ${goalCount} legacy KPI targets).`,

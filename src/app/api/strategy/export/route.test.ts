@@ -5,10 +5,12 @@ const {
   requireSessionMock,
   listStrategicReportingPeriodsMock,
   loadBoardReportPageDataMock,
+  resolveReportingPlanContextMock,
 } = vi.hoisted(() => ({
   requireSessionMock: vi.fn(),
   listStrategicReportingPeriodsMock: vi.fn(),
   loadBoardReportPageDataMock: vi.fn(),
+  resolveReportingPlanContextMock: vi.fn(),
 }));
 
 vi.mock("@/features/auth/session", () => ({
@@ -24,6 +26,7 @@ vi.mock("@/features/auth/session", () => ({
 vi.mock("@/features/reporting/server", () => ({
   listStrategicReportingPeriods: listStrategicReportingPeriodsMock,
   loadBoardReportPageData: loadBoardReportPageDataMock,
+  resolveReportingPlanContext: resolveReportingPlanContextMock,
   /** Supports the reporting cycle through month test scenario. */
   reportingCycleThroughMonth: (period: { periodType: string; periodIndex: number }) =>
     period.periodType === "quarterly" ? period.periodIndex * 3 : period.periodIndex,
@@ -47,12 +50,24 @@ const REPORT = {
   unresolvedReasons: [],
 };
 
+const ACTIVE_PLAN = {
+  id: 2,
+  slug: "active-plan",
+  name: "Active Plan",
+  startYear: 2025,
+  endYear: 2029,
+  lifecycleState: "active",
+  years: [2025, 2026, 2027, 2028, 2029],
+};
+
 beforeEach(() => {
   requireSessionMock.mockReset();
   requireSessionMock.mockResolvedValue({ id: 1, role: "viewer" });
   loadBoardReportPageDataMock.mockReset();
   loadBoardReportPageDataMock.mockReturnValue({ report: REPORT });
   listStrategicReportingPeriodsMock.mockReset();
+  resolveReportingPlanContextMock.mockReset();
+  resolveReportingPlanContextMock.mockReturnValue(ACTIVE_PLAN);
   listStrategicReportingPeriodsMock.mockReturnValue([{
     value: "monthly:1",
     label: "January",
@@ -74,6 +89,7 @@ describe("GET /api/strategy/export", () => {
       year: 2026,
       throughMonth: 12,
       audience: "staff",
+      plan: ACTIVE_PLAN,
     });
   });
 
@@ -94,6 +110,7 @@ describe("GET /api/strategy/export", () => {
       year: 2026,
       throughMonth: 6,
       audience: "staff",
+      plan: ACTIVE_PLAN,
     });
   });
 
@@ -115,6 +132,7 @@ describe("GET /api/strategy/export", () => {
         periodIndex: 1,
       },
       audience: "staff",
+      plan: ACTIVE_PLAN,
     });
   });
 
@@ -128,10 +146,56 @@ describe("GET /api/strategy/export", () => {
     );
 
     expect(response.status).toBe(200);
-    expect(listStrategicReportingPeriodsMock).toHaveBeenCalledWith(2026, "board");
+    expect(listStrategicReportingPeriodsMock).toHaveBeenCalledWith(
+      2026,
+      "board",
+      ACTIVE_PLAN,
+    );
     expect(loadBoardReportPageDataMock).toHaveBeenCalledWith(
       expect.objectContaining({ audience: "board" }),
     );
+  });
+
+  it("keeps an Archived plan explicit and Board-scoped across JSON export", async () => {
+    const archivedPlan = {
+      id: 9,
+      slug: "plan-2020-2024",
+      name: "Strategic Plan 2020–2024",
+      startYear: 2020,
+      endYear: 2024,
+      lifecycleState: "archived",
+      years: [2020, 2021, 2022, 2023, 2024],
+    };
+    requireSessionMock.mockResolvedValueOnce({ id: 2, role: "board" });
+    resolveReportingPlanContextMock.mockReturnValueOnce(archivedPlan);
+
+    const response = await GET(
+      new NextRequest(
+        "http://localhost/api/strategy/export?plan=9&year=2024&format=json",
+      ),
+    );
+
+    expect(response.status).toBe(200);
+    expect(resolveReportingPlanContextMock).toHaveBeenCalledWith(9);
+    expect(loadBoardReportPageDataMock).toHaveBeenCalledWith({
+      year: 2024,
+      throughMonth: 12,
+      audience: "board",
+      plan: archivedPlan,
+    });
+  });
+
+  it("rejects a plan id that is not an Archived reporting context", async () => {
+    resolveReportingPlanContextMock.mockReturnValueOnce(null);
+
+    const response = await GET(
+      new NextRequest(
+        "http://localhost/api/strategy/export?plan=2&year=2026",
+      ),
+    );
+
+    expect(response.status).toBe(404);
+    expect(loadBoardReportPageDataMock).not.toHaveBeenCalled();
   });
 
   it("rejects invalid periods before loading data", async () => {

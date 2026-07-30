@@ -1,9 +1,43 @@
+# Schema 16 Migration Notes
+
+## Schema 16 Successor Strategic Plan lifecycle
+
+Schema 16 is an additive, preservation-only migration. It adds lifecycle,
+lineage, readiness, Whole-Plan Revision, activation-operation, and immutable
+recovery evidence beside the existing plan-owned records. It also adds Draft
+review state to the persisted Board scope. The migration does not create a
+Draft and does not rewrite or re-key any existing user, plan, Priority, Goal,
+Measure, definition, Target, result, Board setting, legacy archive row, or
+audit event. The existing `strategic_plans.status` value is mirrored once into
+the new lifecycle state; the current Active plan remains Active.
+
+Back up the exact SQLite database and its WAL/SHM state, stop application
+writes, and run:
+
+```bash
+DATABASE_PATH=/absolute/path/to/kpi.db npm run db:migrate
+```
+
+Run the same command a second time and confirm it is a no-op. Never use
+`db:seed` for this upgrade. Before production rollout, rehearse both runs on a
+current production clone, compare row counts and stable IDs, run
+`PRAGMA foreign_key_check`, and retain the pre-migration backup. The
+schema-15 → schema-16 DDL and version record commit or roll back together;
+fault-injection coverage proves a failed attempt remains at schema 15 and can
+be retried.
+
+Plan Activation creates and verifies its own separate pre-activation backup.
+That backup is not a substitute for the migration backup. See
+`docs/successor-plans-operator-runbook.md` for activation pause, restart
+reconciliation, fail-closed integrity handling, and the supported
+`npm run plans:recover` restoration boundary.
+
 # Schema 15 Migration Notes
 
 ## Supported upgrade paths
 
-Schemas 9, 10, 11, 12, 13, and 14 are supported additive predecessors of
-schema 15. For any of them, stop writes, back up SQLite (including WAL/SHM
+Schemas 9, 10, 11, 12, 13, 14, and 15 are supported additive predecessors of
+schema 16. For any of them, stop writes, back up SQLite (including WAL/SHM
 state), and run
 `DATABASE_PATH=/absolute/path/to/kpi.db npm run db:migrate`; never use
 `db:seed` for the upgrade. Schema 8 also migrates additively through the same

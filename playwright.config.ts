@@ -49,6 +49,7 @@ export default defineConfig({
       AUTH_DISABLED: "false",
       BIND_HOST: "127.0.0.1",
       BOOTSTRAP_ADMIN_PASSWORD: adminPassword,
+      BOOTSTRAP_VIEWER_PASSWORD: `E2E-Viewer-${randomBytes(24).toString("base64url")}`,
       DATABASE_PATH: databaseRun.databasePath,
       PORT: String(port),
       SESSION_SECRET: sessionSecret,

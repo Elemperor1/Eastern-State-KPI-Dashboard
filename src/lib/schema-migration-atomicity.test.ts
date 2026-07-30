@@ -109,7 +109,7 @@ describe("additive migration step atomicity", () => {
       (healed.prepare("SELECT value FROM meta WHERE key = 'schema_version'").get() as {
         value: string;
       }).value,
-    ).toBe("15");
+    ).toBe("16");
   });
 
   it("rolls back the whole v14 -> v15 step when the version record write fails", () => {
@@ -142,7 +142,71 @@ describe("additive migration step atomicity", () => {
       (healed.prepare("SELECT value FROM meta WHERE key = 'schema_version'").get() as {
         value: string;
       }).value,
-    ).toBe("15");
+    ).toBe("16");
+  });
+
+  it("rolls back the whole v15 -> v16 lifecycle step when the version record write fails", () => {
+    seedCurrentDatabase();
+    downgradeToV15();
+    installMetaInsertFaultTrigger();
+
+    resetDb();
+    expect(() => getDb()).toThrow();
+
+    const probe = new DatabaseSync(dbPath, { readOnly: true });
+    try {
+      expect(metaValue(probe, "schema_version")).toBe("15");
+      for (const table of [
+        "plan_section_reviews",
+        "successor_lineage",
+        "plan_item_reviews",
+        "plan_question_decisions",
+        "plan_readiness_overrides",
+        "strategic_plan_lifecycle_events",
+        "plan_activation_operations",
+        "activation_recovery_audit_events",
+      ]) {
+        expect(tableExists(probe, table)).toBe(false);
+      }
+    } finally {
+      probe.close();
+    }
+
+    removeMetaInsertFaultTrigger();
+    resetDb();
+    const healed = getDb();
+    expect(metaValue(healed as unknown as DatabaseSync, "schema_version")).toBe("16");
+    expect(
+      healed.prepare(
+        "SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'plan_activation_operations'",
+      ).get(),
+    ).toEqual({ name: "plan_activation_operations" });
+    expect(
+      healed
+        .prepare("PRAGMA table_info(plan_activation_operations)")
+        .all()
+        .some((column) => column.name === "committed_write_counter"),
+    ).toBe(true);
+    expect(
+      healed
+        .prepare(
+          "SELECT value FROM meta WHERE key = 'authoritative_write_counter'",
+        )
+        .get(),
+    ).toEqual({ value: "0" });
+    expect(
+      Number(
+        (
+          healed
+            .prepare(
+              `SELECT COUNT(*) AS count FROM sqlite_master
+               WHERE type = 'trigger'
+                 AND name LIKE '%_activation_write_counter_%'`,
+            )
+            .get() as { count: number }
+        ).count,
+      ),
+    ).toBeGreaterThan(0);
   });
 });
 
@@ -163,6 +227,43 @@ function downgradeToV13(): void {
     DROP TABLE user_lifecycle_audit_events;
     DELETE FROM meta WHERE key = 'board_reporting_scope_initialized';
     INSERT OR REPLACE INTO meta (key, value) VALUES ('schema_version', '13');
+  `);
+}
+
+/** Rewinds lifecycle-only objects while retaining the complete schema-15 data. */
+function downgradeToV15(): void {
+  const db = getDb();
+  const triggers = db.prepare(
+    `SELECT name FROM sqlite_master
+     WHERE type = 'trigger' AND (
+       name LIKE '%_plan_%' OR
+       name LIKE '%_activation_pause_%' OR
+       name LIKE '%_activation_write_counter_%' OR
+       name LIKE 'strategic_plans_%' OR
+       name LIKE 'successor_lineage_%' OR
+       name LIKE 'plan_lifecycle_events_%' OR
+       name LIKE 'activation_recovery_events_%'
+     )`,
+  ).all() as Array<{ name: string }>;
+  for (const trigger of triggers) {
+    db.exec(`DROP TRIGGER "${trigger.name.replaceAll('"', '""')}"`);
+  }
+  db.exec(`
+    DROP TABLE activation_recovery_audit_events;
+    DROP TABLE plan_activation_operations;
+    DROP TABLE strategic_plan_lifecycle_events;
+    DROP TABLE plan_readiness_overrides;
+    DROP TABLE plan_question_decisions;
+    DROP TABLE plan_item_reviews;
+    DROP TABLE successor_lineage;
+    DROP TABLE plan_section_reviews;
+    DELETE FROM meta WHERE key IN (
+      'plan_activation_write_pause',
+      'plan_activation_internal_write',
+      'active_plan_integrity_blocked',
+      'authoritative_write_counter'
+    );
+    INSERT OR REPLACE INTO meta (key, value) VALUES ('schema_version', '15');
   `);
 }
 

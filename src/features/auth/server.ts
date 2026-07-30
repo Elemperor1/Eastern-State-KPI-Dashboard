@@ -110,14 +110,14 @@ function generateSeedPassword(): string {
  *  known password. */
 const BOOTSTRAP_ACCOUNTS = [
   {
-    email: "kerry@easternstate.org",
-    name: "Kerry Sautner",
+    email: "zach@easternstate.org",
+    name: "Zach Palmer",
     role: "admin" as Role,
     envVar: "BOOTSTRAP_ADMIN_PASSWORD",
   },
   {
-    email: "zach@easternstate.org",
-    name: "Zach Palmer",
+    email: "kerry@easternstate.org",
+    name: "Kerry Sautner",
     role: "viewer" as Role,
     envVar: "BOOTSTRAP_VIEWER_PASSWORD",
   },

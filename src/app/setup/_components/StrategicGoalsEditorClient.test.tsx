@@ -94,7 +94,8 @@ describe("StrategicGoalSettingsForm", () => {
     expect(html).toContain("Amount needed");
     expect(html).toContain("Plan milestones completed");
     expect(html).toContain("For information only");
-    expect(html).toContain("How it counts");
+    expect(html).toContain("Does this measure affect goal completion?");
+    expect(html).toContain("Required measures affect completion");
     expect(html).toContain("List order");
     expect(html).toContain("Save measure");
     expect(html).toContain("Save goal");

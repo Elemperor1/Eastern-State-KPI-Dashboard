@@ -1,6 +1,6 @@
 # Eastern State KPI — Product Roadmap
 
-> Historical roadmap, audited 2026-06-25. It is not the source of current
+> Historical roadmap, status header refreshed 2026-07-30. It is not the source of current
 > routes or product behavior. Issue 42 and ADR 0022 replaced the legacy
 > dashboard/admin workflows on 2026-07-14. Use `README.md`, `DESIGN.md`,
 > `docs/issue-42-replacement-inventory.md`, and the live source for current
@@ -10,16 +10,16 @@
 
 | Dimension | State | Evidence |
 | --- | --- | --- |
-| Stack | Next.js 15.5.19 App Router + TS + Tailwind + `node:sqlite` + iron-session | `package.json`, `tsconfig.json` |
-| Strategic-plan metric set | 5 priorities · 59 annual KPIs · 25 goals · 2024–2026 | `src/features/catalog/strategic-plan.ts` |
+| Stack | Next.js 16.2.11 App Router + TS + Tailwind + `node:sqlite` + iron-session | `package.json`, `tsconfig.json` |
+| Strategic-plan metric set | 5 priorities · 22 named goals · 59 measures · 2025–2029 plan | `src/features/catalog/strategic-plan.ts`, initialized SQLite |
 | Design language | Teal/navy/yellow + Galano Grotesque per `DESIGN.md` | `src/app/globals.css`, `tailwind.config.ts` |
-| Design-system library | 24 primitives in `src/components/ui/`, enforced by `scripts/design-system-guard.sh` | `src/components/ui/index.ts` |
+| Design-system library | Shared primitives in `src/components/ui/`, enforced by design token/component guards | `src/components/ui/index.ts`, `scripts/design-system-guard.sh` |
 | Build | `npm run design-system:test` includes a production `next build` gate | `package.json` |
 | Lint | `npm run lint` runs design/security guards plus Next ESLint | `package.json`, `eslint.config.mjs` |
 | Type-check | standalone `npx tsc --noEmit` passes | local refactor verification |
-| Smoke harness | `scripts/smoke.sh` — curl-driven, 48 assertions under `AUTH_DISABLED=true` on the strategic-plan path | `scripts/smoke.sh` |
+| Smoke harness | `scripts/smoke.sh` — curl-driven verification of the four destinations, strategic APIs, exports, and removed routes | `scripts/smoke.sh` |
 | Auth | iron-session; `AUTH_DISABLED=true` in `.env.local` bypasses login with a real `auth-disabled@local` users row, surfaced through `src/features/auth/session.ts` | `src/features/auth/server.ts`, `src/features/auth/session.ts`, `src/lib/auth-flag.ts`, `src/lib/session.ts` |
-| Visual regression | none | (no Playwright config checked in; only ad-hoc `output/playwright/*.png`) |
+| Browser acceptance | Credentialed Playwright suite with desktop/mobile, accessibility, recovery, and export checks | `playwright.config.ts`, `e2e/dashboard-acceptance.spec.ts` |
 
 The original critical bypass bug in this roadmap has been fixed: the development bypass now uses a real `auth-disabled@local` users row, and the strategic-plan bypass smoke path reports `48 passed, 0 failed`.
 

@@ -34,10 +34,18 @@ export const REQUIRED_TABLES = [
   "board_reporting_statements",
   "board_reporting_statement_kpis",
   "board_reporting_audit_events",
+  "plan_section_reviews",
+  "successor_lineage",
+  "plan_item_reviews",
+  "plan_question_decisions",
+  "plan_readiness_overrides",
+  "strategic_plan_lifecycle_events",
+  "plan_activation_operations",
+  "activation_recovery_audit_events",
 ];
 
 /**
- * @typedef {"database_missing" | "database_unavailable" | "database_incompatible" | "migration_in_progress" | "initialization_incomplete"} ReadinessFailureReason
+ * @typedef {"database_missing" | "database_unavailable" | "database_incompatible" | "migration_in_progress" | "initialization_incomplete" | "activation_in_progress" | "integrity_blocked"} ReadinessFailureReason
  */
 
 /**
@@ -122,6 +130,25 @@ export function checkDatabaseReadiness(
       return { ready: false, reason: "initialization_incomplete" };
     }
 
+    const activationSafety = Object.fromEntries(
+      database
+        .prepare(
+          `SELECT key, value FROM meta
+           WHERE key IN (
+             'plan_activation_write_pause',
+             'active_plan_integrity_blocked'
+           )`,
+        )
+        .all()
+        .map((row) => [row.key, row.value]),
+    );
+    if (activationSafety.active_plan_integrity_blocked === "1") {
+      return { ready: false, reason: "integrity_blocked" };
+    }
+    if (activationSafety.plan_activation_write_pause === "1") {
+      return { ready: false, reason: "activation_in_progress" };
+    }
+
     const installation = database
       .prepare(
         `SELECT EXISTS (
@@ -130,6 +157,7 @@ export function checkDatabaseReadiness(
            JOIN strategic_plans plan
              ON plan.organization_id = organization.id
             AND plan.status = 'active'
+            AND plan.lifecycle_state = 'active'
            JOIN categories priority ON priority.plan_id = plan.id
            JOIN kpis measure ON measure.category_id = priority.id
            WHERE organization.status = 'active'
@@ -140,6 +168,16 @@ export function checkDatabaseReadiness(
       .get();
     if (Number(installation?.initialized ?? 0) !== 1) {
       return { ready: false, reason: "initialization_incomplete" };
+    }
+    const activePlans = database
+      .prepare(
+        `SELECT COUNT(*) AS count
+         FROM strategic_plans
+         WHERE lifecycle_state = 'active' AND archived_at IS NULL`,
+      )
+      .get();
+    if (Number(activePlans?.count ?? 0) !== 1) {
+      return { ready: false, reason: "integrity_blocked" };
     }
 
     return { ready: true };

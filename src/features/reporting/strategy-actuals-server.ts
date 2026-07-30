@@ -20,11 +20,14 @@ import {
 export function listCalculatedStrategyActuals({
   kpiIds,
   throughYear,
+  planStartYear = getActiveInstallation().plan.startYear,
+  planId,
 }: {
   kpiIds: number[];
   throughYear: number;
+  planStartYear?: number;
+  planId?: number;
 }): StrategicCalculatedActual[] {
-  const planStartYear = getActiveInstallation().plan.startYear;
   if (kpiIds.length === 0 || throughYear < planStartYear) return [];
   const wanted = new Set(kpiIds);
   const actuals: StrategicCalculatedActual[] = [];
@@ -56,6 +59,7 @@ export function listCalculatedStrategyActuals({
           ...calculateMultiComponentPeriods({
             configuration,
             year,
+            planId,
             previousValues: componentValuesByReportingPeriod,
           }),
         );
@@ -105,13 +109,17 @@ export function listCalculatedStrategyActuals({
 function calculateMultiComponentPeriods({
   configuration,
   year,
+  planId,
   previousValues,
 }: {
   configuration: ReturnType<typeof listEffectiveMeasurementConfigs>[number];
   year: number;
+  planId?: number;
   previousValues: Map<string, number>;
 }): StrategicCalculatedActual[] {
-  const definitions = listComponentsForConfiguration(configuration.id, year);
+  const definitions = listComponentsForConfiguration(configuration.id, year, {
+    planId,
+  });
   const entries = new Map<
     number,
     Map<string, StrategyComponentEntryRecord | StrategyDistributionRecord>

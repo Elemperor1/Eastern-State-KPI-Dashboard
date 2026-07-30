@@ -112,8 +112,8 @@ export function StrategicTrendsView({
         <Alert className="mb-5">
           <p className="font-semibold">Archived measures excluded from Trends</p>
           <p className="mt-1">
-            These measures remain part of the reporting record but are not
-            included in the trend lines:
+            These archived measures are kept for historical reference, but
+            their results are not shown in Trends:
           </p>
           <ul className="mt-2 list-disc space-y-1 pl-5">
             {data.excludedMeasures.map((measure) => (

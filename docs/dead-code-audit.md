@@ -65,8 +65,8 @@ as framework-discovered entries.
 
 The primary workflows are authentication/password rotation; Overview and its
 priority/measure drill-downs; strategic KPI data entry and deletion; Board and
-Trends reporting with CSV/PNG/PDF/print output; Setup Measures, Goals, People,
-and immutable Activity; empty/error/recovery states; responsive and keyboard
+Trends reporting with CSV/PNG/PDF/print output; Setup Plans, Measures, Goals,
+People, and immutable Activity; empty/error/recovery states; responsive and keyboard
 navigation; migration/seed/provisioning; performance profiling; and the
 security/quality gates.
 

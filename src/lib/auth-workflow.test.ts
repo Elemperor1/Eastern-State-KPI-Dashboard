@@ -91,7 +91,7 @@ import {
   POST as usersPost,
 } from "@/app/api/users/route";
 
-const ADMIN_EMAIL = "kerry@easternstate.org";
+const ADMIN_EMAIL = "zach@easternstate.org";
 const TEMP_PASSWORD = "TempAdmin!2026-rotate";
 const NEW_PASSWORD = "PermanentAdmin!2026-xyz";
 
@@ -160,7 +160,7 @@ async function loginAsAdmin(ip = "10.0.0.1"): Promise<void> {
   expect(res.status).toBe(200);
 }
 
-/** Rotate kerry's temp credential and log in with the new one so the
+/** Rotate Zach's temp credential and log in with the new one so the
  *  session is an ACTIVE (non-must_change) admin — required for the
  *  req-7 tests where requireAdmin must pass. */
 async function becomeActiveAdmin(): Promise<void> {
@@ -433,7 +433,7 @@ describe("session invalidation across credential changes (req 6)", () => {
         user: {
           id: 1,
           email: ADMIN_EMAIL,
-          name: "Kerry Sautner",
+          name: "Zach Palmer",
           role: "admin",
           must_change_password: true,
         },
@@ -508,11 +508,11 @@ describe("admin cannot clear must_change without a valid new credential (req 7)"
       }),
     );
     expect(res.status).toBe(200);
-    const zach = findUserById(2)!;
-    expect(zach.must_change_password).toBe(true);
-    // The reset also bumped the watermark, invalidating zach's prior
+    const kerry = findUserById(2)!;
+    expect(kerry.must_change_password).toBe(true);
+    // The reset also bumped the watermark, invalidating Kerry's prior
     // sessions (defense-in-depth for req 6).
-    expect(zach.sessions_valid_after).toBeGreaterThan(0);
+    expect(kerry.sessions_valid_after).toBeGreaterThan(0);
     expect(bcrypt.compareSync("AdminResetTemp!2026", hashFor(2))).toBe(true);
   });
 
@@ -525,7 +525,7 @@ describe("admin cannot clear must_change without a valid new credential (req 7)"
       }),
     );
     expect(res.status).toBe(403);
-    // zach's credential was NOT changed.
+    // Kerry's credential was NOT changed.
     expect(bcrypt.compareSync("SneakyReset!2026", hashFor(2))).toBe(false);
   });
 

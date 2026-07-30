@@ -155,13 +155,19 @@ class SmokeFakeHandler(http.server.BaseHTTPRequestHandler):
 
         if path == "/setup":
             area = params.get("area", ["measures"])[0]
+            if area == "plans":
+                return self._html_resp(200, html_body(
+                    "Setup</h1><nav><a>Plans</a><a>Measures</a><a>Goals</a>"
+                    "<a>People</a><a>Activity</a></nav>"
+                    "<h2>Current Active plan</h2><h3>Start the next plan</h3>"
+                ))
             if area == "measures" and params.get("filter") == ["needs-attention"]:
                 return self._html_resp(200, html_body(
                     'Setup — Needs attention (2) — '
                     '<a href="/setup?area=measures&amp;item=1">Open measure</a>'
                 ))
             return self._html_resp(200, html_body(
-                "Setup</h1><nav><a>Measures</a><a>Goals</a>"
+                "Setup</h1><nav><a>Plans</a><a>Measures</a><a>Goals</a>"
                 "<a>People</a><a>Activity</a></nav>"
                 "<p>Setup changes — Smoke test; delete after verification</p>"
             ))

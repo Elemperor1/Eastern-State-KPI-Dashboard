@@ -1,7 +1,11 @@
 # Product context
 
-`PRODUCT.md` is the concise Impeccable entry point. It does not replace the
-canonical hierarchy: [product foundation](docs/product-foundation.md) owns the
+For a nontechnical explanation of the product, begin with the
+[leadership guide](docs/leadership-guide.md). It explains the purpose, roles,
+first sign-in, reporting workflow, and launch decisions in plain language.
+
+This file is the concise product-and-design context for people changing the
+software. The [product foundation](docs/product-foundation.md) owns the
 cross-layer product model, [ADR 0022](docs/adr/0022-canonical-strategic-plan-product.md)
 owns the four-destination and legacy-archive boundary, [CONTEXT.md](CONTEXT.md)
 owns the domain glossary, and [DESIGN.md](DESIGN.md) owns the visual system.

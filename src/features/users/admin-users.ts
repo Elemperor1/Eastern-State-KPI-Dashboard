@@ -48,7 +48,7 @@ export function formatAdminUserCreatedDate(createdAt: string): string {
 
 /** Builds role change success message. */
 export function buildRoleChangeSuccessMessage(name: string, role: Role): string {
-  return `Role for ${name} updated to ${role}. Their active sessions were revoked.`;
+  return `Role for ${name} updated to ${role}. They have been signed out on all devices.`;
 }
 
 /** Builds disable user success message. */

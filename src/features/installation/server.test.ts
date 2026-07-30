@@ -267,9 +267,9 @@ describe("database-backed installation and plan", () => {
       db
         .prepare(
           `INSERT INTO strategic_plans (
-             organization_id, slug, name, start_year, end_year, status, archived_at
+             organization_id, slug, name, start_year, end_year, status
            ) VALUES (?, 'archived-plan', 'Archived plan', 2020, 2029,
-                     'archived', datetime('now'))`,
+                     'draft')`,
         )
         .run(installation.organization.id).lastInsertRowid,
     );
@@ -314,6 +314,23 @@ describe("database-backed installation and plan", () => {
       ).run(kpiId).lastInsertRowid,
     );
     db.prepare(
+      "INSERT OR REPLACE INTO meta (key, value) VALUES ('plan_activation_internal_write', '1')",
+    ).run();
+    db.prepare(
+      `UPDATE strategic_plans
+       SET status = 'archived', lifecycle_state = 'archived',
+           archived_at = datetime('now')
+       WHERE id = ?`,
+    ).run(installation.plan.id);
+    db.prepare(
+      `UPDATE strategic_plans
+       SET status = 'active', lifecycle_state = 'active', archived_at = NULL
+       WHERE id = ?`,
+    ).run(archivedPlanId);
+    db.prepare(
+      "INSERT OR REPLACE INTO meta (key, value) VALUES ('plan_activation_internal_write', '0')",
+    ).run();
+    db.prepare(
       `INSERT INTO kpi_observations (
          kpi_id, configuration_id, year, period_type, period_index, scalar_value
        ) VALUES (?, ?, 2029, 'annual', 0, 1)`,
@@ -347,8 +364,25 @@ describe("database-backed installation and plan", () => {
       `INSERT INTO kpi_targets (
          component_id, target_scope, reporting_year, target_year, baseline_year,
          target_value, configuration_status
-       ) VALUES (?, 'annual', 2029, 2029, 2025, 1, 'active')`,
+      ) VALUES (?, 'annual', 2029, 2029, 2025, 1, 'active')`,
     ).run(componentId);
+    db.prepare(
+      `UPDATE strategic_plans
+       SET status = 'archived', lifecycle_state = 'archived',
+           archived_at = datetime('now')
+       WHERE id = ?`,
+    ).run(archivedPlanId);
+    db.prepare(
+      "INSERT OR REPLACE INTO meta (key, value) VALUES ('plan_activation_internal_write', '1')",
+    ).run();
+    db.prepare(
+      `UPDATE strategic_plans
+       SET status = 'active', lifecycle_state = 'active', archived_at = NULL
+       WHERE id = ?`,
+    ).run(installation.plan.id);
+    db.prepare(
+      "INSERT OR REPLACE INTO meta (key, value) VALUES ('plan_activation_internal_write', '0')",
+    ).run();
 
     expect(
       updateActiveInstallation(

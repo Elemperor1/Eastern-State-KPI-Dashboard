@@ -92,9 +92,9 @@ function aggregationLabel(value: AggregationMethod): string {
   const labels: Record<AggregationMethod, string> = {
     none: "Keep separate",
     average: "Average",
-    weighted_average: "Weighted average",
+    weighted_average: "Weighted average (more important inputs count more)",
     sum: "Add together",
-    ratio: "Calculate a ratio",
+    ratio: "Divide one input by another",
     all_complete: "All inputs complete",
   };
   return labels[value];
@@ -450,7 +450,9 @@ function ConfigurationEditor({
       {feedback ? <StatusBanner variant={feedback.variant}>{feedback.message}</StatusBanner> : null}
       {successorMode && data.configuration ? (
         <StatusBanner variant="neutral">
-          Choose the first reporting year for this change. Earlier results will stay unchanged.
+          This creates a new version of the measure for future reporting.
+          Choose the first year it applies; past results and their setup will
+          not change.
         </StatusBanner>
       ) : null}
 
@@ -546,7 +548,7 @@ function ConfigurationEditor({
                 />
               </FormField>
               </> : null}
-              {draft.measurementType === "multi_component" ? <FormField label="Combine the inputs by" htmlFor="strategy-aggregation" hint={<ErrorHint error={errors.aggregation_method} />}>
+              {draft.measurementType === "multi_component" ? <FormField label="How should this measure combine its inputs?" htmlFor="strategy-aggregation" hint={<ErrorHint error={errors.aggregation_method} fallback="This choice controls the overall result shown in reports." />}>
                 <Select
                   id="strategy-aggregation"
                   value={draft.aggregationMethod}
@@ -573,7 +575,7 @@ function ConfigurationEditor({
                   onChange={(event) => update("calculationPrecision", event.target.value)}
                 />
               </FormField>
-              <FormField label="Baseline value" htmlFor="strategy-baseline" hint={<ErrorHint error={errors.baseline_value} fallback="Optional source baseline; zero remains a valid value." />}>
+              <FormField label="Starting value" htmlFor="strategy-baseline" hint={<ErrorHint error={errors.baseline_value} fallback="Optional value used as the point of comparison. Zero is valid." />}>
                 <Input
                   id="strategy-baseline"
                   type="number"
@@ -583,7 +585,7 @@ function ConfigurationEditor({
                   onChange={(event) => update("baselineValue", event.target.value)}
                 />
               </FormField>
-              <FormField label="Board status" htmlFor="strategy-board-status" hint={<ErrorHint error={errors.board_level_status} />}>
+              <FormField label="Leadership assessment" htmlFor="strategy-board-status" hint={<ErrorHint error={errors.board_level_status} fallback="An assessment such as On track or At risk. This does not replace the calculated result." />}>
                 <Select
                   id="strategy-board-status"
                   value={draft.boardStatus}
@@ -594,7 +596,7 @@ function ConfigurationEditor({
                   ))}
                 </Select>
               </FormField>
-              <FormField label="First reporting year" htmlFor="strategy-effective-start" hint={<ErrorHint error={errors.effective_start_year} />}>
+              <FormField label="Use this setup starting in" htmlFor="strategy-effective-start" hint={<ErrorHint error={errors.effective_start_year} fallback="Results from this year onward use these settings." />}>
                 <Input
                   id="strategy-effective-start"
                   type="number"
@@ -605,7 +607,7 @@ function ConfigurationEditor({
                   onChange={(event) => update("effectiveStartYear", event.target.value)}
                 />
               </FormField>
-              <FormField label="Last reporting year" htmlFor="strategy-effective-end" hint={<ErrorHint error={errors.effective_end_year} fallback="Leave blank to keep using it." />}>
+              <FormField label="Stop using this setup after" htmlFor="strategy-effective-end" hint={<ErrorHint error={errors.effective_end_year} fallback="Leave blank if these settings should continue." />}>
                 <Input
                   id="strategy-effective-end"
                   type="number"
@@ -632,7 +634,7 @@ function ConfigurationEditor({
               Setup progress
             </h3>
             <div className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-3">
-              <FormField label="Setup status" htmlFor="strategy-config-status" hint={<ErrorHint error={errors.configuration_status} />}>
+              <FormField label="Setup status" htmlFor="strategy-config-status" hint={<ErrorHint error={errors.configuration_status} fallback="Choose Ready only when the measure has everything needed for reporting." />}>
                 <Select
                   id="strategy-config-status"
                   value={draft.configurationStatus}
@@ -669,7 +671,7 @@ function ConfigurationEditor({
                   onChange={(event) => update("lastReviewedDate", event.target.value)}
                 />
               </FormField>
-              <FormField label="Source" htmlFor="strategy-source" className="md:col-span-2" hint={<ErrorHint error={errors.source_reference} />}>
+              <FormField label="Where does this definition come from?" htmlFor="strategy-source" className="md:col-span-2" hint={<ErrorHint error={errors.source_reference} fallback="For example: approved plan, survey guide, policy, or workbook." />}>
                 <Input
                   id="strategy-source"
                   value={draft.sourceReference}

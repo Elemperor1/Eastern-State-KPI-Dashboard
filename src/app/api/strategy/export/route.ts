@@ -5,11 +5,14 @@ import {
   listStrategicReportingPeriods,
   loadBoardReportPageData,
   reportingCycleThroughMonth,
+  resolveReportingPlanContext,
 } from "@/features/reporting/server";
 import { buildStrategicBoardCsvText } from "@/features/reporting/strategic-board-report";
+import { resolveStrategicReportingYear } from "@/features/strategy";
 
 const ExportQuerySchema = z.object({
-  year: z.coerce.number().int().min(1900).max(2100),
+  plan: z.coerce.number().int().positive().optional(),
+  year: z.coerce.number().int().min(1900).max(2100).optional(),
   throughMonth: z.coerce.number().int().min(1).max(12).default(12),
   period: z.string().min(1).optional(),
   format: z.enum(["json", "csv"]).default("json"),
@@ -25,7 +28,8 @@ export async function GET(req: NextRequest) {
   }
 
   const parsed = ExportQuerySchema.safeParse({
-    year: req.nextUrl.searchParams.get("year") ?? new Date().getFullYear(),
+    plan: req.nextUrl.searchParams.get("plan") ?? undefined,
+    year: req.nextUrl.searchParams.get("year") ?? undefined,
     throughMonth: req.nextUrl.searchParams.get("throughMonth") ?? 12,
     period: req.nextUrl.searchParams.get("period") ?? undefined,
     format: req.nextUrl.searchParams.get("format") ?? "json",
@@ -37,10 +41,26 @@ export async function GET(req: NextRequest) {
     );
   }
 
+  const plan = resolveReportingPlanContext(parsed.data.plan);
+  if (!plan) {
+    return NextResponse.json(
+      { error: "Archived Strategic Plan not found" },
+      { status: 404 },
+    );
+  }
+  const year = resolveStrategicReportingYear(parsed.data.year, plan.years);
+  if (parsed.data.year !== undefined && year !== parsed.data.year) {
+    return NextResponse.json(
+      { error: "Reporting year is outside the selected Strategic Plan" },
+      { status: 400 },
+    );
+  }
+  const audience = user.role === "board" ? "board" : "staff";
   const reportingPeriod = parsed.data.period
     ? listStrategicReportingPeriods(
-        parsed.data.year,
-        user.role === "board" ? "board" : "staff",
+        year,
+        audience,
+        plan,
       ).find(
         (candidate) => candidate.value === parsed.data.period,
       )
@@ -50,12 +70,13 @@ export async function GET(req: NextRequest) {
   }
 
   const data = loadBoardReportPageData({
-    year: parsed.data.year,
+    year,
     throughMonth: reportingPeriod
       ? reportingCycleThroughMonth(reportingPeriod)
       : parsed.data.throughMonth,
     ...(reportingPeriod ? { reportingPeriod } : {}),
-    audience: user.role === "board" ? "board" : "staff",
+    audience,
+    plan,
   });
   if (parsed.data.format === "csv") {
     const output = buildStrategicBoardCsvText(data.report);

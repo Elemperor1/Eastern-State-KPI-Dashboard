@@ -46,7 +46,7 @@ function fail(message: string): never {
 /** Runs the main workflow. */
 function main() {
   const email = (
-    process.env.SETUP_ADMIN_EMAIL ?? "kerry@easternstate.org"
+    process.env.SETUP_ADMIN_EMAIL ?? "zach@easternstate.org"
   )
     .toLowerCase()
     .trim();

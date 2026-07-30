@@ -1,5 +1,6 @@
 import { type NextRequest, NextResponse } from "next/server";
 import crypto from "node:crypto";
+import { getPlanWriteSafetyState } from "@/lib/plan-write-safety";
 
 /**
  * D8AD-CAN-004 hardening: the shared request guard applied to every
@@ -276,6 +277,7 @@ function isClientDecodable(value: string): boolean {
  */
 export function assertMutationRequest(
   req: NextRequest,
+  options: { allowDuringPlanActivation?: boolean } = {},
 ): NextResponse | null {
   // 1. Origin / Referer
   const originReason = checkOriginOrReferer(req);
@@ -296,6 +298,31 @@ export function assertMutationRequest(
   if (tokenReason) {
     logCsrf(tokenReason, req);
     return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+  }
+  const planSafety =
+    process.env.NODE_ENV === "test" &&
+    process.env.ENFORCE_PLAN_WRITE_SAFETY_IN_TESTS !== "true"
+      ? { allowed: true as const }
+      : getPlanWriteSafetyState();
+  if (!planSafety.allowed) {
+    if (
+      planSafety.reason === "activation_pause" &&
+      options.allowDuringPlanActivation
+    ) {
+      return null;
+    }
+    return NextResponse.json(
+      {
+        error:
+          planSafety.reason === "activation_pause"
+            ? "Plan activation is briefly pausing saves. Try again in a moment."
+            : "Saving is unavailable because Strategic Plan integrity needs operator attention.",
+      },
+      {
+        status: 503,
+        headers: { "retry-after": "5" },
+      },
+    );
   }
   return null;
 }

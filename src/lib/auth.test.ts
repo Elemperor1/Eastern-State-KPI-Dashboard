@@ -113,11 +113,11 @@ describe("verifyCredentials", () => {
   it("rejects the wrong password for a real seeded admin", async () => {
     // The seed creates the account with a per-install random password;
     // "wrong-password" must not match.
-    const kerry = findUserByEmail("kerry@easternstate.org");
-    expect(kerry).not.toBeNull();
-    expect(kerry?.role).toBe("admin");
+    const zach = findUserByEmail("zach@easternstate.org");
+    expect(zach).not.toBeNull();
+    expect(zach?.role).toBe("admin");
     expect(
-      await verifyCredentials("kerry@easternstate.org", "wrong-password"),
+      await verifyCredentials("zach@easternstate.org", "wrong-password"),
     ).toBeNull();
   });
 
@@ -142,10 +142,10 @@ describe("verifyCredentials", () => {
     // and it must NOT match the previously-documented plaintexts.
     const row = getDb()
       .prepare("SELECT password_hash FROM users WHERE email = ?")
-      .get("kerry@easternstate.org") as { password_hash: string };
+      .get("zach@easternstate.org") as { password_hash: string };
     expect(row.password_hash).toMatch(/^\$2[aby]\$\d{2}\$/);
     expect(
-      await bcrypt.compare("KerryAdmin!2026", row.password_hash),
+      await bcrypt.compare("ZachAdmin!2026", row.password_hash),
     ).toBe(false);
     expect(await bcrypt.compare("", row.password_hash)).toBe(false);
   });
@@ -161,7 +161,9 @@ describe("verifyCredentials", () => {
     const kerry = findUserByEmail("kerry@easternstate.org");
     const zach = findUserByEmail("zach@easternstate.org");
     expect(kerry?.must_change_password).toBe(true);
+    expect(kerry?.role).toBe("viewer");
     expect(zach?.must_change_password).toBe(true);
+    expect(zach?.role).toBe("admin");
   });
 
   it("stores an unguessable bcrypt hash on the bypass row", async () => {

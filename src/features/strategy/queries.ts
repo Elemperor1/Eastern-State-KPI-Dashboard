@@ -37,6 +37,7 @@ import {
 interface StrategyReadOptions {
   year?: number;
   includeArchived?: boolean;
+  planId?: number;
 }
 
 /** Retrieves year. */
@@ -226,9 +227,14 @@ function effectiveTargetClause(): string {
 export function listEffectiveTargetsForKpi(
   kpiId: number,
   year: number,
-  options: Pick<StrategyReadOptions, "includeArchived"> = {},
+  options: Pick<StrategyReadOptions, "includeArchived" | "planId"> = {},
 ): PersistedTarget[] {
-  const plan = getActiveInstallation().plan;
+  const plan = options.planId === undefined
+    ? getActiveInstallation().plan
+    : getDb()
+      .prepare("SELECT start_year AS startYear, end_year AS endYear FROM strategic_plans WHERE id = ?")
+      .get(options.planId) as { startYear: number; endYear: number } | undefined;
+  if (!plan) return [];
   if (year < plan.startYear || year > plan.endYear) {
     return [];
   }
@@ -249,9 +255,14 @@ export function listEffectiveTargetsForKpi(
 function listEffectiveTargetsForComponent(
   componentId: number,
   year: number,
-  options: Pick<StrategyReadOptions, "includeArchived"> = {},
+  options: Pick<StrategyReadOptions, "includeArchived" | "planId"> = {},
 ): PersistedTarget[] {
-  const plan = getActiveInstallation().plan;
+  const plan = options.planId === undefined
+    ? getActiveInstallation().plan
+    : getDb()
+      .prepare("SELECT start_year AS startYear, end_year AS endYear FROM strategic_plans WHERE id = ?")
+      .get(options.planId) as { startYear: number; endYear: number } | undefined;
+  if (!plan) return [];
   if (year < plan.startYear || year > plan.endYear) {
     return [];
   }
@@ -272,7 +283,7 @@ function listEffectiveTargetsForComponent(
 export function listComponentsForConfiguration(
   configurationId: number,
   year: number,
-  options: Pick<StrategyReadOptions, "includeArchived"> = {},
+  options: Pick<StrategyReadOptions, "includeArchived" | "planId"> = {},
 ): StrategyComponentWithTargets[] {
   const rows = getDb()
     .prepare(
@@ -295,7 +306,7 @@ export function listComponentsForConfiguration(
 function listGoalMembers(
   goalId: number,
   year: number,
-  options: Pick<StrategyReadOptions, "includeArchived">,
+  options: Pick<StrategyReadOptions, "includeArchived" | "planId">,
 ): StrategicGoalMemberReadModel[] {
   const rows = getDb()
     .prepare(
@@ -371,7 +382,7 @@ function listStrategicGoalsInternal(
   includeArchivedPriorityContext: boolean,
 ): StrategicGoalReadModel[] {
   const year = queryYear(filter.year);
-  const planId = getActiveInstallation().plan.id;
+  const planId = filter.planId ?? getActiveInstallation().plan.id;
   const where = [
     "g.plan_start_year <= ?",
     "g.plan_end_year >= ?",

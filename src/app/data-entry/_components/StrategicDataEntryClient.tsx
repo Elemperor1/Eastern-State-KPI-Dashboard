@@ -619,7 +619,8 @@ function EntryForm({
             Enter results
           </h2>
           <p className="mt-1 text-sm leading-6 text-ink-500">
-            {data.reportingPeriod.label} · save every input with one action.
+            {data.reportingPeriod.label} · save all values for this measure at
+            once.
           </p>
         </div>
         <span className="text-sm font-medium tabular-nums text-ink-600">
@@ -905,7 +906,7 @@ function AverageFields({
 }) {
   return (
     <div className="space-y-4">
-      <FormField label="How was the average calculated?" htmlFor={`${idPrefix}-average-method`}>
+      <FormField label="Which source figures do you have?" htmlFor={`${idPrefix}-average-method`}>
         <Select
           id={`${idPrefix}-average-method`}
           value={draft.averageMethod}
@@ -913,9 +914,9 @@ function AverageFields({
             updateDraft("averageMethod", event.target.value as AverageInputMethod)
           }
         >
-          <option value="total_score">Total score ÷ possible score</option>
-          <option value="average_score">Average score ÷ scale maximum</option>
-          <option value="percent_positive">Positive responses ÷ total responses</option>
+          <option value="total_score">Total points earned and total points possible</option>
+          <option value="average_score">Average score and highest possible score</option>
+          <option value="percent_positive">Positive responses and all responses</option>
         </Select>
       </FormField>
 

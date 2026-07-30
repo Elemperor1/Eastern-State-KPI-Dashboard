@@ -49,6 +49,9 @@ describe("PlanSettingsClient", () => {
     expect(html).toContain("Save plan settings");
     expect(html).toContain("First reporting year");
     expect(html).toContain("Last reporting year");
+    expect(html).toContain("extend the");
+    expect(html).toContain("beyond 2029");
+    expect(html).toContain("does not create a separate new strategic plan");
     expect(html).toContain("btn-primary");
   });
 
@@ -90,6 +93,9 @@ describe("Activity setup audit feed", () => {
           },
         ],
         availableYears: [],
+        lifecycleEvents: [],
+        lifecyclePlans: [],
+        lifecycleFilter: {},
         page: 1,
         hasOlder: false,
       }),

@@ -153,9 +153,9 @@ describe("schema-10 strategic catalog lifecycle", () => {
       db
         .prepare(
           `INSERT INTO strategic_plans (
-             organization_id, slug, name, start_year, end_year, status, archived_at
+             organization_id, slug, name, start_year, end_year, status
            ) VALUES (?, 'archived-plan', 'Archived plan', 2020, 2024,
-                     'archived', datetime('now'))`,
+                     'draft')`,
         )
         .run(activePlan.organization_id).lastInsertRowid,
     );
@@ -184,6 +184,12 @@ describe("schema-10 strategic catalog lifecycle", () => {
        ) VALUES (?, 'archived-plan-goal', 'Archived plan goal', 2020, 2029,
                  'active')`,
     ).run(categoryId);
+    db.prepare(
+      `UPDATE strategic_plans
+       SET status = 'archived', lifecycle_state = 'archived',
+           archived_at = datetime('now')
+       WHERE id = ?`,
+    ).run(archivedPlanId);
 
     expect(listCategories({ includeArchived: true })).toEqual([]);
     expect(getCategory(categoryId, { includeArchived: true })).toBeNull();

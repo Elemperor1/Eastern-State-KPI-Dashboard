@@ -80,7 +80,7 @@ describe("admin user helpers", () => {
 
   it("builds security-sensitive account mutation messages", () => {
     expect(buildRoleChangeSuccessMessage("Kerry", "viewer")).toBe(
-      "Role for Kerry updated to viewer. Their active sessions were revoked.",
+      "Role for Kerry updated to viewer. They have been signed out on all devices.",
     );
     expect(buildDisableUserSuccessMessage("Zach")).toBe("Zach was disabled and signed out everywhere.");
     expect(buildEnableUserSuccessMessage("Zach")).toBe("Zach was re-enabled.");

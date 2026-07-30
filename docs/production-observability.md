@@ -57,7 +57,14 @@ DATABASE_PATH=/absolute/path/to/kpi.db npm run db:integrity
 # Live Fly Machine (the runtime image retains Node and this operator script):
 fly ssh console --app eastern-state-kpi-dashboard \
   -C "node ./scripts/check-database-integrity.mjs"
+
+# On-premises production container:
+docker exec eastern-state-kpi \
+  node ./scripts/check-database-integrity.mjs
 ```
+
+For the complete on-premises startup, TLS, single-process SQLite, onboarding,
+backup, and rollback contract, see `docs/local-server-deployment.md`.
 
 This command is the deep database signal. `/api/health/ready` intentionally
 remains the cheap, anonymous liveness/readiness signal and must not be changed

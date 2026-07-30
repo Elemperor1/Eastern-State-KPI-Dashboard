@@ -26,7 +26,7 @@ describe("ensure-seeded destructive reset guard", () => {
     const verify = new DatabaseSync(databasePath, { readOnly: true });
     expect(
       verify.prepare("SELECT value FROM meta WHERE key = 'schema_version'").get(),
-    ).toEqual({ value: "15" });
+    ).toEqual({ value: "16" });
     expect(
       verify
         .prepare("SELECT value FROM meta WHERE key = 'last_seed_reset_at'")
@@ -57,12 +57,12 @@ describe("ensure-seeded destructive reset guard", () => {
       ).toEqual({ name: "Preserve this category" });
       expect(
         verify.prepare("SELECT value FROM meta WHERE key = 'schema_version'").get(),
-      ).toEqual({ value: "15" });
+      ).toEqual({ value: "16" });
       verify.close();
     },
   );
 
-  it("preserves but refuses an incomplete schema-15 database", () => {
+  it("preserves but refuses an incomplete schema-15 migration input", () => {
     const databasePath = tempDatabase();
     const db = new DatabaseSync(databasePath);
     db.exec(`
@@ -76,9 +76,8 @@ describe("ensure-seeded destructive reset guard", () => {
     const result = runEnsureSeeded(databasePath);
 
     expect(result.status).toBe(1);
-    expect(result.stderr).toContain('"event":"startup_failure"');
-    expect(result.stderr).toContain('"reason":"database_incompatible"');
-    expect(result.stderr).toContain("refusing to start");
+    expect(result.stderr).toContain('"event":"migration_failure"');
+    expect(result.stderr).toContain('"reason":"migration_command_failed"');
     const verify = new DatabaseSync(databasePath);
     expect(
       verify.prepare("SELECT name FROM categories WHERE id = 1").get(),

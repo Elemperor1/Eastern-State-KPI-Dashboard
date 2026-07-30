@@ -342,14 +342,14 @@ test.beforeEach(async ({ page }, testInfo) => {
   const response = await page.request.post("/api/auth/login", {
     headers: { origin: new URL(baseURL).origin },
     data: {
-      email: "kerry@easternstate.org",
+      email: "zach@easternstate.org",
       password,
     },
   });
   expect(response.ok()).toBe(true);
   await expect(response.json()).resolves.toMatchObject({
     mustChangePassword: false,
-    user: { email: "kerry@easternstate.org", role: "admin" },
+    user: { email: "zach@easternstate.org", role: "admin" },
   });
 });
 
@@ -834,11 +834,37 @@ test("uses one flat Setup workspace on desktop and mobile", async ({ page }, tes
   const browserErrors = collectBrowserErrors(page);
   await page.goto("/setup?area=measures&year=2029");
   const areas = page.getByRole("navigation", { name: "Setup areas" });
-  await expect(areas.getByRole("link")).toHaveCount(4);
-  for (const name of ["Measures", "Goals", "People", "Activity"]) {
+  await expect(areas.getByRole("link")).toHaveCount(5);
+  for (const name of ["Plans", "Measures", "Goals", "People", "Activity"]) {
     await expect(areas.getByRole("link", { name })).toBeVisible();
   }
   await expect(page.getByRole("tab")).toHaveCount(0);
+
+  await areas.getByRole("link", { name: "Plans" }).click();
+  await expect(page.getByRole("heading", { name: "Strategic Plans" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Current Active plan" })).toBeVisible();
+  await page.getByLabel("Starting point").selectOption("blank");
+  await page.getByLabel("Plan name").fill("Acceptance Successor Plan");
+  await page.getByLabel("Final year").fill("2034");
+  await page.getByLabel("Approved by or source").fill("Acceptance Board resolution");
+  await page.getByLabel("Plain-language description").fill(
+    "A disposable browser acceptance Draft.",
+  );
+  await page.getByRole("button", { name: "Create successor plan" }).click();
+  await expect(page.getByRole("heading", { name: "1. Plan details" })).toBeVisible();
+  await expect(page.getByText("Current reporting still uses")).toBeVisible();
+  const cancelDraft = page.getByRole("region", { name: "Cancel this Draft" });
+  await cancelDraft.getByLabel("Enter “Acceptance Successor Plan” exactly").fill(
+    "Acceptance Successor Plan",
+  );
+  await cancelDraft.getByRole("button", { name: "Review cancellation" }).click();
+  await page
+    .getByRole("alertdialog", { name: "Cancel this Draft?" })
+    .getByRole("button", { name: "Cancel Draft" })
+    .click();
+  await expect(page.getByText("The Draft was cancelled and retained")).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Start the next plan" })).toBeVisible();
+  await page.goto("/setup?area=measures&year=2029");
 
   await page.route("**/api/kpis", async (route) => {
     await new Promise((resolve) => setTimeout(resolve, 500));
@@ -1020,8 +1046,8 @@ test("uses one flat Setup workspace on desktop and mobile", async ({ page }, tes
   await expect(page.getByRole("button", { name: "Temporary User" })).toHaveCount(0);
   await page.unroute("**/api/users");
 
-  await page.getByRole("button", { name: "Kerry Sautner" }).click();
-  await expect(page.getByRole("region", { name: "Person details" })).toContainText("kerry@easternstate.org");
+  await page.getByRole("button", { name: "Zach Palmer" }).click();
+  await expect(page.getByRole("region", { name: "Person details" })).toContainText("zach@easternstate.org");
 
   await areas.getByRole("link", { name: "Activity" }).click();
   await expect(page.getByRole("heading", { name: "Data changes" })).toBeVisible();
@@ -1030,7 +1056,7 @@ test("uses one flat Setup workspace on desktop and mobile", async ({ page }, tes
   await expect(
     recentActivity.getByText("Temporary acceptance measure").first(),
   ).toBeVisible();
-  await expect(recentActivity.getByText("kerry@easternstate.org").first()).toBeVisible();
+  await expect(recentActivity.getByText("zach@easternstate.org").first()).toBeVisible();
 
   await page.setViewportSize({ width: 390, height: 844 });
   await page.goto("/dashboard/overview");

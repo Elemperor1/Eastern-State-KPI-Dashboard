@@ -197,7 +197,9 @@ export function BoardReportingEditorClient({
           Board visibility
         </h2>
         <p className="mt-1 text-sm leading-6 text-ink-600">
-          Choose the priorities, focus statements, and measures Board accounts can see. Saving replaces the complete Board view and is recorded in Activity.
+          Choose the priorities, focus statements, and measures Board accounts
+          can see. Saving updates everything Board members can see, and the
+          change will appear in Activity.
         </p>
       </div>
       {feedback ? <StatusBanner variant={feedback.variant}>{feedback.message}</StatusBanner> : null}

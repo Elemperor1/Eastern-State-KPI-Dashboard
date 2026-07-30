@@ -6,10 +6,24 @@ import type {
 import type { StrategicAuditEvent } from "@/features/strategy";
 import type { StrategicCalculatedActual } from "./strategy-actuals";
 
+export interface ReportingPlanContext {
+  id: number;
+  slug: string;
+  name: string;
+  startYear: number;
+  endYear: number;
+  lifecycleState: "active" | "archived";
+  years: number[];
+}
+
 export interface BoardReportPageData {
   years: number[];
   sampleData: boolean;
   report: StrategicBoardReportViewModel;
+  boardScopeReviewStatus:
+    | "needs_review"
+    | "approved"
+    | "intentional_empty";
 }
 
 export interface StrategicPriorityPageData {

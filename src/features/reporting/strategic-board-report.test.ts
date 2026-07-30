@@ -532,6 +532,7 @@ describe("strategic board report contract", () => {
     expect(report).toEqual({
       organizationName: "Organization",
       organizationSlug: "organization",
+      plan: null,
       selectedYear: null,
       reportingPeriod: "Full year",
       organizationGoalCompletion: {
@@ -548,6 +549,34 @@ describe("strategic board report contract", () => {
   });
 
   describe("CSV equality contract", () => {
+    it("carries Archived plan-era metadata into every row and the filename", () => {
+      const input = representativeInput();
+      input.plan = {
+        id: 19,
+        slug: "strategic-plan-2020-2024",
+        name: "Strategic Plan 2020–2024",
+        startYear: 2020,
+        endYear: 2024,
+        lifecycleState: "archived",
+        generatedAt: "2026-07-30T17:00:00.000Z",
+      };
+      const csv = buildStrategicBoardCsvExport(
+        buildStrategicBoardReport(input),
+      );
+
+      expect(csv.filename).toBe(
+        "eastern-state-strategic-plan-2020-2024-strategic-board-2027.csv",
+      );
+      expect(csv.rows[0]).toMatchObject({
+        "Plan ID": 19,
+        "Strategic Plan": "Strategic Plan 2020–2024",
+        "Plan Start Year": 2020,
+        "Plan End Year": 2024,
+        "Plan Status": "archived",
+        "Generated At": "2026-07-30T17:00:00.000Z",
+      });
+    });
+
     it("flattens only the sanitized view model and exposes the full contract", () => {
       const input = representativeInput();
       const report = buildStrategicBoardReport(input);
