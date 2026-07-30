@@ -1,7 +1,31 @@
-import { defineConfig } from "vitest/config";
+import { defineConfig, type Plugin } from "vitest/config";
 import path from "node:path";
 
+const SHEBANG = /^#!.*/u;
+
+/**
+ * Comments out the leading `#!/usr/bin/env node` of CLI entry points.
+ *
+ * scripts/*.mjs are executable POSIX entry points (Dockerfile and CI invoke
+ * them directly), but Vite inlines them through its transform pipeline on
+ * Windows instead of externalizing them to Node, so the `#` reaches the JS
+ * parser and the module fails with `SyntaxError: Invalid or unexpected token`.
+ * Replacing the line with a same-length comment keeps offsets and line numbers
+ * intact, so no source map is needed.
+ */
+function stripShebang(): Plugin {
+  return {
+    name: "eskpi-strip-shebang",
+    enforce: "pre",
+    transform(code) {
+      if (!code.startsWith("#!")) return null;
+      return { code: code.replace(SHEBANG, (line) => `//${line.slice(2)}`), map: null };
+    },
+  };
+}
+
 export default defineConfig({
+  plugins: [stripShebang()],
   test: {
     environment: "node",
     include: [
