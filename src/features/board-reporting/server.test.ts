@@ -3,12 +3,19 @@ import os from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { bootstrapInstallation } from "@/features/installation/server";
-import { createCategory, createKPI } from "@/features/catalog/server";
+import {
+  createCategory,
+  createKPI,
+  isStrategicKPI,
+  KpiStrategicReparentError,
+  updateKPI,
+} from "@/features/catalog/server";
 import { getDb, resetDb } from "@/lib/db";
 import {
   BoardReportingEditConflictError,
   BoardReportingValidationError,
   getBoardReportingAdminModel,
+  getBoardReportingDisclosureScope,
   getBoardReportingScope,
   updateBoardReportingScope,
 } from "./server";
@@ -159,11 +166,71 @@ describe("database-backed Board reporting configuration", () => {
       "UPDATE kpis SET archived_at = datetime('now'), is_active = 0 WHERE id = ?",
     ).run(measure.id);
     expect(getBoardReportingScope().priorities[0]?.statements[0]?.measures).toEqual([]);
+    expect(
+      getBoardReportingDisclosureScope().priorities[0]?.statements[0]?.measures,
+    ).toEqual([
+      expect.objectContaining({ id: measure.id, slug: "attendance" }),
+    ]);
 
     getDb().prepare(
       "UPDATE categories SET archived_at = datetime('now') WHERE id = ?",
     ).run(priority.id);
     expect(getBoardReportingScope().priorities).toEqual([]);
+    expect(getBoardReportingDisclosureScope().priorities).toEqual([
+      expect.objectContaining({
+        priorityId: priority.id,
+        statements: [
+          expect.objectContaining({
+            measures: [
+              expect.objectContaining({ id: measure.id, slug: "attendance" }),
+            ],
+          }),
+        ],
+      }),
+    ]);
+  });
+
+  it("does not revive inactive non-archived measures in disclosure scope", () => {
+    const { priority, measure, actorId } = fixture();
+    updateBoardReportingScope({
+      expectedRevision: getBoardReportingScope().revision,
+      priorities: [{
+        priorityId: priority.id,
+        displayTitle: "Visitor",
+        statements: [{ text: "Grow attendance.", kpiIds: [measure.id] }],
+      }],
+    }, actorId);
+    getDb()
+      .prepare("UPDATE kpis SET is_active = 0 WHERE id = ?")
+      .run(measure.id);
+
+    expect(
+      getBoardReportingDisclosureScope().priorities[0]?.statements[0]?.measures,
+    ).toEqual([]);
+  });
+
+  it("refuses to reparent a Board-only measure and preserves its disclosure link", () => {
+    const { priority, otherPriority, measure, actorId } = fixture();
+    updateBoardReportingScope({
+      expectedRevision: getBoardReportingScope().revision,
+      priorities: [{
+        priorityId: priority.id,
+        displayTitle: "Visitor",
+        statements: [{ text: "Grow attendance.", kpiIds: [measure.id] }],
+      }],
+    }, actorId);
+
+    // A Board link is strategic lineage even when this catalog measure has
+    // no goal membership or measurement configuration of its own.
+    expect(isStrategicKPI(measure.id)).toBe(true);
+    expect(() =>
+      updateKPI(measure.id, { category_id: otherPriority.id }, actorId),
+    ).toThrow(KpiStrategicReparentError);
+    expect(
+      getBoardReportingDisclosureScope().priorities[0]?.statements[0]?.measures,
+    ).toEqual([
+      expect.objectContaining({ id: measure.id, slug: "attendance" }),
+    ]);
   });
 
   it("removes a linked measure when it moves to a different priority", () => {

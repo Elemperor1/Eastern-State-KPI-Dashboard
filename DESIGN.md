@@ -225,9 +225,9 @@ surfaces.
 | --- | --- |
 | `1440px` and wider | Keep content bounded; do not stretch reports or forms to the viewport edge. |
 | `1152–1439px` | Persistent sidebar and list/detail workspaces remain visible. |
-| `992–1151px` | Narrow list/detail columns while preserving readable forms and report context. |
-| `768–991px` | Preserve the desktop shell until the mobile threshold; wide tables scroll locally. |
-| `640–767px` | Replace the sidebar with the mobile header and left-origin navigation drawer. |
+| `1024–1151px` | Narrow persistent-sidebar and list/detail columns while preserving readable forms and report context. |
+| `768–1023px` | Use the mobile header and left-origin navigation drawer; wide tables scroll locally. |
+| `640–767px` | Keep the mobile shell and reflow wide workflow regions to one column. |
 | `576–639px` | Use single-column content and list-then-detail workspaces. |
 | `320–575px` | Stack long names before values, qualified states, and actions; never clip meaning. |
 

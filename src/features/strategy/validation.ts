@@ -50,6 +50,20 @@ const FiniteNumberSchema = z.number().finite();
 const NullableFiniteNumberSchema = FiniteNumberSchema.nullable().optional().default(null);
 const NullableIdSchema = IdSchema.nullable().optional().default(null);
 
+/**
+ * Domain-sane magnitude bounds (F-17 remediation R-06). Unbounded finite
+ * positives let typo'd or malicious magnitudes persist and then dominate,
+ * overflow, or silently zero Board-visible calculations:
+ * - WeightSchema caps weighted-average weights (S019-C1 memberships,
+ *   S040-C3 components): 10 000 is far beyond any deliberate relative
+ *   weighting while keeping weight × value products far from Infinity.
+ * - FixedDenominatorSchema keeps fixed denominators inside a band where
+ *   numerator / denominator cannot overflow to Infinity (1e-308) or
+ *   silently zero every percentage (1e308) — NOV-C3.
+ */
+const WeightSchema = z.number().finite().positive().max(10_000);
+const FixedDenominatorSchema = z.number().finite().min(1e-6).max(1e12);
+
 const SlugSchema = z
   .string()
   .trim()
@@ -86,7 +100,25 @@ const IsoDateSchema = z
   .string()
   .regex(/^\d{4}-\d{2}-\d{2}$/, "Date must use YYYY-MM-DD.")
   .refine(
-    (value) => !Number.isNaN(Date.parse(`${value}T00:00:00Z`)),
+    (value) => {
+      // Strict calendar validation (S044-C2): Date.parse NORMALIZES
+      // out-of-range days (2025-02-31 becomes 2025-03-03), so a parse
+      // check alone persists impossible dates. Round-trip the components
+      // instead: construct the UTC date and require each component to
+      // survive unchanged. setUTCFullYear avoids the Date.UTC 0-99 →
+      // 1900-1999 remapping quirk for small years, and the construction
+      // base year 2000 is a leap year so February 29 reaches the
+      // round-trip check for the ACTUAL year (1900 is not a leap year,
+      // which would reject every Feb 29 at construction).
+      const [year, month, day] = value.split("-").map(Number);
+      const parsed = new Date(Date.UTC(2000, month - 1, day));
+      parsed.setUTCFullYear(year);
+      return (
+        parsed.getUTCFullYear() === year &&
+        parsed.getUTCMonth() === month - 1 &&
+        parsed.getUTCDate() === day
+      );
+    },
     "Date must be valid.",
   );
 const NullableIsoDateSchema = IsoDateSchema.nullable().optional().default(null);
@@ -224,7 +256,7 @@ export const StrategicGoalMembershipInputSchema = z
     goal_id: IdSchema,
     kpi_id: IdSchema,
     role: GoalMembershipRoleSchema.default("required"),
-    weight: z.number().finite().positive().nullable().optional().default(null),
+    weight: WeightSchema.nullable().optional().default(null),
     display_order: z.number().int().nonnegative().default(0),
     ...EffectiveYearShape,
   })
@@ -232,12 +264,21 @@ export const StrategicGoalMembershipInputSchema = z
   .superRefine(validateEffectiveYearRange);
 
 /** Existing-membership settings that an admin may change without rewriting history. */
+/**
+ * Optimistic-concurrency token (S070-C2): the `updated_at` snapshot the
+ * editor loaded. Strategy update mutations carry it as `expected_revision`;
+ * the write is refused with a 409 stale_revision conflict when the row
+ * changed since the snapshot was taken.
+ */
+export const ExpectedRevisionSchema = z.string().min(1);
+
 export const StrategicGoalMembershipUpdateSchema = z
   .object({
     id: IdSchema,
     role: GoalMembershipRoleSchema.optional(),
-    weight: z.number().finite().positive().optional(),
+    weight: WeightSchema.optional(),
     display_order: z.number().int().nonnegative().optional(),
+    expected_revision: ExpectedRevisionSchema.optional(),
   })
   .strict()
   .superRefine(requirePatch);
@@ -282,7 +323,7 @@ export const MeasurementConfigInputSchema = z
     unit: UnitSchema,
     numerator_label: nullableText(200),
     denominator_label: nullableText(200),
-    fixed_denominator: z.number().finite().positive().nullable().optional().default(null),
+    fixed_denominator: FixedDenominatorSchema.nullable().optional().default(null),
     baseline_value: FiniteNumberSchema.nullable().optional().default(null),
     reporting_frequency: StrategyReportingFrequencySchema,
     aggregation_method: AggregationMethodSchema.default("none"),
@@ -426,6 +467,19 @@ export const RawAverageInputsSchema = z
         message:
           "Total-score inputs require total possible score or respondent count plus max score.",
       });
+    } else if (!Number.isFinite(derivedMaximum)) {
+      // respondent_count * max_score_per_respondent can overflow to
+      // Infinity (S044-C3), which silently voided the over-max invariant:
+      // every finite total_score compared less than Infinity. Reject the
+      // inputs instead of disabling the guard.
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["max_score_per_respondent"],
+        message:
+          "Respondent count and maximum scale value overflow the maximum " +
+          "possible score; provide an explicit total possible score or " +
+          "smaller inputs.",
+      });
     } else if (!raw.allow_over_max && raw.total_score > derivedMaximum) {
       ctx.addIssue({
         code: z.ZodIssueCode.custom,
@@ -447,7 +501,7 @@ export const ObservationInputSchema = z
     value: NullableFiniteNumberSchema,
     numerator: z.number().finite().nonnegative().nullable().optional().default(null),
     denominator: z.number().finite().nonnegative().nullable().optional().default(null),
-    fixed_denominator: z.number().finite().positive().nullable().optional().default(null),
+    fixed_denominator: FixedDenominatorSchema.nullable().optional().default(null),
     average_inputs: RawAverageInputsSchema.nullable().optional().default(null),
     baseline_value: NullableFiniteNumberSchema,
     previous_period_value: NullableFiniteNumberSchema,
@@ -514,6 +568,26 @@ export const ObservationInputSchema = z
           message: "Store raw numerator and denominator, not a calculated result.",
         });
       }
+      // A percentage is a fraction of a whole (S012-C1): an over-100%
+      // numerator previously persisted as clean `ok` data and silently
+      // poisoned aggregates and Board-visible percentages. Ratios may
+      // legitimately exceed 1, so the ceiling applies to percentages only.
+      if (
+        observation.measurement_type === "percentage" &&
+        observation.numerator !== null
+      ) {
+        const ceiling =
+          observation.denominator ?? observation.fixed_denominator;
+        if (ceiling !== null && observation.numerator > ceiling) {
+          ctx.addIssue({
+            code: z.ZodIssueCode.custom,
+            path: ["numerator"],
+            message:
+              "Percentage observations cannot exceed 100%: the numerator " +
+              "cannot be greater than the denominator.",
+          });
+        }
+      }
       return;
     }
 
@@ -564,6 +638,21 @@ export const ObservationInputSchema = z
         code: z.ZodIssueCode.custom,
         path: ["value"],
         message: "Binary observations must be 0 or 1.",
+      });
+    } else if (
+      (observation.measurement_type === "count" ||
+        observation.measurement_type === "cumulative") &&
+      observation.value < 0
+    ) {
+      // Counts and cumulative tallies are nonnegative by definition
+      // (S012-C1): a negative value previously persisted verbatim and
+      // silently deflated SUM aggregates as clean `ok` data. Currency and
+      // year-over-year measurements keep signed values (net adjustments
+      // and declines are legitimate).
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["value"],
+        message: `${observation.measurement_type} observations cannot be negative.`,
       });
     }
   });
@@ -630,7 +719,7 @@ export const ComponentInputSchema = z
     unit: UnitSchema,
     numerator_label: nullableText(200),
     denominator_label: nullableText(200),
-    fixed_denominator: z.number().finite().positive().nullable().optional().default(null),
+    fixed_denominator: FixedDenominatorSchema.nullable().optional().default(null),
     value: NullableFiniteNumberSchema,
     baseline_value: NullableFiniteNumberSchema,
     previous_period_value: NullableFiniteNumberSchema,
@@ -639,7 +728,7 @@ export const ComponentInputSchema = z
     annual_target_value: NullableFiniteNumberSchema,
     target_year: YearSchema.nullable().optional().default(null),
     target_description: nullableText(4_000),
-    weight: z.number().finite().positive().nullable().optional().default(null),
+    weight: WeightSchema.nullable().optional().default(null),
     display_order: z.number().int().nonnegative(),
     configuration_status: ConfigurationStatusSchema.default("draft"),
     ...EffectiveYearShape,
@@ -872,6 +961,53 @@ const StrategyJsonValueSchema: z.ZodType<StrategyJsonValue> = z.lazy(() =>
   ]),
 );
 
+/**
+ * Structured targets accept arbitrary JSON, and the recursive
+ * StrategyJsonValueSchema parse throws a RangeError (not a ZodError) on
+ * deeply nested input, which escaped POST /api/strategy/targets as an
+ * uncaught 500 (S044-C4). The bounds check runs BEFORE the recursive
+ * parse (unknown → superRefine → pipe), so deep or oversized payloads
+ * become ordinary invalid input instead of crashing the recursion.
+ */
+const STRUCTURED_TARGET_MAX_DEPTH = 32;
+const STRUCTURED_TARGET_MAX_ENTRIES = 1_000;
+
+/** Iteratively checks JSON nesting depth and total entry count. */
+function structuredTargetBoundsViolation(value: unknown): string | null {
+  let entries = 0;
+  const stack: Array<{ node: unknown; depth: number }> = [
+    { node: value, depth: 1 },
+  ];
+  while (stack.length > 0) {
+    const { node, depth } = stack.pop() as { node: unknown; depth: number };
+    if (depth > STRUCTURED_TARGET_MAX_DEPTH) {
+      return `Structured targets support at most ${STRUCTURED_TARGET_MAX_DEPTH} levels of nesting.`;
+    }
+    if (Array.isArray(node)) {
+      entries += node.length;
+      for (const item of node) stack.push({ node: item, depth: depth + 1 });
+    } else if (typeof node === "object" && node !== null) {
+      const values = Object.values(node);
+      entries += values.length;
+      for (const item of values) stack.push({ node: item, depth: depth + 1 });
+    }
+    if (entries > STRUCTURED_TARGET_MAX_ENTRIES) {
+      return `Structured targets support at most ${STRUCTURED_TARGET_MAX_ENTRIES} entries.`;
+    }
+  }
+  return null;
+}
+
+const StructuredTargetSchema = z
+  .unknown()
+  .superRefine((value, ctx) => {
+    const violation = structuredTargetBoundsViolation(value);
+    if (violation) {
+      ctx.addIssue({ code: z.ZodIssueCode.custom, message: violation });
+    }
+  })
+  .pipe(z.record(z.string(), StrategyJsonValueSchema));
+
 /** Implements the patch nullable text operation. */
 function patchNullableText(max: number) {
   return z
@@ -906,12 +1042,39 @@ function requirePatch(
   value: Record<string, unknown>,
   ctx: z.RefinementCtx,
 ): void {
-  if (Object.keys(value).every((key) => key === "id")) {
+  if (
+    Object.keys(value).every(
+      (key) => key === "id" || key === "expected_revision",
+    )
+  ) {
     ctx.addIssue({
       code: z.ZodIssueCode.custom,
       message: "Provide at least one field to update.",
     });
   }
+}
+
+/**
+ * Require an expected_revision at the HTTP boundary. Feature functions
+ * enforce the compare-and-swap whenever a revision is supplied; routes use
+ * this wrapper so API callers cannot bypass the lost-update guard by
+ * omitting the field.
+ */
+export function withExpectedRevision<Schema extends z.ZodType>(
+  schema: Schema,
+): Schema {
+  return schema.superRefine((value, ctx) => {
+    const revision = (value as { expected_revision?: unknown })
+      .expected_revision;
+    if (typeof revision !== "string" || revision.length === 0) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["expected_revision"],
+        message:
+          "Provide the revision (updated_at) of the record you loaded; reload and resubmit if it is missing.",
+      });
+    }
+  });
 }
 
 export const MeasurementConfigurationCreateSchema = MeasurementConfigInputSchema.superRefine(
@@ -930,13 +1093,14 @@ export const MeasurementConfigurationCreateSchema = MeasurementConfigInputSchema
 export const MeasurementConfigurationUpdateSchema = z
   .object({
     id: IdSchema,
+    expected_revision: ExpectedRevisionSchema.optional(),
     effective_start_year: YearSchema.optional(),
     effective_end_year: YearSchema.nullable().optional(),
     measurement_type: MeasurementTypeSchema.optional(),
     unit: PatchUnitSchema,
     numerator_label: patchNullableText(200),
     denominator_label: patchNullableText(200),
-    fixed_denominator: z.number().finite().positive().nullable().optional(),
+    fixed_denominator: FixedDenominatorSchema.nullable().optional(),
     baseline_value: FiniteNumberSchema.nullable().optional(),
     reporting_frequency: StrategyReportingFrequencySchema.optional(),
     aggregation_method: AggregationMethodSchema.optional(),
@@ -951,6 +1115,7 @@ export const MeasurementConfigurationUpdateSchema = z
 export const StrategicGoalSettingsUpdateSchema = z
   .object({
     id: IdSchema,
+    expected_revision: ExpectedRevisionSchema.optional(),
     completion_rule: GoalCompletionRuleSchema.optional(),
     threshold_count: z.number().int().positive().nullable().optional(),
     threshold_percentage: z.number().finite().gt(0).max(100).nullable().optional(),
@@ -969,11 +1134,7 @@ const StrategicTargetShape = {
   target_year: YearSchema,
   external_target_year: z.boolean().default(false),
   target_value: FiniteNumberSchema.nullable().optional().default(null),
-  structured_target: z
-    .record(z.string(), StrategyJsonValueSchema)
-    .nullable()
-    .optional()
-    .default(null),
+  structured_target: StructuredTargetSchema.nullable().optional().default(null),
   target_description: nullableText(4_000),
   baseline_year: YearSchema.nullable().optional().default(null),
   baseline_value: FiniteNumberSchema.nullable().optional().default(null),
@@ -1040,15 +1201,13 @@ export const StrategicTargetCreateSchema = z
 export const StrategicTargetUpdateSchema = z
   .object({
     id: IdSchema,
+    expected_revision: ExpectedRevisionSchema.optional(),
     target_scope: TargetScopeSchema.optional(),
     reporting_year: YearSchema.nullable().optional(),
     target_year: YearSchema.optional(),
     external_target_year: z.boolean().optional(),
     target_value: FiniteNumberSchema.nullable().optional(),
-    structured_target: z
-      .record(z.string(), StrategyJsonValueSchema)
-      .nullable()
-      .optional(),
+    structured_target: StructuredTargetSchema.nullable().optional(),
     target_description: patchNullableText(4_000),
     baseline_year: YearSchema.nullable().optional(),
     baseline_value: FiniteNumberSchema.nullable().optional(),
@@ -1068,11 +1227,11 @@ export const StrategyComponentCreateSchema = z
     unit: UnitSchema,
     numerator_label: nullableText(200),
     denominator_label: nullableText(200),
-    fixed_denominator: z.number().finite().positive().nullable().optional().default(null),
+    fixed_denominator: FixedDenominatorSchema.nullable().optional().default(null),
     baseline_value: FiniteNumberSchema.nullable().optional().default(null),
     previous_period_value: FiniteNumberSchema.nullable().optional().default(null),
     aggregation_role: ComponentAggregationRoleSchema.default("value"),
-    weight: z.number().finite().positive().default(1),
+    weight: WeightSchema.default(1),
     display_order: z.number().int().nonnegative(),
     configuration_status: EditableConfigurationStatusSchema.default("draft"),
     unresolved_question: nullableText(2_000),
@@ -1100,11 +1259,11 @@ export const StrategyComponentUpdateSchema = z
     unit: PatchUnitSchema,
     numerator_label: patchNullableText(200),
     denominator_label: patchNullableText(200),
-    fixed_denominator: z.number().finite().positive().nullable().optional(),
+    fixed_denominator: FixedDenominatorSchema.nullable().optional(),
     baseline_value: FiniteNumberSchema.nullable().optional(),
     previous_period_value: FiniteNumberSchema.nullable().optional(),
     aggregation_role: ComponentAggregationRoleSchema.optional(),
-    weight: z.number().finite().positive().optional(),
+    weight: WeightSchema.optional(),
     display_order: z.number().int().nonnegative().optional(),
     configuration_status: EditableConfigurationStatusSchema.optional(),
     unresolved_question: patchNullableText(2_000),

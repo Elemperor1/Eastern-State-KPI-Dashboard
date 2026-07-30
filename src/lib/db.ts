@@ -8,7 +8,7 @@ interface RunResult {
   lastInsertRowid: number | bigint;
 }
 
-interface DB {
+export interface DB {
   exec(sql: string): void;
   prepare(sql: string): StatementLike;
   close(): void;
@@ -25,8 +25,84 @@ let _db: DB | null = null;
 /** Bump when the KPI/category/entry schema changes; old DBs are reset cleanly. */
 export const SCHEMA_VERSION = schemaVersionConfig.schemaVersion;
 
-/** Retrieves db path. */
-function resolveDbPath(): string {
+/**
+ * Bounded lock-wait for the main application connection (DB-002). Without an
+ * explicit busy_timeout, node:sqlite gives up on a contended write
+ * immediately (SQLITE_BUSY), so a single overlapping writer (an operator
+ * migration, a backup, or a checkpoint) would surface as request failures.
+ * Five seconds is long enough to ride out a short competing write and short
+ * enough that a genuinely wedged database still fails fast instead of
+ * queueing requests indefinitely. The readiness probe keeps its own, much
+ * shorter 250 ms budget (src/features/health/readiness-core.mjs).
+ */
+export const DB_BUSY_TIMEOUT_MS = 5_000;
+
+interface ConnectionPragmaDatabase {
+  exec(sql: string): void;
+  prepare(sql: string): {
+    get(): Record<string, unknown> | undefined;
+  };
+  close(): void;
+}
+
+/**
+ * Configures the SQLite connection pragmas before any schema work begins.
+ *
+ * Exported so the fail-closed foreign-key invariant can be tested with a
+ * deterministic connection double instead of depending on host SQLite
+ * failures that are difficult to induce portably.
+ */
+export function configureConnectionPragmas(
+  raw: ConnectionPragmaDatabase,
+): void {
+  try {
+    raw.exec("PRAGMA journal_mode = WAL;");
+  } catch {
+    // WAL is a performance/durability preference. Some read-only or
+    // restricted environments refuse it, so it must not suppress the
+    // mandatory foreign-key policy below.
+  }
+  try {
+    // Belt and braces with the DatabaseSync `timeout` option used by getDb:
+    // this pragma is the introspectable SQLite-native setting (DB-002).
+    raw.exec(`PRAGMA busy_timeout = ${DB_BUSY_TIMEOUT_MS};`);
+  } catch {
+    // The constructor timeout remains active when this tuning pragma is
+    // unavailable. Foreign-key enforcement is still mandatory below.
+  }
+
+  try {
+    raw.exec("PRAGMA foreign_keys = ON;");
+    const row = raw.prepare("PRAGMA foreign_keys").get();
+    const foreignKeysEnabled = Number(
+      row?.foreign_keys ?? Object.values(row ?? {})[0] ?? 0,
+    );
+    if (foreignKeysEnabled !== 1) {
+      throw new Error("SQLite did not enable foreign-key enforcement.");
+    }
+  } catch (cause) {
+    try {
+      raw.close();
+    } catch {
+      // Preserve the policy failure: this handle is rejected and never
+      // published even if the host also refuses the close operation.
+    }
+    throw new Error(
+      "SQLite foreign-key enforcement could not be enabled; refusing to open the application database.",
+      { cause },
+    );
+  }
+}
+
+/**
+ * Resolves the application database path.
+ *
+ * Empty DATABASE_PATH values intentionally use the repository-local default,
+ * matching the long-standing getDb() contract. Operator scripts import this
+ * helper so their probes and readiness markers cannot target a different
+ * SQLite file from the application migration boundary.
+ */
+export function resolveDbPath(): string {
   const fromEnv = process.env.DATABASE_PATH;
   if (fromEnv) return fromEnv;
   return path.resolve(process.cwd(), "data", "kpi.db");
@@ -86,14 +162,22 @@ export function getDb(): DB {
   if (!fs.existsSync(dir)) {
     fs.mkdirSync(dir, { recursive: true });
   }
-  const raw = new DatabaseSync(dbPath);
+  const raw = new DatabaseSync(dbPath, { timeout: DB_BUSY_TIMEOUT_MS });
+  configureConnectionPragmas(raw);
   try {
-    raw.exec("PRAGMA journal_mode = WAL;");
-    raw.exec("PRAGMA foreign_keys = ON;");
-  } catch {
-    // Some sandbox environments disallow pragmas; ignore.
+    migrateSchema(raw);
+  } catch (error) {
+    // Do not leak an open handle when migration refuses the database (for
+    // example a schema written by a newer release); the next getDb() retry
+    // must start from a clean slate. Preserve the migration failure if the
+    // rejected handle also refuses cleanup.
+    try {
+      raw.close();
+    } catch {
+      // The migration error is the actionable root cause.
+    }
+    throw error;
   }
-  migrateSchema(raw);
   _db = wrapDatabase(raw);
   return _db;
 }
@@ -326,40 +410,179 @@ function initializeBoardReportingSchema(raw: DatabaseSync): void {
   `);
 }
 
-/** Applies the additive schema-14 Board reporting migration. */
+/**
+ * Applies the additive schema-14 Board reporting migration. The DDL, the
+ * one-time bootstrap marker, and the version record commit or roll back as
+ * one unit (lane_sqlite carryover): a fault mid-step must leave the
+ * database exactly at schema 13 so the next startup retries cleanly.
+ */
 function migrateBoardReportingSchemaV14(raw: DatabaseSync): void {
-  initializeBoardReportingSchema(raw);
-  raw.exec(
-    "INSERT OR REPLACE INTO meta (key, value) VALUES ('schema_version', '14');",
-  );
+  raw.exec("BEGIN IMMEDIATE;");
+  try {
+    initializeBoardReportingSchema(raw);
+    raw.exec(
+      "INSERT OR REPLACE INTO meta (key, value) VALUES ('schema_version', '14');",
+    );
+    raw.exec("COMMIT;");
+  } catch (error) {
+    try {
+      raw.exec("ROLLBACK;");
+    } catch {
+      // Surface the migration error.
+    }
+    throw error;
+  }
 }
 
-/** Implements the current schema version operation. */
-function currentSchemaVersion(raw: DatabaseSync): number {
+/**
+ * Creates the schema-15 immutable user lifecycle audit log. Every account
+ * creation, password reset/change, role change, disable/enable, and deletion
+ * writes one row here inside the same transaction as the mutation it
+ * describes, so no administrative account change can happen silently.
+ * Password hashes are never stored; events carry only non-secret snapshots.
+ *
+ * `subject_user_id` deliberately has NO foreign key: deletion events must
+ * keep pointing at the (now removed) account id, and removing a user must
+ * never cascade into or null out the audit trail that recorded it. The
+ * subject's email/name/role are snapshotted onto the event for the same
+ * reason.
+ */
+function initializeUserLifecycleAuditSchema(raw: DatabaseSync): void {
+  raw.exec(`
+    CREATE TABLE IF NOT EXISTS user_lifecycle_audit_events (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      subject_user_id INTEGER,
+      subject_email_snapshot TEXT NOT NULL,
+      subject_name_snapshot TEXT NOT NULL,
+      subject_role_snapshot TEXT,
+      event_type TEXT NOT NULL CHECK (event_type IN (
+        'create','password_reset','password_change',
+        'role_change','disable','enable','delete'
+      )),
+      previous_value_json TEXT,
+      new_value_json TEXT,
+      actor_id INTEGER REFERENCES users(id) ON DELETE SET NULL,
+      actor_email_snapshot TEXT,
+      occurred_at TEXT NOT NULL DEFAULT (datetime('now'))
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_user_lifecycle_audit_subject
+      ON user_lifecycle_audit_events(subject_user_id, occurred_at);
+    CREATE INDEX IF NOT EXISTS idx_user_lifecycle_audit_occurred
+      ON user_lifecycle_audit_events(occurred_at, id);
+    CREATE INDEX IF NOT EXISTS idx_user_lifecycle_audit_actor
+      ON user_lifecycle_audit_events(actor_id, occurred_at);
+  `);
+}
+
+/**
+ * Applies the additive schema-14 -> schema-15 user lifecycle audit step.
+ * Same atomicity contract as the v13 -> v14 step above: the audit-log DDL
+ * and the version record commit or roll back together.
+ */
+function migrateUserLifecycleAuditSchemaV15(raw: DatabaseSync): void {
+  raw.exec("BEGIN IMMEDIATE;");
   try {
-    const row = raw.prepare("SELECT value FROM meta WHERE key = 'schema_version'").get() as
-      | { value?: string }
-      | undefined;
-    return Number(row?.value ?? 0);
-  } catch {
-    return 0;
+    initializeUserLifecycleAuditSchema(raw);
+    raw.exec(
+      "INSERT OR REPLACE INTO meta (key, value) VALUES ('schema_version', '15');",
+    );
+    raw.exec("COMMIT;");
+  } catch (error) {
+    try {
+      raw.exec("ROLLBACK;");
+    } catch {
+      // Surface the migration error.
+    }
+    throw error;
   }
+}
+
+/**
+ * Reads the persisted schema version without changing the database.
+ *
+ * A missing `meta` table or missing `schema_version` row identifies a fresh
+ * database. Once the row exists, however, its value is a trust boundary:
+ * malformed metadata must fail closed instead of being coerced to `NaN` and
+ * falling through to the intentional legacy reset path.
+ */
+function currentSchemaVersion(raw: DatabaseSync): number {
+  const metaTable = raw
+    .prepare(
+      "SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'meta'",
+    )
+    .get();
+  if (!metaTable) return 0;
+
+  let row: { value?: unknown } | undefined;
+  try {
+    row = raw
+      .prepare("SELECT value FROM meta WHERE key = 'schema_version'")
+      .get() as { value?: unknown } | undefined;
+  } catch (error) {
+    throw new Error(
+      "Invalid persisted schema version metadata; refusing to migrate or reset this database.",
+      { cause: error },
+    );
+  }
+
+  if (!row) return 0;
+  const value = row.value;
+  const version =
+    typeof value === "number"
+      ? value
+      : typeof value === "string" && /^(?:0|[1-9]\d*)$/u.test(value)
+        ? Number(value)
+        : Number.NaN;
+  if (!Number.isSafeInteger(version) || version < 0) {
+    throw new Error(
+      `Invalid persisted schema version ${JSON.stringify(value)}; ` +
+        "refusing to migrate or reset this database.",
+    );
+  }
+  return version;
 }
 
 /** Applies the migrate schema operation. */
 function migrateSchema(raw: DatabaseSync): void {
+  // Probe before any DDL. A database written by a newer release may contain
+  // user columns and constraints this release does not understand; even an
+  // otherwise idempotent repair could destroy that future schema before the
+  // refusal below.
+  const version = currentSchemaVersion(raw);
+  if (version > SCHEMA_VERSION) {
+    // Fail closed: a database written by a NEWER release must never enter the
+    // legacy fall-through reset path below. Historically that path attempted
+    // to drop KPI-owned tables and only survived because foreign-key
+    // enforcement made the DROPs fail; make the refusal explicit instead of
+    // relying on that incidental protection.
+    throw new Error(
+      `Database schema version ${version} is newer than this application supports (${SCHEMA_VERSION}). ` +
+        `Upgrade the application to a release that understands schema ${version}; refusing to migrate or reset this database.`,
+    );
+  }
   ensureUsersTable(raw);
   ensureMetaTable(raw);
-  const version = currentSchemaVersion(raw);
   if (version === SCHEMA_VERSION) {
     ensureStrategicSchemaV10Columns(raw);
     initializeBoardReportingSchema(raw);
+    initializeUserLifecycleAuditSchema(raw);
+    return;
+  }
+
+  // v14 -> v15 is additive: it installs the immutable user lifecycle audit
+  // log without touching any existing business or audit rows.
+  if (version === 14) {
+    ensureStrategicSchemaV10Columns(raw);
+    initializeBoardReportingSchema(raw);
+    migrateUserLifecycleAuditSchemaV15(raw);
     return;
   }
 
   if (version === 13) {
     ensureStrategicSchemaV10Columns(raw);
     migrateBoardReportingSchemaV14(raw);
+    migrateUserLifecycleAuditSchemaV15(raw);
     return;
   }
 
@@ -369,6 +592,7 @@ function migrateSchema(raw: DatabaseSync): void {
     ensureStrategicSchemaV10Columns(raw);
     recordSchemaV13(raw);
     migrateBoardReportingSchemaV14(raw);
+    migrateUserLifecycleAuditSchemaV15(raw);
     return;
   }
 
@@ -379,6 +603,7 @@ function migrateSchema(raw: DatabaseSync): void {
     migrateInstallationSchemaV12(raw);
     recordSchemaV13(raw);
     migrateBoardReportingSchemaV14(raw);
+    migrateUserLifecycleAuditSchemaV15(raw);
     return;
   }
 
@@ -393,6 +618,7 @@ function migrateSchema(raw: DatabaseSync): void {
     migrateInstallationSchemaV12(raw);
     recordSchemaV13(raw);
     migrateBoardReportingSchemaV14(raw);
+    migrateUserLifecycleAuditSchemaV15(raw);
     return;
   }
 
@@ -405,6 +631,7 @@ function migrateSchema(raw: DatabaseSync): void {
     migrateInstallationSchemaV12(raw);
     recordSchemaV13(raw);
     migrateBoardReportingSchemaV14(raw);
+    migrateUserLifecycleAuditSchemaV15(raw);
     return;
   }
 
@@ -425,6 +652,7 @@ function migrateSchema(raw: DatabaseSync): void {
     migrateInstallationSchemaV12(raw);
     recordSchemaV13(raw);
     migrateBoardReportingSchemaV14(raw);
+    migrateUserLifecycleAuditSchemaV15(raw);
     return;
   }
 
@@ -447,6 +675,7 @@ function migrateSchema(raw: DatabaseSync): void {
 function resetKpiSchema(raw: DatabaseSync): void {
   raw.exec("BEGIN IMMEDIATE;");
   try {
+    raw.exec("DROP TABLE IF EXISTS user_lifecycle_audit_events;");
     raw.exec("DROP TABLE IF EXISTS board_reporting_audit_events;");
     raw.exec("DROP TABLE IF EXISTS board_reporting_statement_kpis;");
     raw.exec("DROP TABLE IF EXISTS board_reporting_statements;");
@@ -1813,6 +2042,7 @@ function initializeSchema(raw: DatabaseSync): void {
   `);
   initializeStrategicSchema(raw);
   initializeBoardReportingSchema(raw);
+  initializeUserLifecycleAuditSchema(raw);
 }
 
 /** Reset connection — useful when env changes during dev hot reload. */

@@ -16,6 +16,7 @@ import {
   updateStrategyComponent,
 } from "@/features/strategy/server";
 import { assertMutationRequest } from "@/lib/request-guard";
+import { readJsonBody } from "@/lib/request-body";
 import {
   invalidStrategyInput,
   strategyEditErrorResponse,
@@ -49,9 +50,9 @@ async function authorize(req: NextRequest) {
 export async function POST(req: NextRequest) {
   const auth = await authorize(req);
   if (auth.response) return auth.response;
-  const parsed = StrategyComponentCreateSchema.safeParse(
-    await req.json().catch(() => ({})),
-  );
+  const bodyResult = await readJsonBody(req);
+  if (!bodyResult.ok) return bodyResult.response;
+  const parsed = StrategyComponentCreateSchema.safeParse(bodyResult.body);
   if (!parsed.success) return invalidStrategyInput(z.flattenError(parsed.error));
   try {
     return NextResponse.json(
@@ -69,7 +70,9 @@ export async function POST(req: NextRequest) {
 export async function PATCH(req: NextRequest) {
   const auth = await authorize(req);
   if (auth.response) return auth.response;
-  const parsed = PatchSchema.safeParse(await req.json().catch(() => ({})));
+  const bodyResult = await readJsonBody(req);
+  if (!bodyResult.ok) return bodyResult.response;
+  const parsed = PatchSchema.safeParse(bodyResult.body);
   if (!parsed.success) return invalidStrategyInput(z.flattenError(parsed.error));
   try {
     if (parsed.data.action === "update") {

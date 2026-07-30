@@ -33,13 +33,22 @@ export async function readJsonObject(
 }
 
 /** Read a cookie value from document.cookie by name (browser only). */
-function readCsrfToken(): string | null {
+export function readCsrfToken(): string | null {
   if (typeof document === "undefined") return null;
   const prefix = `${CSRF_COOKIE_NAME}=`;
   for (const part of document.cookie.split(";")) {
     const trimmed = part.trim();
     if (trimmed.startsWith(prefix)) {
-      return decodeURIComponent(trimmed.slice(prefix.length));
+      try {
+        return decodeURIComponent(trimmed.slice(prefix.length));
+      } catch {
+        // S086-C1: a malformed percent-encoded cookie value (e.g. a
+        // stray "%" written by an older build or a browser extension)
+        // makes decodeURIComponent throw URIError, which would break
+        // every mutation from this tab. Treat the value as absent so
+        // ensureCsrfToken re-issues a fresh cookie via /api/auth/me.
+        return null;
+      }
     }
   }
   return null;

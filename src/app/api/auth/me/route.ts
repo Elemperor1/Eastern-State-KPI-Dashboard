@@ -21,7 +21,13 @@ import { ensureCsrfCookie } from "@/lib/request-guard";
  */
 export async function GET(req: NextRequest) {
   const user = await getCurrentUser();
-  const res = NextResponse.json({ user: user ?? null }, { status: 200 });
+  // Per-user identity JSON must never be stored by any cache (PFM-C1);
+  // matches the `private, no-store` contract already used by the
+  // strategic export route.
+  const res = NextResponse.json(
+    { user: user ?? null },
+    { status: 200, headers: { "cache-control": "private, no-store" } },
+  );
   // Issue the double-submit CSRF cookie (D8AD-CAN-004 hardening).
   ensureCsrfCookie(req, res);
   return res;

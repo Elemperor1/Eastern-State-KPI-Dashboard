@@ -36,7 +36,9 @@ export {
   listConfigurationGaps,
   listEffectiveMeasurementConfigs,
   listEffectiveTargetsForKpi,
+  listKpiIdsWithArchivedIntervalValues,
   listStrategicGoals,
+  listStrategicGoalsForReportingDisclosure,
 } from "./queries";
 
 export {

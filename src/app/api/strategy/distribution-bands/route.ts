@@ -16,6 +16,7 @@ import {
   updateStrategyDistributionBand,
 } from "@/features/strategy/server";
 import { assertMutationRequest } from "@/lib/request-guard";
+import { readJsonBody } from "@/lib/request-body";
 
 const QuerySchema = z.object({
   kpi_id: z.coerce.number().int().positive(),
@@ -72,7 +73,11 @@ export async function GET(req: NextRequest) {
   }
   try {
     const bands = listEffectiveDistributionBands(parsed.data);
-    return NextResponse.json({ bands });
+    // Role-scoped band data: forbid any cache from storing it (PFM-C1).
+    return NextResponse.json(
+      { bands },
+      { headers: { "cache-control": "private, no-store" } },
+    );
   } catch (error) {
     const response = valueEntryError(error);
     if (response) return response;
@@ -91,10 +96,9 @@ export async function POST(req: NextRequest) {
   const guard = assertMutationRequest(req);
   if (guard) return guard;
   try {
-    const band = createStrategyDistributionBand(
-      await req.json().catch(() => ({})),
-      user.id,
-    );
+    const bodyResult = await readJsonBody(req);
+    if (!bodyResult.ok) return bodyResult.response;
+    const band = createStrategyDistributionBand(bodyResult.body, user.id);
     return NextResponse.json({ band }, { status: 201 });
   } catch (error) {
     const response = valueEntryError(error);
@@ -113,7 +117,9 @@ export async function PATCH(req: NextRequest) {
   }
   const guard = assertMutationRequest(req);
   if (guard) return guard;
-  const parsed = PatchSchema.safeParse(await req.json().catch(() => ({})));
+  const bodyResult = await readJsonBody(req);
+  if (!bodyResult.ok) return bodyResult.response;
+  const parsed = PatchSchema.safeParse(bodyResult.body);
   if (!parsed.success) {
     return NextResponse.json(
       { error: "Invalid input", issues: z.flattenError(parsed.error) },

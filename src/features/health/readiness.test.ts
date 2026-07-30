@@ -5,7 +5,7 @@ import path from "node:path";
 import { DatabaseSync } from "node:sqlite";
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 import { getDb, resetDb } from "@/lib/db";
-import { checkReadiness } from "./readiness";
+import { checkDatabaseIntegrity, checkReadiness } from "./readiness";
 
 let fixtureDirectory = "";
 let readyFixturePath = "";
@@ -167,6 +167,49 @@ describe("production readiness database probe", () => {
 
     expect(consoleError).not.toHaveBeenCalled();
     consoleError.mockRestore();
+  });
+
+  it("keeps integrity scanning off the anonymous hot-path probe (S008-C1)", () => {
+    // /api/health/ready is unauthenticated, unthrottled, and polled by Fly on
+    // a fixed interval. A synchronous PRAGMA quick_check on that path lets
+    // anonymous traffic force a full database scan on demand. The hot-path
+    // probe must stay shallow (schema-version + cheap reads); integrity
+    // scanning belongs to the scheduled/operator deep check only.
+    const coreSource = fs.readFileSync(
+      path.join(__dirname, "readiness-core.mjs"),
+      "utf8",
+    );
+    const hotPathStart = coreSource.indexOf(
+      "export function checkDatabaseReadiness",
+    );
+    const hotPathEnd = coreSource.indexOf("export function", hotPathStart + 1);
+    const hotPathSource = coreSource.slice(hotPathStart, hotPathEnd);
+
+    // Match only an executed pragma statement, not explanatory prose.
+    expect(hotPathSource).not.toMatch(/(?:prepare|exec)\(\s*[`"']PRAGMA quick_check/);
+  });
+
+  it("deep integrity check accepts a healthy database without changing it", () => {
+    const databasePath = copyReadyFixture("deep-healthy");
+    const before = sha256(databasePath);
+
+    expect(checkDatabaseIntegrity(databasePath)).toEqual({ integrity: true });
+
+    expect(sha256(databasePath)).toBe(before);
+  });
+
+  it("deep integrity check fails closed on a corrupted database file", () => {
+    const databasePath = copyReadyFixture("deep-corrupt");
+    // Damage the 100-byte database header ("SQLite format 3") so any page
+    // read reports the file as malformed. Deterministic: unlike data-page
+    // corruption, header damage is always detected.
+    const handle = fs.openSync(databasePath, "r+");
+    fs.writeSync(handle, Buffer.from("CORRUPTED-HEADER!"), 0, 16, 0);
+    fs.closeSync(handle);
+
+    const result = checkDatabaseIntegrity(databasePath);
+
+    expect(result.integrity).toBe(false);
   });
 });
 

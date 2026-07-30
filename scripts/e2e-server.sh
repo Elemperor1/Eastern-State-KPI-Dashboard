@@ -6,6 +6,10 @@ set -euo pipefail
 # suite's loopback-only disposable environment.
 : "${PORT:=3291}"
 
+# S053-C1: confirm the exact disposable database the seed may reset.
+# Playwright owns DATABASE_PATH (an absolute private temp path).
+export SEED_CONFIRM="$DATABASE_PATH"
+
 npm run db:seed
 npm run setup:admin
 npm run build

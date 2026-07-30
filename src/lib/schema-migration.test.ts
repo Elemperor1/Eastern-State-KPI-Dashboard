@@ -33,6 +33,8 @@ const BOARD_REPORTING_TABLES = [
   "board_reporting_audit_events",
 ] as const;
 
+const USER_LIFECYCLE_TABLES = ["user_lifecycle_audit_events"] as const;
+
 const LEGACY_TABLES = [
   "users",
   "categories",
@@ -384,8 +386,8 @@ describe("schema 12 migration", () => {
       ).map((row) => row.name),
     );
 
-    expect(SCHEMA_VERSION).toBe(14);
-    expect(schemaVersion(db)).toBe(14);
+    expect(SCHEMA_VERSION).toBe(15);
+    expect(schemaVersion(db)).toBe(15);
     expect(() =>
       db.prepare(
         `INSERT INTO users (email, name, password_hash, role)
@@ -403,6 +405,7 @@ describe("schema 12 migration", () => {
       ...LEGACY_TABLES,
       ...STRATEGIC_TABLES,
       ...BOARD_REPORTING_TABLES,
+      ...USER_LIFECYCLE_TABLES,
     ]) {
       expect(tableNames.has(table), `${table} should exist`).toBe(true);
     }
@@ -522,7 +525,7 @@ describe("schema 12 migration", () => {
       )
       .get() as Record<string, unknown>;
 
-    expect(schemaVersion(migrated)).toBe(14);
+    expect(schemaVersion(migrated)).toBe(15);
     expect(ownership).toMatchObject({
       organization_slug: "eastern-state-penitentiary-historic-site",
       plan_slug: "strategic-plan-2025-2029",
@@ -671,7 +674,7 @@ describe("schema 12 migration", () => {
     resetDb();
     const migrated = getDb();
 
-    expect(schemaVersion(migrated)).toBe(14);
+    expect(schemaVersion(migrated)).toBe(15);
     for (const [table, query] of Object.entries(legacyQueries)) {
       expect(countRows(migrated, table)).toBe(beforeCounts[table]);
       expect(migrated.prepare(query).all()).toEqual(before[table]);
@@ -761,8 +764,8 @@ describe("schema 12 migration", () => {
       )
       .get(kpiId);
 
-    expect(SCHEMA_VERSION).toBe(14);
-    expect(schemaVersion(migrated)).toBe(14);
+    expect(SCHEMA_VERSION).toBe(15);
+    expect(schemaVersion(migrated)).toBe(15);
     expect(goal).toMatchObject({
       kpi_id: kpiId,
       target_year: 2029,
@@ -849,8 +852,8 @@ describe("schema 12 migration", () => {
     resetDb();
     const migrated = getDb();
 
-    expect(SCHEMA_VERSION).toBe(14);
-    expect(schemaVersion(migrated)).toBe(14);
+    expect(SCHEMA_VERSION).toBe(15);
+    expect(schemaVersion(migrated)).toBe(15);
     expect(
       migrated.prepare("SELECT * FROM kpi_components WHERE id = ?").get(componentId),
     ).toMatchObject({
@@ -901,7 +904,7 @@ describe("schema 12 migration", () => {
 
     resetDb();
     const reopened = getDb();
-    expect(schemaVersion(reopened)).toBe(14);
+    expect(schemaVersion(reopened)).toBe(15);
     expect(
       reopened
         .prepare(
@@ -941,7 +944,7 @@ describe("schema 12 migration", () => {
       expect(
         migrated.prepare("SELECT value FROM meta WHERE key = 'sample_data'").get(),
       ).toBeUndefined();
-      expect(schemaVersion(migrated)).toBe(14);
+      expect(schemaVersion(migrated)).toBe(15);
     },
   );
 
@@ -953,6 +956,7 @@ describe("schema 12 migration", () => {
       DROP TABLE board_reporting_statements;
       DROP TABLE board_reporting_priorities;
       DROP TABLE board_reporting_scopes;
+      DROP TABLE user_lifecycle_audit_events;
       DELETE FROM meta WHERE key = 'board_reporting_scope_initialized';
       INSERT OR REPLACE INTO meta (key, value) VALUES ('schema_version', '13');
     `);
@@ -960,8 +964,13 @@ describe("schema 12 migration", () => {
     resetDb();
     const migrated = getDb();
 
-    expect(schemaVersion(migrated)).toBe(14);
+    expect(schemaVersion(migrated)).toBe(15);
     for (const table of BOARD_REPORTING_TABLES) {
+      expect(migrated.prepare(
+        "SELECT name FROM sqlite_master WHERE type = 'table' AND name = ?",
+      ).get(table)).toEqual({ name: table });
+    }
+    for (const table of USER_LIFECYCLE_TABLES) {
       expect(migrated.prepare(
         "SELECT name FROM sqlite_master WHERE type = 'table' AND name = ?",
       ).get(table)).toEqual({ name: table });
@@ -973,5 +982,151 @@ describe("schema 12 migration", () => {
     });
     expect(migrated.prepare("SELECT id FROM kpis WHERE id = ?").get(kpiId)).toEqual({ id: kpiId });
     expect(migrated.prepare("PRAGMA foreign_key_check").all()).toEqual([]);
+  });
+
+  it("adds schema-15 user lifecycle audit storage to schema 14 without changing existing rows", () => {
+    const { db, userId, categoryId, kpiId } = seedCurrentFixture();
+    db.exec(`
+      DROP TABLE user_lifecycle_audit_events;
+      INSERT OR REPLACE INTO meta (key, value) VALUES ('schema_version', '14');
+    `);
+
+    resetDb();
+    const migrated = getDb();
+
+    expect(schemaVersion(migrated)).toBe(15);
+    for (const table of USER_LIFECYCLE_TABLES) {
+      expect(migrated.prepare(
+        "SELECT name FROM sqlite_master WHERE type = 'table' AND name = ?",
+      ).get(table)).toEqual({ name: table });
+    }
+    expect(
+      columnNames(migrated, "user_lifecycle_audit_events"),
+    ).toEqual(
+      expect.arrayContaining([
+        "subject_user_id",
+        "subject_email_snapshot",
+        "event_type",
+        "actor_id",
+        "actor_email_snapshot",
+        "occurred_at",
+      ]),
+    );
+    // subject_user_id deliberately carries NO foreign key so deletion
+    // events keep pointing at the removed account id.
+    expect(
+      migrated
+        .prepare("PRAGMA foreign_key_list(user_lifecycle_audit_events)")
+        .all()
+        .some((foreignKey) => foreignKey.from === "subject_user_id"),
+    ).toBe(false);
+    expect(migrated.prepare("SELECT id FROM users WHERE id = ?").get(userId)).toEqual({ id: userId });
+    expect(migrated.prepare("SELECT id FROM categories WHERE id = ?").get(categoryId)).toEqual({ id: categoryId });
+    expect(migrated.prepare("SELECT id FROM kpis WHERE id = ?").get(kpiId)).toEqual({ id: kpiId });
+    expect(migrated.prepare("PRAGMA foreign_key_check").all()).toEqual([]);
+  });
+
+  it("refuses a database written by a newer schema version without touching its rows", () => {
+    const { db, categoryId, kpiId } = seedCurrentFixture();
+    db.prepare(
+      "UPDATE meta SET value = '16' WHERE key = 'schema_version'",
+    ).run();
+    resetDb();
+
+    expect(() => getDb()).toThrow(/newer than this application supports/);
+
+    // The refusal is fail-closed and non-destructive: rows and the persisted
+    // schema version survive untouched so a newer application release can
+    // still open the database.
+    const verify = new DatabaseSync(dbPath);
+    expect(
+      verify
+        .prepare("SELECT email FROM users WHERE email = 'migration@example.org'")
+        .get(),
+    ).toEqual({ email: "migration@example.org" });
+    expect(
+      verify.prepare("SELECT id FROM categories WHERE id = ?").get(categoryId),
+    ).toEqual({ id: categoryId });
+    expect(
+      verify.prepare("SELECT id FROM kpis WHERE id = ?").get(kpiId),
+    ).toEqual({ id: kpiId });
+    expect(
+      verify.prepare("SELECT value FROM meta WHERE key = 'schema_version'").get(),
+    ).toEqual({ value: "16" });
+    verify.close();
+  });
+
+  it("refuses a newer schema before repairing or rebuilding its users table", () => {
+    const future = new DatabaseSync(dbPath);
+    future.exec(`
+      CREATE TABLE meta (key TEXT PRIMARY KEY, value TEXT NOT NULL);
+      INSERT INTO meta (key, value) VALUES ('schema_version', '16');
+      CREATE TABLE users (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        email TEXT UNIQUE NOT NULL,
+        name TEXT NOT NULL,
+        password_hash TEXT NOT NULL,
+        role TEXT NOT NULL CHECK (role IN ('admin','viewer')),
+        created_at TEXT NOT NULL DEFAULT (datetime('now')),
+        future_auth_state TEXT NOT NULL
+      );
+      INSERT INTO users (
+        email, name, password_hash, role, future_auth_state
+      ) VALUES (
+        'future@example.org', 'Future User', 'hash', 'admin', 'preserve-me'
+      );
+    `);
+    const beforeSql = future
+      .prepare(
+        "SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'users'",
+      )
+      .get();
+    const beforeColumns = future.prepare("PRAGMA table_info(users)").all();
+    future.close();
+
+    expect(() => getDb()).toThrow(/newer than this application supports/);
+
+    const verify = new DatabaseSync(dbPath, { readOnly: true });
+    expect(
+      verify
+        .prepare(
+          "SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'users'",
+        )
+        .get(),
+    ).toEqual(beforeSql);
+    expect(verify.prepare("PRAGMA table_info(users)").all()).toEqual(
+      beforeColumns,
+    );
+    expect(
+      verify
+        .prepare("SELECT email, future_auth_state FROM users WHERE id = 1")
+        .get(),
+    ).toEqual({
+      email: "future@example.org",
+      future_auth_state: "preserve-me",
+    });
+    verify.close();
+  });
+
+  it("refuses a malformed persisted schema version without resetting KPI data", () => {
+    const { db, categoryId, kpiId } = seedCurrentFixture();
+    db.prepare(
+      "UPDATE meta SET value = 'not-a-number' WHERE key = 'schema_version'",
+    ).run();
+    resetDb();
+
+    expect(() => getDb()).toThrow(/invalid persisted schema version/i);
+
+    const verify = new DatabaseSync(dbPath, { readOnly: true });
+    expect(
+      verify.prepare("SELECT id FROM categories WHERE id = ?").get(categoryId),
+    ).toEqual({ id: categoryId });
+    expect(
+      verify.prepare("SELECT id FROM kpis WHERE id = ?").get(kpiId),
+    ).toEqual({ id: kpiId });
+    expect(
+      verify.prepare("SELECT value FROM meta WHERE key = 'schema_version'").get(),
+    ).toEqual({ value: "not-a-number" });
+    verify.close();
   });
 });

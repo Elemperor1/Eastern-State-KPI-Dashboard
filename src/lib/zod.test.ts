@@ -70,4 +70,36 @@ describe("Zod 3 public error-message compatibility", () => {
       "Keep this message.",
     ]);
   });
+
+  it("truncates reflected invalid enum input to a bounded echo (S091-C1)", () => {
+    const attacker = "x".repeat(500);
+    const [message] = messages(z.enum(["annual", "monthly"]), attacker);
+    expect(message).not.toContain(attacker);
+    expect(message).toContain("x".repeat(200));
+    expect(message).toContain("…");
+    expect(message).toMatch(
+      /^Invalid enum value\. Expected 'annual' \| 'monthly', received '/,
+    );
+  });
+
+  it("truncates reflected unrecognized key names and caps the echoed key count (S091-C2)", () => {
+    const longKey = "k".repeat(500);
+    const [message] = messages(z.object({ id: z.number() }).strict(), {
+      id: 1,
+      [longKey]: true,
+    });
+    expect(message).not.toContain(longKey);
+    expect(message).toContain("k".repeat(200));
+    expect(message).toContain("…");
+
+    const many: Record<string, true> = {};
+    for (let i = 0; i < 50; i += 1) many[`key${i}`] = true;
+    const [manyMessage] = messages(z.object({ id: z.number() }).strict(), {
+      id: 1,
+      ...many,
+    });
+    expect(manyMessage).toContain("'key19'");
+    expect(manyMessage).not.toContain("'key20'");
+    expect(manyMessage).toContain("(+30 more)");
+  });
 });

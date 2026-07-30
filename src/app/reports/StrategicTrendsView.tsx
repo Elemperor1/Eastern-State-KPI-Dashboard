@@ -11,6 +11,7 @@ import {
   YAxis,
 } from "recharts";
 import {
+  Alert,
   ChartContainer,
   EmptyState,
   ExportCSVButton,
@@ -19,6 +20,9 @@ import {
   Table,
 } from "@/components/ui";
 import type { StrategicTrendReportData } from "@/features/reporting/types";
+
+const RESTORED_HIDDEN_DATA_WARNING =
+  "Data changed while this measure was archived; review the restored values.";
 
 /** Retrieves strategic trend selection. */
 export function resolveStrategicTrendSelection(
@@ -32,6 +36,46 @@ export function resolveStrategicTrendSelection(
   return series.find((item) =>
     item.points.some((point) => point.value !== null),
   )?.kpiId ?? series[0]?.kpiId ?? 0;
+}
+
+/** Builds a trend CSV with the same lifecycle disclosures as the visible report. */
+export function buildStrategicTrendCsvRows(
+  data: StrategicTrendReportData,
+  selected: StrategicTrendReportData["series"][number] | null,
+  reportingPeriod: string,
+): Array<Record<string, string | number | null>> {
+  const excluded = data.excludedMeasures
+    .map((measure) => `${measure.priorityName}: ${measure.kpiName}`)
+    .join("; ");
+  const lifecycleWarning = selected?.restoredWithHiddenData
+    ? RESTORED_HIDDEN_DATA_WARNING
+    : "";
+  if (!selected) {
+    return excluded
+      ? [{
+          "Measure ID": null,
+          Measure: null,
+          "Strategic Priority": null,
+          "Reporting Year": null,
+          "Reporting Period": reportingPeriod,
+          Value: null,
+          Unit: null,
+          "Lifecycle warning": "",
+          "Archived measures excluded": excluded,
+        }]
+      : [];
+  }
+  return selected.points.map((point) => ({
+    "Measure ID": selected.kpiId,
+    Measure: selected.kpiName,
+    "Strategic Priority": selected.priorityName,
+    "Reporting Year": point.year,
+    "Reporting Period": reportingPeriod,
+    Value: point.value,
+    Unit: selected.unit,
+    "Lifecycle warning": lifecycleWarning,
+    "Archived measures excluded": excluded,
+  }));
 }
 
 /** Renders the strategic trends view interface. */
@@ -58,20 +102,28 @@ export function StrategicTrendsView({
     (item) => item.kpiId === resolvedSelectedId,
   ) ?? null;
   const csvRows = useMemo(
-    () => selected?.points.map((point) => ({
-      "Measure ID": selected.kpiId,
-      Measure: selected.kpiName,
-      "Strategic Priority": selected.priorityName,
-      "Reporting Year": point.year,
-      "Reporting Period": reportingPeriod,
-      Value: point.value,
-      Unit: selected.unit,
-    })) ?? [],
-    [reportingPeriod, selected],
+    () => buildStrategicTrendCsvRows(data, selected, reportingPeriod),
+    [data, reportingPeriod, selected],
   );
 
   return (
     <div>
+      {data.excludedMeasures.length > 0 ? (
+        <Alert className="mb-5">
+          <p className="font-semibold">Archived measures excluded from Trends</p>
+          <p className="mt-1">
+            These measures remain part of the reporting record but are not
+            included in the trend lines:
+          </p>
+          <ul className="mt-2 list-disc space-y-1 pl-5">
+            {data.excludedMeasures.map((measure) => (
+              <li key={measure.kpiId}>
+                {measure.priorityName}: {measure.kpiName}
+              </li>
+            ))}
+          </ul>
+        </Alert>
+      ) : null}
       <div className="mb-5 flex flex-wrap items-end justify-between gap-4">
         <FormField label="Measure" htmlFor="trend-measure" className="w-full max-w-xl">
           <Select
@@ -89,6 +141,13 @@ export function StrategicTrendsView({
           filename={`${data.organizationSlug}-trend-${selected?.kpiId ?? "report"}.csv`}
         />
       </div>
+
+      {selected?.restoredWithHiddenData ? (
+        <Alert className="mb-5">
+          <p className="font-semibold">Review restored measure data</p>
+          <p className="mt-1">{RESTORED_HIDDEN_DATA_WARNING}</p>
+        </Alert>
+      ) : null}
 
       {selected ? (
         <ChartContainer

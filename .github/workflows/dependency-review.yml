@@ -31,5 +31,9 @@ jobs:
           fail-on-scopes: runtime,development,unknown
           license-check: false
           vulnerability-check: true
+          # Exact, time-bounded development-only exception. The OSV policy,
+          # ownership, installed path, and 2026-08-29 expiry are enforced by
+          # scripts/security-workflow-policy.test.ts.
+          allow-ghsas: GHSA-mh99-v99m-4gvg
           comment-summary-in-pr: never
           show-patched-versions: true

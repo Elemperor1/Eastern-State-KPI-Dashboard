@@ -180,7 +180,11 @@ function loginReq(body: unknown, ip: string): NextRequest {
   return new NextRequest(
     new Request("http://localhost/api/auth/login", {
       method: "POST",
-      headers: { "content-type": "application/json", "x-forwarded-for": ip },
+      headers: {
+        "content-type": "application/json",
+        origin: "http://localhost",
+        "x-forwarded-for": ip,
+      },
       body: JSON.stringify(body),
     }),
   );

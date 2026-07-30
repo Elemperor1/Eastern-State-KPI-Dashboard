@@ -87,9 +87,14 @@ surface does not override it.
 6. Dirty navigation requires an explicit stay-or-discard decision. The product
    is online-required: a failed/offline save preserves only the current
    in-memory draft and never promises synchronization.
-7. No versioned concurrent-edit prevention contract is currently verified;
-   last-write behavior is a documented risk, while Activity provides evidence
-   rather than conflict prevention.
+7. Strategic Goal settings/successors, Goal–KPI Membership
+   settings/successors, Measurement Definition settings/successors, and
+   Target settings carry an optimistic revision token and refuse stale writes;
+   those editors must preserve the draft, explain the conflict, and reload
+   before retrying. Other Setup mutations and Data Entry value writes have no
+   equivalent concurrent-edit token, so last-write behavior remains a
+   documented risk there while Activity provides evidence rather than
+   prevention.
 
 ### Govern Measures, Goals, People, and Activity
 
@@ -182,15 +187,17 @@ surface does not override it.
    preview must preserve auth and database contracts. Repository guards,
    branch protections, and the dead-code/hygiene conclusions are fixed
    invariants for this audit.
-5. Docker fallback security scanners are selected by reviewed immutable image
-   digest. Local editor tooling fails closed when its reviewed application
-   bundle is absent; it does not execute mutable registry packages as an
-   availability fallback.
+5. Security scanners run only through reviewed immutable Docker image digests;
+   local scanner binaries are rejected because version output does not prove
+   executable provenance. Local editor tooling fails closed when its reviewed
+   application bundle is absent; it does not execute mutable registry packages
+   as an availability fallback.
 
 ## Explicit non-bugs without contrary evidence
 
-- Lack of offline synchronization and versioned concurrent-edit conflict
-  prevention are documented product risks, not implemented promises.
+- Lack of offline synchronization and the absence of versioned conflict
+  prevention on the remaining Setup and Data Entry mutation surfaces are
+  documented product risks, not implemented promises.
 - A future contextual Measure-to-Target editing route is a documented future
   surface, not a current supported workflow.
 - Unresolved TK/TBD definitions and Targets are honest domain states, not zero

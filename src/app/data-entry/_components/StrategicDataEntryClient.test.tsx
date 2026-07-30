@@ -134,4 +134,26 @@ describe("Data Entry", () => {
     expect(source).not.toContain("response.status === 409");
     expect(source).not.toContain("conflicts with the current setup");
   });
+
+  it("shows save success only after a confirmed mutation, never from the URL", () => {
+    const clientSource = readFileSync(
+      new URL("./StrategicDataEntryClient.tsx", import.meta.url),
+      "utf8",
+    );
+    const pageSource = readFileSync(
+      new URL("../page.tsx", import.meta.url),
+      "utf8",
+    );
+
+    // Success feedback is only set in the submit flow after a confirmed save...
+    expect(clientSource).toContain(
+      'setFeedback({ variant: "success", message: "Saved." })',
+    );
+    // ...and is never reflected from an attacker-controlled search param.
+    expect(clientSource).not.toContain('params.set("saved"');
+    expect(clientSource).not.toContain("saved?: boolean");
+    expect(clientSource).not.toContain("if (saved)");
+    expect(pageSource).not.toContain("params.saved");
+    expect(pageSource).not.toContain("saved={");
+  });
 });

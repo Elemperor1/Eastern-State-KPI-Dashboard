@@ -21,6 +21,7 @@ const MIGRATION_FAILURE_REASONS = new Set([
   "database_marker_failed",
   "migration_command_failed",
   "migration_execution_failed",
+  "schema_probe_failed",
 ]);
 const READINESS_FAILURE_REASONS = new Set([
   "database_missing",
@@ -28,6 +29,10 @@ const READINESS_FAILURE_REASONS = new Set([
   "database_incompatible",
   "migration_in_progress",
   "initialization_incomplete",
+]);
+const AUTH_THROTTLE_REASONS = new Set([
+  "change_password_lockout",
+  "login_verify_budget_exceeded",
 ]);
 const HTTP_METHODS = new Set([
   "DELETE",
@@ -99,6 +104,17 @@ export function logMigrationFailure(reason, exitCode) {
 export function logReadinessFailure(reason) {
   if (!READINESS_FAILURE_REASONS.has(reason)) return;
   emit("error", "readiness_failure", { reason });
+}
+
+/**
+ * Records an authentication throttle event. Deliberately carries ONLY the
+ * bounded reason code — never emails, IPs, usernames, or credentials — so
+ * the log stream stays non-sensitive while still giving operators a
+ * signal that online guessing is being throttled.
+ */
+export function logAuthThrottle(reason) {
+  if (!AUTH_THROTTLE_REASONS.has(reason)) return;
+  emit("warn", "auth_throttle", { reason });
 }
 
 /**

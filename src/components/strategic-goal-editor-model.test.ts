@@ -61,6 +61,7 @@ function goal(
         effectiveFromYear: 2025,
         effectiveToYear: 2029,
         configurationStatus: "active",
+        updatedAt: "2026-01-01 00:00:00",
       },
     ],
     ...overrides,
@@ -107,14 +108,46 @@ describe("strategic goal editor model", () => {
     });
   });
 
+  it("carries the loaded revision through settings and membership mutations (S070-C2)", () => {
+    const current = goal();
+    const settingsResult = buildStrategicGoalSettingsPayload(
+      current,
+      strategicGoalDraftFromData(current),
+    );
+    expect(settingsResult).toMatchObject({
+      ok: true,
+      payload: { id: current.id, expected_revision: current.updated_at },
+    });
+
+    const member = current.members[0]!;
+    const membershipMutation = buildStrategicGoalMembershipMutation(
+      member.id,
+      strategicGoalMembershipDraftFromData(member),
+      member.updatedAt,
+    );
+    expect(membershipMutation).toMatchObject({
+      ok: true,
+      mutation: {
+        body: { id: member.id, expected_revision: member.updatedAt },
+      },
+    });
+  });
+
   it("builds an effective-dated successor membership envelope", () => {
     const member = goal().members[0]!;
     expect(
-      buildStrategicGoalMembershipSuccessorMutation(member.id, 2027, {
-        role: "informational",
-        weight: "2.5",
-        displayOrder: "4",
-      }, 2025, 2029),
+      buildStrategicGoalMembershipSuccessorMutation(
+        member.id,
+        member.updatedAt,
+        2027,
+        {
+          role: "informational",
+          weight: "2.5",
+          displayOrder: "4",
+        },
+        2025,
+        2029,
+      ),
     ).toEqual({
       ok: true,
       errors: {},
@@ -124,6 +157,7 @@ describe("strategic goal editor model", () => {
         body: {
           action: "create_successor",
           predecessor_id: member.id,
+          expected_revision: member.updatedAt,
           effective_start_year: 2027,
           role: "informational",
           weight: 2.5,

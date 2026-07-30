@@ -1,8 +1,13 @@
-# OSV-Scanner fails for every active vulnerability in package-lock.json.
-# There are intentionally no ignored advisories.
+# OSV-Scanner fails for every active vulnerability in package-lock.json
+# except the narrow, expiring exception below.
 #
-# A future exception must be narrowly versioned and include all of:
+# Every exception must be narrowly versioned and include all of:
 #   id = "OSV-ADVISORY-ID"
 #   reason = "Why it is not exploitable; owner: team-or-person"
 #   ignoreUntil = "YYYY-MM-DD" # expiration/review date
 # Never ignore a withdrawn advisory here; OSV handles withdrawal metadata.
+
+[[IgnoredVulns]]
+id = "GHSA-mh99-v99m-4gvg"
+ignoreUntil = 2026-08-29
+reason = "Temporary exact-artifact risk acceptance for the development-only eslint-config-next lint path shared by eslint-plugin-import, eslint-plugin-jsx-a11y, and eslint-plugin-react through minimatch@3 -> brace-expansion@1.1.17. The locked artifact contains and passes an executable maxLength-bound regression, but authoritative advisory metadata still marks every version through 5.0.7 affected and recognizes only 5.0.8 as patched; this is not a blanket claim that 1.x is fixed. Repository-authored static lint patterns are the only inputs, never request/runtime data. Artifact integrity, dependency shape, and dev-only flags are enforced by scripts/security-workflow-policy.test.ts. Owner: repository maintainer."

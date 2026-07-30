@@ -24,6 +24,7 @@ import {
 import {
   ComponentInputSchema,
   ComponentSetInputSchema,
+  ExpectedRevisionSchema,
   MeasurementConfigInputSchema,
   MeasurementConfigurationCreateSchema,
   MeasurementConfigurationUpdateSchema,
@@ -186,7 +187,8 @@ function rawGoal(id: number): RawRow {
   const row = getDb()
     .prepare(
       `SELECT goal.*, category.slug AS priority_slug,
-              category.name AS priority_name
+              category.name AS priority_name,
+              category.archived_at AS priority_archived_at
        FROM strategic_goals goal
        JOIN categories category ON category.id = goal.priority_id
        WHERE goal.id = ?`,
@@ -243,6 +245,64 @@ function requireEditable(row: RawRow, entity: string): void {
     throw new StrategyEditConflictError(
       `Restore ${entity} ${String(row.id)} before editing it.`,
       "archived_entity",
+    );
+  }
+}
+
+/**
+ * Optimistic-concurrency compare (S070-C2): when the caller supplies the
+ * `updated_at` snapshot it loaded as `expected_revision`, refuse the write
+ * when the row changed since. The check runs inside the mutation's
+ * transaction on the single writer connection, and every guarded UPDATE
+ * bumps `updated_at` monotonically so two writes inside the same
+ * wall-clock second still invalidate the first writer's snapshot.
+ */
+function assertExpectedRevision(
+  before: RawRow,
+  expectedRevision: string | undefined,
+): void {
+  if (expectedRevision === undefined) return;
+  if (String(before.updated_at) !== expectedRevision) {
+    throw new StrategyEditConflictError(
+      "This record changed while you were editing it. Reload the latest version before saving again.",
+      "stale_revision",
+    );
+  }
+}
+
+/**
+ * Monotonic `updated_at` bump: never moves the clock backwards, and always
+ * advances at least one second so a revision snapshot is invalidated by
+ * every write, even two writes within the same wall-clock second.
+ */
+const NEXT_REVISION_SQL =
+  "CASE WHEN updated_at >= datetime('now') " +
+  "THEN datetime(updated_at, '+1 second') ELSE datetime('now') END";
+
+/**
+ * Enforce write-side lifecycle integrity for configuration mutations: the
+ * KPI that owns the configuration and its Strategic Priority must both be
+ * active. Ancestor lifecycle state is enforced here (write side) rather
+ * than only in read-side listers, mirroring the archived-membership and
+ * archived-target-subject refusals below.
+ */
+function assertKpiLineageActive(kpiId: number): void {
+  const row = getDb()
+    .prepare(
+      `SELECT k.archived_at AS kpi_archived_at,
+              category.archived_at AS priority_archived_at
+       FROM kpis k
+       JOIN categories category ON category.id = k.category_id
+       WHERE k.id = ?`,
+    )
+    .get(kpiId) as
+    | { kpi_archived_at: string | null; priority_archived_at: string | null }
+    | undefined;
+  if (!row) throw new StrategyEditNotFoundError("kpi", kpiId);
+  if (row.kpi_archived_at != null || row.priority_archived_at != null) {
+    throw new StrategyEditConflictError(
+      "Restore the measure and its Strategic Priority before editing its configuration.",
+      "archived_kpi_context",
     );
   }
 }
@@ -622,6 +682,7 @@ export function createMeasurementConfiguration(
   }
   return transaction(() => {
     const context = auditContextForKpi(parsed.kpi_id);
+    assertKpiLineageActive(parsed.kpi_id);
     ensureNoConfigurationOverlap(
       parsed.kpi_id,
       parsed.effective_start_year,
@@ -668,6 +729,7 @@ export function createMeasurementConfiguration(
 const SuccessorMeasurementConfigurationSchema = z
   .object({
     predecessor_id: z.number().int().positive(),
+    expected_revision: ExpectedRevisionSchema,
     successor: MeasurementConfigurationCreateSchema,
   })
   .strict();
@@ -1392,8 +1454,10 @@ export function createSuccessorMeasurementConfiguration(
   );
   return transaction(() => {
     const before = rawConfiguration(parsed.predecessor_id);
+    assertExpectedRevision(before, parsed.expected_revision);
     requireEditable(before, "measurement configuration");
     const kpiId = Number(before.kpi_id);
+    assertKpiLineageActive(kpiId);
     if (parsed.successor.kpi_id !== kpiId) {
       throw new StrategyEditConflictError(
         "The successor must belong to the predecessor KPI.",
@@ -1451,7 +1515,8 @@ export function createSuccessorMeasurementConfiguration(
       getDb()
         .prepare(
           `UPDATE kpi_measurement_configs
-           SET effective_to_year = ?, updated_by = ?, updated_at = datetime('now')
+           SET effective_to_year = ?, updated_by = ?,
+               updated_at = ${NEXT_REVISION_SQL}
            WHERE id = ?`,
         )
         .run(truncatedEnd, actorId, parsed.predecessor_id);
@@ -1563,6 +1628,8 @@ export function updateMeasurementConfiguration(
   return transaction(() => {
     const before = rawConfiguration(patch.id);
     requireEditable(before, "measurement configuration");
+    assertExpectedRevision(before, patch.expected_revision);
+    assertKpiLineageActive(Number(before.kpi_id));
     const merged = mergedConfiguration(before, patch);
     const values = configurationValues(merged);
     const semanticFieldsChanged = fieldsChanged(
@@ -1626,14 +1693,14 @@ export function updateMeasurementConfiguration(
       .prepare(
         `UPDATE kpi_measurement_configs SET
            ${CONFIG_FIELDS.map((field) => `${field} = ?`).join(", ")},
-           updated_by = ?, updated_at = datetime('now')
+           updated_by = ?, updated_at = ${NEXT_REVISION_SQL}
          WHERE id = ?`,
       )
       .run(...Object.values(values), actorId, patch.id);
     const after = rawConfiguration(patch.id);
     const context = auditContextForKpi(Number(before.kpi_id));
     const onlyStatus = Object.keys(patch).every((key) =>
-      ["id", "configuration_status", "unresolved_question", "owner", "due_date", "resolution_notes", "last_reviewed_date"].includes(key),
+      ["id", "expected_revision", "configuration_status", "unresolved_question", "owner", "due_date", "resolution_notes", "last_reviewed_date"].includes(key),
     );
     recordStrategicAuditEvent({
       entity_type: "measurement_config",
@@ -1759,6 +1826,83 @@ function goalHasRecordedManualResult(goal: RawRow): boolean {
   );
 }
 
+/**
+ * A threshold-count completion rule is only meaningful when the threshold
+ * is reachable in every year of the goal: a count above the minimum number
+ * of simultaneously active required memberships is unsatisfiable for at
+ * least part of the goal range. The member count is read inside the caller's
+ * transaction so the check and the write commit or roll back together.
+ */
+function assertThresholdCountSatisfiable(
+  merged: { completion_rule: string; threshold_count: number | null },
+  memberCount: number,
+): void {
+  if (
+    merged.completion_rule === "threshold_count" &&
+    merged.threshold_count !== null &&
+    merged.threshold_count > memberCount
+  ) {
+    throw new StrategyEditValidationError(
+      "Threshold count cannot exceed the goal's simultaneously required measures.",
+      [
+        {
+          path: "threshold_count",
+          message:
+            `Threshold count ${merged.threshold_count} exceeds the goal's ` +
+            `minimum of ${memberCount} simultaneously required ` +
+            `measure${memberCount === 1 ? "" : "s"}.`,
+        },
+      ],
+    );
+  }
+}
+
+/** Finds the minimum simultaneous required memberships across a goal range. */
+function minimumRequiredGoalMembershipCount(
+  goalId: number,
+  startYear: number,
+  endYear: number,
+): number {
+  const memberships = getDb()
+    .prepare(
+      `SELECT effective_from_year, effective_to_year
+       FROM goal_kpis
+       WHERE goal_id = ? AND archived_at IS NULL AND is_required = 1`,
+    )
+    .all(goalId) as Array<{
+    effective_from_year: number;
+    effective_to_year: number | null;
+  }>;
+  let minimum = Number.POSITIVE_INFINITY;
+  for (let year = startYear; year <= endYear; year += 1) {
+    const count = memberships.filter(
+      (membership) =>
+        membership.effective_from_year <= year &&
+        (membership.effective_to_year === null ||
+          membership.effective_to_year >= year),
+    ).length;
+    minimum = Math.min(minimum, count);
+  }
+  return Number.isFinite(minimum) ? minimum : 0;
+}
+
+/** Revalidates a persisted goal after a membership mutation. */
+function assertPersistedGoalThresholdSatisfiable(goalId: number): void {
+  const goal = rawGoal(goalId);
+  assertThresholdCountSatisfiable(
+    {
+      completion_rule: String(goal.completion_rule),
+      threshold_count:
+        goal.threshold_count == null ? null : Number(goal.threshold_count),
+    },
+    minimumRequiredGoalMembershipCount(
+      goalId,
+      Number(goal.plan_start_year),
+      Number(goal.plan_end_year),
+    ),
+  );
+}
+
 /** Implements the merged strategic goal operation. */
 function mergedStrategicGoal(
   before: RawRow,
@@ -1827,6 +1971,13 @@ export function updateStrategicGoalSettings(
   return transaction(() => {
     const before = rawGoal(patch.id);
     requireEditable(before, "strategic goal");
+    if (before.priority_archived_at != null) {
+      throw new StrategyEditConflictError(
+        "Restore the Strategic Priority before editing this goal.",
+        "archived_goal_context",
+      );
+    }
+    assertExpectedRevision(before, patch.expected_revision);
     const merged = mergedStrategicGoal(before, patch);
     const values: Record<string, unknown> = {
       completion_rule: merged.completion_rule,
@@ -1851,18 +2002,26 @@ export function updateStrategicGoalSettings(
         "Historical values already use this goal's completion semantics. In-place rule and threshold changes are not allowed.",
       );
     }
+    assertThresholdCountSatisfiable(
+      merged,
+      minimumRequiredGoalMembershipCount(
+        patch.id,
+        Number(before.plan_start_year),
+        Number(before.plan_end_year),
+      ),
+    );
     if (!rowChanged(before, values)) return asStrategicGoal(before);
     getDb()
       .prepare(
         `UPDATE strategic_goals SET
            ${GOAL_SETTING_FIELDS.map((field) => `${field} = ?`).join(", ")},
-           updated_by = ?, updated_at = datetime('now')
+           updated_by = ?, updated_at = ${NEXT_REVISION_SQL}
          WHERE id = ?`,
       )
       .run(...Object.values(values), actorId, patch.id);
     const after = rawGoal(patch.id);
     const onlyStatus = Object.keys(patch).every((key) =>
-      ["id", "manual_status", "board_level_status", "configuration_status", "unresolved_question", "owner", "due_date", "resolution_notes", "last_reviewed_date"].includes(key),
+      ["id", "expected_revision", "manual_status", "board_level_status", "configuration_status", "unresolved_question", "owner", "due_date", "resolution_notes", "last_reviewed_date"].includes(key),
     );
     recordStrategicAuditEvent({
       entity_type: "strategic_goal",
@@ -1928,6 +2087,13 @@ export function createSuccessorStrategicGoal(
   return transaction(() => {
     const before = rawGoal(parsed.predecessor_id);
     requireEditable(before, "strategic goal");
+    if (before.priority_archived_at != null) {
+      throw new StrategyEditConflictError(
+        "Restore the Strategic Priority before versioning this goal.",
+        "archived_goal_context",
+      );
+    }
+    assertExpectedRevision(before, parsed.update.expected_revision);
     if (parsed.update.id !== parsed.predecessor_id) {
       throw new StrategyEditConflictError(
         "The successor update must reference its predecessor goal.",
@@ -1962,6 +2128,14 @@ export function createSuccessorStrategicGoal(
     }
 
     const merged = mergedStrategicGoal(before, parsed.update);
+    assertThresholdCountSatisfiable(
+      merged,
+      minimumRequiredGoalMembershipCount(
+        parsed.predecessor_id,
+        successorStart,
+        predecessorEnd,
+      ),
+    );
     const successorSlug = availableSuccessorGoalSlug(
       String(before.slug),
       successorStart,
@@ -1969,7 +2143,7 @@ export function createSuccessorStrategicGoal(
     getDb()
       .prepare(
         `UPDATE strategic_goals
-         SET plan_end_year = ?, updated_by = ?, updated_at = datetime('now')
+         SET plan_end_year = ?, updated_by = ?, updated_at = ${NEXT_REVISION_SQL}
          WHERE id = ?`,
       )
       .run(successorStart - 1, actorId, parsed.predecessor_id);
@@ -2035,7 +2209,8 @@ export function createSuccessorStrategicGoal(
         getDb()
           .prepare(
             `UPDATE goal_kpis
-             SET effective_to_year = ?, updated_by = ?, updated_at = datetime('now')
+             SET effective_to_year = ?, updated_by = ?,
+                 updated_at = ${NEXT_REVISION_SQL}
              WHERE id = ?`,
           )
           .run(successorStart - 1, actorId, id);
@@ -2342,6 +2517,7 @@ export function updateStrategicGoalMembership(
         "archived_membership_context",
       );
     }
+    assertExpectedRevision(before, patch.expected_revision);
 
     const merged = parse(
       StrategicGoalMembershipInputSchema,
@@ -2380,10 +2556,11 @@ export function updateStrategicGoalMembership(
       .prepare(
         `UPDATE goal_kpis SET
            is_required = ?, weight = ?, display_order = ?,
-           updated_by = ?, updated_at = datetime('now')
+           updated_by = ?, updated_at = ${NEXT_REVISION_SQL}
          WHERE id = ?`,
       )
       .run(...Object.values(values), actorId, patch.id);
+    assertPersistedGoalThresholdSatisfiable(Number(before.goal_id));
     const after = rawGoalMembership(patch.id);
     recordStrategicAuditEvent({
       entity_type: "goal_membership",
@@ -2405,6 +2582,7 @@ export function updateStrategicGoalMembership(
 const SuccessorStrategicGoalMembershipSchema = z
   .object({
     predecessor_id: z.number().int().positive(),
+    expected_revision: ExpectedRevisionSchema,
     effective_start_year: z.number().int().min(1900).max(2100),
     role: z.enum(["required", "informational"]),
     weight: z.number().finite().positive(),
@@ -2429,6 +2607,7 @@ export function createSuccessorStrategicGoalMembership(
   );
   return transaction(() => {
     const before = rawGoalMembership(parsed.predecessor_id);
+    assertExpectedRevision(before, parsed.expected_revision);
     if (
       before.archived_at != null ||
       before.goal_archived_at != null ||
@@ -2502,7 +2681,8 @@ export function createSuccessorStrategicGoalMembership(
     getDb()
       .prepare(
         `UPDATE goal_kpis
-         SET effective_to_year = ?, updated_by = ?, updated_at = datetime('now')
+         SET effective_to_year = ?, updated_by = ?,
+             updated_at = ${NEXT_REVISION_SQL}
          WHERE id = ?`,
       )
       .run(successorStart - 1, actorId, parsed.predecessor_id);
@@ -2524,6 +2704,7 @@ export function createSuccessorStrategicGoalMembership(
         actorId,
         actorId,
       );
+    assertPersistedGoalThresholdSatisfiable(Number(before.goal_id));
     const predecessor = rawGoalMembership(parsed.predecessor_id);
     const successor = rawGoalMembership(Number(inserted.lastInsertRowid));
     const fields = [
@@ -2578,8 +2759,20 @@ function targetSubject(
   const { kpi_id: kpiId, component_id: componentId } = target;
   if (kpiId != null) {
     const kpi = getDb()
-      .prepare("SELECT id, archived_at FROM kpis WHERE id = ?")
-      .get(kpiId) as { id: number; archived_at: string | null } | undefined;
+      .prepare(
+        `SELECT k.id, k.archived_at,
+                category.archived_at AS priority_archived_at
+         FROM kpis k
+         JOIN categories category ON category.id = k.category_id
+         WHERE k.id = ?`,
+      )
+      .get(kpiId) as
+      | {
+          id: number;
+          archived_at: string | null;
+          priority_archived_at: string | null;
+        }
+      | undefined;
     if (!kpi) throw new StrategyEditNotFoundError("kpi", kpiId);
     const applicableConfigurationYear =
       target.target_scope === "annual"
@@ -2596,7 +2789,6 @@ function targetSubject(
          WHERE kpi_id = ?
            AND effective_from_year <= ?
            AND (effective_to_year IS NULL OR effective_to_year >= ?)
-           AND archived_at IS NULL
          ORDER BY effective_from_year DESC, id DESC LIMIT 1`,
       )
       .get(kpiId, configurationYear, configurationYear) as
@@ -2613,17 +2805,35 @@ function targetSubject(
       component_id: null,
       effective_kpi_id: kpiId,
       measurement_type: config.measurement_type,
-      archived: kpi.archived_at != null || config.archived_at != null,
+      archived:
+        kpi.archived_at != null ||
+        kpi.priority_archived_at != null ||
+        config.archived_at != null,
     };
   }
   const component = rawComponent(Number(componentId));
   const configuration = rawConfiguration(Number(component.configuration_id));
+  const lineage = getDb()
+    .prepare(
+      `SELECT k.archived_at AS kpi_archived_at,
+              category.archived_at AS priority_archived_at
+       FROM kpis k
+       JOIN categories category ON category.id = k.category_id
+       WHERE k.id = ?`,
+    )
+    .get(Number(configuration.kpi_id)) as
+    | { kpi_archived_at: string | null; priority_archived_at: string | null }
+    | undefined;
   return {
     kpi_id: null,
     component_id: Number(component.id),
     effective_kpi_id: Number(component.kpi_id),
     measurement_type: String(component.measurement_type) as MeasurementType,
-    archived: component.archived_at != null || configuration.archived_at != null,
+    archived:
+      component.archived_at != null ||
+      configuration.archived_at != null ||
+      lineage?.kpi_archived_at != null ||
+      lineage?.priority_archived_at != null,
   };
 }
 
@@ -2713,14 +2923,44 @@ function validateTargetMeasurement(
 
 /** Removing a boundary Target must not make another KPI-scoped target cross definitions. */
 export function assertStrategyEntityArchiveIntegrity(
-  kind: "component" | "target",
+  kind: "goal" | "measurement_config" | "component" | "target",
   id: number,
 ): void {
+  if (kind === "goal") {
+    const goal = rawGoal(id);
+    if (goal.priority_archived_at != null) {
+      throw new StrategyEditConflictError(
+        "Restore the Strategic Priority before archiving this goal.",
+        "archived_goal_context",
+      );
+    }
+    return;
+  }
+  if (kind === "measurement_config") {
+    const configuration = rawConfiguration(id);
+    const kpiId = Number(configuration.kpi_id);
+    assertKpiLineageActive(kpiId);
+    assertFullPlanTargetConfigurationIntegrity({
+      kpiId,
+      configurations: activeConfigurationRows(kpiId).filter(
+        (candidate) => Number(candidate.id) !== id,
+      ),
+    });
+    return;
+  }
   if (kind === "component") {
-    assertComponentTargetSemanticsMutable(rawComponent(id));
+    const component = rawComponent(id);
+    assertComponentTargetSemanticsMutable(component);
+    const configuration = rawConfiguration(Number(component.configuration_id));
+    assertKpiLineageActive(Number(configuration.kpi_id));
     return;
   }
   const target = rawTarget(id);
+  const targetKpiId =
+    target.kpi_id != null
+      ? Number(target.kpi_id)
+      : Number(rawComponent(Number(target.component_id)).kpi_id);
+  assertKpiLineageActive(targetKpiId);
   if (
     target.kpi_id == null ||
     target.component_id != null ||
@@ -2744,13 +2984,25 @@ export function assertStrategyEntityArchiveIntegrity(
  * semantic-boundary rules as create and update.
  */
 export function assertStrategyEntityRestoreIntegrity(
-  kind: "measurement_config" | "component" | "target",
+  kind: "goal" | "measurement_config" | "component" | "target",
   id: number,
   restoredStatus: ConfigurationStatus,
 ): void {
+  if (kind === "goal") {
+    const goal = rawGoal(id);
+    if (goal.priority_archived_at != null) {
+      throw new StrategyEditConflictError(
+        "Restore the Strategic Priority before restoring this goal.",
+        "archived_goal_context",
+      );
+    }
+    return;
+  }
+
   if (kind === "measurement_config") {
     const configuration = rawConfiguration(id);
     const kpiId = Number(configuration.kpi_id);
+    assertKpiLineageActive(kpiId);
     ensureNoConfigurationOverlap(
       kpiId,
       Number(configuration.effective_from_year),
@@ -2776,7 +3028,24 @@ export function assertStrategyEntityRestoreIntegrity(
   }
 
   if (kind === "component") {
-    assertComponentTargetSemanticsMutable(rawComponent(id));
+    const component = rawComponent(id);
+    assertComponentTargetSemanticsMutable(component);
+    const configuration = rawConfiguration(Number(component.configuration_id));
+    if (
+      configuration.archived_at != null ||
+      configuration.configuration_status === "archived"
+    ) {
+      throw new StrategyEditConflictError(
+        "Restore the measurement configuration before restoring its component.",
+        "archived_component_context",
+      );
+    }
+    assertKpiLineageActive(Number(configuration.kpi_id));
+    ensureComponentOrderAvailable(
+      Number(component.configuration_id),
+      Number(component.display_order),
+      id,
+    );
     return;
   }
 
@@ -3048,6 +3317,7 @@ export function updateStrategicTarget(
   return transaction(() => {
     const before = rawTarget(patch.id);
     requireEditable(before, "target");
+    assertExpectedRevision(before, patch.expected_revision);
     const merged = mergedTarget(before, patch);
     validateTargetPlanRange(merged);
     const subject = targetSubject(merged);
@@ -3077,14 +3347,14 @@ export function updateStrategicTarget(
       .prepare(
         `UPDATE kpi_targets SET
            ${TARGET_FIELDS.map((field) => `${field} = ?`).join(", ")},
-           updated_by = ?, updated_at = datetime('now')
+           updated_by = ?, updated_at = ${NEXT_REVISION_SQL}
          WHERE id = ?`,
       )
       .run(...Object.values(values), actorId, patch.id);
     const after = rawTarget(patch.id);
     const context = auditContextForKpi(subject.effective_kpi_id);
     const onlyStatus = Object.keys(patch).every((key) =>
-      ["id", "configuration_status", "source_reference", "last_reviewed_date"].includes(key),
+      ["id", "expected_revision", "configuration_status", "source_reference", "last_reviewed_date"].includes(key),
     );
     recordStrategicAuditEvent({
       entity_type: "target",
@@ -3169,6 +3439,7 @@ function componentHasHistoricalValues(id: number): boolean {
 function configurationForComponent(id: number): RawRow {
   const config = rawConfiguration(id);
   requireEditable(config, "measurement configuration");
+  assertKpiLineageActive(Number(config.kpi_id));
   if (config.measurement_type !== "multi_component") {
     throw new StrategyEditConflictError(
       "Components require a multi-component measurement configuration.",

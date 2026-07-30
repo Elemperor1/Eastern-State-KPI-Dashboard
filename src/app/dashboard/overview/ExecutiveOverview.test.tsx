@@ -75,4 +75,56 @@ describe("Executive Overview empty states", () => {
     expect(html).toContain("All included goals are ready for reporting.");
     expect(html).not.toContain("No Strategic Goals for 2026");
   });
+
+  it("marks a priority and attention list when an eligible goal excludes an archived measure", () => {
+    const data = overviewData();
+    data.summary.priorities.push({
+      priorityId: "1",
+      priorityName: "Advance Historic Preservation",
+      completedGoalsCount: 0,
+      totalEligibleGoalsCount: 1,
+      completionPercentage: 75,
+      excludedGoalsCount: 0,
+      excludedGoalReasons: [],
+    });
+    data.summary.goals.push({
+      goalId: "1",
+      goalName: "Preserve the site",
+      priorityId: "1",
+      prioritySlug: "preservation",
+      priorityName: "Advance Historic Preservation",
+      configurationStatus: "active",
+      result: {
+        goalId: "1",
+        rule: "all_required_kpis",
+        state: "ok",
+        eligible: true,
+        complete: false,
+        completionPercentage: 75,
+        completedKpisCount: 1,
+        totalEligibleKpisCount: 2,
+        excludedKpisCount: 1,
+        excludedKpis: [{
+          id: "3",
+          label: "Deferred masonry work",
+          reason: "archived",
+        }],
+        exclusionReasons: ["archived"],
+        issues: [],
+      },
+      kpis: [],
+    });
+    data.needsAttention.push({
+      goalId: "1",
+      goalName: "Preserve the site",
+      priorityName: "Advance Historic Preservation",
+      reason: "One or more measures are archived",
+    });
+
+    const html = renderToStaticMarkup(<ExecutiveOverview data={data} />);
+
+    expect(html).toContain("Needs attention");
+    expect(html).toContain("One or more measures are archived");
+    expect(html).not.toContain("Nothing needs attention");
+  });
 });

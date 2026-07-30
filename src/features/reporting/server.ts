@@ -7,7 +7,9 @@ import { getActiveInstallation } from "@/features/installation/server";
 import {
   listStrategicAuditEvents,
   listStrategicAuditIdentitiesForKpi,
-  listStrategicGoals,
+  listKpiIdsWithArchivedIntervalValues,
+  type listStrategicGoals,
+  listStrategicGoalsForReportingDisclosure,
 } from "@/features/strategy/server";
 import { isSampleDataEnabled } from "@/lib/app-meta";
 import { humanizeReportingReason } from "./language";
@@ -24,7 +26,7 @@ import {
   buildStrategicDashboardSummary,
   type StrategicDashboardSummary,
 } from "./strategy-summary";
-import { getBoardReportingScope } from "@/features/board-reporting";
+import { getBoardReportingDisclosureScope } from "@/features/board-reporting";
 
 export type ReportingAudience = "staff" | "board";
 
@@ -34,7 +36,7 @@ function scopeGoalsForAudience(
   audience: ReportingAudience,
 ): ReturnType<typeof listStrategicGoals> {
   if (audience !== "board") return goals;
-  const scope = getBoardReportingScope();
+  const scope = getBoardReportingDisclosureScope();
   const scopeByPriority = new Map(
     scope.priorities.map((priority) => [
       priority.prioritySlug,
@@ -58,9 +60,26 @@ function scopeGoalsForAudience(
         members: goal.members.filter((member) =>
           priorityScope.measureSlugs.has(member.kpi.slug),
         ),
+        archived_members: goal.archived_members?.filter((member) =>
+          priorityScope.measureSlugs.has(member.kpi_slug),
+        ),
       };
     })
-    .filter((goal) => goal.members.length > 0);
+    .filter(
+      (goal) =>
+        goal.members.length > 0 || (goal.archived_members?.length ?? 0) > 0,
+    );
+}
+
+/**
+ * Lists goals through the narrow reporting-disclosure read. Staff and Board
+ * reports both need archived Priority context so exclusions never disappear;
+ * Board authorization is applied separately by `scopeGoalsForAudience`.
+ */
+function listGoalsForReporting(
+  filter: Parameters<typeof listStrategicGoals>[0],
+): ReturnType<typeof listStrategicGoals> {
+  return listStrategicGoalsForReportingDisclosure(filter);
 }
 
 /** Retrieves dashboard years. */
@@ -92,7 +111,7 @@ function loadStrategicReportModel({
   audience?: ReportingAudience;
 }) {
   const installation = getActiveInstallation();
-  const goals = scopeGoalsForAudience(listStrategicGoals({
+  const goals = scopeGoalsForAudience(listGoalsForReporting({
     year,
     ...(priorityId === undefined ? {} : { priority_id: priorityId }),
   }), audience);
@@ -110,6 +129,7 @@ function loadStrategicReportModel({
     planStartYear: installation.plan.startYear,
     throughMonth,
     actuals: scopedActuals,
+    hiddenValueKpiIds: listKpiIdsWithArchivedIntervalValues(uniqueKpiIds(goals)),
   });
   return {
     goals,
@@ -130,7 +150,7 @@ export function listStrategicReportingPeriods(
   year: number,
   audience: ReportingAudience = "staff",
 ): ReportingCycleOption[] {
-  const goals = scopeGoalsForAudience(listStrategicGoals({ year }), audience);
+  const goals = scopeGoalsForAudience(listGoalsForReporting({ year }), audience);
   return buildReportingCycleOptions(
     goals.flatMap((goal) =>
       goal.members.map((member) => member.configuration?.reporting_frequency ?? null),
@@ -169,22 +189,27 @@ export function loadExecutiveOverviewPageData({
   audience?: ReportingAudience;
 }): ExecutiveOverviewPageData {
   const { summary } = loadStrategicReportModel({ year, throughMonth, audience });
-  const priorityById = new Map(
-    summary.priorities.map((priority) => [priority.priorityId, priority.priorityName]),
-  );
-  const needsAttention = summary.organization.excludedGoalReasons
-    .flatMap((item) =>
-      item.reasons.map((reason) => ({
-        goalId: item.goalId,
-        goalName: item.goalName,
-        priorityName:
-          priorityById.get(
-            summary.goals.find((goal) => goal.goalId === item.goalId)?.priorityId ?? "",
-          ) ?? "Strategic plan",
-        reason: humanizeReportingReason(reason),
-      })),
-    )
-    .slice(0, 5);
+  // Goal-level reasons include excluded measures even when the goal remains
+  // eligible. Organization rollups intentionally list only wholly excluded
+  // goals, so using them here would make a weak archived measure disappear
+  // from Overview while the recomputed goal still looked reporting-ready.
+  const needsAttention = Array.from(
+    new Map(
+      summary.goals.flatMap((goal) =>
+        goal.result.exclusionReasons
+          .filter((reason) => reason !== "informational")
+          .map((reason) => [
+            `${goal.goalId}:${reason}`,
+            {
+              goalId: goal.goalId,
+              goalName: goal.goalName,
+              priorityName: goal.priorityName,
+              reason: humanizeReportingReason(reason),
+            },
+          ] as const),
+      ),
+    ).values(),
+  ).slice(0, 5);
   return {
     years: listDashboardYears(),
     sampleData: isSampleDataEnabled(),
@@ -229,11 +254,11 @@ export function loadStrategicPriorityPageData(
 ): StrategicPriorityPageData | null {
   if (
     audience === "board" &&
-    !getBoardReportingScope().priorities.some(
+    !getBoardReportingDisclosureScope().priorities.some(
       (priority) => priority.prioritySlug === prioritySlug,
     )
   ) return null;
-  const context = listStrategicGoals({ year }).find(
+  const context = listGoalsForReporting({ year }).find(
     (goal) => goal.priority_slug === prioritySlug,
   );
   if (!context) return null;
@@ -277,7 +302,7 @@ export function loadStrategicMetricPageData(
 ): StrategicMetricPageData | null {
   const catalogKpi = listKPIs().find((kpi) => kpi.slug === kpiSlug);
   if (!catalogKpi) return null;
-  const goals = scopeGoalsForAudience(listStrategicGoals({ year }), audience);
+  const goals = scopeGoalsForAudience(listGoalsForReporting({ year }), audience);
   const context = goals
     .flatMap((goal) => goal.members.map((member) => ({ goal, member })))
     .find(({ member }) => member.kpi_id === catalogKpi.id);
@@ -357,7 +382,7 @@ export function loadStrategicTrendReportData({
   const years = getActiveInstallation().years.filter(
     (candidate) => candidate <= year,
   );
-  const goals = scopeGoalsForAudience(listStrategicGoals({ year }), audience);
+  const goals = scopeGoalsForAudience(listGoalsForReporting({ year }), audience);
   const members = Array.from(
     new Map(
       goals.flatMap((goal) =>
@@ -365,20 +390,42 @@ export function loadStrategicTrendReportData({
       ),
     ).values(),
   );
+  const memberIds = members.map(({ member }) => member.kpi_id);
+  const activeMemberIds = new Set(memberIds);
+  const excludedMeasures = Array.from(
+    new Map(
+      goals.flatMap((goal) =>
+        (goal.archived_members ?? []).map((member) => [
+          member.kpi_id,
+          {
+            kpiId: member.kpi_id,
+            kpiName: member.kpi_name,
+            priorityName: goal.priority_name,
+            reason: "archived" as const,
+          },
+        ] as const),
+      ),
+    ).values(),
+  )
+    .filter((measure) => !activeMemberIds.has(measure.kpiId))
+    .sort((left, right) => left.kpiName.localeCompare(right.kpiName));
+  const hiddenValueKpiIds = listKpiIdsWithArchivedIntervalValues(memberIds);
   const actuals = listCalculatedStrategyActuals({
-    kpiIds: members.map(({ member }) => member.kpi_id),
+    kpiIds: memberIds,
     throughYear: year,
   });
 
   return {
     organizationSlug: getActiveInstallation().organization.slug,
     years,
+    excludedMeasures,
     series: members
       .map(({ goal, member }) => ({
         kpiId: member.kpi_id,
         kpiName: member.kpi.name,
         priorityName: goal.priority_name,
         unit: member.configuration?.unit ?? member.kpi.unit,
+        restoredWithHiddenData: hiddenValueKpiIds.has(member.kpi_id),
         points: years.map((pointYear) => {
           const candidates = actuals.filter(
             (actual) =>

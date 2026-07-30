@@ -159,7 +159,6 @@ function CompletionSummary({
       ) : (
         <div
           className="mt-3 h-2.5 rounded-full bg-ink-100"
-          role="status"
           aria-label={`${label} goal completion is not reported`}
         />
       )}
@@ -632,7 +631,6 @@ function TargetProgressCard({
           ) : (
             <div
               className="mt-4 h-2.5 rounded-full bg-ink-100"
-              role="status"
               aria-label={`${label}: progress not calculated`}
             />
           )}
@@ -802,7 +800,6 @@ function DemographicTable({
                 {band.percentage === null ? (
                   <div
                     className="h-2 rounded-full bg-ink-100"
-                    role="status"
                     aria-label={`${band.label}: respondent share not reported`}
                   />
                 ) : (

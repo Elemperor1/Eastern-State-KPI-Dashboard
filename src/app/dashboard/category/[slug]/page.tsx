@@ -1,14 +1,22 @@
 import Link from "next/link";
-import { redirect } from "next/navigation";
+import { notFound, redirect } from "next/navigation";
 import { ArrowRight } from "lucide-react";
 import { AppShell } from "@/components/AppShell";
 import { ReportingYearFilter } from "@/components/ReportingYearFilter";
 import { SampleDataBadge } from "@/components/SampleDataBadge";
-import { Badge, Breadcrumb, EmptyState, PageHeader, Progress } from "@/components/ui";
+import {
+  Alert,
+  Badge,
+  Breadcrumb,
+  EmptyState,
+  PageHeader,
+  Progress,
+} from "@/components/ui";
 import { getCurrentUserReadOnly } from "@/features/auth/session";
 import { listDashboardYears, loadStrategicPriorityPageData } from "@/features/reporting/server";
 import { formatBoardReportPercentage, formatBoardReportToken } from "@/components/strategic-board-report-presentation";
 import { getActiveInstallation } from "@/features/installation/server";
+import { resolveStrategicReportingYear } from "@/features/strategy";
 
 export const dynamic = "force-dynamic";
 
@@ -44,13 +52,15 @@ export default async function StrategicPriorityPage({
 
   const years = listDashboardYears();
   const installation = getActiveInstallation();
-  const requestedYear = Number(firstValue(query.year));
-  const selectedYear = years.includes(requestedYear) ? requestedYear : Math.max(...years);
+  const selectedYear = resolveStrategicReportingYear(
+    firstValue(query.year),
+    years,
+  );
   const data = loadStrategicPriorityPageData(slug, {
     year: selectedYear,
     audience: user.role === "board" ? "board" : "staff",
   });
-  if (!data) redirect("/dashboard/overview");
+  if (!data) notFound();
 
   return (
     <AppShell user={user} organizationShortName={installation.organization.shortName} planName={installation.plan.name}>
@@ -109,12 +119,31 @@ export default async function StrategicPriorityPage({
                     </Badge>
                   </div>
 
+                  {goal.excludedReasons.length > 0 ? (
+                    <Alert className="mt-4">
+                      <p className="font-semibold">
+                        {goal.excludedKpisCount > 0
+                          ? `${goal.excludedKpisCount} ${
+                              goal.excludedKpisCount === 1
+                                ? "measure is"
+                                : "measures are"
+                            } not counted`
+                          : "Goal needs attention"}
+                      </p>
+                      <ul className="mt-1 list-disc space-y-1 pl-5">
+                        {goal.excludedReasons.map((reason) => (
+                          <li key={reason}>{reason}</li>
+                        ))}
+                      </ul>
+                    </Alert>
+                  ) : null}
+
                   <ul className="mt-4 divide-y divide-ink-100 border-t border-ink-100">
                     {goal.kpis.map((kpi) => (
                       <li key={kpi.id}>
                         <Link
                           href={`/dashboard/metric/${data.kpiSlugs[kpi.id]}?year=${data.selectedYear}`}
-                          className="flex min-h-20 flex-col items-stretch gap-2 py-4 focus-visible:outline-solid focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-(--color-focus) sm:flex-row sm:items-center sm:gap-4"
+                          className="flex min-h-20 flex-col items-stretch gap-2 py-4 focus-visible:outline-solid focus-visible:outline-[3px] focus-visible:outline-offset-2 focus-visible:outline-(--color-focus) sm:flex-row sm:items-center sm:gap-4"
                         >
                           <span className="min-w-0 flex-1 font-medium text-ink-900">{kpi.name}</span>
                           <span className="flex w-full items-center justify-between gap-3 sm:w-auto sm:justify-end">

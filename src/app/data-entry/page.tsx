@@ -18,7 +18,6 @@ type SearchParams = Promise<{
   year?: string | string[];
   period?: string | string[];
   kpi?: string | string[];
-  saved?: string | string[];
 }>;
 
 /** Renders the unified data entry page interface. */
@@ -50,7 +49,7 @@ export default async function UnifiedDataEntryPage({
 
   return (
     <AppShell user={user} organizationShortName={installation.organization.shortName} planName={installation.plan.name}>
-      <StrategicDataEntryClient data={data} saved={firstSearchParam(params.saved) === "1"} />
+      <StrategicDataEntryClient data={data} />
     </AppShell>
   );
 }

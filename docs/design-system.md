@@ -16,7 +16,7 @@ flows, and states.
 Tokens live in `src/app/globals.css` and are exposed through Tailwind in `tailwind.config.ts`.
 
 - Colors: three teals (tertiary navy `#003649`, secondary dark teal `#005f6f`, primary medium teal `#209ba5`), one bright yellow accent (`#f7f242`), white, and a small set of semantic tonal derivatives (success/danger/info/warning). The full chart palette mirrors the same three teals plus a single yellow accent.
-- Type: Galano Grotesque (licensed brand face, © 2014 René Bieder) for every product UI role; Monaco for code-like data values where the user reads a number the way they would read a log line.
+- Type: Galano Grotesque (licensed brand face, © 2014 René Bieder) for every non-code product UI role. Monaco is the sole exception and is reserved for code-like data values where the user reads a value the way they would read a log line; it is not a substitute for Galano in ordinary labels, body copy, headings, tables, or KPI numerals. The controlling license is privately held and repository-owner attested; it is not versioned here.
 - Spacing: 4, 8, 12, 16, 24, 32, 48, 64, 96.
 - Radius: 4, 6, 8, 12, 18, full.
 - Motion: 120 ms fast feedback, 180 ms standard transitions, and 220 ms drawer entry.

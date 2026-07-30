@@ -185,6 +185,7 @@ function validTargetDraft(
     configurationStatus: "active",
     sourceReference: "",
     lastReviewedDate: "",
+    expectedRevision: null,
     ...overrides,
   };
 }
@@ -304,17 +305,58 @@ describe("strategic KPI editor form model", () => {
     const built = buildConfigurationFormPayload(draft, 42, null);
     expect(built.ok).toBe(true);
     if (!built.ok) return;
-    expect(buildSuccessorConfigurationMutation(7, built.payload)).toEqual({
+    expect(
+      buildSuccessorConfigurationMutation(
+        7,
+        "2026-01-15 10:00:00",
+        built.payload,
+      ),
+    ).toEqual({
       endpoint: STRATEGY_EDITOR_ENDPOINTS.configurations,
       method: "PATCH",
       body: {
         action: "create_successor",
         predecessor_id: 7,
+        expected_revision: "2026-01-15 10:00:00",
         successor: expect.objectContaining({
           kpi_id: 42,
           effective_start_year: 2027,
         }),
       },
+    });
+  });
+
+  it("carries the loaded revision into configuration and target updates (S070-C2)", () => {
+    const updated = buildConfigurationFormPayload(
+      validConfigurationDraft(),
+      42,
+      7,
+      "2026-01-15 10:00:00",
+    );
+    expect(updated.ok).toBe(true);
+    if (!updated.ok) return;
+    expect(updated.payload).toMatchObject({
+      id: 7,
+      expected_revision: "2026-01-15 10:00:00",
+    });
+
+    const targetDraft: TargetFormDraft = {
+      id: 2,
+      scope: "annual",
+      targetYear: "2026",
+      externalTargetYear: false,
+      targetValue: "10",
+      structuredTarget: "",
+      targetDescription: "",
+      configurationStatus: "active",
+      sourceReference: "",
+      lastReviewedDate: "",
+      expectedRevision: "2026-01-15 10:00:00",
+    };
+    const built = buildTargetFormPayload(targetDraft, 42, "count", 2025, 2029);
+    expect(built).toMatchObject({
+      ok: true,
+      payload: { id: 2, expected_revision: "2026-01-15 10:00:00" },
     });
   });
 

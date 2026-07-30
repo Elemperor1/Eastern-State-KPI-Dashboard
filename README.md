@@ -20,18 +20,19 @@ visual-system authority.
 
 ```bash
 # 1. Install dependencies
-npm install
+npm run install:controlled
 
-# 2. Create/reset a disposable development database with sample data (2024–2026)
-npm run db:seed
+# 2. Create/reset the exact disposable development database with sample data (2024–2026)
+DATABASE_PATH="$(pwd -P)/data/kpi.db" \
+  SEED_CONFIRM="$(pwd -P)/data/kpi.db" npm run db:seed
 
 # 3. Start the loopback-only development server with the local auth bypass
 AUTH_DISABLED=true npm run dev
 ```
 
-For an existing schema-9, schema-10, or schema-11 database, especially a production SQLite volume, back
-up the database and its WAL/SHM files and run the additive migration instead of
-the destructive sample seed:
+For an existing schema 9–14 database, especially a production SQLite volume,
+back up the database and its WAL/SHM files and run the additive migration to
+schema 15 instead of the destructive sample seed:
 
 ```bash
 DATABASE_PATH=/absolute/path/to/kpi.db npm run db:migrate
@@ -40,8 +41,12 @@ npm start
 ```
 
 `npm run db:seed` intentionally replaces KPI-owned sample values, definitions,
-and audit history while preserving users. It is for disposable/sample
-databases, not production migration.
+and audit history while preserving users. It requires `SEED_CONFIRM` to equal
+the exact resolved `DATABASE_PATH`; it is for disposable/sample databases, not
+production migration. Schema 8 also has an additive migration path, but only
+through an explicit, backed-up `db:migrate` run. Schema 7 and older cross the
+intentional schema-8 catalog-replacement boundary; see
+`docs/migration-notes.md` before proceeding.
 
 Open <http://localhost:3000>. With the quick-start bypass, the app opens
 directly; with auth enabled, sign in normally.
@@ -90,6 +95,9 @@ file-watcher limits.
 The legacy KPI catalog remains intact. Schema 10 introduced the normalized
 strategic sidecar, schema 11 hardened its effective-dated component identity
 and ratio semantics, and schema 12 added persisted organization/plan ownership.
+Schema 13 added the Board role, schema 14 added the editable Board visibility
+scope, and schema 15 added transactional user-lifecycle audit and last-admin
+protections.
 After initialization, SQLite—not the seed snapshot—is authoritative for the
 organization identity, plan years, priorities, goals, measures, configurations,
 components, targets, and source references. Every KPI can explicitly define:
@@ -177,9 +185,12 @@ every priority to the active plan, removes plan-specific year defaults/checks,
 and preserves every descendant ID and value. Its one-time content-migration
 marker permits initialization or narrowly fingerprinted historical repair only
 during the explicit upgrade pass; subsequent migration runs do not reconcile
-operator content from code. None of these additive migrations resets legacy KPI
-values, targets, IDs, users, or audit history. All sample data is flagged via `meta.sample_data` and surfaced
-as a "Sample data" badge throughout the UI.
+operator content from code. Schema 13 widens the user role contract with Board
+reporting access; schema 14 stores Board visibility scope and immutable scope
+audit; schema 15 stores immutable user-lifecycle audit events and refuses
+last-active-admin removal. None of these additive migrations resets legacy KPI
+values, targets, IDs, users, or audit history. All sample data is flagged via
+`meta.sample_data` and surfaced as a "Sample data" badge throughout the UI.
 
 ## Routes
 
@@ -299,10 +310,11 @@ Fly deploys through `Dockerfile` + `fly.toml` with SQLite mounted at
 the proxy-provided client IP instead of collapsing every failed attempt into the
 `unknown` bucket. The production startup script runs `scripts/ensure-seeded.mjs`;
 that probe compares the mounted database's `meta.schema_version` with
-`src/lib/schema-version.json`, runs `db:migrate` for a populated additive
-predecessor such as schema 9, refuses a destructive reseed if migration does
+`src/lib/schema-version.json`, runs `db:migrate` for populated schema 9–14
+predecessors to reach schema 15, refuses a destructive reseed if migration does
 not produce a ready database, and seeds only a missing/disposable sample
-database. Docker builds point
+database. Schema 8 requires the explicit operator-run migration documented
+above rather than automatic boot migration. Docker builds point
 `DATABASE_PATH` at a disposable `/tmp` database and remove `/app/data` before the
 final image copy, so build-time SQLite files and one-time seed passwords are not
 baked into the runtime image.
@@ -312,17 +324,21 @@ baked into the runtime image.
 `npm run design-system:test` is the existing combined guard/build aggregate.
 The primary GitHub `Quality` workflow also exposes typecheck, lint, tests,
 build, E2E, OSV-Scanner, Gitleaks, and Semgrep as separate required checks.
-This aggregate chains seven checks in order; any failure aborts:
+The aggregate follows the current `package.json` chain; any failure aborts:
 
-1. `scripts/design-tokens-guard.sh` — fails if any literal hex color, raw `transition: all`, or inline `style={{ ... color: "#…" }}` bypass is introduced in `src/app/**` or `src/components/**` outside the design-system library (`src/components/ui/`) and the source-of-truth `src/app/globals.css`.
-2. `scripts/design-system-guard.sh` — fails if any raw `<button>` / `<input>` / `<select>` / `<table>` element or shared primitive class (`surface`, `btn-*`, `input`, `pill`, `data-table`, …) is used outside `src/components/ui/`.
-3. `scripts/auth-bypass-guard.sh` — proves deploy/build configuration cannot
-   enable the development bypass.
-4. `scripts/architecture-boundary-guard.sh` — enforces server/client and
-   internal data-access boundaries.
-5. `scripts/d8ad-can-008-ci-gate.sh` — rejects shell-injection regressions.
-6. `npx tsc --noEmit` — typecheck.
-7. `AUTH_DISABLED= npx next build` — production build with the bypass cleared.
+1. `npm run quality:guards`, which runs:
+   - `npm run design-system:guard` (design tokens, shared components,
+     auth-bypass policy, and architecture boundaries);
+   - `npm run deployment-config:guard`;
+   - `npm run hygiene:guard`;
+   - `npm run docstrings:guard`;
+   - `npm run production-dependencies:guard`;
+   - `npm run install-scripts:guard`; and
+   - `scripts/d8ad-can-008-ci-gate.sh` for shell-injection regressions.
+2. `npm run typecheck`, which runs Next route type generation with
+   `AUTH_DISABLED` cleared and then `tsc --noEmit`.
+3. `AUTH_DISABLED= npm run build`, the explicit Webpack production build with
+   the development bypass cleared.
 
 To verify the gate locally before opening a PR:
 
@@ -335,7 +351,7 @@ covers — plus mobile rendering at 390 px, exports, forced password rotation,
 and auth API regression coverage — lives at `docs/qa-manual.md`. New engineers should
 walk the checklist end-to-end after their first checkout.
 
-Current schema-12 verification recorded on July 15, 2026: `npm test` passed
+The schema-12 release verification recorded on July 15, 2026: `npm test` passed
 **82 files / 1,217 tests**; `npm run design-system:test` passed its security and
 architecture guards, typecheck, and production build; the loopback development
 smoke passed **51/51** checks; the credentialed production smoke passed
@@ -346,7 +362,9 @@ keyboard/reduced-motion/print checks, and CSV/PNG/PDF validation. The authentica
 profile set saved sixteen raw Chrome traces: eight current and eight controlled
 baseline. The exact-route Overview comparison reduced decoded HTML by 94.2%
 and DOM elements by 96.7%, with no hidden Board Report. Auth behavior is
-covered by the current 28-route regression matrix.
+covered by that release's 28-route regression matrix. Those counts are
+historical evidence, not the current schema-15 suite; run `npm test` and
+`npm run test:e2e` for current totals.
 
 Schema 8 intentionally replaced the former sample catalog with the strategic
 plan, resetting KPI data and audit history while preserving users. Schema 9 is
@@ -358,8 +376,12 @@ targets, users, or audit history. Schema 11 additively scopes component identity
 to each effective configuration and records ratio aggregation roles while
 preserving existing component IDs and observations. Schema 12 adds the
 database-owned organization/plan boundary and removes embedded plan-year
-constraints while preserving strategic records and IDs. Back up a production
-database before any migration; see ADR 0023 and `docs/migration-notes.md`.
+constraints while preserving strategic records and IDs. Schema 13 widens user
+roles with Board reporting access; schema 14 persists the editable Board
+visibility scope and its immutable audit snapshots; schema 15 adds immutable
+user-lifecycle audit plus last-active-admin and newer-schema refusal guards.
+Back up a production database before any migration; see ADRs 0023/0024 and
+`docs/migration-notes.md`.
 
 ## Data model (schema)
 
@@ -374,5 +396,6 @@ database before any migration; see ADR 0023 and `docs/migration-notes.md`.
 - **kpi_components / kpi_component_entries** — initially seeded component definitions plus raw component values; identity is configuration-scoped and ratio roles are explicit
 - **distribution_bands / distribution_observations / distribution_values** — effective band definitions, respondent totals, counts, immutable label snapshots, and successor-only edits for referenced calculation classifications
 - **strategic_audit_events** — immutable snapshots for strategic configuration, lifecycle, and value changes
-- **users** — name, email, bcrypt-hashed password, role
+- **users** — accounts, password hashes, role, forced-rotation state, and durable session-revocation state
+- **user_lifecycle_audit_events** — immutable actor-attributed lifecycle events without passwords or password hashes
 - **meta** — schema version + sample-data flag

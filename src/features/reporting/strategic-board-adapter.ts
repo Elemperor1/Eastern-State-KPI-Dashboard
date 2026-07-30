@@ -11,12 +11,12 @@ import {
   calculateMeasurement,
   resolveEffectiveTargetPolicy,
   type AverageMethod,
-  type MeasurementResult,
   type StrategicGoalReadModel,
 } from "@/features/strategy";
-import type {
-  StrategicDashboardSummary,
-  StrategicKpiProgressSummary,
+import {
+  isAdditiveReportingCombination,
+  type StrategicDashboardSummary,
+  type StrategicKpiProgressSummary,
 } from "./strategy-summary";
 import { humanizeReportingReasons } from "./language";
 
@@ -146,7 +146,6 @@ export function buildStrategicBoardReportFromSummary({
                     formulaExplanation: formulaExplanation(
                       component.measurement_type,
                       calculated?.result.averageMethod,
-                      calculated?.result.calculationProvenance,
                     ),
                   },
                   progress: calculated?.progress
@@ -191,16 +190,41 @@ export function buildStrategicBoardReportFromSummary({
                 ...kpiSummary.completionProgress.issues
                   .filter((issue) => issue.code !== "MISSING_ACTUAL")
                   .map((issue) => issue.message),
+                ...(kpiSummary.restoredWithHiddenData
+                  ? [
+                      "Data changed while this measure was archived; review the restored values.",
+                    ]
+                  : []),
               ]);
               const measurementType = boardMeasurementType(
                 kpiSummary.measurementType,
               );
               const calculation = kpiSummary.currentCalculation;
-              const resultState = calculation?.state ??
-                (kpiSummary.currentValue === null ? "missing" : "ok");
-              const resultValue = calculation
-                ? calculation.value
-                : kpiSummary.currentValue;
+              const usesAdditiveYtd = isAdditiveReportingCombination(
+                kpiSummary.measurementType,
+                config?.reporting_frequency ?? null,
+              );
+              const additiveYtdInvalid =
+                usesAdditiveYtd &&
+                kpiSummary.currentValue !== null &&
+                !Number.isFinite(kpiSummary.currentValue);
+              const resultState = additiveYtdInvalid
+                ? "invalid"
+                : calculation?.state ??
+                  (kpiSummary.currentValue === null ? "missing" : "ok");
+              // For additive monthly/quarterly measures the summary's
+              // currentValue is the year-to-date SUM of included periods
+              // while currentCalculation describes only the LATEST
+              // period. The headline Result must be the YTD aggregate so
+              // the row is internally consistent with its own Annual
+              // Actual / progress columns (F-07).
+              const resultValue = usesAdditiveYtd
+                ? additiveYtdInvalid
+                  ? null
+                  : kpiSummary.currentValue
+                : calculation
+                  ? calculation.value
+                  : kpiSummary.currentValue;
               const unit = boardResultUnit(
                 measurementType,
                 config?.unit ?? null,
@@ -245,7 +269,6 @@ export function buildStrategicBoardReportFromSummary({
                   formulaExplanation: formulaExplanation(
                     kpiSummary.measurementType,
                     kpiSummary.currentCalculation?.averageMethod,
-                    kpiSummary.currentCalculation?.calculationProvenance,
                   ),
                 },
                 annualProgress: progressInput(
@@ -587,7 +610,6 @@ function normalizedPrecision(precision: number): number {
 function formulaExplanation(
   measurementType: unknown,
   averageMethod?: AverageMethod,
-  calculationProvenance?: MeasurementResult["calculationProvenance"],
 ): string {
   switch (measurementType) {
     case "binary":
@@ -595,14 +617,8 @@ function formulaExplanation(
     case "milestone":
       return "Completed milestones divided by required milestones.";
     case "percentage":
-      if (calculationProvenance === "legacy_direct_value") {
-        return "Retained direct legacy percentage; raw numerator and denominator are unavailable, so this result was not recalculated.";
-      }
       return "Numerator divided by denominator, multiplied by 100.";
     case "average":
-      if (calculationProvenance === "legacy_direct_value") {
-        return "Retained direct legacy normalized value; raw score inputs and formula method are unavailable, so this result was not recalculated.";
-      }
       if (averageMethod === "total_score") {
         return "Total score divided by total possible score, multiplied by 100.";
       }
@@ -614,14 +630,8 @@ function formulaExplanation(
       }
       return "Raw average inputs are normalized using the persisted formula.";
     case "year_over_year":
-      if (calculationProvenance === "legacy_direct_percentage") {
-        return "Retained direct legacy percentage; underlying current and prior raw values are unavailable, so this result was not recalculated.";
-      }
       return "Current value minus previous value, divided by the absolute previous value.";
     case "ratio":
-      if (calculationProvenance === "legacy_direct_value") {
-        return "Retained direct legacy ratio; raw numerator and denominator are unavailable, so this result was not recalculated.";
-      }
       return "Numerator divided by the configured denominator.";
     case "distribution":
       return "Each category count divided by the respondent total.";

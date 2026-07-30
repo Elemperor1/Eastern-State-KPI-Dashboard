@@ -7,6 +7,7 @@ import {
   pruneExpired,
   recordFailure,
   throttleConfig,
+  verifyBudgetAllows,
 } from "./login-throttle";
 
 describe("login-throttle", () => {
@@ -30,6 +31,83 @@ describe("login-throttle", () => {
     expect(cfg.threshold).toBeGreaterThanOrEqual(5);
     expect(cfg.windowMs).toBeGreaterThan(0);
     expect(cfg.lockoutMs).toBeGreaterThan(0);
+    expect(cfg.verifyBudget).toBeGreaterThanOrEqual(1);
+  });
+
+  it("admits only the configured compare budget per lockout window", () => {
+    vi.stubEnv("LOGIN_VERIFY_BUDGET", "2");
+    const t0 = 1_000_000;
+    const firstLock = t0 + 2000;
+    expect(verifyBudgetAllows("cmpl:a@example.org", firstLock, t0)).toBe(true);
+    expect(verifyBudgetAllows("cmpl:a@example.org", firstLock, t0 + 10)).toBe(true);
+    expect(verifyBudgetAllows("cmpl:a@example.org", firstLock, t0 + 20)).toBe(false);
+    // Still spent moments later; the window tracks the lockout duration.
+    expect(verifyBudgetAllows("cmpl:a@example.org", firstLock, t0 + 30)).toBe(false);
+    // A different identity has its own budget.
+    expect(verifyBudgetAllows("cmpl:b@example.org", firstLock, t0 + 30)).toBe(true);
+    // A later lockout epoch gets a fresh budget.
+    expect(verifyBudgetAllows("cmpl:a@example.org", t0 + 4100, t0 + 2100)).toBe(true);
+  });
+
+  it("clearFailures also resets a spent compare budget", () => {
+    vi.stubEnv("LOGIN_VERIFY_BUDGET", "1");
+    const t0 = 1_000_000;
+    const lockoutUntil = t0 + 2000;
+    expect(verifyBudgetAllows("cmpl:a@example.org", lockoutUntil, t0)).toBe(true);
+    expect(verifyBudgetAllows("cmpl:a@example.org", lockoutUntil, t0 + 10)).toBe(false);
+    clearFailures("cmpl:a@example.org");
+    expect(verifyBudgetAllows("cmpl:a@example.org", lockoutUntil, t0 + 20)).toBe(true);
+  });
+
+  it("keeps a spent compare budget through ordinary-window pruning while its lockout window is active", () => {
+    vi.stubEnv("LOGIN_VERIFY_BUDGET", "1");
+    const t0 = 1_000_000;
+    const key = "cmpl:prune-resistant@example.org";
+    const lockoutUntil = t0 + 2000;
+
+    expect(verifyBudgetAllows(key, lockoutUntil, t0)).toBe(true);
+    expect(verifyBudgetAllows(key, lockoutUntil, t0 + 10)).toBe(false);
+
+    // The ordinary failure window has elapsed, but the compare budget is
+    // valid for the longer lockout-duration window.
+    pruneExpired(t0 + 1500);
+    expect(verifyBudgetAllows(key, lockoutUntil, t0 + 1510)).toBe(false);
+
+    // The next lockout epoch receives a fresh budget.
+    expect(verifyBudgetAllows(key, t0 + 4010, t0 + 2010)).toBe(true);
+  });
+
+  it("keeps a spent compare budget through attacker-controlled capacity flooding", () => {
+    vi.stubEnv("LOGIN_VERIFY_BUDGET", "1");
+    vi.stubEnv("LOGIN_THROTTLE_MAX_ENTRIES", "4");
+    const t0 = 1_000_000;
+    const key = "cmpl:flood-resistant@example.org";
+    const lockoutUntil = t0 + 2000;
+
+    expect(verifyBudgetAllows(key, lockoutUntil, t0)).toBe(true);
+    expect(verifyBudgetAllows(key, lockoutUntil, t0 + 10)).toBe(false);
+
+    for (let i = 0; i < 20; i += 1) {
+      recordFailure(`acct:flood-${i}@example.org`, t0 + 20 + i);
+    }
+
+    expect(_storeSizeForTests()).toBeLessThanOrEqual(4);
+    expect(verifyBudgetAllows(key, lockoutUntil, t0 + 100)).toBe(false);
+  });
+
+  it("opens a fresh compare budget when a late first attempt is followed by a new lockout epoch", () => {
+    vi.stubEnv("LOGIN_VERIFY_BUDGET", "1");
+    const t0 = 1_000_000;
+    const key = "cmpl:relocked@example.org";
+
+    // The first compare arrives just before the original account lock expires.
+    const firstLockoutUntil = t0 + 2000;
+    expect(verifyBudgetAllows(key, firstLockoutUntil, t0 + 1900)).toBe(true);
+    expect(verifyBudgetAllows(key, firstLockoutUntil, t0 + 1950)).toBe(false);
+
+    // A new failure epoch re-locks the account immediately after the old
+    // lockout. Its compare budget must not inherit the previous epoch's spend.
+    expect(verifyBudgetAllows(key, t0 + 4100, t0 + 2100)).toBe(true);
   });
 
   it("returns 0 for an unknown key", () => {

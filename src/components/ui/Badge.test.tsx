@@ -8,8 +8,9 @@ describe("Badge", () => {
     const accent = renderToStaticMarkup(<Badge variant="accent">Sample data</Badge>);
 
     expect(warning).toContain("bg-(--color-warning-bg)");
-    expect(warning).not.toContain("bg-accent-300");
-    expect(accent).toContain("bg-accent-300");
+    expect(warning).not.toContain("bg-accent-500");
+    expect(accent).toContain("bg-accent-500");
+    expect(accent).not.toContain("bg-accent-300");
   });
 
   it("renders a visible subject label for qualified statuses", () => {

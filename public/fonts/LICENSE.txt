@@ -1,22 +1,20 @@
-Galano Grotesque — Font License
-================================
+Galano Grotesque — Font License Notice
+======================================
 
 Font:           Galano Grotesque (Light, Regular, Medium, Bold)
 Foundry:        René Bieder
 Copyright:      © 2014 René Bieder. All rights reserved.
 Licensee:       Eastern State Penitentiary Historic Site
-License file:   (pending — copy the actual René Bieder / foundry license
-                PDF or EULA into this directory and update this notice
-                so the on-disk font stays in sync with the signed terms.)
+License status: Privately held; the repository owner attested on 2026-07-29
+                that the license is current and declined to disclose the
+                confidential license document to the review agent.
 
-The four OTF files in this directory are loaded by `src/app/globals.css`
-via @font-face declarations and are the project's only webfont. They are
-committed to the repository so that every developer and the CI build see
-the same typography, but they remain the property of René Bieder and may
-not be redistributed, sublicensed, or used outside the scope of the
-license Eastern State Penitentiary Historic Site has signed.
+This notice is not the license and does not expand its terms. The four OTF
+files are loaded by `src/app/globals.css` and remain the property of René
+Bieder. They may not be redistributed, sublicensed, or used outside the scope
+of the privately held license.
 
-If the license is ever transferred, expires, or is revoked, the four
-OTF files in this directory must be removed and `src/app/globals.css`
-must fall back to the system font stack declared on the
-`@font-face` rules.
+The repository owner is responsible for retaining the controlling license
+evidence and confirming that repository and deployment distribution remain
+within its terms. If the license is transferred, expires, or is revoked, remove
+the four OTF files and use the system fallback stack already declared in CSS.

@@ -1,9 +1,14 @@
 import fs from "node:fs";
 import { DatabaseSync } from "node:sqlite";
 
-const REQUIRED_TABLES = [
+// Exported so the production initialization probe in scripts/ensure-seeded.mjs
+// can mirror exactly the tables the readiness gate requires; a partial
+// database that retains rows in ANY required sidecar must refuse an automatic
+// destructive reseed.
+export const REQUIRED_TABLES = [
   "meta",
   "users",
+  "user_lifecycle_audit_events",
   "organizations",
   "strategic_plans",
   "installation_audit_events",
@@ -75,6 +80,15 @@ export function checkDatabaseReadiness(
   }
 
   try {
+    // Cheap liveness gate: proves the connection can execute SQL against
+    // this file. Integrity scanning (PRAGMA quick_check) is deliberately
+    // OFF this anonymous, unthrottled hot path (S008-C1): the probe runs
+    // on every Fly health interval and any unauthenticated request, so a
+    // full-database scan here would let anonymous traffic force expensive
+    // synchronous I/O on demand. Integrity scanning lives in the
+    // scheduled/operator deep check (checkDatabaseIntegrity) below.
+    database.prepare("SELECT 1").get();
+
     const migrationState = database
       .prepare(
         "SELECT value FROM meta WHERE key = 'production_migration_state'",
@@ -96,11 +110,6 @@ export function checkDatabaseReadiness(
       .all();
     const tables = new Set(tableRows.map((row) => row.name));
     if (REQUIRED_TABLES.some((table) => !tables.has(table))) {
-      return { ready: false, reason: "database_incompatible" };
-    }
-
-    const integrity = database.prepare("PRAGMA quick_check(1)").get();
-    if (!integrity || !Object.values(integrity).includes("ok")) {
       return { ready: false, reason: "database_incompatible" };
     }
 
@@ -138,6 +147,44 @@ export function checkDatabaseReadiness(
     return isDatabaseBusyError(error)
       ? { ready: false, reason: "database_unavailable" }
       : { ready: false, reason: "database_incompatible" };
+  } finally {
+    database.close();
+  }
+}
+
+/**
+ * @typedef {{ integrity: true } | { integrity: false, reason: "database_unavailable" | "integrity_check_failed" }} IntegrityResult
+ */
+
+/**
+ * Deep SQLite integrity probe (PRAGMA quick_check) for scheduled or
+ * operator-invoked use — never wired to the anonymous /api/health/ready
+ * hot path (S008-C1). Read-only, constant-shape result, and it logs or
+ * returns no file content, schema detail, or raw SQLite error text.
+ *
+ * @param {string} databasePath
+ * @returns {IntegrityResult}
+ */
+export function checkDatabaseIntegrity(databasePath) {
+  let database;
+  try {
+    database = new DatabaseSync(databasePath, {
+      readOnly: true,
+      timeout: 250,
+    });
+  } catch {
+    return { integrity: false, reason: "database_unavailable" };
+  }
+
+  try {
+    const integrity = database.prepare("PRAGMA quick_check(1)").get();
+    return integrity && Object.values(integrity).includes("ok")
+      ? { integrity: true }
+      : { integrity: false, reason: "integrity_check_failed" };
+  } catch {
+    // A file that cannot be read as a database at all (for example a
+    // damaged header) fails closed as an integrity failure.
+    return { integrity: false, reason: "integrity_check_failed" };
   } finally {
     database.close();
   }

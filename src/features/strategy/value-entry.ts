@@ -161,7 +161,11 @@ const ValuePayloadShape = {
   flexible_mode: z.enum(["monthly", "annual"]).nullable().optional().default(null),
   value: z.number().finite().nullable().optional().default(null),
   numerator: z.number().finite().nonnegative().nullable().optional().default(null),
-  denominator: z.number().finite().nonnegative().nullable().optional().default(null),
+  // A recorded denominator must be strictly positive: a zero denominator
+  // persists a row the calculation kernel can only render invalid
+  // (ZERO_DENOMINATOR) while the Data Entry checklist counts it complete
+  // (CALC-001). The kernel-level invalid contract is unchanged.
+  denominator: z.number().finite().positive().nullable().optional().default(null),
   average_inputs: AverageInputPayloadSchema,
   notes: OptionalTextSchema,
   source_reference: OptionalTextSchema,
@@ -453,6 +457,19 @@ function parsePayload<T>(schema: z.ZodType<T>, input: unknown): T {
   return result.data;
 }
 
+/**
+ * Determines whether the error is a SQLite UNIQUE constraint violation
+ * (errcode 2067) so persistence backstops surface as typed 400 responses
+ * instead of raw 500 failures.
+ */
+function isUniqueViolation(error: unknown): boolean {
+  if (!(error instanceof Error)) return false;
+  const errcode = (error as { errcode?: unknown }).errcode;
+  return (
+    errcode === 2067 || error.message.includes("UNIQUE constraint failed")
+  );
+}
+
 /** Validates active plan year. */
 function assertActivePlanYear(year: number, path = "reporting_year"): void {
   const { plan } = getActiveInstallation();
@@ -576,6 +593,132 @@ function loadEffectiveConfiguration(kpiId: number, year: number): EffectiveConfi
     baseline_value: numberOrNull(row.baseline_value),
     allow_score_over_max: Number(row.allow_score_over_max) === 1,
   };
+}
+
+/** Configuration lifecycle states that accept first-class value writes. */
+const VALUE_WRITE_CONFIGURATION_STATUSES = new Set(["active", "ready"]);
+
+/**
+ * Enforce write-side lifecycle integrity for first-class value entry: the
+ * KPI and its Strategic Priority must be active (archived measures stay
+ * readable but not writable), and the effective configuration must be in an
+ * enterable lifecycle state. Writes against draft/needs_definition/
+ * needs_target configurations would otherwise freeze unfinished semantics.
+ */
+function assertValueWriteAllowed(kpiId: number, configurationId: number): void {
+  const row = getDb()
+    .prepare(
+      `SELECT k.archived_at AS kpi_archived_at,
+              c.archived_at AS priority_archived_at,
+              config.configuration_status AS configuration_status
+       FROM kpi_measurement_configs config
+       JOIN kpis k ON k.id = config.kpi_id
+       JOIN categories c ON c.id = k.category_id
+       WHERE config.id = ? AND k.id = ?`,
+    )
+    .get(configurationId, kpiId) as
+    | {
+        kpi_archived_at: string | null;
+        priority_archived_at: string | null;
+        configuration_status: string;
+      }
+    | undefined;
+  if (!row) throw new StrategyValueEntryNotFoundError("kpi", kpiId);
+  if (row.kpi_archived_at !== null || row.priority_archived_at !== null) {
+    throw new StrategyValueEntryValidationError(
+      "Values cannot be recorded for an archived measure.",
+      [
+        {
+          path: "kpi_id",
+          message:
+            "Restore the measure and its Strategic Priority before entering values.",
+        },
+      ],
+    );
+  }
+  if (!VALUE_WRITE_CONFIGURATION_STATUSES.has(row.configuration_status)) {
+    throw new StrategyValueEntryValidationError(
+      "Values cannot be recorded against an unfinished measurement configuration.",
+      [
+        {
+          path: "kpi_id",
+          message:
+            "Resolve the configuration and mark it ready or active before entering values.",
+        },
+      ],
+    );
+  }
+}
+
+/**
+ * Enforce delete-side lifecycle integrity for first-class value entry
+ * (review ISSUE-4, policy: REFUSE). An archived KPI/priority subtree is
+ * frozen in both directions — values cannot be recorded OR deleted while
+ * it is hidden. To retire a measure whose values should be removed,
+ * restore the measure, delete the values in the open, then re-archive;
+ * this keeps the deletion-guard flow (deleteKPI requires dependent
+ * entries deleted first) workable.
+ */
+function assertValueDeleteLineageActive(kpiId: number): void {
+  const row = getDb()
+    .prepare(
+      `SELECT k.archived_at AS kpi_archived_at,
+              c.archived_at AS priority_archived_at
+       FROM kpis k
+       JOIN categories c ON c.id = k.category_id
+       WHERE k.id = ?`,
+    )
+    .get(kpiId) as
+    | { kpi_archived_at: string | null; priority_archived_at: string | null }
+    | undefined;
+  if (!row) throw new StrategyValueEntryNotFoundError("kpi", kpiId);
+  if (row.kpi_archived_at !== null || row.priority_archived_at !== null) {
+    throw new StrategyValueEntryValidationError(
+      "Values cannot be deleted for an archived measure. Restore the measure and its Strategic Priority before deleting values; re-archive afterwards if the measure should stay retired (restore, delete, then archive).",
+      [
+        {
+          path: "kpi_id",
+          message:
+            "Restore the measure and its Strategic Priority before deleting values; re-archive afterwards if the measure should stay retired (restore, delete, then archive).",
+        },
+      ],
+    );
+  }
+}
+
+/**
+ * Enforce write-side lifecycle integrity for distribution-band definition
+ * mutations (S007-C1 follow-up): the owning KPI and its Strategic Priority
+ * must both be active. Bands under an archived lineage are frozen —
+ * readable for history but not definable, reorderable, archivable, or
+ * restorable — so an archived subtree cannot be quietly reshaped while it
+ * is hidden from every default lister.
+ */
+function assertBandDefinitionLineageActive(kpiId: number): void {
+  const row = getDb()
+    .prepare(
+      `SELECT k.archived_at AS kpi_archived_at,
+              c.archived_at AS priority_archived_at
+       FROM kpis k
+       JOIN categories c ON c.id = k.category_id
+       WHERE k.id = ?`,
+    )
+    .get(kpiId) as
+    | { kpi_archived_at: string | null; priority_archived_at: string | null }
+    | undefined;
+  if (!row) throw new StrategyValueEntryNotFoundError("kpi", kpiId);
+  if (row.kpi_archived_at !== null || row.priority_archived_at !== null) {
+    throw new StrategyValueEntryValidationError(
+      "Distribution band definitions cannot be changed for an archived measure.",
+      [
+        {
+          path: "kpi_id",
+          message:
+            "Restore the measure and its Strategic Priority before editing its distribution bands.",
+        },
+      ],
+    );
+  }
 }
 
 /** Retrieves component. */
@@ -1177,6 +1320,7 @@ export function upsertStrategyObservation(
   ) as ObservationWrite;
   return transaction(() => {
     const configuration = loadEffectiveConfiguration(input.kpi_id, input.reporting_year);
+    assertValueWriteAllowed(input.kpi_id, configuration.id);
     return upsertObservationRow(input, configuration, actorId);
   });
 }
@@ -1201,6 +1345,7 @@ export function deleteStrategyObservation(
       String(row.measurement_type) as MeasurementType,
       String(row.reporting_frequency) as StrategyReportingFrequency,
     );
+    assertValueDeleteLineageActive(record.kpi_id);
     const context = loadAuditContext(record.kpi_id, record.year);
     getDb().prepare("DELETE FROM kpi_observations WHERE id = ?").run(id);
     recordStrategicAuditEvent({
@@ -1299,6 +1444,7 @@ function upsertStrategyComponentEntryInput(
     input.component_id,
     input.reporting_year,
   );
+  assertValueWriteAllowed(component.kpi_id, configuration.id);
   const prepared = validateObservation(
     input,
     configuration,
@@ -1476,6 +1622,7 @@ export function deleteStrategyComponentEntry(
       allow_score_over_max: false,
     };
     const record = asComponentEntry(row, component, configuration);
+    assertValueDeleteLineageActive(component.kpi_id);
     getDb().prepare("DELETE FROM kpi_component_entries WHERE id = ?").run(id);
     recordStrategicAuditEvent({
       entity_type: "kpi_component_entry",
@@ -1567,6 +1714,12 @@ function findBand(
     const row = db.prepare("SELECT * FROM distribution_bands WHERE id = ?").get(input.band_id);
     if (!row) {
       throw new StrategyValueEntryNotFoundError("distribution_band", input.band_id);
+    }
+    if (String(row.slug) !== input.slug) {
+      throw new StrategyValueEntryValidationError(
+        "The distribution band id and slug do not match.",
+        [{ path: "bands.slug", message: "Use the slug that belongs to the selected band." }],
+      );
     }
     if (
       Number(row.kpi_id) !== kpiId ||
@@ -1816,6 +1969,7 @@ export function upsertStrategyDistribution(
   ) as DistributionWrite;
   return transaction(() => {
     const configuration = loadEffectiveConfiguration(input.kpi_id, input.reporting_year);
+    assertValueWriteAllowed(input.kpi_id, configuration.id);
     const component =
       input.component_id === null
         ? null
@@ -1827,6 +1981,20 @@ export function upsertStrategyDistribution(
       );
     }
     const period = validateDistribution(input, configuration, component);
+    const requestedIds = input.bands
+      .map((band) => band.band_id)
+      .filter((bandId): bandId is number => bandId !== null);
+    if (new Set(requestedIds).size !== requestedIds.length) {
+      throw new StrategyValueEntryValidationError(
+        "Duplicate distribution bands.",
+        [
+          {
+            path: "bands.band_id",
+            message: "Each band may appear only once in a submission.",
+          },
+        ],
+      );
+    }
     const context: AuditContext = {
       kpi_name: configuration.kpi_name,
       priority_name: configuration.priority_name,
@@ -1900,46 +2068,61 @@ export function upsertStrategyDistribution(
       );
     }
 
-    const requestedBandIds = new Set(bands.map((band) => Number(band.id)));
-    const oldValues = db
-      .prepare("SELECT id, band_id FROM distribution_values WHERE observation_id = ?")
-      .all(id);
-    for (const old of oldValues) {
-      if (!requestedBandIds.has(Number(old.band_id))) {
-        db.prepare("DELETE FROM distribution_values WHERE id = ?").run(Number(old.id));
+    try {
+      const requestedBandIds = new Set(bands.map((band) => Number(band.id)));
+      const oldValues = db
+        .prepare("SELECT id, band_id FROM distribution_values WHERE observation_id = ?")
+        .all(id);
+      for (const old of oldValues) {
+        if (!requestedBandIds.has(Number(old.band_id))) {
+          db.prepare("DELETE FROM distribution_values WHERE id = ?").run(Number(old.id));
+        }
       }
-    }
-    const existingValues = new Map(
-      db
-        .prepare("SELECT * FROM distribution_values WHERE observation_id = ?")
-        .all(id)
-        .map((row) => [Number(row.band_id), row]),
-    );
-    for (const [index, band] of bands.entries()) {
-      const bandId = Number(band.id);
-      const requestedBand = input.bands[index]!;
-      const existingValue = existingValues.get(bandId);
-      if (existingValue) {
-        db.prepare(
-          `UPDATE distribution_values SET
-             category_count = ?, updated_by = ?, updated_at = datetime('now')
-           WHERE id = ?`,
-        ).run(requestedBand.count, actorId, Number(existingValue.id));
-      } else {
-        db.prepare(
-          `INSERT INTO distribution_values (
-             observation_id, band_id, band_label_snapshot, category_count,
-             created_by, updated_by
-           ) VALUES (?, ?, ?, ?, ?, ?)`,
-        ).run(
-          id,
-          bandId,
-          String(band.label),
-          requestedBand.count,
-          actorId,
-          actorId,
+      const existingValues = new Map(
+        db
+          .prepare("SELECT * FROM distribution_values WHERE observation_id = ?")
+          .all(id)
+          .map((row) => [Number(row.band_id), row]),
+      );
+      for (const [index, band] of bands.entries()) {
+        const bandId = Number(band.id);
+        const requestedBand = input.bands[index]!;
+        const existingValue = existingValues.get(bandId);
+        if (existingValue) {
+          db.prepare(
+            `UPDATE distribution_values SET
+               category_count = ?, updated_by = ?, updated_at = datetime('now')
+             WHERE id = ?`,
+          ).run(requestedBand.count, actorId, Number(existingValue.id));
+        } else {
+          db.prepare(
+            `INSERT INTO distribution_values (
+               observation_id, band_id, band_label_snapshot, category_count,
+               created_by, updated_by
+             ) VALUES (?, ?, ?, ?, ?, ?)`,
+          ).run(
+            id,
+            bandId,
+            String(band.label),
+            requestedBand.count,
+            actorId,
+            actorId,
+          );
+        }
+      }
+    } catch (error) {
+      if (isUniqueViolation(error)) {
+        throw new StrategyValueEntryValidationError(
+          "Duplicate distribution bands.",
+          [
+            {
+              path: "bands.band_id",
+              message: "Each band may appear only once in a submission.",
+            },
+          ],
         );
       }
+      throw error;
     }
     const after = readDistribution(id);
     if (
@@ -1993,6 +2176,7 @@ export function deleteStrategyDistribution(
 ): void {
   transaction(() => {
     const before = readDistribution(id);
+    assertValueDeleteLineageActive(before.kpi_id);
     const context = loadAuditContext(before.kpi_id, before.year);
     const componentLabel =
       before.component_id === null
@@ -2166,6 +2350,7 @@ export function createStrategyDistributionBand(
   ) as DistributionBandDefinitionWrite;
   return transaction(() => {
     assertActivePlanRange(input.effective_from_year, input.effective_to_year);
+    assertBandDefinitionLineageActive(input.kpi_id);
     const context = assertDistributionBandOwner(
       input.kpi_id,
       input.component_id,
@@ -2226,6 +2411,7 @@ export function updateStrategyDistributionBand(
   return transaction(() => {
     assertActivePlanRange(input.effective_from_year, input.effective_to_year);
     const before = getDistributionBandDefinition(input.id);
+    assertBandDefinitionLineageActive(before.kpi_id);
     if (
       before.kpi_id !== input.kpi_id ||
       before.component_id !== input.component_id
@@ -2335,6 +2521,7 @@ export function reorderStrategyDistributionBands(
     rawInput,
   ) as DistributionBandReorder;
   return transaction(() => {
+    assertBandDefinitionLineageActive(input.kpi_id);
     const context = assertDistributionBandOwner(
       input.kpi_id,
       input.component_id,
@@ -2400,6 +2587,7 @@ function setDistributionBandArchived(
       ? before.archived_at !== null
       : before.archived_at === null;
     if (alreadyDesired) return before;
+    assertBandDefinitionLineageActive(before.kpi_id);
     if (!archived && findOverlappingActiveDistributionBand(before, before.id)) {
       throw overlappingDistributionBandError();
     }

@@ -356,6 +356,7 @@
     font-display: swap;
     src: url('/fonts/galano-grotesque-medium.otf') format('opentype');
   }
+
   @font-face {
     font-family: 'Galano Grotesque';
     font-style: normal;
@@ -476,6 +477,11 @@
     font-feature-settings:
       'liga' 1,
       'kern' 1;
+  }
+
+  a:focus-visible {
+    outline: 3px solid var(--color-focus);
+    outline-offset: 2px;
   }
 
   ::selection {
@@ -690,6 +696,7 @@
 
   /* Universal print-time chrome hider used across pages. */
   .no-print,
+  .reports-product-header,
   aside.fixed,
   header.fixed,
   [data-print="hide"] {

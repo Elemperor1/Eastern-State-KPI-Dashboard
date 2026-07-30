@@ -28,6 +28,7 @@ import {
   type PersistedMeasurementConfig,
   type PersistedStrategicGoal,
   type PersistedTarget,
+  type StrategicGoalArchivedMember,
   type StrategicGoalMemberReadModel,
   type StrategicGoalReadModel,
   type StrategyComponentWithTargets,
@@ -348,6 +349,27 @@ interface StrategicGoalListFilter extends StrategyReadOptions {
 export function listStrategicGoals(
   filter: StrategicGoalListFilter = {},
 ): StrategicGoalReadModel[] {
+  return listStrategicGoalsInternal(filter, false);
+}
+
+/**
+ * Lists active goals for Board/reporting disclosure while retaining an
+ * archived Strategic Priority as hidden lineage context. This intentionally
+ * does not opt into the broad `includeArchived` admin/history read: archived
+ * goals remain excluded and archived memberships/measures/priorities remain
+ * disclosure-only `archived_members`.
+ */
+export function listStrategicGoalsForReportingDisclosure(
+  filter: Omit<StrategicGoalListFilter, "includeArchived"> = {},
+): StrategicGoalReadModel[] {
+  return listStrategicGoalsInternal(filter, true);
+}
+
+/** Implements the shared strategic-goal query with a narrow disclosure mode. */
+function listStrategicGoalsInternal(
+  filter: StrategicGoalListFilter,
+  includeArchivedPriorityContext: boolean,
+): StrategicGoalReadModel[] {
   const year = queryYear(filter.year);
   const planId = getActiveInstallation().plan.id;
   const where = [
@@ -358,7 +380,9 @@ export function listStrategicGoals(
   const params: Array<string | number> = [year, year, planId];
   if (!filter.includeArchived) {
     where.push("g.archived_at IS NULL");
-    where.push("c.archived_at IS NULL");
+    if (!includeArchivedPriorityContext) {
+      where.push("c.archived_at IS NULL");
+    }
   }
   if (filter.priority_id !== undefined) {
     where.push("g.priority_id = ?");
@@ -386,8 +410,236 @@ export function listStrategicGoals(
     return {
       ...goal,
       members: listGoalMembers(goal.id, year, filter),
+      archived_members: listArchivedGoalMembers(goal.id, year, filter),
     };
   });
+}
+
+/**
+ * List the goal members the default read pipeline excludes because their
+ * membership, measure, or Strategic Priority is archived (NOV-C5). The
+ * reporting pipeline injects these into the calculator so the exclusion is
+ * disclosed with the `archived` reason rather than vanishing. Callers that
+ * explicitly request archived rows receive them as ordinary members, so
+ * this list is empty in that mode.
+ */
+function listArchivedGoalMembers(
+  goalId: number,
+  year: number,
+  options: Pick<StrategyReadOptions, "includeArchived">,
+): StrategicGoalArchivedMember[] {
+  if (options.includeArchived) return [];
+  const rows = getDb()
+    .prepare(
+      `SELECT membership.kpi_id, k.slug AS kpi_slug, k.name AS kpi_name
+       FROM goal_kpis membership
+       JOIN kpis k ON k.id = membership.kpi_id
+       JOIN categories c ON c.id = k.category_id
+       WHERE membership.goal_id = ?
+         AND membership.effective_from_year <= ?
+         AND (membership.effective_to_year IS NULL OR membership.effective_to_year >= ?)
+         AND (membership.archived_at IS NOT NULL
+              OR k.archived_at IS NOT NULL
+              OR c.archived_at IS NOT NULL)
+       ORDER BY membership.display_order, membership.id`,
+    )
+    .all(goalId, year, year) as Record<string, unknown>[];
+  return rows.map((row) => ({
+    kpi_id: Number(row.kpi_id),
+    kpi_slug: String(row.kpi_slug),
+    kpi_name: String(row.kpi_name),
+  }));
+}
+
+/**
+ * Identify measures holding values that were written while either the measure
+ * or its Strategic Priority was archived (NOV-C5 restored-with-hidden-data
+ * marker).
+ *
+ * Lifecycle transitions and value writes are ordered by the monotonically
+ * increasing immutable audit-event id. The first retained lifecycle action
+ * establishes the earlier state (`restore` means it began archived); only an
+ * entity with no retained lifecycle action falls back to its current
+ * `archived_at` state so pre-audit-window archives remain represented. This
+ * catches create and update-in-place writes across scalar, component, and
+ * distribution values without relying on second-resolution timestamps (which
+ * can falsely place a legitimate pre-archive value inside the interval).
+ */
+export function listKpiIdsWithArchivedIntervalValues(
+  kpiIds: number[],
+): Set<number> {
+  const flagged = new Set<number>();
+  if (kpiIds.length === 0) return flagged;
+  const db = getDb();
+  const placeholders = kpiIds.map(() => "?").join(", ");
+  const kpiRows = db
+    .prepare(
+      `SELECT id, category_id, archived_at
+       FROM kpis
+       WHERE id IN (${placeholders})`,
+    )
+    .all(...kpiIds) as Array<{
+    id: number;
+    category_id: number;
+    archived_at: string | null;
+  }>;
+  const kpiRowsById = new Map(
+    kpiRows.map((row) => [Number(row.id), row]),
+  );
+  const kpisByPriority = new Map<number, number[]>();
+  for (const row of kpiRows) {
+    const members = kpisByPriority.get(Number(row.category_id)) ?? [];
+    members.push(Number(row.id));
+    kpisByPriority.set(Number(row.category_id), members);
+  }
+  const priorityIds = Array.from(kpisByPriority.keys());
+  const priorityRows =
+    priorityIds.length === 0
+      ? []
+      : (db
+          .prepare(
+            `SELECT id, archived_at
+             FROM categories
+             WHERE id IN (${priorityIds.map(() => "?").join(", ")})`,
+          )
+          .all(...priorityIds) as Array<{
+          id: number;
+          archived_at: string | null;
+        }>);
+  const priorityClause =
+    priorityIds.length === 0
+      ? "0"
+      : `entity_id IN (${priorityIds.map(() => "?").join(", ")})`;
+  const events = db
+    .prepare(
+      `SELECT id, entity_type, entity_id, event_type
+       FROM strategic_audit_events
+       WHERE event_type IN ('archive', 'restore')
+         AND (
+           (entity_type = 'kpi' AND entity_id IN (${placeholders}))
+           OR
+           (entity_type = 'strategic_priority' AND ${priorityClause})
+         )
+       ORDER BY id`,
+    )
+    .all(...kpiIds, ...priorityIds) as Array<{
+    id: number;
+    entity_type: "kpi" | "strategic_priority";
+    entity_id: number;
+    event_type: "archive" | "restore";
+  }>;
+  const intervalsByKpi = new Map<
+    number,
+    Array<{ startId: number; endId: number | null }>
+  >();
+  const firstKpiLifecycleEvent = new Map<number, "archive" | "restore">();
+  const firstPriorityLifecycleEvent = new Map<number, "archive" | "restore">();
+  for (const event of events) {
+    const firstEvents =
+      event.entity_type === "kpi"
+        ? firstKpiLifecycleEvent
+        : firstPriorityLifecycleEvent;
+    const entityId = Number(event.entity_id);
+    if (!firstEvents.has(entityId)) {
+      firstEvents.set(entityId, event.event_type);
+    }
+  }
+  const kpiArchived = new Map(
+    kpiRows.map((row) => {
+      const firstEvent = firstKpiLifecycleEvent.get(Number(row.id));
+      return [
+        Number(row.id),
+        firstEvent === undefined
+          ? row.archived_at !== null
+          : firstEvent === "restore",
+      ];
+    }),
+  );
+  const priorityArchived = new Map(
+    priorityRows.map((row) => {
+      const firstEvent = firstPriorityLifecycleEvent.get(Number(row.id));
+      return [
+        Number(row.id),
+        firstEvent === undefined
+          ? row.archived_at !== null
+          : firstEvent === "restore",
+      ];
+    }),
+  );
+  for (const row of kpiRows) {
+    if (
+      kpiArchived.get(Number(row.id)) === true ||
+      priorityArchived.get(Number(row.category_id)) === true
+    ) {
+      intervalsByKpi.set(Number(row.id), [{ startId: 0, endId: null }]);
+    }
+  }
+  for (const event of events) {
+    const affectedKpiIds =
+      event.entity_type === "kpi"
+        ? [Number(event.entity_id)]
+        : (kpisByPriority.get(Number(event.entity_id)) ?? []);
+    const nextArchivedState = event.event_type === "archive";
+    for (const kpiId of affectedKpiIds) {
+      const row = kpiRowsById.get(kpiId);
+      if (!row) continue;
+      const hiddenBefore =
+        kpiArchived.get(kpiId) === true ||
+        priorityArchived.get(Number(row.category_id)) === true;
+      const hiddenAfter =
+        (event.entity_type === "kpi"
+          ? nextArchivedState
+          : kpiArchived.get(kpiId) === true) ||
+        (event.entity_type === "strategic_priority"
+          ? nextArchivedState
+          : priorityArchived.get(Number(row.category_id)) === true);
+      const intervals = intervalsByKpi.get(kpiId) ?? [];
+      if (!hiddenBefore && hiddenAfter) {
+        intervals.push({ startId: Number(event.id), endId: null });
+      } else if (hiddenBefore && !hiddenAfter) {
+        for (let index = intervals.length - 1; index >= 0; index -= 1) {
+          if (intervals[index]?.endId === null) {
+            intervals[index]!.endId = Number(event.id);
+            break;
+          }
+        }
+      }
+      intervalsByKpi.set(kpiId, intervals);
+    }
+    if (event.entity_type === "kpi") {
+      kpiArchived.set(Number(event.entity_id), nextArchivedState);
+    } else {
+      priorityArchived.set(Number(event.entity_id), nextArchivedState);
+    }
+  }
+  const hiddenValue = db.prepare(
+    `SELECT 1 AS present
+     FROM strategic_audit_events
+     WHERE id > ? AND (? IS NULL OR id < ?)
+       AND event_type IN ('create', 'update')
+       AND entity_type IN (
+         'kpi_observation',
+         'kpi_component_entry',
+         'distribution_observation'
+       )
+       AND CAST(json_extract(new_value_json, '$.kpi_id') AS INTEGER) = ?
+     LIMIT 1`,
+  );
+  for (const [kpiId, intervals] of intervalsByKpi) {
+    for (const interval of intervals) {
+      const hit = hiddenValue.get(
+        interval.startId,
+        interval.endId,
+        interval.endId,
+        kpiId,
+      );
+      if (hit) {
+        flagged.add(kpiId);
+        break;
+      }
+    }
+  }
+  return flagged;
 }
 
 /** Retrieves strategic goal. */
@@ -410,6 +662,7 @@ function getStrategicGoal(
   return {
     ...goal,
     members: listGoalMembers(goal.id, year, options),
+    archived_members: listArchivedGoalMembers(goal.id, year, options),
   };
 }
 

@@ -124,6 +124,21 @@ describe("/api/strategy/observations", () => {
     expect(deleteMock).toHaveBeenCalledWith(11, ADMIN.id);
   });
 
+  it("rejects a zero denominator at the write boundary without calling the feature", async () => {
+    // CALC-001: a zero denominator can only render invalid in the kernel
+    // while the checklist counts the row complete, so it is refused here.
+    const response = await POST(
+      request("POST", {
+        kpi_id: 4,
+        reporting_year: 2026,
+        numerator: 5,
+        denominator: 0,
+      }),
+    );
+    expect(response.status).toBe(400);
+    expect(upsertMock).not.toHaveBeenCalled();
+  });
+
   it("returns structured 400 validation failures", async () => {
     upsertMock.mockImplementationOnce(() => {
       throw new StrategyValueEntryValidationError("Invalid reporting period.", [

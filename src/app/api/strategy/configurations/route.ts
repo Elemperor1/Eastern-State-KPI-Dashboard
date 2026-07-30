@@ -5,6 +5,7 @@ import {
   MeasurementConfigurationCreateSchema,
   MeasurementConfigurationUpdateSchema,
   StrategyEntityLifecycleSchema,
+  withExpectedRevision,
 } from "@/features/strategy";
 import {
   archiveMeasurementConfig,
@@ -15,6 +16,7 @@ import {
   updateMeasurementConfiguration,
 } from "@/features/strategy/server";
 import { assertMutationRequest } from "@/lib/request-guard";
+import { readJsonBody } from "@/lib/request-body";
 import {
   invalidStrategyInput,
   strategyEditErrorResponse,
@@ -24,13 +26,14 @@ const PatchSchema = z.discriminatedUnion("action", [
   z
     .object({
       action: z.literal("update"),
-      update: MeasurementConfigurationUpdateSchema,
+      update: withExpectedRevision(MeasurementConfigurationUpdateSchema),
     })
     .strict(),
   z
     .object({
       action: z.literal("create_successor"),
       predecessor_id: z.number().int().positive(),
+      expected_revision: z.string().min(1),
       successor: MeasurementConfigurationCreateSchema.refine(
         (successor) =>
           successor.effective_end_year !== null &&
@@ -63,9 +66,9 @@ async function authorize(req: NextRequest) {
 export async function POST(req: NextRequest) {
   const auth = await authorize(req);
   if (auth.response) return auth.response;
-  const parsed = MeasurementConfigurationCreateSchema.safeParse(
-    await req.json().catch(() => ({})),
-  );
+  const bodyResult = await readJsonBody(req);
+  if (!bodyResult.ok) return bodyResult.response;
+  const parsed = MeasurementConfigurationCreateSchema.safeParse(bodyResult.body);
   if (!parsed.success) return invalidStrategyInput(z.flattenError(parsed.error));
   try {
     const configuration = createMeasurementConfiguration(
@@ -84,7 +87,9 @@ export async function POST(req: NextRequest) {
 export async function PATCH(req: NextRequest) {
   const auth = await authorize(req);
   if (auth.response) return auth.response;
-  const parsed = PatchSchema.safeParse(await req.json().catch(() => ({})));
+  const bodyResult = await readJsonBody(req);
+  if (!bodyResult.ok) return bodyResult.response;
+  const parsed = PatchSchema.safeParse(bodyResult.body);
   if (!parsed.success) return invalidStrategyInput(z.flattenError(parsed.error));
   try {
     if (parsed.data.action === "update") {
@@ -100,6 +105,7 @@ export async function PATCH(req: NextRequest) {
         createSuccessorMeasurementConfiguration(
           {
             predecessor_id: parsed.data.predecessor_id,
+            expected_revision: parsed.data.expected_revision,
             successor: parsed.data.successor,
           },
           auth.user!.id,

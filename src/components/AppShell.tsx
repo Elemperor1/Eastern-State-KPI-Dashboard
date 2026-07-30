@@ -74,6 +74,28 @@ function navItemIsActive(item: (typeof NAV)[number], pathname: string): boolean 
   );
 }
 
+/** Moves focus to a fragment target or the destination page heading. */
+function focusRouteDestination(main: HTMLElement | null) {
+  const encodedFragmentId = window.location.hash.slice(1);
+  let fragmentId = encodedFragmentId;
+  try {
+    fragmentId = decodeURIComponent(encodedFragmentId);
+  } catch {
+    // A malformed fragment cannot name a DOM id; fall back to the page heading.
+  }
+  const fragmentTarget =
+    fragmentId.length > 0
+      ? document.getElementById(fragmentId)
+      : null;
+  const destinationHeading =
+    main?.querySelector<HTMLElement>("[data-page-title]");
+  if (fragmentTarget) {
+    fragmentTarget.focus();
+    if (document.activeElement === fragmentTarget) return;
+  }
+  (destinationHeading ?? main)?.focus();
+}
+
 /** Renders the nav item interface. */
 function NavItem({
   item,
@@ -171,6 +193,7 @@ export function AppShell({
   const [mobileOpen, setMobileOpen] = useState(false);
   const mobileDrawerRef = useRef<HTMLElement>(null);
   const mainRef = useRef<HTMLElement>(null);
+  const previousPathnameRef = useRef(pathname);
   const mobileOpenRef = useRef<HTMLButtonElement>(null);
   const mobileCloseRef = useRef<HTMLButtonElement>(null);
   const [unsaved, setUnsaved] = useState<UnsavedChangesState>({
@@ -232,9 +255,28 @@ export function AppShell({
   }, [pathname]);
 
   useEffect(() => {
-    if (window.sessionStorage.getItem(ROUTE_RECOVERY_FOCUS_KEY) !== "main") return;
+    if (previousPathnameRef.current === pathname) return;
+    previousPathnameRef.current = pathname;
+    // A preserved AppShell handles this client-side transition directly.
+    // Clear the remount fallback so it cannot steal focus after a later,
+    // unrelated full-page navigation.
     window.sessionStorage.removeItem(ROUTE_RECOVERY_FOCUS_KEY);
-    window.requestAnimationFrame(() => mainRef.current?.focus());
+    window.requestAnimationFrame(() => {
+      focusRouteDestination(mainRef.current);
+    });
+  }, [pathname]);
+
+  useEffect(() => {
+    const focusTarget = window.sessionStorage.getItem(ROUTE_RECOVERY_FOCUS_KEY);
+    if (focusTarget !== "main" && focusTarget !== "heading") return;
+    window.sessionStorage.removeItem(ROUTE_RECOVERY_FOCUS_KEY);
+    window.requestAnimationFrame(() => {
+      if (focusTarget === "main") {
+        mainRef.current?.focus();
+        return;
+      }
+      focusRouteDestination(mainRef.current);
+    });
   }, []);
 
   useEffect(() => {
@@ -282,7 +324,7 @@ export function AppShell({
 
   /** Implements the guard link navigation operation. */
   function guardLinkNavigation(event: ReactMouseEvent<HTMLDivElement>) {
-    if (!unsaved.dirty || event.defaultPrevented) return;
+    if (event.defaultPrevented) return;
     if (event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) {
       return;
     }
@@ -292,6 +334,12 @@ export function AppShell({
     const url = new URL(anchor.href, window.location.href);
     if (url.origin !== window.location.origin) return;
     if (`${url.pathname}${url.search}${url.hash}` === `${window.location.pathname}${window.location.search}${window.location.hash}`) {
+      return;
+    }
+    if (!unsaved.dirty) {
+      if (url.pathname !== window.location.pathname) {
+        window.sessionStorage.setItem(ROUTE_RECOVERY_FOCUS_KEY, "heading");
+      }
       return;
     }
     event.preventDefault();
@@ -437,6 +485,9 @@ export function AppShell({
           if (pending?.kind === "history") {
             window.history.back();
           } else if (pending?.kind === "link") {
+            if (new URL(pending.href, window.location.href).pathname !== window.location.pathname) {
+              window.sessionStorage.setItem(ROUTE_RECOVERY_FOCUS_KEY, "heading");
+            }
             router.replace(pending.href);
           }
         }}

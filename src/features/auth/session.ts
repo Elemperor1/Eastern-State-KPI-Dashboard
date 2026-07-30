@@ -12,6 +12,7 @@ export {
   getCurrentUser,
   getCurrentUserReadOnly,
   getSession,
+  isStaffRole,
   requireAdmin,
   requireStaffSession,
   requireSession,

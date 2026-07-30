@@ -8,8 +8,13 @@ import { OverviewYearFilter } from "./OverviewYearFilter";
 import type { BoardReportingPriority } from "@/features/board-reporting";
 
 /** Implements the status for operation. */
-function statusFor(priority: ExecutiveOverviewPageData["summary"]["priorities"][number]) {
-  if (priority.excludedGoalsCount > 0) return { label: "Needs attention", variant: "warning" as const };
+function statusFor(
+  priority: ExecutiveOverviewPageData["summary"]["priorities"][number],
+  hasGoalAttention: boolean,
+) {
+  if (priority.excludedGoalsCount > 0 || hasGoalAttention) {
+    return { label: "Needs attention", variant: "warning" as const };
+  }
   if ((priority.completionPercentage ?? 0) >= 100) return { label: "Complete", variant: "success" as const };
   return { label: "In progress", variant: "info" as const };
 }
@@ -62,7 +67,12 @@ export function ExecutiveOverview({
         <div className="divide-y divide-ink-200 border-y border-ink-200">
           {data.summary.priorities.map((priority) => {
             const normalized = normalizeGoalCompletionViewModel(priority);
-            const status = statusFor(priority);
+            const hasGoalAttention = data.summary.goals.some(
+              (goal) =>
+                goal.priorityId === priority.priorityId &&
+                goal.result.exclusionReasons.length > 0,
+            );
+            const status = statusFor(priority, hasGoalAttention);
             const slug = data.summary.goals.find(
               (goal) => goal.priorityId === priority.priorityId,
             )?.prioritySlug;
@@ -85,7 +95,7 @@ export function ExecutiveOverview({
               <Link
                 key={priority.priorityId}
                 href={`/dashboard/category/${slug}?year=${data.summary.selectedYear}`}
-                className="grid min-h-24 grid-cols-1 gap-3 px-1 py-5 transition-colors hover:bg-ink-50 focus-visible:outline-solid focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-(--color-focus) sm:grid-cols-[minmax(0,1fr)_auto] sm:items-center sm:gap-5"
+                className="grid min-h-24 grid-cols-1 gap-3 px-1 py-5 transition-colors hover:bg-ink-50 focus-visible:outline-solid focus-visible:outline-[3px] focus-visible:outline-offset-2 focus-visible:outline-(--color-focus) sm:grid-cols-[minmax(0,1fr)_auto] sm:items-center sm:gap-5"
               >
                 {content}
               </Link>

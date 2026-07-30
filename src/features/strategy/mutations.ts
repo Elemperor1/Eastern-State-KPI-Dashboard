@@ -973,19 +973,18 @@ function setArchived(
     const restoredStatus = archived
       ? "archived"
       : (configurationStatusBeforeArchive(descriptor.entityType, id) ?? "draft");
-    if (archived && (kind === "component" || kind === "target")) {
+    if (archived) {
       assertStrategyEntityArchiveIntegrity(kind, id);
     }
-    if (
-      !archived &&
-      (kind === "measurement_config" || kind === "component" || kind === "target")
-    ) {
+    if (!archived) {
       assertStrategyEntityRestoreIntegrity(kind, id, restoredStatus);
     }
     db.prepare(
       `UPDATE ${descriptor.table}
        SET archived_at = ${archived ? "datetime('now')" : "NULL"},
-           configuration_status = ?, updated_by = ?, updated_at = datetime('now')
+           configuration_status = ?, updated_by = ?,
+           updated_at = CASE WHEN updated_at >= datetime('now')
+             THEN datetime(updated_at, '+1 second') ELSE datetime('now') END
        WHERE id = ?`,
     ).run(restoredStatus, actorId, id);
     const after = db.prepare(`SELECT * FROM ${descriptor.table} WHERE id = ?`).get(id) as

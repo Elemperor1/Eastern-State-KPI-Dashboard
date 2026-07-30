@@ -27,13 +27,13 @@ export function AdminUserCreateForm({
         </h2>
         <fieldset disabled={isSubmitting} className="grid grid-cols-1 gap-4 md:grid-cols-4">
           <FormField label="Name" htmlFor="create-user-name">
-            <Input id="create-user-name" name="name" required placeholder="Full name" />
+            <Input id="create-user-name" name="name" required maxLength={200} placeholder="Full name" />
           </FormField>
           <FormField label="Email" htmlFor="create-user-email">
-            <Input id="create-user-email" name="email" type="email" required placeholder="name@easternstate.org" />
+            <Input id="create-user-email" name="email" type="email" required maxLength={320} placeholder="name@easternstate.org" />
           </FormField>
           <FormField label="Password" htmlFor="create-user-password">
-            <Input id="create-user-password" name="password" type="password" required minLength={8} placeholder="8+ characters" />
+            <Input id="create-user-password" name="password" type="password" required minLength={8} maxLength={256} autoComplete="new-password" placeholder="8+ characters" />
           </FormField>
           <FormField label="Role" htmlFor="create-user-role">
             <Select id="create-user-role" name="role" defaultValue="viewer">

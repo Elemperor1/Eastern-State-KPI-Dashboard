@@ -14,6 +14,7 @@ export {
   BoardReportingEditConflictError,
   BoardReportingValidationError,
   getBoardReportingAdminModel,
+  getBoardReportingDisclosureScope,
   getBoardReportingScope,
   updateBoardReportingScope,
 } from "./server";

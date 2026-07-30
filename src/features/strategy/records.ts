@@ -159,8 +159,21 @@ export interface StrategicGoalMemberReadModel extends PersistedGoalMembership {
   components: StrategyComponentWithTargets[];
 }
 
+/**
+ * A goal member excluded from reporting because its membership, measure, or
+ * Strategic Priority is archived (NOV-C5). Reporting surfaces these through
+ * the calculator's `archived` exclusion reason instead of silently dropping
+ * them, so Board-facing attainment never recomputes without disclosure.
+ */
+export interface StrategicGoalArchivedMember {
+  kpi_id: number;
+  kpi_slug: string;
+  kpi_name: string;
+}
+
 export interface StrategicGoalReadModel extends PersistedStrategicGoal {
   members: StrategicGoalMemberReadModel[];
+  archived_members?: StrategicGoalArchivedMember[];
 }
 
 export interface ConfigurationGapRow {

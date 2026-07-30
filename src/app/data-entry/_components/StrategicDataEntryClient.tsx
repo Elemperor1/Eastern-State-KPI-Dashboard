@@ -56,7 +56,6 @@ type PendingSelection = {
   year: number;
   period: string;
   kpiId: number | null;
-  showSaved?: boolean;
 };
 
 /** Implements the issue message operation. */
@@ -97,10 +96,8 @@ function statusVariant(status: string | null | undefined) {
 /** Renders the strategic data entry client interface. */
 export function StrategicDataEntryClient({
   data,
-  saved = false,
 }: {
   data: StrategicDataEntryPageData;
-  saved?: boolean;
 }) {
   const router = useRouter();
   const { setState: setUnsavedState } = useUnsavedChanges();
@@ -140,12 +137,6 @@ export function StrategicDataEntryClient({
     setBaselineDrafts(initialDrafts);
     setErrors({});
   }, [initialDrafts]);
-
-  useEffect(() => {
-    if (saved) {
-      setFeedback({ variant: "success", message: "Saved." });
-    }
-  }, [saved]);
 
   useEffect(() => {
     /** Updates connection state. */
@@ -193,7 +184,6 @@ export function StrategicDataEntryClient({
       period: selection.period,
     });
     if (selection.kpiId !== null) params.set("kpi", String(selection.kpiId));
-    if (selection.showSaved) params.set("saved", "1");
     if (clearFeedback) setFeedback(null);
     startNavigation(() => router.replace(`/data-entry?${params.toString()}`));
   }
@@ -295,7 +285,6 @@ export function StrategicDataEntryClient({
           year: data.reportingYear,
           period: data.reportingPeriod.value,
           kpiId: next.id,
-          showSaved: true,
         }, false);
       }
       else router.refresh();

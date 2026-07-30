@@ -186,6 +186,17 @@ describe("ensureSeedAdmin credential secrecy (in-process)", () => {
     expect(viewer.must_change).toBe(1);
   });
 
+  it("rejects an operator bootstrap password over the shared UTF-8 byte ceiling", () => {
+    process.env.BOOTSTRAP_ADMIN_PASSWORD = "é".repeat(129);
+    process.env.BOOTSTRAP_VIEWER_PASSWORD = "ValidViewerPass!2026";
+
+    expect(() => ensureSeedAdmin()).toThrow(
+      "BOOTSTRAP_ADMIN_PASSWORD must satisfy the shared password policy",
+    );
+    expect(findUserByEmail("kerry@easternstate.org")).toBeNull();
+    expect(findUserByEmail("zach@easternstate.org")).toBeNull();
+  });
+
   it("emits a non-sensitive status line naming the provisioned accounts", () => {
     process.env.BOOTSTRAP_ADMIN_PASSWORD = "SENTINEL-Admin-DoNotLog-2026!";
     process.env.BOOTSTRAP_VIEWER_PASSWORD = "SENTINEL-Viewer-DoNotLog-2026!";
@@ -330,6 +341,7 @@ describe("ensureSeedAdmin credential secrecy (end-to-end child process)", () => 
       cwd: REPO_ROOT,
       env: childEnv({
         DATABASE_PATH: dbPath,
+        SEED_CONFIRM: dbPath,
         BOOTSTRAP_ADMIN_PASSWORD: adminSentinel,
         BOOTSTRAP_VIEWER_PASSWORD: viewerSentinel,
       }),
@@ -354,13 +366,18 @@ describe("ensureSeedAdmin credential secrecy (end-to-end child process)", () => 
     expect(bcrypt.compareSync(viewerSentinel, viewer.hash)).toBe(true);
     expect(admin.must_change).toBe(1);
     expect(viewer.must_change).toBe(1);
+    // S053-C1: the destructive reset leaves a surviving tombstone.
+    const tombstone = getDb()
+      .prepare("SELECT value FROM meta WHERE key = 'last_seed_reset_at'")
+      .get() as { value?: string } | undefined;
+    expect(tombstone?.value).toBeTruthy();
   }, 120000);
 
   it("npm run setup:admin never writes the new password to stdout/stderr", () => {
     // Seed first (random fallback) so the target account exists.
     const seedRes = spawnSync("npm", ["run", "db:seed"], {
       cwd: REPO_ROOT,
-      env: childEnv({ DATABASE_PATH: dbPath }),
+      env: childEnv({ DATABASE_PATH: dbPath, SEED_CONFIRM: dbPath }),
       encoding: "utf8",
     });
     expect(seedRes.status).toBe(0);

@@ -148,18 +148,20 @@ export default function SetupPasswordPage() {
                 type="password"
                 autoComplete="current-password"
                 required
+                maxLength={256}
                 placeholder="Enter your temporary password"
                 value={currentPassword}
                 onChange={(event) => setCurrentPassword(event.target.value)}
               />
             </FormField>
-            <FormField htmlFor="newPassword" label="New password" hint="Minimum 8 characters">
+            <FormField htmlFor="newPassword" label="New password" hint="8 to 256 characters">
               <Input
                 id="newPassword"
                 type="password"
                 autoComplete="new-password"
                 required
                 minLength={8}
+                maxLength={256}
                 placeholder="8+ characters"
                 value={newPassword}
                 onChange={(event) => setNewPassword(event.target.value)}
@@ -172,6 +174,7 @@ export default function SetupPasswordPage() {
                 autoComplete="new-password"
                 required
                 minLength={8}
+                maxLength={256}
                 placeholder="Re-enter your new password"
                 value={confirmPassword}
                 onChange={(event) => setConfirmPassword(event.target.value)}

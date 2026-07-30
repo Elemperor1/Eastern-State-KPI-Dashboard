@@ -212,12 +212,12 @@ describe("strategic configuration admin routes", () => {
     const update = await patchConfigurations(
       request("/api/strategy/configurations", "PATCH", {
         action: "update",
-        update: { id: 21, unit: "visits" },
+        update: { id: 21, unit: "visits", expected_revision: "2026-01-15 10:00:00" },
       }),
     );
     expect(update.status).toBe(200);
     expect(mocks.updateMeasurementConfiguration).toHaveBeenCalledWith(
-      { id: 21, unit: "visits" },
+      { id: 21, unit: "visits", expected_revision: "2026-01-15 10:00:00" },
       ADMIN.id,
     );
 
@@ -247,13 +247,18 @@ describe("strategic configuration admin routes", () => {
       request("/api/strategy/configurations", "PATCH", {
         action: "create_successor",
         predecessor_id: 21,
+        expected_revision: "2026-01-15 10:00:00",
         successor,
       }),
     );
 
     expect(response.status).toBe(201);
     expect(mocks.createSuccessorMeasurementConfiguration).toHaveBeenCalledWith(
-      { predecessor_id: 21, successor },
+      {
+        predecessor_id: 21,
+        expected_revision: "2026-01-15 10:00:00",
+        successor,
+      },
       ADMIN.id,
     );
     await expect(response.json()).resolves.toEqual({
@@ -265,6 +270,7 @@ describe("strategic configuration admin routes", () => {
       request("/api/strategy/configurations", "PATCH", {
         action: "create_successor",
         predecessor_id: 21,
+        expected_revision: "2026-01-15 10:00:00",
         successor: {
           ...successor,
           effective_start_year: 2030,
@@ -276,6 +282,7 @@ describe("strategic configuration admin routes", () => {
     expect(mocks.createSuccessorMeasurementConfiguration).toHaveBeenLastCalledWith(
       {
         predecessor_id: 21,
+        expected_revision: "2026-01-15 10:00:00",
         successor: {
           ...successor,
           effective_start_year: 2030,
@@ -284,6 +291,22 @@ describe("strategic configuration admin routes", () => {
       },
       ADMIN.id,
     );
+  });
+
+  it("rejects a successor configuration without the predecessor revision", async () => {
+    const response = await patchConfigurations(
+      request("/api/strategy/configurations", "PATCH", {
+        action: "create_successor",
+        predecessor_id: 21,
+        successor: {
+          ...configurationBody(),
+          effective_start_year: 2027,
+        },
+      }),
+    );
+
+    expect(response.status).toBe(400);
+    expect(mocks.createSuccessorMeasurementConfiguration).not.toHaveBeenCalled();
   });
 
   it("maps repository validation, missing, and conflict errors to 400/404/409", async () => {
@@ -309,7 +332,7 @@ describe("strategic configuration admin routes", () => {
     const missing = await patchTargets(
       request("/api/strategy/targets", "PATCH", {
         action: "update",
-        update: { id: 999, target_value: 4 },
+        update: { id: 999, target_value: 4, expected_revision: "2026-01-15 10:00:00" },
       }),
     );
     expect(missing.status).toBe(404);
@@ -322,7 +345,11 @@ describe("strategic configuration admin routes", () => {
     const invalid = await patchGoals(
       request("/api/strategy/goals", "PATCH", {
         action: "update",
-        update: { id: 51, completion_rule: "threshold_count" },
+        update: {
+          id: 51,
+          completion_rule: "threshold_count",
+          expected_revision: "2026-01-15 10:00:00",
+        },
       }),
     );
     expect(invalid.status).toBe(400);
@@ -399,6 +426,7 @@ describe("strategic configuration admin routes", () => {
           id: 51,
           completion_rule: "threshold_count",
           threshold_count: 2,
+          expected_revision: "2026-01-15 10:00:00",
         },
       }),
     );
@@ -408,6 +436,7 @@ describe("strategic configuration admin routes", () => {
         id: 51,
         completion_rule: "threshold_count",
         threshold_count: 2,
+        expected_revision: "2026-01-15 10:00:00",
       },
       ADMIN.id,
     );
@@ -432,6 +461,7 @@ describe("strategic configuration admin routes", () => {
       id: 51,
       completion_rule: "threshold_count",
       threshold_count: 2,
+      expected_revision: "2026-01-15 10:00:00",
     };
     const response = await patchGoals(
       request("/api/strategy/goals", "PATCH", {
@@ -451,5 +481,45 @@ describe("strategic configuration admin routes", () => {
       },
       ADMIN.id,
     );
+  });
+
+  it("rejects goal, target, and configuration updates without an expected_revision (S070-C2)", async () => {
+    const goalUpdate = await patchGoals(
+      request("/api/strategy/goals", "PATCH", {
+        action: "update",
+        update: { id: 51, owner: "No revision" },
+      }),
+    );
+    expect(goalUpdate.status).toBe(400);
+    expect(mocks.updateStrategicGoalSettings).not.toHaveBeenCalled();
+
+    const goalSuccessor = await patchGoals(
+      request("/api/strategy/goals", "PATCH", {
+        action: "create_successor",
+        predecessor_id: 51,
+        effective_start_year: 2027,
+        update: { id: 51, owner: "No revision" },
+      }),
+    );
+    expect(goalSuccessor.status).toBe(400);
+    expect(mocks.createSuccessorStrategicGoal).not.toHaveBeenCalled();
+
+    const targetUpdate = await patchTargets(
+      request("/api/strategy/targets", "PATCH", {
+        action: "update",
+        update: { id: 999, target_value: 4 },
+      }),
+    );
+    expect(targetUpdate.status).toBe(400);
+    expect(mocks.updateStrategicTarget).not.toHaveBeenCalled();
+
+    const configurationUpdate = await patchConfigurations(
+      request("/api/strategy/configurations", "PATCH", {
+        action: "update",
+        update: { id: 21, unit: "visits" },
+      }),
+    );
+    expect(configurationUpdate.status).toBe(400);
+    expect(mocks.updateMeasurementConfiguration).not.toHaveBeenCalled();
   });
 });

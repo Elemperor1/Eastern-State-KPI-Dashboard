@@ -91,6 +91,48 @@ describe("strategy calculation kernel", () => {
       expect(roundFinite(Number.POSITIVE_INFINITY, 2)).toBeNull();
       expect(roundFinite(10, 11)).toBeNull();
     });
+
+    it("returns null when a finite-but-huge input overflows during scaling (S039-C1)", () => {
+      // 1e308 * 10 overflows to Infinity even though the entry value is
+      // finite; the helper must not hand Infinity back to callers.
+      expect(roundFinite(1e308, 1)).toBeNull();
+      expect(roundFinite(1e307, 1)).toBe(1e307);
+    });
+
+    it("marks overflowed scalar measurements invalid instead of ok-with-Infinity (S039-C1)", () => {
+      const overflowed = calculateMeasurement({
+        measurementType: "count",
+        value: 1e308,
+        precision: 1,
+      });
+      expect(overflowed.state).toBe("invalid");
+      expect(overflowed.value).toBeNull();
+      expect(overflowed.issues.map((issue) => issue.code)).toContain(
+        "NON_FINITE_RESULT",
+      );
+
+      const overflowedPercentage = calculateMeasurement({
+        measurementType: "percentage",
+        numerator: 1e306,
+        denominator: 1,
+        precision: 2,
+      });
+      expect(overflowedPercentage.state).toBe("invalid");
+      expect(overflowedPercentage.value).toBeNull();
+    });
+
+    it("marks overflowed progress invalid instead of exceeded-with-Infinity (S039-C1)", () => {
+      const overflowed = calculateProgress({
+        currentValue: 1e307,
+        targetValue: 10,
+        precision: 1,
+      });
+      expect(overflowed.state).toBe("invalid");
+      expect(overflowed.actualProgressPercentage).toBeNull();
+      expect(overflowed.issues.map((issue) => issue.code)).toContain(
+        "NON_FINITE_RESULT",
+      );
+    });
   });
 
   describe("atomic measurements", () => {
@@ -590,6 +632,11 @@ describe("strategy calculation kernel", () => {
         "needs_definition",
         "needs_target",
       ]);
+      expect(result.exclusionReasons).not.toContain("informational");
+      expect(result.exclusionReasons).toEqual([
+        "needs_definition",
+        "needs_target",
+      ]);
     });
 
     it("calculates weighted-average completion with an explicit threshold", () => {
@@ -646,6 +693,19 @@ describe("strategy calculation kernel", () => {
         eligible: false,
         issues: [{ code: "MANUAL_STATUS_REQUIRED" }],
       });
+    });
+
+    it("merges explicit completion errors with derived KPI exclusions", () => {
+      const result = calculateGoalCompletion({
+        goalId: "manual-unset-with-archived-member",
+        rule: { type: "manual_status" },
+        kpis: [{ id: "archived", configurationStatus: "archived" }],
+      });
+
+      expect(result.exclusionReasons).toEqual([
+        "MANUAL_STATUS_REQUIRED",
+        "archived",
+      ]);
     });
 
     it("excludes a goal when every required KPI is unresolved", () => {

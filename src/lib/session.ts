@@ -263,11 +263,28 @@ export async function requireAdmin(): Promise<SessionUser> {
   return user;
 }
 
-/** Requires an authenticated staff account and excludes Board-only accounts. */
+/**
+ * Staff roles are an explicit ALLOWLIST (S024-C1, R-08): exactly the admin
+ * and viewer roles carry staff-level read access. A denylist ("anything but
+ * board") would let a future role added to the users table silently inherit
+ * staff access; the allowlist refuses every role until it is deliberately
+ * added here.
+ */
+const STAFF_ROLES: ReadonlySet<string> = new Set(["admin", "viewer"]);
+
+/** Returns whether a role carries staff-level (non-Board) read access. */
+export function isStaffRole(role: string): boolean {
+  return STAFF_ROLES.has(role);
+}
+
+/**
+ * Requires an authenticated staff account: only admin and viewer sessions
+ * pass; Board and any unrecognized (e.g. future) role are refused with 403.
+ */
 export async function requireStaffSession(): Promise<SessionUser> {
   if (AUTH_DISABLED) return getBypassUser();
   const user = await requireSession();
-  if (user.role === "board") {
+  if (!isStaffRole(user.role)) {
     throw new AuthError("Staff privileges required", 403);
   }
   return user;

@@ -15,15 +15,16 @@ FROM base AS deps
 
 WORKDIR /app
 COPY package.json package-lock.json ./
-RUN npm ci
+COPY scripts/install-dependencies.mjs scripts/install-scripts-guard.mjs ./scripts/
+RUN node ./scripts/install-dependencies.mjs
 
 FROM base AS production-deps
 
 WORKDIR /app
 COPY package.json package-lock.json ./
-COPY scripts/production-dependency-guard.mjs ./scripts/
+COPY scripts/install-dependencies.mjs scripts/install-scripts-guard.mjs scripts/production-dependency-guard.mjs ./scripts/
 RUN npm pkg delete devDependencies \
-  && npm ci --omit=dev --omit=peer \
+  && node ./scripts/install-dependencies.mjs --omit=dev --omit=peer \
   && node ./scripts/production-dependency-guard.mjs --runtime-root /app \
   && npm cache clean --force
 
@@ -32,20 +33,33 @@ FROM deps AS builder
 COPY . .
 RUN DATABASE_PATH=/tmp/eastern-state-kpi-build.db npm run build \
   && rm -f /tmp/eastern-state-kpi-build.db* \
-  && rm -rf /app/data
+  && rm -rf /app/data /app/.next/cache
 
 FROM base AS runner
 
 WORKDIR /app
 ENV NODE_ENV=production
+ENV HOME=/home/app
 
-COPY --from=builder /app/package.json /app/package-lock.json /app/next.config.mjs /app/tsconfig.json ./
-COPY --from=builder /app/.next ./.next
-COPY --from=builder /app/public ./public
-COPY --from=builder /app/scripts ./scripts
-COPY --from=builder /app/src ./src
-COPY --from=production-deps /app/node_modules ./node_modules
-RUN node ./scripts/production-dependency-guard.mjs --runtime-root /app
+RUN groupadd --system --gid 10001 app \
+  && useradd --uid 10001 --gid app --home-dir /home/app --create-home --shell /usr/sbin/nologin app \
+  && rm -rf /usr/local/lib/node_modules/npm \
+    /usr/local/lib/node_modules/corepack \
+  && rm -f /usr/local/bin/npm /usr/local/bin/npx \
+    /usr/local/bin/corepack /usr/local/bin/yarn /usr/local/bin/yarnpkg \
+    /usr/local/bin/pnpm /usr/local/bin/pnpx
+
+COPY --chown=app:app --from=builder /app/package.json /app/package-lock.json /app/next.config.mjs /app/tsconfig.json ./
+COPY --chown=app:app --from=builder /app/.next ./.next
+COPY --chown=app:app --from=builder /app/public ./public
+COPY --chown=app:app --from=builder /app/scripts ./scripts
+COPY --chown=app:app --from=builder /app/src ./src
+COPY --chown=app:app --from=production-deps /app/node_modules ./node_modules
+RUN node ./scripts/production-dependency-guard.mjs --runtime-root /app \
+  && mkdir -p /app/data \
+  && chown app:app /app/data \
+  && chmod 0555 /app/scripts/container-entrypoint.sh
 
 EXPOSE 3000
-CMD ["npm", "run", "start:deploy"]
+ENTRYPOINT ["/app/scripts/container-entrypoint.sh"]
+CMD ["bash", "./scripts/start-production.sh"]

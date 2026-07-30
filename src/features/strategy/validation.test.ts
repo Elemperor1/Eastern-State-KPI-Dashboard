@@ -20,11 +20,17 @@ import {
   ComponentSetInputSchema,
   DistributionInputSchema,
   MeasurementConfigInputSchema,
+  MeasurementConfigurationUpdateSchema,
   ObservationInputSchema,
   RawAverageInputsSchema,
   StrategicGoalInputSchema,
   StrategicGoalMembershipInputSchema,
+  StrategicGoalMembershipUpdateSchema,
+  StrategicTargetCreateSchema,
+  StrategicTargetUpdateSchema,
   StrategyAuditEventInputSchema,
+  StrategyComponentCreateSchema,
+  StrategyComponentUpdateSchema,
   TargetInputSchema,
 } from "./validation";
 
@@ -812,6 +818,334 @@ describe("strategy audit event validation", () => {
       StrategyAuditEventInputSchema.safeParse({
         ...updateEvent,
         parent_goal_name: null,
+      }).success,
+    ).toBe(false);
+  });
+});
+
+describe("input magnitude bounds (F-17 R-06)", () => {
+  it("caps goal-membership weight at a domain-sane maximum (S019-C1)", () => {
+    const base = {
+      goal_id: 1,
+      kpi_id: 2,
+      role: "required",
+      display_order: 1,
+      ...effectiveYears,
+    };
+    expect(
+      StrategicGoalMembershipInputSchema.safeParse({ ...base, weight: 10_000 })
+        .success,
+    ).toBe(true);
+    expect(
+      StrategicGoalMembershipInputSchema.safeParse({ ...base, weight: 10_001 })
+        .success,
+    ).toBe(false);
+    // The oversized weight that silently dominated goal completion in the
+    // live validation run must now be rejected.
+    expect(
+      StrategicGoalMembershipInputSchema.safeParse({ ...base, weight: 1e9 })
+        .success,
+    ).toBe(false);
+    expect(
+      StrategicGoalMembershipUpdateSchema.safeParse({ id: 1, weight: 1e9 })
+        .success,
+    ).toBe(false);
+    expect(
+      StrategicGoalMembershipUpdateSchema.safeParse({ id: 1, weight: 500 })
+        .success,
+    ).toBe(true);
+  });
+
+  it("caps component weight at a domain-sane maximum (S040-C3)", () => {
+    expect(
+      ComponentInputSchema.safeParse(component({ weight: 10_000 })).success,
+    ).toBe(true);
+    expect(
+      ComponentInputSchema.safeParse(component({ weight: 1e308 })).success,
+    ).toBe(false);
+
+    const createComponent = {
+      configuration_id: 1,
+      slug: "onsite-visits",
+      label: "Onsite visits",
+      measurement_type: "count",
+      unit: "visits",
+      display_order: 1,
+    };
+    expect(
+      StrategyComponentCreateSchema.safeParse({
+        ...createComponent,
+        weight: 1e308,
+      }).success,
+    ).toBe(false);
+    expect(
+      StrategyComponentCreateSchema.safeParse({
+        ...createComponent,
+        weight: 2.5,
+      }).success,
+    ).toBe(true);
+    expect(
+      StrategyComponentUpdateSchema.safeParse({ id: 1, weight: 1e308 })
+        .success,
+    ).toBe(false);
+    expect(
+      StrategyComponentUpdateSchema.safeParse({ id: 1, weight: 2.5 }).success,
+    ).toBe(true);
+  });
+
+  it("bounds fixed_denominator to a sane magnitude band at every site (NOV-C3)", () => {
+    // Near-zero denominators overflow ratio actuals to Infinity; huge ones
+    // silently zero every percentage. Both are now rejected.
+    expect(
+      MeasurementConfigInputSchema.safeParse(
+        measurement({ fixed_denominator: 1e-308 }),
+      ).success,
+    ).toBe(false);
+    expect(
+      MeasurementConfigInputSchema.safeParse(
+        measurement({ fixed_denominator: 1e308 }),
+      ).success,
+    ).toBe(false);
+    expect(
+      MeasurementConfigInputSchema.safeParse(
+        measurement({ fixed_denominator: 1e-7 }),
+      ).success,
+    ).toBe(false);
+    expect(
+      MeasurementConfigInputSchema.safeParse(
+        measurement({ fixed_denominator: 50 }),
+      ).success,
+    ).toBe(true);
+
+    expect(
+      MeasurementConfigurationUpdateSchema.safeParse({
+        id: 1,
+        fixed_denominator: 1e-308,
+      }).success,
+    ).toBe(false);
+    expect(
+      MeasurementConfigurationUpdateSchema.safeParse({
+        id: 1,
+        fixed_denominator: 1e13,
+      }).success,
+    ).toBe(false);
+
+    expect(
+      ObservationInputSchema.safeParse(
+        observation({
+          measurement_type: "ratio",
+          numerator: 5,
+          denominator: null,
+          fixed_denominator: 1e-308,
+          value: null,
+        }),
+      ).success,
+    ).toBe(false);
+
+    expect(
+      ComponentInputSchema.safeParse(component({ fixed_denominator: 1e13 }))
+        .success,
+    ).toBe(false);
+
+    const createComponent = {
+      configuration_id: 1,
+      slug: "onsite-visits",
+      label: "Onsite visits",
+      measurement_type: "count",
+      unit: "visits",
+      display_order: 1,
+    };
+    expect(
+      StrategyComponentCreateSchema.safeParse({
+        ...createComponent,
+        fixed_denominator: 1e-308,
+      }).success,
+    ).toBe(false);
+    expect(
+      StrategyComponentUpdateSchema.safeParse({
+        id: 1,
+        fixed_denominator: 1e-308,
+      }).success,
+    ).toBe(false);
+  });
+
+  it("rejects negative count/cumulative values and over-100% percentages (S012-C1)", () => {
+    // The live validation run persisted a count of -500 as clean ok data.
+    expect(
+      ObservationInputSchema.safeParse(
+        observation({ measurement_type: "count", value: -500 }),
+      ).success,
+    ).toBe(false);
+    expect(
+      ObservationInputSchema.safeParse(
+        observation({ measurement_type: "cumulative", value: -1 }),
+      ).success,
+    ).toBe(false);
+    expect(
+      ObservationInputSchema.safeParse(
+        observation({ measurement_type: "count", value: 0 }),
+      ).success,
+    ).toBe(true);
+    // Declines are legitimate year-over-year results and stay permitted.
+    expect(
+      ObservationInputSchema.safeParse(
+        observation({ measurement_type: "year_over_year", value: -12.5 }),
+      ).success,
+    ).toBe(true);
+
+    // A percentage is a fraction of a whole: the numerator may not exceed
+    // the denominator (the live run persisted 200/100 as clean ok data).
+    expect(
+      ObservationInputSchema.safeParse(
+        observation({
+          measurement_type: "percentage",
+          numerator: 200,
+          denominator: 100,
+          value: null,
+        }),
+      ).success,
+    ).toBe(false);
+    expect(
+      ObservationInputSchema.safeParse(
+        observation({
+          measurement_type: "percentage",
+          numerator: 80,
+          denominator: 100,
+          value: null,
+        }),
+      ).success,
+    ).toBe(true);
+    expect(
+      ObservationInputSchema.safeParse(
+        observation({
+          measurement_type: "percentage",
+          numerator: 6,
+          denominator: null,
+          fixed_denominator: 5,
+          value: null,
+        }),
+      ).success,
+    ).toBe(false);
+    // Ratios may legitimately exceed 1, so no numerator ceiling there.
+    expect(
+      ObservationInputSchema.safeParse(
+        observation({
+          measurement_type: "ratio",
+          numerator: 200,
+          denominator: 100,
+          value: null,
+        }),
+      ).success,
+    ).toBe(true);
+  });
+
+  it("rejects impossible calendar dates instead of normalizing them (S044-C2)", () => {
+    // Date.parse normalizes 2025-02-31 to 2025-03-03; the schema must
+    // reject the impossible date outright.
+    expect(
+      StrategicGoalInputSchema.safeParse(goal({ due_date: "2025-02-31" }))
+        .success,
+    ).toBe(false);
+    expect(
+      StrategicGoalInputSchema.safeParse(goal({ due_date: "2025-02-29" }))
+        .success,
+    ).toBe(false);
+    expect(
+      StrategicGoalInputSchema.safeParse(goal({ due_date: "2024-02-29" }))
+        .success,
+    ).toBe(true);
+    expect(
+      StrategicGoalInputSchema.safeParse(goal({ due_date: "2025-04-31" }))
+        .success,
+    ).toBe(false);
+    expect(
+      StrategicGoalInputSchema.safeParse(
+        goal({ last_reviewed_date: "2026-07-15" }),
+      ).success,
+    ).toBe(true);
+  });
+
+  it("rejects average inputs whose derived maximum overflows to Infinity (S044-C3)", () => {
+    // respondent_count * max_score_per_respondent = 1e15 * 1e308 = Infinity,
+    // which voided the "total score cannot exceed the maximum possible"
+    // invariant; the parse must fail instead of disabling the guard.
+    expect(
+      RawAverageInputsSchema.safeParse({
+        method: "total_score",
+        respondent_count: 1e15,
+        total_score: 1,
+        max_score_per_respondent: 1e308,
+        total_possible_score: null,
+        allow_over_max: false,
+      }).success,
+    ).toBe(false);
+    // An explicit over-max allowance keeps working for finite inputs.
+    expect(
+      RawAverageInputsSchema.safeParse({
+        method: "total_score",
+        respondent_count: 10,
+        total_score: 45,
+        max_score_per_respondent: 5,
+        total_possible_score: null,
+        allow_over_max: false,
+      }).success,
+    ).toBe(true);
+  });
+
+  it("bounds structured_target nesting depth and entry count (S044-C4)", () => {
+    // 20 000-deep nesting previously escaped zod as an uncaught RangeError
+    // (500); the schema must now reject it as an ordinary invalid input.
+    let deep: unknown = "leaf";
+    for (let i = 0; i < 20_000; i++) deep = [deep];
+    const deepParse = StrategicTargetCreateSchema.safeParse({
+      kpi_id: 10,
+      component_id: null,
+      target_scope: "full_plan",
+      target_year: 2029,
+      structured_target: { nested: deep },
+      target_value: null,
+      target_description: null,
+    });
+    expect(deepParse.success).toBe(false);
+
+    const wide: Record<string, number> = {};
+    for (let i = 0; i < 1_001; i++) wide[`k${i}`] = i;
+    expect(
+      StrategicTargetCreateSchema.safeParse({
+        kpi_id: 10,
+        component_id: null,
+        target_scope: "full_plan",
+        target_year: 2029,
+        structured_target: wide,
+        target_value: null,
+        target_description: null,
+      }).success,
+    ).toBe(false);
+
+    // Ordinary structured targets keep working on create and update.
+    expect(
+      StrategicTargetCreateSchema.safeParse({
+        kpi_id: 10,
+        component_id: null,
+        target_scope: "full_plan",
+        target_year: 2029,
+        structured_target: { segments: [{ label: "East", value: 4 }] },
+        target_value: null,
+        target_description: null,
+      }).success,
+    ).toBe(true);
+    expect(
+      StrategicTargetUpdateSchema.safeParse({
+        id: 1,
+        structured_target: { segments: [{ label: "East", value: 4 }] },
+      }).success,
+    ).toBe(true);
+    let tooDeepForUpdate: unknown = 1;
+    for (let i = 0; i < 40; i++) tooDeepForUpdate = { next: tooDeepForUpdate };
+    expect(
+      StrategicTargetUpdateSchema.safeParse({
+        id: 1,
+        structured_target: { nested: tooDeepForUpdate },
       }).success,
     ).toBe(false);
   });

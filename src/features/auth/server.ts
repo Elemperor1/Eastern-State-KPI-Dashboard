@@ -1,11 +1,22 @@
 import bcrypt from "bcryptjs";
 import crypto from "node:crypto";
 import { getDb, transaction } from "@/lib/db";
+import {
+  NewPasswordSchema,
+  PASSWORD_MAX_BYTES,
+  PASSWORD_MIN_LENGTH,
+} from "@/lib/password-policy";
 import type { Role, SessionUser } from "@/lib/types";
+import {
+  BYPASS_USER_EMAIL,
+  isReservedAuthEmail,
+} from "@/lib/reserved-auth-identities";
 import {
   createUser,
   findUserCredentialRecordByEmail,
 } from "@/features/users/server";
+
+export { BYPASS_USER_EMAIL } from "@/lib/reserved-auth-identities";
 
 const SALT_ROUNDS = 10;
 const DUMMY_PASSWORD_HASH =
@@ -19,25 +30,6 @@ export interface VerifiedCredentials {
   passwordHash: string;
 }
 
-/**
- * Reserved account identifiers that must never be reachable through the
- * normal login flow. These rows exist for internal use (FK targets, dev
- * bypass, system tasks) and have password hashes that no caller can match.
- * Centralized so verifyCredentials(), the seed routine, and any future
- * admin UI can agree on the same list.
- */
-const RESERVED_EMAILS: ReadonlySet<string> = new Set(
-  ["auth-disabled@local"].map((e) => e.toLowerCase()),
-);
-
-/** Public for callers that need to detect the bypass identity (UI, session, tests). */
-export const BYPASS_USER_EMAIL = "auth-disabled@local";
-
-/** Determines whether is reserved email. */
-function isReservedEmail(email: string): boolean {
-  return RESERVED_EMAILS.has(email.toLowerCase().trim());
-}
-
 /** Validates credentials. */
 export async function verifyCredentials(
   email: string,
@@ -46,7 +38,7 @@ export async function verifyCredentials(
   // Missing, disabled, and reserved identities still pay exactly one bcrypt
   // comparison against a fixed non-credential hash. This keeps the public
   // generic 401 from becoming an active-account timing oracle.
-  const row = isReservedEmail(email)
+  const row = isReservedAuthEmail(email)
     ? null
     : findUserCredentialRecordByEmail(email);
   const comparisonHash = row && !row.disabled ? row.password_hash : DUMMY_PASSWORD_HASH;
@@ -153,7 +145,15 @@ function resolveBootstrapPassword(envVar: string): {
 } {
   const provided = process.env[envVar];
   if (provided && provided.trim().length > 0) {
-    return { password: provided, source: envVar };
+    const parsed = NewPasswordSchema.safeParse(provided);
+    if (!parsed.success) {
+      throw new Error(
+        `${envVar} must satisfy the shared password policy: at least ` +
+          `${PASSWORD_MIN_LENGTH} characters and at most ` +
+          `${PASSWORD_MAX_BYTES} UTF-8 bytes.`,
+      );
+    }
+    return { password: parsed.data, source: envVar };
   }
   return { password: generateSeedPassword(), source: "random temporary credential" };
 }

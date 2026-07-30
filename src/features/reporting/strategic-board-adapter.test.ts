@@ -10,6 +10,7 @@ import {
   calculateStrategyObservation,
 } from "./strategy-actuals";
 import { buildStrategicBoardReportFromSummary } from "./strategic-board-adapter";
+import { buildStrategicBoardCsvText } from "./strategic-board-report";
 
 describe("strategic board adapter", () => {
   it("adapts the shared calculation summary without recalculating progress", () => {
@@ -49,6 +50,48 @@ describe("strategic board adapter", () => {
     expect(kpi?.fullPlanProgress?.targetDisplayText).toBe("Target not finalized");
   });
 
+  it("discloses archived-member exclusions in the Board view (NOV-C5)", () => {
+    const summary = summaryFixture();
+    summary.goals[0]!.result.excludedKpis = [
+      { id: "9", label: "Retired measure", reason: "archived" },
+    ];
+    summary.goals[0]!.result.excludedKpisCount = 1;
+    summary.goals[0]!.result.exclusionReasons = ["archived"];
+
+    const report = buildStrategicBoardReportFromSummary({
+      summary,
+      goals: [goalFixture()],
+    });
+
+    const goal = report.priorities[0]?.goals[0];
+    expect(goal?.excludedKpisCount).toBe(1);
+    expect(goal?.excludedReasons).toContain(
+      "One or more measures are archived",
+    );
+  });
+
+  it("discloses values changed during an archived interval after restore (NOV-C5)", () => {
+    const summary = summaryFixture();
+    summary.goals[0]!.kpis[0]!.restoredWithHiddenData = true;
+
+    const report = buildStrategicBoardReportFromSummary({
+      summary,
+      goals: [goalFixture()],
+    });
+
+    expect(
+      report.priorities[0]?.goals[0]?.kpis[0]?.unresolvedReasons,
+    ).toContain(
+      "Data changed while this measure was archived; review the restored values.",
+    );
+    expect(JSON.stringify(report)).toContain(
+      "Data changed while this measure was archived; review the restored values.",
+    );
+    expect(buildStrategicBoardCsvText(report).csv).toContain(
+      "Data changed while this measure was archived; review the restored values.",
+    );
+  });
+
   it("preserves a genuinely missing actual as not reported", () => {
     const summary = summaryFixture();
     const kpiSummary = summary.goals[0]!.kpis[0]!;
@@ -65,6 +108,115 @@ describe("strategic board adapter", () => {
       value: null,
       displayValue: "Not reported",
     });
+  });
+
+  it("shows the year-to-date aggregate as the Result for additive monthly measures (S038-C1)", () => {
+    const summary = summaryFixture();
+    const kpiSummary = summary.goals[0]!.kpis[0]!;
+    // A monthly count measure with six months of 1: the summary's
+    // currentValue is the YTD sum (6) while currentCalculation describes
+    // only the latest period (1). The Board row must not render "Result 1"
+    // beside "Annual Actual 6".
+    kpiSummary.measurementType = "count";
+    kpiSummary.currentValue = 6;
+    kpiSummary.currentCalculation = {
+      state: "ok",
+      measurementType: "count",
+      value: 1,
+      normalizedPercentage: null,
+      numerator: null,
+      denominator: null,
+      respondentCount: null,
+      precision: 0,
+      issues: [],
+    };
+    kpiSummary.annualProgress = {
+      ...kpiSummary.annualProgress,
+      state: "ok",
+      status: "in_progress",
+      currentValue: 6,
+      targetValue: 10,
+      actualProgressPercentage: 60,
+      displayProgressPercentage: 60,
+      isComplete: false,
+      isExceeded: false,
+    };
+    kpiSummary.annualTarget = 10;
+    const goal = goalFixture();
+    goal.members[0]!.configuration!.measurement_type = "count";
+    goal.members[0]!.configuration!.reporting_frequency = "monthly";
+
+    const report = buildStrategicBoardReportFromSummary({
+      summary,
+      goals: [goal],
+    });
+    const kpi = report.priorities[0]?.goals[0]?.kpis[0];
+
+    // Invariant: for additive frequencies the headline Result agrees with
+    // the row's own Annual Actual (YTD).
+    expect(kpi?.result?.value).toBe(6);
+    expect(kpi?.annualProgress?.actualValue).toBe(6);
+  });
+
+  it("marks an overflowing additive year-to-date Result invalid", () => {
+    const summary = summaryFixture();
+    const kpiSummary = summary.goals[0]!.kpis[0]!;
+    kpiSummary.measurementType = "count";
+    kpiSummary.currentValue = Number.POSITIVE_INFINITY;
+    kpiSummary.currentCalculation = {
+      state: "ok",
+      measurementType: "count",
+      value: Number.MAX_VALUE,
+      normalizedPercentage: null,
+      numerator: null,
+      denominator: null,
+      respondentCount: null,
+      precision: 0,
+      issues: [],
+    };
+    const goal = goalFixture();
+    goal.members[0]!.configuration!.measurement_type = "count";
+    goal.members[0]!.configuration!.reporting_frequency = "monthly";
+
+    const report = buildStrategicBoardReportFromSummary({
+      summary,
+      goals: [goal],
+    });
+
+    expect(report.priorities[0]?.goals[0]?.kpis[0]?.result).toMatchObject({
+      state: "invalid",
+      value: null,
+      displayValue: "Needs review",
+    });
+  });
+
+  it("still shows the latest-period result for non-additive frequencies", () => {
+    const summary = summaryFixture();
+    const kpiSummary = summary.goals[0]!.kpis[0]!;
+    kpiSummary.measurementType = "percentage";
+    kpiSummary.currentValue = 55;
+    kpiSummary.currentCalculation = {
+      state: "ok",
+      measurementType: "percentage",
+      value: 50,
+      normalizedPercentage: 50,
+      numerator: 5,
+      denominator: 10,
+      respondentCount: null,
+      precision: 0,
+      issues: [],
+    };
+    const goal = goalFixture();
+    goal.members[0]!.configuration!.measurement_type = "percentage";
+    goal.members[0]!.configuration!.reporting_frequency = "monthly";
+
+    const report = buildStrategicBoardReportFromSummary({
+      summary,
+      goals: [goal],
+    });
+    const kpi = report.priorities[0]?.goals[0]?.kpis[0];
+
+    expect(kpi?.result?.value).toBe(50);
   });
 
   it("renders a direct ratio with a percent configuration as a percent result", () => {
@@ -639,6 +791,7 @@ function summaryFixture(): StrategicDashboardSummary {
         measurementType: "cumulative",
         configurationStatus: "active",
         boardLevelStatus: "exceeded",
+        restoredWithHiddenData: false,
         currentValue: 6,
         currentCalculation: null,
         annualActual: 6,

@@ -375,6 +375,25 @@ describe("strategic data-entry model", () => {
     }
   });
 
+  it("rejects a zero denominator before submission (CALC-001)", () => {
+    const kpi = selected("percentage", { reportingFrequency: "monthly" });
+    const result = buildStrategicDataEntryMutation(
+      kpi,
+      2026,
+      draftFor(kpi, {
+        periodIndex: "7",
+        numerator: "25",
+        denominator: "0",
+      }),
+    );
+    expect(result.ok).toBe(false);
+    if (!result.ok) {
+      expect(result.errors.denominator).toBe(
+        "Enter a number greater than zero.",
+      );
+    }
+  });
+
   it("builds each raw average method without mixing formulas", () => {
     const kpi = selected("average");
     const totalScore = buildStrategicDataEntryMutation(
