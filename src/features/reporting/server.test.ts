@@ -663,6 +663,26 @@ describe("strategic reporting server", () => {
     expect(data.report.priorities[0]?.goals[0]?.kpis[0]?.result.value).toBe(3);
   });
 
+  it("includes monthly checkpoints in the full-year Board Report", () => {
+    listCalculatedStrategyActualsMock.mockReturnValue([
+      actual(2026, "monthly", 1, 3),
+      actual(2026, "monthly", 2, 4),
+    ]);
+
+    const data = loadBoardReportPageData({
+      year: 2026,
+      throughMonth: 12,
+      reportingPeriod: {
+        value: "annual:0",
+        label: "Full year",
+        periodType: "annual",
+        periodIndex: 0,
+      },
+    });
+
+    expect(data.report.priorities[0]?.goals[0]?.kpis[0]?.result.value).toBe(7);
+  });
+
   it("loads a priority from the strategic report and supplies canonical measure slugs", () => {
     const data = loadStrategicPriorityPageData("education", { year: 2026 });
     expect(data).toMatchObject({

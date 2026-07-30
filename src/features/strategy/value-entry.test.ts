@@ -236,6 +236,22 @@ describe("strategy value-entry persistence", () => {
         null,
       ),
     ).toThrowError(/reporting period/i);
+
+    const monthlyCheckpoint = upsertStrategyObservation(
+      {
+        kpi_id: kpiId,
+        reporting_year: 2026,
+        reporting_month: 1,
+        flexible_mode: "monthly",
+        value: 14,
+      },
+      null,
+    );
+    expect(monthlyCheckpoint).toMatchObject({
+      period_type: "monthly",
+      period_index: 1,
+      scalar_value: 14,
+    });
   });
 
   it("preserves every raw average input and enforces the configuration over-max rule", () => {

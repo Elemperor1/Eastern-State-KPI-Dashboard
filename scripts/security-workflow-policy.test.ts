@@ -129,6 +129,7 @@ describe("security workflow policy", () => {
       lint: "Lint",
       "unit-tests": "Unit and Integration Tests",
       build: "Required CI Gate",
+      "windows-native": "Windows Native Build",
       e2e: "End-to-End Tests",
       dependencies: "Dependency Vulnerabilities",
       secrets: "Secret Scan",
@@ -645,7 +646,7 @@ describe("security workflow policy", () => {
     expect(pkg.scripts?.["quality:guards"]).toContain("install-scripts:guard");
     expect(fs.existsSync(path.join(root, "scripts/install-scripts-guard.mjs"))).toBe(true);
     expect(fs.existsSync(path.join(root, "scripts/install-dependencies.mjs"))).toBe(true);
-    expect(quality.match(/node scripts\/install-dependencies\.mjs/gu)).toHaveLength(5);
+    expect(quality.match(/node scripts\/install-dependencies\.mjs/gu)).toHaveLength(6);
     expect(quality).not.toMatch(/-\s+run:\s+npm ci(?:\s|$)/u);
     expect(dockerfile.match(/node \.\/scripts\/install-dependencies\.mjs/gu)).toHaveLength(2);
     expect(dockerfile).not.toMatch(/(?:RUN|&&)\s+npm ci(?:\s|$)/u);

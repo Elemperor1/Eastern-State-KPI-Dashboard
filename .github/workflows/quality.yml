@@ -86,6 +86,46 @@ jobs:
           AUTH_DISABLED: ""
           DATABASE_PATH: ${{ runner.temp }}/build.db
 
+  windows-native:
+    name: Windows Native Build
+    runs-on: windows-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+      - run: node scripts/install-dependencies.mjs
+      - name: Parse Windows deployment scripts
+        shell: powershell
+        run: |
+          $Failed = $false
+          foreach ($Script in @(
+            "scripts/start-windows-production.ps1",
+            "scripts/register-windows-startup.ps1"
+          )) {
+            $Tokens = $null
+            $Errors = $null
+            [void][Management.Automation.Language.Parser]::ParseFile(
+              (Resolve-Path $Script),
+              [ref]$Tokens,
+              [ref]$Errors
+            )
+            if ($Errors.Count -gt 0) {
+              $Errors | ForEach-Object { Write-Error $_ }
+              $Failed = $true
+            }
+          }
+          if ($Failed) { exit 1 }
+      - run: npm run test:ci -- scripts/windows-production.test.ts
+      - run: npm run build
+        env:
+          AUTH_DISABLED: ""
+          DATABASE_PATH: ${{ runner.temp }}\build.db
+
   e2e:
     name: End-to-End Tests
     runs-on: ubuntu-latest

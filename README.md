@@ -326,6 +326,10 @@ or other local production server, follow
 [`docs/local-server-deployment.md`](docs/local-server-deployment.md); it covers
 the single-process SQLite boundary, TLS reverse proxy, first-boot secrets,
 Zach/Kerry onboarding, health verification, backup, and rollback.
+For a native Windows Server 2022 VM where WSL 2 is unavailable, use
+[`docs/windows-server-deployment.md`](docs/windows-server-deployment.md); it
+runs one loopback-only Node process as `LOCAL SERVICE` with the database at
+`C:\Database\data\kpi.db`.
 
 Fly deploys through `Dockerfile` + `fly.toml` with SQLite mounted at
 `/app/data/kpi.db`. `TRUST_PROXY=true` is set for Fly so the login throttle uses

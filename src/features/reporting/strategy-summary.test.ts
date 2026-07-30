@@ -72,6 +72,27 @@ describe("strategic dashboard summary", () => {
     });
   });
 
+  it("rolls monthly checkpoints into an annual additive measure", () => {
+    const summary = buildStrategicDashboardSummary({
+      goals: [
+        goal({
+          id: 10,
+          members: [member(2, target(10, 2029), "active", "annual")],
+        }),
+      ],
+      kpis,
+      selectedYear: 2026,
+      throughMonth: 2,
+      actuals,
+    });
+
+    expect(summary.goals[0]?.kpis[0]).toMatchObject({
+      currentValue: 5,
+      annualTarget: null,
+      fullPlanTarget: 10,
+    });
+  });
+
   it("discloses archived goal members instead of silently dropping them (NOV-C5)", () => {
     const goals = [
       goal({

@@ -6,6 +6,10 @@ directory, and one TLS reverse proxy. Do not run multiple application
 containers against the same database: SQLite writes and the in-process login
 throttle require a single process.
 
+For native Windows Server 2022 without WSL or Docker, use
+[`windows-server-deployment.md`](windows-server-deployment.md). Do not combine
+the container and native Windows procedures against the same database.
+
 ## 1. Freeze and verify the release
 
 Deploy only a clean, reviewed commit:

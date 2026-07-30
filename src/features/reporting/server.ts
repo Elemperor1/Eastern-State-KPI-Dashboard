@@ -479,6 +479,12 @@ function actualIncludedInReportingCycle(
   actual: StrategicCalculatedActual,
   reportingPeriod: ReportingCycleOption,
 ): boolean {
+  if (
+    reportingPeriod.periodType === "annual" &&
+    (actual.periodType === "monthly" || actual.periodType === "quarterly")
+  ) {
+    return true;
+  }
   if (actual.periodType !== reportingPeriod.periodType) return false;
   if (
     reportingPeriod.periodType === "monthly" ||

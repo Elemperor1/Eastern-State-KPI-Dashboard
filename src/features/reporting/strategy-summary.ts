@@ -303,7 +303,12 @@ function pacingElapsedFraction(
   reportingFrequency: string | null,
   throughMonth: number,
 ): number {
-  if (reportingFrequency !== "monthly" && reportingFrequency !== "quarterly") {
+  if (
+    reportingFrequency !== "monthly" &&
+    reportingFrequency !== "quarterly" &&
+    reportingFrequency !== "annual" &&
+    reportingFrequency !== "flexible"
+  ) {
     return 1;
   }
   return Math.min(12, Math.max(0, throughMonth)) / 12;
@@ -660,7 +665,11 @@ function combinePeriodValues(
         Number.isFinite(row.value) &&
         periodIncluded(row, throughMonth),
     )
-    .map((row) => ({ periodIndex: row.periodIndex, value: Number(row.value) }));
+    .map((row) => ({
+      periodType: row.periodType,
+      periodIndex: row.periodIndex,
+      value: Number(row.value),
+    }));
   if (finite.length === 0) return { value: null, invalid: false };
 
   const annual = finite.filter((row) => row.periodIndex === 0);
@@ -681,7 +690,8 @@ function combinePeriodValues(
 
 /**
  * True when included period values combine ADDITIVELY into the year-to-date
- * aggregate (count/cumulative/currency at monthly or quarterly frequency).
+ * aggregate (count/cumulative/currency at a periodic cadence, including the
+ * monthly checkpoints accepted for an annual Measure).
  * This is the single authority for the summary layer's YTD sum and for the
  * Board adapter's headline Result, which must agree for those combinations
  * (F-07: latest-period Result beside a YTD progress column diverged).
@@ -693,7 +703,10 @@ export function isAdditiveReportingCombination(
   const additive = new Set(["count", "cumulative", "currency"]);
   return (
     additive.has(measurementType ?? "") &&
-    (reportingFrequency === "monthly" || reportingFrequency === "quarterly")
+    (reportingFrequency === "monthly" ||
+      reportingFrequency === "quarterly" ||
+      reportingFrequency === "annual" ||
+      reportingFrequency === "flexible")
   );
 }
 

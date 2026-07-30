@@ -13,7 +13,12 @@ function requirePattern(problems, source, pattern, message) {
 const dockerfile = read("Dockerfile");
 const fly = read("fly.toml");
 const workflow = read(".github/workflows/container-security.yml");
+const qualityWorkflow = read(".github/workflows/quality.yml");
 const runbook = read("docs/production-observability.md");
+const windowsRunbook = read("docs/windows-server-deployment.md");
+const windowsLauncher = read("scripts/start-windows-production.mjs");
+const windowsRegistration = read("scripts/register-windows-startup.ps1");
+const packageJson = read("package.json");
 const problems = [];
 
 requirePattern(
@@ -81,6 +86,48 @@ requirePattern(
   runbook,
   /unmanaged Machines?[\s\S]*other process groups/u,
   "production runbook must disclose fly scale count limits for unmanaged Machines and other process groups",
+);
+requirePattern(
+  problems,
+  packageJson,
+  /"start:windows":\s*"powershell\.exe[^"]*start-windows-production\.ps1"/u,
+  "package.json must expose the native Windows production launcher",
+);
+requirePattern(
+  problems,
+  windowsLauncher,
+  /AUTH_DISABLED !== "false"[\s\S]*SESSION_SECURE !== "true"[\s\S]*WINDOWS_LOOPBACK/u,
+  "Windows startup must fail closed on auth/session configuration and bind loopback",
+);
+requirePattern(
+  problems,
+  windowsRegistration,
+  /New-ScheduledTaskTrigger -AtStartup[\s\S]*-UserId "S-1-5-19"[\s\S]*-RestartCount 10/u,
+  "Windows startup registration must retain boot start, LOCAL SERVICE, and retry policy",
+);
+requirePattern(
+  problems,
+  windowsRegistration,
+  /\$AppRoot, "\/inheritance:r"[\s\S]*S-1-5-19:\(OI\)\(CI\)RX/u,
+  "Windows ACL policy must keep the application checkout read-only",
+);
+requirePattern(
+  problems,
+  windowsRegistration,
+  /\$CacheDirectory, "\/inheritance:r"[\s\S]*S-1-5-19:\(OI\)\(CI\)M/u,
+  "Windows ACL policy must grant LOCAL SERVICE modify access to the Next cache",
+);
+requirePattern(
+  problems,
+  qualityWorkflow,
+  /windows-native:[\s\S]*runs-on: windows-latest[\s\S]*windows-production\.test\.ts[\s\S]*npm run build/u,
+  "Quality workflow must retain the native Windows test and build job",
+);
+requirePattern(
+  problems,
+  windowsRunbook,
+  /C:\\Database\\data\\kpi\.db[\s\S]*127\.0\.0\.1:3000[\s\S]*TLS reverse proxy/u,
+  "Windows runbook must retain the local SQLite, loopback, and TLS boundaries",
 );
 
 if (problems.length > 0) {
