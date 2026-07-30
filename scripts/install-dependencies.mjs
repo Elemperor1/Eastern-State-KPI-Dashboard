@@ -7,7 +7,7 @@
 // 4. Rebuild only those approved identities, in deterministic order.
 
 import { existsSync, readFileSync } from "node:fs";
-import { relative, resolve, sep } from "node:path";
+import { delimiter, dirname, join, relative, resolve, sep } from "node:path";
 import { spawnSync } from "node:child_process";
 import { pathToFileURL } from "node:url";
 import { loadInstallScriptPolicy } from "./install-scripts-guard.mjs";
@@ -38,10 +38,35 @@ export function parseOmitArguments(args) {
   return [...omitted].sort();
 }
 
+/**
+ * Locates npm's JavaScript entry point for the Windows invocation path.
+ *
+ * Node refuses to spawn `npm.cmd` without a shell (EINVAL since the
+ * CVE-2024-27980 fix), and enabling the shell would stop treating arguments as
+ * literal. npm always ships this file beside the launcher shim, so the Node
+ * install directory and each PATH entry are the two places worth probing.
+ */
+export function resolveNpmCli(
+  pathValue = process.env.PATH ?? "",
+  execPath = process.execPath,
+) {
+  for (const directory of [dirname(execPath), ...pathValue.split(delimiter)]) {
+    if (!directory) continue;
+    const cli = join(directory, "node_modules", "npm", "bin", "npm-cli.js");
+    if (existsSync(cli)) return cli;
+  }
+  throw new Error(
+    "npm's CLI entry point was not found beside the Node executable or on PATH.",
+  );
+}
+
 /** Runs npm without a shell so arguments remain literal on every platform. */
 function runNpm(args, root) {
-  const executable = process.platform === "win32" ? "npm.cmd" : "npm";
-  const result = spawnSync(executable, args, {
+  const [executable, executableArgs] =
+    process.platform === "win32"
+      ? [process.execPath, [resolveNpmCli(), ...args]]
+      : ["npm", args];
+  const result = spawnSync(executable, executableArgs, {
     cwd: root,
     env: process.env,
     stdio: "inherit",
