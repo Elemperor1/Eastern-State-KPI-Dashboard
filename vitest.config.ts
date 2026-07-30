@@ -17,6 +17,7 @@ function stripShebang(): Plugin {
   return {
     name: "eskpi-strip-shebang",
     enforce: "pre",
+    /** Rewrites a leading shebang to a comment of the same length. */
     transform(code) {
       if (!code.startsWith("#!")) return null;
       return { code: code.replace(SHEBANG, (line) => `//${line.slice(2)}`), map: null };
