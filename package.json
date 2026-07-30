@@ -13,6 +13,7 @@
     "build": "next build --webpack",
     "start": "next start -p 3000",
     "start:deploy": "bash ./scripts/start-production.sh",
+    "start:windows": "powershell.exe -NoLogo -NoProfile -ExecutionPolicy Bypass -File ./scripts/start-windows-production.ps1",
     "db:migrate": "tsx scripts/migrate.ts",
     "plans:recover": "tsx scripts/plan-activation-recovery.ts",
     "plans:recover:proof": "tsx scripts/plan-activation-recovery-proof.ts",

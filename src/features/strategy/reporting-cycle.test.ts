@@ -4,11 +4,18 @@ import {
   isReportingItemComplete,
   reportingCycleForSelection,
   reportingCycleMatchesFrequency,
+  reportingFrequencyForDataEntry,
   reportingRecordMatchesCycle,
   resolveStrategicReportingYear,
 } from "./reporting-cycle";
 
 describe("reporting cycle", () => {
+  it("opens annual measures for monthly checkpoints without changing other cadences", () => {
+    expect(reportingFrequencyForDataEntry("annual")).toBe("flexible");
+    expect(reportingFrequencyForDataEntry("cumulative")).toBe("cumulative");
+    expect(reportingFrequencyForDataEntry(null)).toBeNull();
+  });
+
   it("uses a requested plan year or clamps the current year to the plan", () => {
     const years = [2030, 2031, 2032];
     expect(resolveStrategicReportingYear("2031", years, 2030)).toBe(2031);

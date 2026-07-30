@@ -130,4 +130,30 @@ describe("strategic Data Entry server model", () => {
       expect.objectContaining({ id: 7, checklistStatus: "complete" }),
     ]);
   });
+
+  it("offers every month plus full year for an annual measure", () => {
+    const data = loadStrategicDataEntryPageData({
+      reportingYear: 2027,
+      reportingPeriod: "monthly:6",
+      requestedKpiId: 7,
+    });
+
+    expect(data.reportingPeriods).toHaveLength(13);
+    expect(data.reportingPeriods[0]).toMatchObject({
+      value: "monthly:1",
+      label: "January",
+    });
+    expect(data.reportingPeriods.at(-1)).toMatchObject({
+      value: "annual:0",
+      label: "Full year",
+    });
+    expect(data.reportingPeriod).toMatchObject({
+      value: "monthly:6",
+      label: "June",
+    });
+    expect(data.selectedKpi).toMatchObject({
+      id: 7,
+      reportingFrequency: "flexible",
+    });
+  });
 });

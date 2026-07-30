@@ -848,8 +848,12 @@ function resolvePeriod(
     flexible_mode: "monthly" | "annual" | null;
   },
 ): { period_type: StoredPeriodType; period_index: number } {
+  const dataEntryFrequency =
+    reportingFrequency === "annual" && value.flexible_mode !== null
+      ? "flexible"
+      : reportingFrequency;
   const result = validateReportingPeriod({
-    reportingFrequency,
+    reportingFrequency: dataEntryFrequency,
     reportingYear: value.reporting_year,
     reportingMonth: value.reporting_month,
     reportingQuarter: value.reporting_quarter,

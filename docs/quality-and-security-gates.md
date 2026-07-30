@@ -13,6 +13,10 @@ used by GitHub Actions.
   stages. npm, Corepack, and their package-manager shims are removed from the
   final runtime image, which starts `scripts/start-production.sh` directly.
 - Application: Next.js 16 App Router, React 19, and strict TypeScript.
+- Native Windows: the hosted `Windows Native Build` job installs the controlled
+  dependency graph on `windows-latest`, parses the PowerShell operator scripts,
+  runs their focused contract tests, and produces the Webpack build with a
+  disposable Windows SQLite path.
 - Lint: ESLint 10 flat config with Next.js/React Hooks rules and
   `typescript-eslint` project service.
 - Tests: Vitest for unit/integration tests and Playwright with Google Chrome for

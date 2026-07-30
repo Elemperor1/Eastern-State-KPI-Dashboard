@@ -30,6 +30,8 @@ walkthrough without requiring technical knowledge.
 
 - [Local server deployment](local-server-deployment.md) — primary on-premises
   installation, backup, security, onboarding, health, and rollback runbook
+- [Windows Server deployment](windows-server-deployment.md) — native Windows
+  Server 2022 installation without WSL or Docker
 - [Operator provisioning](operator-provisioning.md) — account and password
   recovery details
 - [Production observability](production-observability.md) — health checks,

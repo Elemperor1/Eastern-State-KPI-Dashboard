@@ -19,6 +19,18 @@ export interface ReportingCycleRecord {
   period_index: number;
 }
 
+/**
+ * Data Entry accepts monthly checkpoints for an annual Measure while retaining
+ * the explicit full-year result. The persisted Measurement Definition remains
+ * annual; this adapter exposes the existing flexible monthly/annual input
+ * contract only at the value-entry boundary.
+ */
+export function reportingFrequencyForDataEntry(
+  frequency: StrategyReportingFrequency | null,
+): StrategyReportingFrequency | null {
+  return frequency === "annual" ? "flexible" : frequency;
+}
+
 const FREQUENCY_ORDER: ReportingCyclePeriodType[] = [
   "monthly",
   "quarterly",

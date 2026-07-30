@@ -10,6 +10,7 @@ import {
   isReportingItemComplete,
   reportingCycleForSelection,
   reportingCycleMatchesFrequency,
+  reportingFrequencyForDataEntry,
   reportingRecordMatchesCycle,
   type ReportingCycleOption,
 } from "./reporting-cycle";
@@ -37,7 +38,9 @@ function observationRecord(
     componentId: null,
     componentLabel: null,
     measurementType: observation.measurement_type,
-    reportingFrequency: observation.reporting_frequency,
+    reportingFrequency:
+      reportingFrequencyForDataEntry(observation.reporting_frequency) ??
+      observation.reporting_frequency,
     year: observation.year,
     periodType: observation.period_type,
     periodIndex: observation.period_index,
@@ -88,7 +91,8 @@ function distributionRecord(
     componentId: distribution.component_id,
     componentLabel,
     measurementType,
-    reportingFrequency,
+    reportingFrequency:
+      reportingFrequencyForDataEntry(reportingFrequency) ?? reportingFrequency,
     year: distribution.year,
     periodType: distribution.period_type,
     periodIndex: distribution.period_index,
@@ -247,7 +251,11 @@ export function loadStrategicDataEntryPageData({
     left.member.kpi.name.localeCompare(right.member.kpi.name),
   );
   const reportingPeriods = buildReportingCycleOptions(
-    allContexts.map(({ member }) => member.configuration?.reporting_frequency ?? null),
+    allContexts.map(({ member }) =>
+      reportingFrequencyForDataEntry(
+        member.configuration?.reporting_frequency ?? null,
+      ),
+    ),
     reportingYear,
   );
   const reportingPeriod = reportingCycleForSelection(
@@ -256,7 +264,9 @@ export function loadStrategicDataEntryPageData({
   );
   const contexts = allContexts.filter(({ member }) =>
     reportingCycleMatchesFrequency(
-      member.configuration?.reporting_frequency ?? null,
+      reportingFrequencyForDataEntry(
+        member.configuration?.reporting_frequency ?? null,
+      ),
       reportingPeriod.periodType,
     ),
   );
@@ -386,7 +396,9 @@ export function loadStrategicDataEntryPageData({
     numeratorLabel: configuration.numerator_label,
     denominatorLabel: configuration.denominator_label,
     measurementType: configuration.measurement_type,
-    reportingFrequency: configuration.reporting_frequency,
+    reportingFrequency:
+      reportingFrequencyForDataEntry(configuration.reporting_frequency) ??
+      configuration.reporting_frequency,
     configurationStatus: configuration.configuration_status,
     calculationPrecision: configuration.calculation_precision,
     fixedDenominator: configuration.fixed_denominator,
