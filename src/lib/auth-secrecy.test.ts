@@ -315,11 +315,15 @@ describe("ensureSeedAdmin credential secrecy (end-to-end child process)", () => 
   });
 
   afterAll(() => {
+    resetDb();
     fs.rmSync(tmpDir, { recursive: true, force: true });
   });
 
   beforeEach(() => {
-    fs.rmSync(dbPath, { force: true });
+    resetDb();
+    for (const suffix of ["", "-wal", "-shm"]) {
+      fs.rmSync(`${dbPath}${suffix}`, { force: true });
+    }
   });
 
   /** Supports the child env test scenario. */
@@ -336,6 +340,19 @@ describe("ensureSeedAdmin credential secrecy (end-to-end child process)", () => 
     return env;
   }
 
+  /** Returns a source-map-safe diagnostic for a failed child command. */
+  function childFailureDiagnostic(
+    command: string,
+    result: ReturnType<typeof spawnSync>,
+  ): Error {
+    const diagnostic = `${String(result.stdout ?? "")}\n${String(result.stderr ?? "")}`
+      .replaceAll(tmpDir, "<disposable-directory>")
+      .replace(/[^\x09\x0a\x0d\x20-\x7e]/gu, "?");
+    return new Error(
+      `${command} failed (status ${result.status ?? "unknown"}):\n${diagnostic}`,
+    );
+  }
+
   it("npm run db:seed never writes the bootstrap passwords to stdout/stderr", () => {
     const res = spawnSync("npm", ["run", "db:seed"], {
       cwd: REPO_ROOT,
@@ -348,9 +365,7 @@ describe("ensureSeedAdmin credential secrecy (end-to-end child process)", () => 
       encoding: "utf8",
     });
     if (res.status !== 0) {
-      throw new Error(
-        `db:seed failed (status ${res.status}): stdout=${res.stdout}\nstderr=${res.stderr}`,
-      );
+      throw childFailureDiagnostic("db:seed", res);
     }
     const out = `${res.stdout ?? ""}\n${res.stderr ?? ""}`;
     // The real credentials must not appear in the actual child output.
@@ -380,7 +395,9 @@ describe("ensureSeedAdmin credential secrecy (end-to-end child process)", () => 
       env: childEnv({ DATABASE_PATH: dbPath, SEED_CONFIRM: dbPath }),
       encoding: "utf8",
     });
-    expect(seedRes.status).toBe(0);
+    if (seedRes.status !== 0) {
+      throw childFailureDiagnostic("db:seed", seedRes);
+    }
 
     const newPass = "SetupAdminPerm!2026";
     const res = spawnSync("npm", ["run", "setup:admin"], {
@@ -392,9 +409,7 @@ describe("ensureSeedAdmin credential secrecy (end-to-end child process)", () => 
       encoding: "utf8",
     });
     if (res.status !== 0) {
-      throw new Error(
-        `setup:admin failed (status ${res.status}): stdout=${res.stdout}\nstderr=${res.stderr}`,
-      );
+      throw childFailureDiagnostic("setup:admin", res);
     }
     const out = `${res.stdout ?? ""}\n${res.stderr ?? ""}`;
     expect(out).not.toContain(newPass);

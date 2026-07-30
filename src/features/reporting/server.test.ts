@@ -285,6 +285,7 @@ describe("strategic reporting server", () => {
       kpiIds: [metric.id],
       throughYear: 2024,
       planStartYear: archivedPlan.startYear,
+      planId: archivedPlan.id,
     });
     expect(data.years).toEqual(archivedPlan.years);
     expect(data.report.plan).toMatchObject({

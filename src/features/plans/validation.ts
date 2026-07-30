@@ -73,10 +73,31 @@ export const AddDraftMeasureBundleSchema = z
     measureOwner: z.string().trim().max(200).nullable(),
     unit: z.string().trim().min(1).max(80),
     unitType: z.enum(["count", "percent", "currency", "attendance"]),
+    numeratorLabel: z.string().trim().min(1).max(200).nullable(),
+    denominatorLabel: z.string().trim().min(1).max(200).nullable(),
     reportingFrequency: z.enum(["monthly", "annual", "flexible"]),
     direction: z.enum(["higher", "lower", "neutral"]),
   })
-  .strict();
+  .strict()
+  .superRefine((value, context) => {
+    if (value.unitType !== "percent") return;
+    if (value.numeratorLabel === null) {
+      context.addIssue({
+        code: "custom",
+        message:
+          "For a Percent measure, explain what is being counted in the top number.",
+        path: ["numeratorLabel"],
+      });
+    }
+    if (value.denominatorLabel === null) {
+      context.addIssue({
+        code: "custom",
+        message:
+          "For a Percent measure, explain the total used for comparison.",
+        path: ["denominatorLabel"],
+      });
+    }
+  });
 
 export const AddDraftTargetSchema = z
   .object({

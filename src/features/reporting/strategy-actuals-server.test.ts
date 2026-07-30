@@ -275,6 +275,7 @@ describe("strategy actual server adapter", () => {
     const actuals = listCalculatedStrategyActuals({
       kpiIds: [1],
       throughYear: 2026,
+      planId: 44,
     }).filter((actual) => actual.year === 2026);
 
     expect(
@@ -286,6 +287,11 @@ describe("strategy actual server adapter", () => {
       [1, 20],
       [2, 50],
     ]);
+    expect(listComponentsForConfigurationMock).toHaveBeenCalledWith(
+      1,
+      2026,
+      { planId: 44 },
+    );
   });
 
   it("does not query strategic storage when no selected goal uses a KPI", () => {

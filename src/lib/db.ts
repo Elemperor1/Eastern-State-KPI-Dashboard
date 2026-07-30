@@ -1028,33 +1028,64 @@ function initializePlanLifecycleSchema(raw: DatabaseSync): void {
       occurred_at TEXT NOT NULL DEFAULT (datetime('now'))
     );
 
-    CREATE TRIGGER IF NOT EXISTS successor_lineage_immutable_update
+    DROP TRIGGER IF EXISTS successor_lineage_immutable_update;
+    DROP TRIGGER IF EXISTS successor_lineage_immutable_delete;
+    DROP TRIGGER IF EXISTS plan_lifecycle_events_immutable_update;
+    DROP TRIGGER IF EXISTS plan_lifecycle_events_immutable_delete;
+    DROP TRIGGER IF EXISTS activation_recovery_events_immutable_update;
+    DROP TRIGGER IF EXISTS activation_recovery_events_immutable_delete;
+
+    CREATE TRIGGER successor_lineage_immutable_update
     BEFORE UPDATE ON successor_lineage
+    WHEN COALESCE(
+      (SELECT value FROM meta WHERE key = 'seed_reset_internal_write'),
+      '0'
+    ) <> '1'
     BEGIN
       SELECT RAISE(ABORT, 'SUCCESSOR_LINEAGE_IMMUTABLE');
     END;
-    CREATE TRIGGER IF NOT EXISTS successor_lineage_immutable_delete
+    CREATE TRIGGER successor_lineage_immutable_delete
     BEFORE DELETE ON successor_lineage
+    WHEN COALESCE(
+      (SELECT value FROM meta WHERE key = 'seed_reset_internal_write'),
+      '0'
+    ) <> '1'
     BEGIN
       SELECT RAISE(ABORT, 'SUCCESSOR_LINEAGE_IMMUTABLE');
     END;
-    CREATE TRIGGER IF NOT EXISTS plan_lifecycle_events_immutable_update
+    CREATE TRIGGER plan_lifecycle_events_immutable_update
     BEFORE UPDATE ON strategic_plan_lifecycle_events
+    WHEN COALESCE(
+      (SELECT value FROM meta WHERE key = 'seed_reset_internal_write'),
+      '0'
+    ) <> '1'
     BEGIN
       SELECT RAISE(ABORT, 'PLAN_LIFECYCLE_EVENT_IMMUTABLE');
     END;
-    CREATE TRIGGER IF NOT EXISTS plan_lifecycle_events_immutable_delete
+    CREATE TRIGGER plan_lifecycle_events_immutable_delete
     BEFORE DELETE ON strategic_plan_lifecycle_events
+    WHEN COALESCE(
+      (SELECT value FROM meta WHERE key = 'seed_reset_internal_write'),
+      '0'
+    ) <> '1'
     BEGIN
       SELECT RAISE(ABORT, 'PLAN_LIFECYCLE_EVENT_IMMUTABLE');
     END;
-    CREATE TRIGGER IF NOT EXISTS activation_recovery_events_immutable_update
+    CREATE TRIGGER activation_recovery_events_immutable_update
     BEFORE UPDATE ON activation_recovery_audit_events
+    WHEN COALESCE(
+      (SELECT value FROM meta WHERE key = 'seed_reset_internal_write'),
+      '0'
+    ) <> '1'
     BEGIN
       SELECT RAISE(ABORT, 'ACTIVATION_RECOVERY_EVENT_IMMUTABLE');
     END;
-    CREATE TRIGGER IF NOT EXISTS activation_recovery_events_immutable_delete
+    CREATE TRIGGER activation_recovery_events_immutable_delete
     BEFORE DELETE ON activation_recovery_audit_events
+    WHEN COALESCE(
+      (SELECT value FROM meta WHERE key = 'seed_reset_internal_write'),
+      '0'
+    ) <> '1'
     BEGIN
       SELECT RAISE(ABORT, 'ACTIVATION_RECOVERY_EVENT_IMMUTABLE');
     END;
@@ -1197,6 +1228,7 @@ interface PlanOwnedTriggerDefinition {
   oldPlanIdSql: string;
   section: "plan_structure" | "targets_board";
   activeOnly: boolean;
+  propagatesRevision?: boolean;
 }
 
 /**
@@ -1398,6 +1430,7 @@ function initializePlanLifecycleTriggers(raw: DatabaseSync): void {
         "(SELECT priority.plan_id FROM kpis kpi JOIN categories priority ON priority.id = kpi.category_id WHERE kpi.id = OLD.kpi_id)",
       section: "plan_structure",
       activeOnly: true,
+      propagatesRevision: false,
     },
     {
       table: "kpi_component_entries",
@@ -1407,6 +1440,7 @@ function initializePlanLifecycleTriggers(raw: DatabaseSync): void {
         "(SELECT priority.plan_id FROM kpi_components component JOIN kpis kpi ON kpi.id = component.kpi_id JOIN categories priority ON priority.id = kpi.category_id WHERE component.id = OLD.component_id)",
       section: "plan_structure",
       activeOnly: true,
+      propagatesRevision: false,
     },
     {
       table: "distribution_observations",
@@ -1416,6 +1450,7 @@ function initializePlanLifecycleTriggers(raw: DatabaseSync): void {
         "(SELECT priority.plan_id FROM kpis kpi JOIN categories priority ON priority.id = kpi.category_id WHERE kpi.id = OLD.kpi_id)",
       section: "plan_structure",
       activeOnly: true,
+      propagatesRevision: false,
     },
     {
       table: "distribution_values",
@@ -1425,6 +1460,7 @@ function initializePlanLifecycleTriggers(raw: DatabaseSync): void {
         "(SELECT priority.plan_id FROM distribution_observations observation JOIN kpis kpi ON kpi.id = observation.kpi_id JOIN categories priority ON priority.id = kpi.category_id WHERE observation.id = OLD.observation_id)",
       section: "plan_structure",
       activeOnly: true,
+      propagatesRevision: false,
     },
     {
       table: "monthly_entries",
@@ -1434,6 +1470,7 @@ function initializePlanLifecycleTriggers(raw: DatabaseSync): void {
         "(SELECT priority.plan_id FROM kpis kpi JOIN categories priority ON priority.id = kpi.category_id WHERE kpi.id = OLD.kpi_id)",
       section: "plan_structure",
       activeOnly: true,
+      propagatesRevision: false,
     },
     {
       table: "breakdown_entries",
@@ -1443,6 +1480,7 @@ function initializePlanLifecycleTriggers(raw: DatabaseSync): void {
         "(SELECT priority.plan_id FROM kpis kpi JOIN categories priority ON priority.id = kpi.category_id WHERE kpi.id = OLD.kpi_id)",
       section: "plan_structure",
       activeOnly: true,
+      propagatesRevision: false,
     },
     {
       table: "kpi_goals",
@@ -1456,6 +1494,8 @@ function initializePlanLifecycleTriggers(raw: DatabaseSync): void {
   ];
 
   raw.exec(`
+    DROP TRIGGER IF EXISTS strategic_plans_immutable_update;
+
     CREATE TRIGGER IF NOT EXISTS strategic_plans_pause_insert
     BEFORE INSERT ON strategic_plans
     WHEN (SELECT value FROM meta WHERE key = 'plan_activation_write_pause') = '1'
@@ -1477,9 +1517,13 @@ function initializePlanLifecycleTriggers(raw: DatabaseSync): void {
     BEGIN
       SELECT RAISE(ABORT, 'PLAN_WRITES_PAUSED');
     END;
-    CREATE TRIGGER IF NOT EXISTS strategic_plans_immutable_update
+    CREATE TRIGGER strategic_plans_immutable_update
     BEFORE UPDATE ON strategic_plans
     WHEN OLD.lifecycle_state IN ('archived','cancelled')
+      AND COALESCE(
+        (SELECT value FROM meta WHERE key = 'seed_reset_internal_write'),
+        '0'
+      ) <> '1'
       AND (SELECT value FROM meta WHERE key = 'plan_activation_internal_write') <> '1'
     BEGIN
       SELECT RAISE(ABORT, 'PLAN_IS_READ_ONLY');
@@ -1567,6 +1611,11 @@ function initializePlanLifecycleTriggers(raw: DatabaseSync): void {
       ? `<> 'active'`
       : `IN ('archived','cancelled')`;
     raw.exec(`
+      DROP TRIGGER IF EXISTS ${definition.table}_whole_plan_insert;
+      DROP TRIGGER IF EXISTS ${definition.table}_whole_plan_update;
+      DROP TRIGGER IF EXISTS ${definition.table}_whole_plan_delete;
+    `);
+    raw.exec(`
       CREATE TRIGGER IF NOT EXISTS ${definition.table}_plan_pause_insert
       BEFORE INSERT ON ${definition.table}
       WHEN (SELECT value FROM meta WHERE key = 'plan_activation_write_pause') = '1'
@@ -1590,38 +1639,53 @@ function initializePlanLifecycleTriggers(raw: DatabaseSync): void {
       END;
       CREATE TRIGGER IF NOT EXISTS ${definition.table}_plan_state_insert
       BEFORE INSERT ON ${definition.table}
-      WHEN (
-        SELECT lifecycle_state FROM strategic_plans
-        WHERE id = ${definition.newPlanIdSql}
-      ) ${insertLifecycleCheck}
+      WHEN COALESCE(
+        (SELECT value FROM meta WHERE key = 'seed_reset_internal_write'),
+        '0'
+      ) <> '1'
+        AND (
+          SELECT lifecycle_state FROM strategic_plans
+          WHERE id = ${definition.newPlanIdSql}
+        ) ${insertLifecycleCheck}
       BEGIN
         SELECT RAISE(ABORT, 'PLAN_IS_READ_ONLY');
       END;
       CREATE TRIGGER IF NOT EXISTS ${definition.table}_plan_state_update
       BEFORE UPDATE ON ${definition.table}
-      WHEN (
-        (
-          SELECT lifecycle_state FROM strategic_plans
-          WHERE id = ${definition.oldPlanIdSql}
-        ) ${insertLifecycleCheck}
-        OR
-        (
-          SELECT lifecycle_state FROM strategic_plans
-          WHERE id = ${definition.newPlanIdSql}
-        ) ${insertLifecycleCheck}
-      )
+      WHEN COALESCE(
+        (SELECT value FROM meta WHERE key = 'seed_reset_internal_write'),
+        '0'
+      ) <> '1'
+        AND (
+          (
+            SELECT lifecycle_state FROM strategic_plans
+            WHERE id = ${definition.oldPlanIdSql}
+          ) ${insertLifecycleCheck}
+          OR
+          (
+            SELECT lifecycle_state FROM strategic_plans
+            WHERE id = ${definition.newPlanIdSql}
+          ) ${insertLifecycleCheck}
+        )
       BEGIN
         SELECT RAISE(ABORT, 'PLAN_IS_READ_ONLY');
       END;
       CREATE TRIGGER IF NOT EXISTS ${definition.table}_plan_state_delete
       BEFORE DELETE ON ${definition.table}
-      WHEN (
-        SELECT lifecycle_state FROM strategic_plans
-        WHERE id = ${definition.oldPlanIdSql}
-      ) ${insertLifecycleCheck}
+      WHEN COALESCE(
+        (SELECT value FROM meta WHERE key = 'seed_reset_internal_write'),
+        '0'
+      ) <> '1'
+        AND (
+          SELECT lifecycle_state FROM strategic_plans
+          WHERE id = ${definition.oldPlanIdSql}
+        ) ${insertLifecycleCheck}
       BEGIN
         SELECT RAISE(ABORT, 'PLAN_IS_READ_ONLY');
       END;
+    `);
+    if (definition.propagatesRevision === false) continue;
+    raw.exec(`
       CREATE TRIGGER IF NOT EXISTS ${definition.table}_whole_plan_insert
       AFTER INSERT ON ${definition.table}
       BEGIN

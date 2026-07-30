@@ -160,6 +160,10 @@ export function PlansManagerClient({ initialModel }: { initialModel: PlanManager
       measureOwner: String(data.get("measureOwner") ?? "").trim() || null,
       unit: String(data.get("unit") ?? "").trim(),
       unitType: data.get("unitType"),
+      numeratorLabel:
+        String(data.get("numeratorLabel") ?? "").trim() || null,
+      denominatorLabel:
+        String(data.get("denominatorLabel") ?? "").trim() || null,
       reportingFrequency: data.get("reportingFrequency"),
       direction: data.get("direction"),
     }, "Priority, Goal, and Measure added.");
@@ -732,6 +736,28 @@ export function PlansManagerClient({ initialModel }: { initialModel: PlanManager
               <FormField label="Measure owner" htmlFor="bundle-measure-owner"><Input id="bundle-measure-owner" name="measureOwner" /></FormField>
               <FormField label="Unit" htmlFor="bundle-unit"><Input id="bundle-unit" name="unit" placeholder="visitors, dollars, percent" required /></FormField>
               <FormField label="Value type" htmlFor="bundle-type"><Select id="bundle-type" name="unitType"><option value="count">Count</option><option value="percent">Percent</option><option value="currency">Currency</option><option value="attendance">Attendance</option></Select></FormField>
+              <FormField
+                label="Percent top number"
+                hint="Required only for Percent. Example: Members who renewed."
+                htmlFor="bundle-numerator-label"
+              >
+                <Input
+                  id="bundle-numerator-label"
+                  name="numeratorLabel"
+                  placeholder="Members who renewed"
+                />
+              </FormField>
+              <FormField
+                label="Percent comparison total"
+                hint="Required only for Percent. Example: Members eligible to renew."
+                htmlFor="bundle-denominator-label"
+              >
+                <Input
+                  id="bundle-denominator-label"
+                  name="denominatorLabel"
+                  placeholder="Members eligible to renew"
+                />
+              </FormField>
               <FormField label="Reporting schedule" htmlFor="bundle-frequency"><Select id="bundle-frequency" name="reportingFrequency"><option value="monthly">Monthly</option><option value="annual">Annual</option><option value="flexible">As needed</option></Select></FormField>
               <FormField label="Desired direction" htmlFor="bundle-direction"><Select id="bundle-direction" name="direction"><option value="higher">Higher is better</option><option value="lower">Lower is better</option><option value="neutral">Informational</option></Select></FormField>
               <div className="flex flex-wrap gap-3 md:col-span-2">

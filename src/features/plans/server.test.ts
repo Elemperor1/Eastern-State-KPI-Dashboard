@@ -6,6 +6,7 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { bootstrapInstallation } from "@/features/installation/server";
 import { getDb, resetDb } from "@/lib/db";
 import {
+  addDraftMeasureBundle,
   activateDraft,
   archiveDraftPriority,
   cancelDraft,
@@ -419,6 +420,24 @@ describe("Successor Strategic Plan lifecycle server", () => {
     ).toBe(1);
   });
 
+  it("rejects direct Draft creation while successor planning is disabled", () => {
+    const previous = process.env.SUCCESSOR_PLANS_ENABLED;
+    process.env.SUCCESSOR_PLANS_ENABLED = "false";
+    try {
+      expect(() =>
+        createBlankDraft(actorId, "Disabled successor"),
+      ).toThrow(
+        expect.objectContaining<Partial<PlanLifecycleConflictError>>({
+          code: "successor_planning_disabled",
+        }),
+      );
+      expect(getPlanManagerModel().draft).toBeNull();
+    } finally {
+      if (previous === undefined) delete process.env.SUCCESSOR_PLANS_ENABLED;
+      else process.env.SUCCESSOR_PLANS_ENABLED = previous;
+    }
+  });
+
   it("clones current structure into new identities and lineage without results, Targets, or audit history", () => {
     const source = seedSourceStructure(active, actorId);
     const strategicAuditCount = count(
@@ -557,6 +576,257 @@ describe("Successor Strategic Plan lifecycle server", () => {
       components: 1,
       reportingGroups: 1,
       memberships: 1,
+    });
+  });
+
+  it("keeps cloned effective ranges aligned when the Draft final year changes", () => {
+    seedSourceStructure(active, actorId);
+    const draft = createSuccessorDraft(
+      {
+        creationMethod: "structural_clone",
+        name: "Range-aligned successor",
+        description: "Verify every copied reporting range.",
+        endYear: 2030,
+        approvalSource: "Board planning resolution",
+      },
+      actorId,
+    );
+
+    const updated = updateDraftDetails(
+      {
+        planId: draft.id,
+        expectedWholePlanRevision: draft.wholePlanRevision,
+        expectedPlanRevision: draft.revision,
+        name: draft.name,
+        description: draft.description,
+        endYear: 2032,
+        approvalSource: draft.approvalSource,
+      },
+      actorId,
+    );
+
+    expect(updated.endYear).toBe(2032);
+    expect(
+      getDb()
+        .prepare(
+          `SELECT DISTINCT plan_end_year
+           FROM strategic_goals goal
+           JOIN categories priority ON priority.id = goal.priority_id
+           WHERE priority.plan_id = ?`,
+        )
+        .all(draft.id),
+    ).toEqual([{ plan_end_year: 2032 }]);
+    for (const table of [
+      "kpi_measurement_configs",
+      "goal_kpis",
+      "distribution_bands",
+    ]) {
+      const ownershipJoin =
+        table === "goal_kpis"
+          ? `JOIN strategic_goals goal ON goal.id = owned.goal_id
+             JOIN categories priority ON priority.id = goal.priority_id`
+          : `JOIN kpis kpi ON kpi.id = owned.kpi_id
+             JOIN categories priority ON priority.id = kpi.category_id`;
+      expect(
+        getDb()
+          .prepare(
+            `SELECT DISTINCT owned.effective_to_year
+             FROM ${table} owned
+             ${ownershipJoin}
+             WHERE priority.plan_id = ?`,
+          )
+          .all(draft.id),
+      ).toEqual([{ effective_to_year: 2032 }]);
+    }
+    expect(
+      getDb()
+        .prepare(
+          `SELECT section, review_status FROM plan_section_reviews
+           WHERE plan_id = ? ORDER BY section`,
+        )
+        .all(draft.id),
+    ).toEqual([
+      { section: "plan_details", review_status: "needs_review" },
+      { section: "plan_structure", review_status: "needs_review" },
+      { section: "targets_board", review_status: "needs_review" },
+    ]);
+  });
+
+  it("promotes reviewed cloned definitions from Draft to Ready", () => {
+    seedSourceStructure(active, actorId);
+    const draft = createSuccessorDraft(
+      {
+        creationMethod: "structural_clone",
+        name: "Reviewed successor",
+        description: "Promote copied definitions after review.",
+        endYear: 2030,
+        approvalSource: "Board planning resolution",
+      },
+      actorId,
+    );
+    const section = getPlanManagerModel().sectionReviews.find(
+      (review) => review.section === "plan_structure",
+    );
+    if (!section) throw new Error("Missing structure review.");
+
+    reviewPlanSection(
+      {
+        planId: draft.id,
+        expectedWholePlanRevision: draft.wholePlanRevision,
+        expectedSectionUpdatedAt: section.updatedAt,
+        section: "plan_structure",
+      },
+      actorId,
+    );
+
+    for (const table of [
+      "strategic_goals",
+      "kpi_measurement_configs",
+      "kpi_components",
+    ]) {
+      expect(
+        count(
+          `SELECT COUNT(*) AS count FROM ${table}
+           WHERE configuration_status = 'draft'`,
+        ),
+      ).toBe(0);
+    }
+    expect(
+      count(
+        `SELECT COUNT(*) AS count
+         FROM kpi_measurement_configs configuration
+         JOIN kpis kpi ON kpi.id = configuration.kpi_id
+         JOIN categories priority ON priority.id = kpi.category_id
+         WHERE priority.plan_id = ?
+           AND configuration.configuration_status = 'ready'`,
+        draft.id,
+      ),
+    ).toBe(1);
+    expect(
+      evaluateDraftReadiness(draft.id).requirements,
+    ).not.toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ key: "first_year_definition_coverage" }),
+      ]),
+    );
+  });
+
+  it("does not invalidate successor structure review when Active-plan results change", () => {
+    const source = seedSourceStructure(active, actorId);
+    const draft = createSuccessorDraft(
+      {
+        creationMethod: "structural_clone",
+        name: "Result-stable successor",
+        description: "Current reporting must not invalidate copied structure.",
+        endYear: 2030,
+        approvalSource: "Board planning resolution",
+      },
+      actorId,
+    );
+    const section = getPlanManagerModel().sectionReviews.find(
+      (review) => review.section === "plan_structure",
+    );
+    if (!section) throw new Error("Missing structure review.");
+    reviewPlanSection(
+      {
+        planId: draft.id,
+        expectedWholePlanRevision: draft.wholePlanRevision,
+        expectedSectionUpdatedAt: section.updatedAt,
+        section: "plan_structure",
+      },
+      actorId,
+    );
+    const before = getDb()
+      .prepare(
+        `SELECT whole_plan_revision, source_changed_at
+         FROM strategic_plans WHERE id = ?`,
+      )
+      .get(draft.id);
+    const activeBefore = getDb()
+      .prepare(
+        "SELECT whole_plan_revision FROM strategic_plans WHERE id = ?",
+      )
+      .get(active.id);
+
+    getDb()
+      .prepare(
+        `INSERT INTO kpi_observations (
+           kpi_id, configuration_id, year, period_type, period_index,
+           scalar_value, notes
+         ) VALUES (?, ?, 2024, 'annual', 0, 70, 'Ordinary result')`,
+      )
+      .run(source.kpiId, source.configurationId);
+
+    expect(
+      getDb()
+        .prepare(
+          `SELECT whole_plan_revision, source_changed_at
+           FROM strategic_plans WHERE id = ?`,
+        )
+        .get(draft.id),
+    ).toEqual(before);
+    expect(
+      getDb()
+        .prepare(
+          "SELECT whole_plan_revision FROM strategic_plans WHERE id = ?",
+        )
+        .get(active.id),
+    ).toEqual(activeBefore);
+    expect(
+      getDb()
+        .prepare(
+          `SELECT review_status FROM plan_section_reviews
+           WHERE plan_id = ? AND section = 'plan_structure'`,
+        )
+        .get(draft.id),
+    ).toEqual({ review_status: "approved" });
+  });
+
+  it("requires complete plain-language percentage semantics before marking a bundle Ready", () => {
+    const draft = createBlankDraft(actorId);
+    const input = {
+      planId: draft.id,
+      expectedWholePlanRevision: draft.wholePlanRevision,
+      priorityName: "Membership",
+      goalName: "Keep members",
+      goalOwner: "Development",
+      measureName: "Member renewal rate",
+      measureOwner: "Development",
+      unit: "percent",
+      unitType: "percent" as const,
+      numeratorLabel: null,
+      denominatorLabel: null,
+      reportingFrequency: "annual" as const,
+      direction: "higher" as const,
+    };
+
+    expect(() => addDraftMeasureBundle(input, actorId)).toThrow();
+    addDraftMeasureBundle(
+      {
+        ...input,
+        numeratorLabel: "Members who renewed",
+        denominatorLabel: "Members eligible to renew",
+      },
+      actorId,
+    );
+
+    expect(
+      getDb()
+        .prepare(
+          `SELECT measurement_type, numerator_label, denominator_label,
+                  aggregation_method, configuration_status
+           FROM kpi_measurement_configs configuration
+           JOIN kpis kpi ON kpi.id = configuration.kpi_id
+           JOIN categories priority ON priority.id = kpi.category_id
+           WHERE priority.plan_id = ?`,
+        )
+        .get(draft.id),
+    ).toEqual({
+      measurement_type: "percentage",
+      numerator_label: "Members who renewed",
+      denominator_label: "Members eligible to renew",
+      aggregation_method: "none",
+      configuration_status: "ready",
     });
   });
 
@@ -1237,7 +1507,7 @@ describe("Successor Strategic Plan lifecycle server", () => {
     ).toHaveLength(1);
   });
 
-  it("reconciles an interrupted pre-commit activation and reopens saving", () => {
+  it("reconciles an interrupted pre-commit activation, reopens saving, and releases the retry identity", async () => {
     const draft = createBlankDraft(actorId);
     const activationId = crypto.randomUUID();
     getDb().prepare(
@@ -1282,9 +1552,24 @@ describe("Successor Strategic Plan lifecycle server", () => {
       action: "reopen_service",
       integrity_result: "verified_precommit_unchanged",
     });
+    await expect(
+      activateDraft(
+        {
+          activationId,
+          planId: draft.id,
+          expectedWholePlanRevision: draft.wholePlanRevision,
+          confirmationName: draft.name,
+          acknowledgeWarnings: false,
+        },
+        actorId,
+      ),
+    ).rejects.toMatchObject({
+      name: "PlanLifecycleConflictError",
+      code: "activation_failed_precommit",
+    });
   });
 
-  it("keeps a verification-failed committed activation paused for operator recovery", () => {
+  it("keeps a verification-failed committed activation paused and fails closed on retry", async () => {
     const draft = createBlankDraft(actorId);
     const activationId = crypto.randomUUID();
     const committedAt = new Date().toISOString();
@@ -1371,6 +1656,25 @@ describe("Successor Strategic Plan lifecycle server", () => {
         activationId,
       ),
     ).toBe(0);
+    await expect(
+      activateDraft(
+        {
+          activationId,
+          planId: draft.id,
+          expectedWholePlanRevision: draft.wholePlanRevision,
+          confirmationName: draft.name,
+          acknowledgeWarnings: false,
+        },
+        actorId,
+      ),
+    ).rejects.toMatchObject({
+      name: "PlanActivationCommittedVerificationError",
+      result: {
+        activationId,
+        status: "committed_verification_failed",
+        idempotent: true,
+      },
+    });
   });
 
   it("keeps an integrity incident paused without automatic state repair", () => {

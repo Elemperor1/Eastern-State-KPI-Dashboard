@@ -283,7 +283,7 @@ function listEffectiveTargetsForComponent(
 export function listComponentsForConfiguration(
   configurationId: number,
   year: number,
-  options: Pick<StrategyReadOptions, "includeArchived"> = {},
+  options: Pick<StrategyReadOptions, "includeArchived" | "planId"> = {},
 ): StrategyComponentWithTargets[] {
   const rows = getDb()
     .prepare(

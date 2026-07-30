@@ -203,6 +203,7 @@ function loadStrategicReportModel({
     kpiIds: uniqueKpiIds(goals),
     throughYear: year,
     planStartYear: plan.startYear,
+    planId: plan.id,
   });
   const scopedActuals = reportingPeriod
     ? actuals.filter((actual) => actualIncludedInReportingCycle(actual, reportingPeriod))
@@ -549,6 +550,7 @@ export function loadStrategicTrendReportData({
     kpiIds: memberIds,
     throughYear: year,
     planStartYear: plan.startYear,
+    planId: plan.id,
   });
 
   return {

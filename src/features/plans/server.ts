@@ -61,7 +61,9 @@ export class PlanLifecycleConflictError extends Error {
       | "stale_revision"
       | "invalid_state"
       | "confirmation_mismatch"
-      | "activation_in_progress" = "invalid_state",
+      | "activation_in_progress"
+      | "activation_failed_precommit"
+      | "successor_planning_disabled" = "invalid_state",
   ) {
     super(message);
     this.name = "PlanLifecycleConflictError";
@@ -1066,6 +1068,12 @@ export function createSuccessorDraft(
   input: CreateSuccessorDraftInput,
   actorId: number,
 ): StrategicPlanSummary {
+  if (process.env.SUCCESSOR_PLANS_ENABLED === "false") {
+    throw new PlanLifecycleConflictError(
+      "Successor-plan preparation is temporarily unavailable while the system operator completes preservation checks. No Draft was created.",
+      "successor_planning_disabled",
+    );
+  }
   const parsed = CreateSuccessorDraftSchema.parse(input);
   return transaction(() => {
     const db = getDb();
@@ -1250,15 +1258,66 @@ export function updateDraftDetails(
         "stale_revision",
       );
     }
+    if (parsed.endYear !== draft.endYear) {
+      const db = getDb();
+      db.prepare(
+        `UPDATE strategic_goals
+         SET plan_end_year = ?, updated_by = ?, updated_at = datetime('now')
+         WHERE plan_end_year = ?
+           AND priority_id IN (
+             SELECT id FROM categories WHERE plan_id = ?
+           )`,
+      ).run(parsed.endYear, actorId, draft.endYear, parsed.planId);
+      db.prepare(
+        `UPDATE kpi_measurement_configs
+         SET effective_to_year = ?, updated_by = ?,
+             updated_at = datetime('now')
+         WHERE effective_to_year = ?
+           AND kpi_id IN (
+             SELECT kpi.id
+             FROM kpis kpi
+             JOIN categories priority ON priority.id = kpi.category_id
+             WHERE priority.plan_id = ?
+           )`,
+      ).run(parsed.endYear, actorId, draft.endYear, parsed.planId);
+      db.prepare(
+        `UPDATE goal_kpis
+         SET effective_to_year = ?, updated_by = ?,
+             updated_at = datetime('now')
+         WHERE effective_to_year = ?
+           AND goal_id IN (
+             SELECT goal.id
+             FROM strategic_goals goal
+             JOIN categories priority ON priority.id = goal.priority_id
+             WHERE priority.plan_id = ?
+           )`,
+      ).run(parsed.endYear, actorId, draft.endYear, parsed.planId);
+      db.prepare(
+        `UPDATE distribution_bands
+         SET effective_to_year = ?, updated_by = ?,
+             updated_at = datetime('now')
+         WHERE effective_to_year = ?
+           AND kpi_id IN (
+             SELECT kpi.id
+             FROM kpis kpi
+             JOIN categories priority ON priority.id = kpi.category_id
+             WHERE priority.plan_id = ?
+           )`,
+      ).run(parsed.endYear, actorId, draft.endYear, parsed.planId);
+    }
     bumpWholePlanRevision(parsed.planId, actorId);
     getDb()
       .prepare(
         `UPDATE plan_section_reviews
          SET review_status = 'needs_review', reviewed_by = NULL,
              reviewed_at = NULL, updated_at = datetime('now')
-         WHERE plan_id = ? AND section = 'plan_details'`,
+         WHERE plan_id = ?
+           AND (
+             section = 'plan_details'
+             OR (? <> ? AND section IN ('plan_structure','targets_board'))
+           )`,
       )
-      .run(parsed.planId);
+      .run(parsed.planId, parsed.endYear, draft.endYear);
     return mapPlan(planRow(parsed.planId));
   });
 }
@@ -1299,7 +1358,8 @@ export function reviewPlanSection(
       );
     }
     if (parsed.section === "plan_structure") {
-      getDb()
+      const db = getDb();
+      db
         .prepare(
           `UPDATE plan_item_reviews
            SET review_status = 'approved', reviewed_by = ?,
@@ -1307,6 +1367,39 @@ export function reviewPlanSection(
            WHERE plan_id = ? AND item_kind <> 'board_priority'`,
         )
         .run(actorId, parsed.planId);
+      db.prepare(
+        `UPDATE strategic_goals
+         SET configuration_status = 'ready', updated_by = ?,
+             updated_at = datetime('now')
+         WHERE configuration_status = 'draft'
+           AND priority_id IN (
+             SELECT id FROM categories WHERE plan_id = ?
+           )`,
+      ).run(actorId, parsed.planId);
+      db.prepare(
+        `UPDATE kpi_measurement_configs
+         SET configuration_status = 'ready', updated_by = ?,
+             updated_at = datetime('now')
+         WHERE configuration_status = 'draft'
+           AND kpi_id IN (
+             SELECT kpi.id
+             FROM kpis kpi
+             JOIN categories priority ON priority.id = kpi.category_id
+             WHERE priority.plan_id = ?
+           )`,
+      ).run(actorId, parsed.planId);
+      db.prepare(
+        `UPDATE kpi_components
+         SET configuration_status = 'ready', updated_by = ?,
+             updated_at = datetime('now')
+         WHERE configuration_status = 'draft'
+           AND kpi_id IN (
+             SELECT kpi.id
+             FROM kpis kpi
+             JOIN categories priority ON priority.id = kpi.category_id
+             WHERE priority.plan_id = ?
+           )`,
+      ).run(actorId, parsed.planId);
     }
     bumpWholePlanRevision(parsed.planId, actorId);
     return mapPlan(planRow(parsed.planId));
@@ -1479,9 +1572,10 @@ export function addDraftMeasureBundle(
       db.prepare(
         `INSERT INTO kpi_measurement_configs (
            kpi_id, effective_from_year, effective_to_year, measurement_type,
-           unit, reporting_frequency, aggregation_method,
+           unit, numerator_label, denominator_label, reporting_frequency,
+           aggregation_method,
            configuration_status, owner, source_reference, created_by, updated_by
-         ) VALUES (?, ?, ?, ?, ?, ?, 'sum', 'ready', ?, ?, ?, ?)`,
+         ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'none', 'ready', ?, ?, ?, ?)`,
       ).run(
         kpiId,
         draft.startYear,
@@ -1492,6 +1586,8 @@ export function addDraftMeasureBundle(
             ? "currency"
             : "count",
         parsed.unit,
+        parsed.unitType === "percent" ? parsed.numeratorLabel : null,
+        parsed.unitType === "percent" ? parsed.denominatorLabel : null,
         parsed.reportingFrequency === "monthly"
           ? "monthly"
           : parsed.reportingFrequency === "annual"
@@ -3799,19 +3895,12 @@ function existingActivationResult(
     );
   }
   const phase = String(operation.phase);
-  if (
-    phase === "verified" ||
-    phase === "committed_unverified" ||
-    phase === "verification_failed"
-  ) {
+  if (phase === "verified") {
     return {
       activationId,
       predecessorPlanId,
       successorPlanId,
-      status:
-        phase === "verified"
-          ? "verified"
-          : "committed_verification_failed",
+      status: "verified",
       committedAt: String(operation.committed_at),
       verifiedAt:
         operation.verified_at === null
@@ -3819,6 +3908,30 @@ function existingActivationResult(
           : String(operation.verified_at),
       idempotent: true,
     };
+  }
+  if (
+    phase === "committed_unverified" ||
+    phase === "verification_failed" ||
+    phase === "integrity_incident"
+  ) {
+    throw new PlanActivationCommittedVerificationError({
+      activationId,
+      predecessorPlanId,
+      successorPlanId,
+      status: "committed_verification_failed",
+      committedAt: String(operation.committed_at),
+      verifiedAt:
+        operation.verified_at === null
+          ? null
+          : String(operation.verified_at),
+      idempotent: true,
+    });
+  }
+  if (phase === "failed_precommit") {
+    throw new PlanLifecycleConflictError(
+      "The earlier activation attempt ended safely before any plan change. Refresh Plans and start activation again.",
+      "activation_failed_precommit",
+    );
   }
   throw new PlanLifecycleConflictError(
     "This activation is already being checked. Wait a moment, then refresh Plans.",
