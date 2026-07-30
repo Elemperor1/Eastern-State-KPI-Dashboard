@@ -60,10 +60,12 @@ runtime.
 
 ## 2. Install dependencies and build
 
-The controlled installer uses `npm.cmd` on Windows, installs with lifecycle
-scripts disabled, and then rebuilds only the repository's approved exact
-package identities. The lockfile includes the Windows x64 builds for Next and
-Sharp.
+The controlled installer installs with lifecycle scripts disabled and then
+rebuilds only the repository's approved exact package identities. On Windows it
+runs npm's `npm-cli.js` with the current Node executable rather than the
+`npm.cmd` shim: Node refuses to spawn a `.cmd` file without a shell, and
+enabling the shell would stop treating the installer's arguments as literal.
+The lockfile includes the Windows x64 builds for Next and Sharp.
 
 ```powershell
 Set-Location C:\Database\app
