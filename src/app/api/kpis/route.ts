@@ -11,6 +11,7 @@ import { logUnexpectedServerError } from "@/lib/operational-log";
 import {
   archiveKPI,
   CatalogEntityNotFoundError,
+  CatalogPlanLifecycleError,
   createStrategicMeasure,
   DependentEntriesError,
   KpiArchivedCategoryError,
@@ -93,6 +94,7 @@ export async function POST(req: NextRequest) {
       );
     }
     if (
+      err instanceof CatalogPlanLifecycleError ||
       err instanceof KpiSemanticMutationError ||
       err instanceof KpiArchivedCategoryError ||
       err instanceof KpiStrategicReparentError
@@ -192,6 +194,7 @@ export async function PATCH(req: NextRequest) {
     return NextResponse.json({ ok: true, ...refreshedCatalogPayload() });
   } catch (err) {
     if (
+      err instanceof CatalogPlanLifecycleError ||
       err instanceof KpiSemanticMutationError ||
       err instanceof KpiArchivedCategoryError ||
       err instanceof KpiStrategicReparentError

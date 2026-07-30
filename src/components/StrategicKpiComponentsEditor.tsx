@@ -385,7 +385,7 @@ function ComponentFormCard({
               onChange={(event) => update("unit", event.target.value)}
             />
           </FormField>
-          <FormField label="Used as" htmlFor={`${prefix}-aggregation-role`} hint={<ErrorHint error={errors.aggregation_role} />}>
+          <FormField label="How this input is used" htmlFor={`${prefix}-aggregation-role`} hint={<ErrorHint error={errors.aggregation_role} fallback="Choose Top number or Total number only when the overall measure divides one input by another." />}>
             <Select
               id={`${prefix}-aggregation-role`}
               value={draft.aggregationRole}
@@ -422,7 +422,7 @@ function ComponentFormCard({
             />
           </FormField>
           </> : null}
-          <FormField label="Starting value" htmlFor={`${prefix}-baseline`} hint={<ErrorHint error={errors.baseline_value} />}>
+          <FormField label="Starting value" htmlFor={`${prefix}-baseline`} hint={<ErrorHint error={errors.baseline_value} fallback="Optional value used as the point of comparison." />}>
             <Input
               id={`${prefix}-baseline`}
               type="number"
@@ -440,7 +440,7 @@ function ComponentFormCard({
               onChange={(event) => update("previousPeriodValue", event.target.value)}
             />
           </FormField> : null}
-          <FormField label="Importance" htmlFor={`${prefix}-weight`} hint={<ErrorHint error={errors.weight} />}>
+          <FormField label="Weight in the combined result" htmlFor={`${prefix}-weight`} hint={<ErrorHint error={errors.weight} fallback="Used only when more important inputs should have more influence." />}>
             <Input
               id={`${prefix}-weight`}
               type="number"
@@ -450,7 +450,7 @@ function ComponentFormCard({
               onChange={(event) => update("weight", event.target.value)}
             />
           </FormField>
-          <FormField label="List order" htmlFor={`${prefix}-order`} hint={<ErrorHint error={errors.display_order} />}>
+          <FormField label="List order" htmlFor={`${prefix}-order`} hint={<ErrorHint error={errors.display_order} fallback="Lower numbers appear first." />}>
             <Input
               id={`${prefix}-order`}
               type="number"
@@ -461,7 +461,7 @@ function ComponentFormCard({
               onChange={(event) => update("displayOrder", event.target.value)}
             />
           </FormField>
-          <FormField label="Setup status" htmlFor={`${prefix}-status`} hint={<ErrorHint error={errors.configuration_status} />}>
+          <FormField label="Setup status" htmlFor={`${prefix}-status`} hint={<ErrorHint error={errors.configuration_status} fallback="Choose Ready only when this input has everything needed for reporting." />}>
             <Select
               id={`${prefix}-status`}
               value={draft.configurationStatus}

@@ -1,20 +1,28 @@
 # Eastern State Strategic Plan
 
-A production-quality strategic-performance decision-support product for
-**Eastern State Penitentiary Historic Site**. It helps executive leadership and
-Board reviewers understand completion of the 2025–2029 Strategic Plan, annual
-pacing, full-plan progress, unresolved Measurement Definitions, and supporting
-year comparisons.
+This is Eastern State Penitentiary Historic Site's internal home for following
+the 2025–2029 Strategic Plan. It helps leadership see what is progressing, what
+needs attention, and where information or decisions are still missing.
+The current plan can be extended beyond 2029; see
+[Continuing after 2029](docs/leadership-guide.md#continuing-after-2029) for the
+supported workflow and the distinction between extending this plan and
+creating a separate successor plan.
 
-The canonical cross-layer product specification is
-[`docs/product-foundation.md`](docs/product-foundation.md). It defines the
-evidence boundary, user needs, product outcome, conceptual model, vocabulary,
-navigation, flows, states, and constraints that future visual work must
-preserve. ADR 0022 remains the four-destination and legacy-archive authority;
-ADR 0023 makes the initialized SQLite organization and strategic plan the
-runtime content authority;
-`CONTEXT.md` remains the detailed domain glossary; `DESIGN.md` remains the
-visual-system authority.
+## Start here
+
+You do not need to read this repository from beginning to end. Choose the guide
+that matches what you need to do:
+
+| I am… | Start with… | What it explains |
+| --- | --- | --- |
+| A leader, Board member, or first-time reader | [Leadership guide](docs/leadership-guide.md) | What the product is, what the information means, who does what, and what leadership should confirm before launch |
+| A person using the product | [Leadership guide](docs/leadership-guide.md#how-to-use-the-product) | First sign-in, the four main areas, roles, and common reporting questions |
+| The person installing or maintaining the local server | [Local server deployment](docs/local-server-deployment.md) | Backup, installation, security, first accounts, health checks, and rollback |
+| An engineer or future maintainer | [Documentation map](docs/README.md) | Product, design, architecture, security, operations, and historical references organized by audience |
+
+For a short explanation suitable for a handoff meeting, read only the
+[leadership guide](docs/leadership-guide.md). No command line, database, or
+software-development knowledge is required.
 
 ## Quick start
 
@@ -30,9 +38,9 @@ DATABASE_PATH="$(pwd -P)/data/kpi.db" \
 AUTH_DISABLED=true npm run dev
 ```
 
-For an existing schema 9–14 database, especially a production SQLite volume,
+For an existing schema 9–15 database, especially a production SQLite volume,
 back up the database and its WAL/SHM files and run the additive migration to
-schema 15 instead of the destructive sample seed:
+schema 16 instead of the destructive sample seed:
 
 ```bash
 DATABASE_PATH=/absolute/path/to/kpi.db npm run db:migrate
@@ -73,7 +81,12 @@ before starting its loopback acceptance server.
 
 ### Default accounts (seeded on first DB access)
 
-On the first run against a fresh database, `ensureSeedAdmin()` creates `kerry@easternstate.org` (admin) and `zach@easternstate.org` (viewer). **No plaintext password is ever written to stdout, stderr, or logs** — the old "read the password from the startup log" flow has been removed (security finding D8AD-CAN-001). Provisioning works as follows:
+On the first run against a fresh database, `ensureSeedAdmin()` creates
+`zach@easternstate.org` (Zach Palmer, admin) and
+`kerry@easternstate.org` (Kerry Sautner, viewer). **No plaintext password is
+ever written to stdout, stderr, or logs** — the old "read the password from the
+startup log" flow has been removed (security finding D8AD-CAN-001).
+Provisioning works as follows:
 
 - **Preferred (operator-provided secret).** Set `BOOTSTRAP_ADMIN_PASSWORD` and `BOOTSTRAP_VIEWER_PASSWORD` in the environment (via `fly secrets set` in production — never in `fly.toml` or a shell command line). The seed hashes those values into the bootstrap accounts and emits only a non-sensitive status line naming the accounts and their credential source.
 - **Fallback (random, unlogged).** If an env var is unset, the account gets a cryptographically-random password that is recorded nowhere — not in source, not in stdout, not in any log. The seed prints a non-sensitive warning pointing the operator at `npm run setup:admin` (see below). The account is effectively locked until the operator provisions a known credential.
@@ -97,7 +110,8 @@ strategic sidecar, schema 11 hardened its effective-dated component identity
 and ratio semantics, and schema 12 added persisted organization/plan ownership.
 Schema 13 added the Board role, schema 14 added the editable Board visibility
 scope, and schema 15 added transactional user-lifecycle audit and last-admin
-protections.
+protections. Schema 16 adds the preservation-only Successor Strategic Plan
+lifecycle, lineage, readiness, activation, and recovery evidence.
 After initialization, SQLite—not the seed snapshot—is authoritative for the
 organization identity, plan years, priorities, goals, measures, configurations,
 components, targets, and source references. Every KPI can explicitly define:
@@ -140,7 +154,7 @@ never exposed as a user-selectable month.
 - **Overview** (`/dashboard/overview`) — a route-scoped organization score, the five Strategic Priorities, and a bounded Needs attention list. It never calculates or renders the Board Report.
 - **Data Entry** (`/data-entry`, Admin) — one resumable reporting-year checklist. Each measure renders only the raw inputs required by its effective strategic configuration. Save state is server-confirmed and failed saves retain the draft.
 - **Reports** (`/reports`) — Board Report and strategic Trends behind one selector. Only the selected report is loaded; CSV/PNG/PDF exports operate from the visible report.
-- **Setup** (`/setup`, Admin) — one Measures, Goals, People, and Activity workspace. Configuration gaps are a Measures attention filter rather than a destination.
+- **Setup** (`/setup`, Admin) — one Plans, Measures, Goals, People, and Activity workspace. Configuration gaps are a Measures attention filter rather than a destination.
 
 Overview also links to two deliberate drill-down routes; they are not top-level
 destinations or additional workflows:
@@ -188,21 +202,24 @@ during the explicit upgrade pass; subsequent migration runs do not reconcile
 operator content from code. Schema 13 widens the user role contract with Board
 reporting access; schema 14 stores Board visibility scope and immutable scope
 audit; schema 15 stores immutable user-lifecycle audit events and refuses
-last-active-admin removal. None of these additive migrations resets legacy KPI
-values, targets, IDs, users, or audit history. All sample data is flagged via
-`meta.sample_data` and surfaced as a "Sample data" badge throughout the UI.
+last-active-admin removal; schema 16 adds Successor Strategic Plan lifecycle
+state and immutable activation/recovery evidence without creating a Draft or
+rewriting existing plan-owned content. None of these additive migrations resets
+legacy KPI values, targets, IDs, users, or audit history. All sample data is
+flagged via `meta.sample_data` and surfaced as a "Sample data" badge throughout
+the UI.
 
 ## Routes
 
 | Path                           | Purpose                                     | Auth                |
 | ------------------------------ | ------------------------------------------- | ------------------- |
 | `/login`                       | Sign in                                     | public              |
-| `/dashboard/overview`          | Strategic Plan overview                     | viewer + admin      |
-| `/dashboard/category/[slug]`   | Strategic Priority drill-down               | viewer + admin      |
-| `/dashboard/metric/[slug]`     | Measure drill-down                          | viewer + admin      |
-| `/reports`                     | Board Report and strategic Trends           | viewer + admin      |
+| `/dashboard/overview`          | Strategic Plan overview                     | Board + viewer + admin |
+| `/dashboard/category/[slug]`   | Strategic Priority drill-down               | Board + viewer + admin |
+| `/dashboard/metric/[slug]`     | Measure drill-down                          | Board + viewer + admin |
+| `/reports`                     | Board Report and strategic Trends           | Board + viewer + admin |
 | `/data-entry`                  | Reporting checklist and strategic values    | admin only          |
-| `/setup`                       | Measures, Goals, People, and Activity        | admin only          |
+| `/setup`                       | Plans, Measures, Goals, People, and Activity | admin only          |
 
 ### Strategic API surfaces
 
@@ -226,10 +243,11 @@ through legacy scalar entry routes:
 - `PATCH /api/strategy/memberships` manages effective KPI completion role,
   weight, and display order within a named goal.
 
-The exhaustive auth regression matrix currently contains 28 protected
-route/method combinations: 26 admin-gated mutations and two session-gated
-reads (`strategy/export` and `strategy/distribution-bands`). Every mutation is
-also enrolled in the shared same-origin, JSON content-type, and CSRF checks.
+The exhaustive auth regression matrix currently contains 32 protected
+route/method combinations: 30 admin-gated combinations, the staff-only
+distribution-band read, and the general-session Board report export. Every
+mutation is also enrolled in the shared same-origin, JSON content-type, and
+CSRF checks.
 
 ## Quality checks
 
@@ -269,7 +287,7 @@ AUTH_DISABLED=true PORT=3290 BASE=http://127.0.0.1:3290 bash ./scripts/smoke.sh
 # Stop the dev server before reusing :3290 for the production/auth-enabled flow.
 AUTH_DISABLED= npm run build
 AUTH_DISABLED=false PORT=3290 node_modules/.bin/next start -p 3290 &
-SMOKE_EMAIL=kerry@easternstate.org SMOKE_PASSWORD='<operator-provisioned password>' \
+SMOKE_EMAIL=zach@easternstate.org SMOKE_PASSWORD='<operator-provisioned password>' \
   AUTH_DISABLED=false PORT=3290 BASE=http://127.0.0.1:3290 bash ./scripts/smoke.sh
 ```
 
@@ -303,15 +321,19 @@ and the latest exact-commit `Container image / Trivy` and `Production container
 security` jobs are both green. Deploy only a clean checkout of the recorded
 commit; if `master` moves or a newer exact-commit scan fails, rerun the release
 check. See `docs/quality-and-security-gates.md` and
-`docs/operator-provisioning.md` for the complete contract.
+`docs/operator-provisioning.md` for the complete contract. For an on-premises
+or other local production server, follow
+[`docs/local-server-deployment.md`](docs/local-server-deployment.md); it covers
+the single-process SQLite boundary, TLS reverse proxy, first-boot secrets,
+Zach/Kerry onboarding, health verification, backup, and rollback.
 
 Fly deploys through `Dockerfile` + `fly.toml` with SQLite mounted at
 `/app/data/kpi.db`. `TRUST_PROXY=true` is set for Fly so the login throttle uses
 the proxy-provided client IP instead of collapsing every failed attempt into the
 `unknown` bucket. The production startup script runs `scripts/ensure-seeded.mjs`;
 that probe compares the mounted database's `meta.schema_version` with
-`src/lib/schema-version.json`, runs `db:migrate` for populated schema 9–14
-predecessors to reach schema 15, refuses a destructive reseed if migration does
+`src/lib/schema-version.json`, runs `db:migrate` for populated schema 9–15
+predecessors to reach schema 16, refuses a destructive reseed if migration does
 not produce a ready database, and seeds only a missing/disposable sample
 database. Schema 8 requires the explicit operator-run migration documented
 above rather than automatic boot migration. Docker builds point
@@ -363,7 +385,7 @@ profile set saved sixteen raw Chrome traces: eight current and eight controlled
 baseline. The exact-route Overview comparison reduced decoded HTML by 94.2%
 and DOM elements by 96.7%, with no hidden Board Report. Auth behavior is
 covered by that release's 28-route regression matrix. Those counts are
-historical evidence, not the current schema-15 suite; run `npm test` and
+historical evidence, not the current schema-16 suite; run `npm test` and
 `npm run test:e2e` for current totals.
 
 Schema 8 intentionally replaced the former sample catalog with the strategic
@@ -379,7 +401,9 @@ database-owned organization/plan boundary and removes embedded plan-year
 constraints while preserving strategic records and IDs. Schema 13 widens user
 roles with Board reporting access; schema 14 persists the editable Board
 visibility scope and its immutable audit snapshots; schema 15 adds immutable
-user-lifecycle audit plus last-active-admin and newer-schema refusal guards.
+user-lifecycle audit plus last-active-admin and newer-schema refusal guards;
+schema 16 adds Successor Strategic Plan lifecycle state, lineage, readiness,
+activation, and recovery evidence without rewriting existing plan content.
 Back up a production database before any migration; see ADRs 0023/0024 and
 `docs/migration-notes.md`.
 

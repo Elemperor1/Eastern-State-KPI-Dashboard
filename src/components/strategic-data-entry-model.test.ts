@@ -612,7 +612,7 @@ describe("strategic data-entry model", () => {
     );
     expect(result).toMatchObject({
       ok: false,
-      errors: { bands: expect.stringContaining("must equal") },
+      errors: { bands: expect.stringContaining("must add up") },
     });
   });
 

@@ -8,7 +8,7 @@ import {
   StrategicAuditTable,
   type SetupAuditEvent,
 } from "@/components/StrategicAuditTable";
-import { Button } from "@/components/ui";
+import { Badge, Button, FormField, Select, Table } from "@/components/ui";
 import {
   buildAdminHistoryFilterState,
   buildAdminHistoryHref,
@@ -20,6 +20,11 @@ import type {
   EntryHistoryWithMeta,
   KPIWithCategory,
 } from "@/lib/types";
+import type {
+  PlanLifecycleAction,
+  PlanLifecycleEventRecord,
+  StrategicPlanSummary,
+} from "@/features/plans/types";
 interface HistoryClientProps {
   history: EntryHistoryWithMeta[];
   kpis: KPIWithCategory[];
@@ -30,6 +35,12 @@ interface HistoryClientProps {
     year?: number;
   };
   setupEvents: SetupAuditEvent[];
+  lifecycleEvents: PlanLifecycleEventRecord[];
+  lifecyclePlans: StrategicPlanSummary[];
+  lifecycleFilter: {
+    planId?: number;
+    action?: PlanLifecycleAction;
+  };
   availableYears: number[];
   page: number;
   hasOlder: boolean;
@@ -47,6 +58,9 @@ export function HistoryClient({
   categories,
   activeFilter,
   setupEvents,
+  lifecycleEvents,
+  lifecyclePlans,
+  lifecycleFilter,
   availableYears,
   page,
   hasOlder,
@@ -56,6 +70,12 @@ export function HistoryClient({
   const [categoryId, setCategoryId] = useState<string>(initialFilters.categoryId);
   const [kpiId, setKpiId] = useState<string>(initialFilters.kpiId);
   const [year, setYear] = useState<string>(initialFilters.year);
+  const [lifecyclePlanId, setLifecyclePlanId] = useState(
+    lifecycleFilter.planId ? String(lifecycleFilter.planId) : "",
+  );
+  const [lifecycleAction, setLifecycleAction] = useState(
+    lifecycleFilter.action ?? "",
+  );
 
   const kpisForCategory = useMemo(() => {
     return filterAdminHistoryKpisByCategory(kpis, categoryId);
@@ -77,7 +97,22 @@ export function HistoryClient({
   /** Implements the go to page operation. */
   function goToPage(nextPage: number) {
     const base = buildAdminHistoryHref({ categoryId, kpiId, year });
-    router.replace(`${base}&page=${nextPage}`, { scroll: false });
+    const lifecycle = new URLSearchParams();
+    if (lifecyclePlanId) lifecycle.set("lifecycle_plan", lifecyclePlanId);
+    if (lifecycleAction) lifecycle.set("lifecycle_action", lifecycleAction);
+    const suffix = lifecycle.toString();
+    router.replace(
+      `${base}&page=${nextPage}${suffix ? `&${suffix}` : ""}`,
+      { scroll: false },
+    );
+  }
+
+  /** Applies the independent Strategic Plan lifecycle filters. */
+  function applyLifecycleFilters(nextPlanId: string, nextAction: string) {
+    const query = new URLSearchParams({ area: "activity" });
+    if (nextPlanId) query.set("lifecycle_plan", nextPlanId);
+    if (nextAction) query.set("lifecycle_action", nextAction);
+    router.replace(`/setup?${query.toString()}`, { scroll: false });
   }
 
   return (
@@ -116,6 +151,104 @@ export function HistoryClient({
           onClear={clearFilters}
         />
         <AdminHistoryTable history={history} />
+      </section>
+
+      <section aria-labelledby="plan-lifecycle-heading" className="mb-12">
+        <div className="mb-5 flex flex-wrap items-end justify-between gap-3 border-b border-ink-200 pb-4">
+          <div>
+            <h2 id="plan-lifecycle-heading" className="text-xl font-semibold text-ink-950">
+              Strategic Plan lifecycle
+            </h2>
+            <p className="mt-1 text-sm text-ink-600">
+              Completed Draft creation, cancellation, activation, archiving, and recovery actions.
+            </p>
+          </div>
+          <span className="text-sm font-medium text-ink-600">
+            {lifecycleEvents.length} shown
+          </span>
+        </div>
+        <div className="mb-5 grid gap-4 md:grid-cols-2">
+          <FormField label="Strategic Plan" htmlFor="lifecycle-plan-filter">
+            <Select
+              id="lifecycle-plan-filter"
+              value={lifecyclePlanId}
+              onChange={(event) => {
+                const next = event.target.value;
+                setLifecyclePlanId(next);
+                applyLifecycleFilters(next, lifecycleAction);
+              }}
+            >
+              <option value="">All Strategic Plans</option>
+              {lifecyclePlans.map((plan) => (
+                <option key={plan.id} value={plan.id}>
+                  {plan.name} ({plan.startYear}–{plan.endYear})
+                </option>
+              ))}
+            </Select>
+          </FormField>
+          <FormField label="Lifecycle action" htmlFor="lifecycle-action-filter">
+            <Select
+              id="lifecycle-action-filter"
+              value={lifecycleAction}
+              onChange={(event) => {
+                const next = event.target.value;
+                setLifecycleAction(next);
+                applyLifecycleFilters(lifecyclePlanId, next);
+              }}
+            >
+              <option value="">All lifecycle actions</option>
+              <option value="create_blank">Blank Draft created</option>
+              <option value="create_structural_clone">Structural Draft created</option>
+              <option value="cancel">Draft cancelled</option>
+              <option value="activate">Plan activated</option>
+              <option value="archive">Former plan archived</option>
+              <option value="activation_recovered">Activation recovered</option>
+            </Select>
+          </FormField>
+        </div>
+        <div className="rounded-lg border border-ink-200">
+          <Table minWidth="720px">
+            <thead className="bg-ink-50 text-ink-700">
+              <tr>
+                <th scope="col" className="px-4 py-3 font-semibold">When</th>
+                <th scope="col" className="px-4 py-3 font-semibold">Strategic Plan</th>
+                <th scope="col" className="px-4 py-3 font-semibold">Action</th>
+                <th scope="col" className="px-4 py-3 font-semibold">Completed by</th>
+                <th scope="col" className="px-4 py-3 font-semibold">Result</th>
+              </tr>
+            </thead>
+            <tbody>
+              {lifecycleEvents.map((event) => (
+                <tr key={event.eventId} className="border-t border-ink-200 align-top">
+                  <td className="px-4 py-3 text-ink-600">
+                    {new Date(`${event.occurredAt}Z`).toLocaleString()}
+                  </td>
+                  <td className="px-4 py-3 font-medium text-ink-900">
+                    {event.planName}
+                  </td>
+                  <td className="px-4 py-3">
+                    <Badge>{event.action.replaceAll("_", " ")}</Badge>
+                  </td>
+                  <td className="px-4 py-3 text-ink-700">
+                    {event.actorEmail ?? "System operator"}
+                  </td>
+                  <td className="px-4 py-3 text-ink-700">
+                    {event.beforeState
+                      ? `${event.beforeState} → ${event.afterState}`
+                      : event.afterState}
+                  </td>
+                </tr>
+              ))}
+              {lifecycleEvents.length === 0 ? (
+                <tr>
+                  <td colSpan={5} className="px-4 py-8 text-center text-ink-600">
+                    No completed lifecycle actions match these filters.
+                  </td>
+                </tr>
+              ) : null}
+            </tbody>
+          </Table>
+        </div>
       </section>
 
       <section aria-labelledby="setup-changes-heading">

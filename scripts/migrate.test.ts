@@ -139,6 +139,8 @@ describe("production migration entrypoint", () => {
       history: scalarCount(before, "entry_history"),
     };
     before.exec(`
+      INSERT OR REPLACE INTO meta (key, value)
+        VALUES ('seed_reset_internal_write', '1');
       DELETE FROM strategic_audit_events;
       DELETE FROM distribution_values;
       DELETE FROM distribution_observations;
@@ -150,6 +152,8 @@ describe("production migration entrypoint", () => {
       DELETE FROM goal_kpis;
       DELETE FROM strategic_goals;
       DELETE FROM kpi_measurement_configs;
+      INSERT OR REPLACE INTO meta (key, value)
+        VALUES ('seed_reset_internal_write', '0');
     `);
     before.close();
 
@@ -172,6 +176,8 @@ describe("production migration entrypoint", () => {
     expect(runTsx("scripts/seed.ts", databasePath).status).toBe(0);
     const before = new DatabaseSync(databasePath);
     before.exec(`
+      INSERT OR REPLACE INTO meta (key, value)
+        VALUES ('seed_reset_internal_write', '1');
       DELETE FROM strategic_audit_events;
       DELETE FROM distribution_values;
       DELETE FROM distribution_observations;
@@ -183,6 +189,8 @@ describe("production migration entrypoint", () => {
       DELETE FROM goal_kpis;
       DELETE FROM strategic_goals;
       DELETE FROM kpi_measurement_configs;
+      INSERT OR REPLACE INTO meta (key, value)
+        VALUES ('seed_reset_internal_write', '0');
     `);
     before.close();
 
@@ -842,7 +850,7 @@ describe("db:migrate newer-schema refusal", () => {
     const verify = new DatabaseSync(databasePath, { readOnly: true });
     expect(
       verify.prepare("SELECT value FROM meta WHERE key = 'schema_version'").get(),
-    ).toEqual({ value: "15" });
+    ).toEqual({ value: "16" });
     expect(
       verify.prepare("SELECT value FROM meta WHERE key = 'operator_note'").get(),
     ).toEqual({ value: "keep" });
@@ -861,7 +869,7 @@ describe("db:migrate newer-schema refusal", () => {
     const db = new DatabaseSync(databasePath);
     db.exec(`
       CREATE TABLE meta (key TEXT PRIMARY KEY, value TEXT NOT NULL);
-      INSERT INTO meta (key, value) VALUES ('schema_version', '16');
+      INSERT INTO meta (key, value) VALUES ('schema_version', '17');
       CREATE TABLE users (id INTEGER PRIMARY KEY, email TEXT NOT NULL);
       INSERT INTO users (email) VALUES ('keep@example.org');
     `);

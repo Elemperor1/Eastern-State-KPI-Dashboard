@@ -94,8 +94,28 @@ function seedInstallationFixture(db: TestDb): number {
   );
 }
 
+/** Removes schema-16 enforcement before a fixture is deliberately rewound. */
+function dropPlanLifecycleTriggers(db: TestDb): void {
+  const triggers = db
+    .prepare(
+      `SELECT name FROM sqlite_master
+       WHERE type = 'trigger'
+         AND (
+           name LIKE '%_plan_%'
+           OR name LIKE '%_activation_pause_%'
+           OR name LIKE 'strategic_plans_%'
+           OR name LIKE '%_whole_plan_%'
+         )`,
+    )
+    .all() as Array<{ name: string }>;
+  for (const trigger of triggers) {
+    db.exec(`DROP TRIGGER "${trigger.name.replaceAll('"', '""')}"`);
+  }
+}
+
 /** Supports the downgrade installation ownership to v11 test scenario. */
 function downgradeInstallationOwnershipToV11(db: TestDb): void {
+  dropPlanLifecycleTriggers(db);
   db.exec(`
     PRAGMA foreign_keys = OFF;
     DROP TRIGGER IF EXISTS categories_set_updated_at_after_insert;
@@ -386,8 +406,8 @@ describe("schema 12 migration", () => {
       ).map((row) => row.name),
     );
 
-    expect(SCHEMA_VERSION).toBe(15);
-    expect(schemaVersion(db)).toBe(15);
+    expect(SCHEMA_VERSION).toBe(16);
+    expect(schemaVersion(db)).toBe(16);
     expect(() =>
       db.prepare(
         `INSERT INTO users (email, name, password_hash, role)
@@ -525,7 +545,7 @@ describe("schema 12 migration", () => {
       )
       .get() as Record<string, unknown>;
 
-    expect(schemaVersion(migrated)).toBe(15);
+    expect(schemaVersion(migrated)).toBe(16);
     expect(ownership).toMatchObject({
       organization_slug: "eastern-state-penitentiary-historic-site",
       plan_slug: "strategic-plan-2025-2029",
@@ -674,7 +694,7 @@ describe("schema 12 migration", () => {
     resetDb();
     const migrated = getDb();
 
-    expect(schemaVersion(migrated)).toBe(15);
+    expect(schemaVersion(migrated)).toBe(16);
     for (const [table, query] of Object.entries(legacyQueries)) {
       expect(countRows(migrated, table)).toBe(beforeCounts[table]);
       expect(migrated.prepare(query).all()).toEqual(before[table]);
@@ -764,8 +784,8 @@ describe("schema 12 migration", () => {
       )
       .get(kpiId);
 
-    expect(SCHEMA_VERSION).toBe(15);
-    expect(schemaVersion(migrated)).toBe(15);
+    expect(SCHEMA_VERSION).toBe(16);
+    expect(schemaVersion(migrated)).toBe(16);
     expect(goal).toMatchObject({
       kpi_id: kpiId,
       target_year: 2029,
@@ -852,8 +872,8 @@ describe("schema 12 migration", () => {
     resetDb();
     const migrated = getDb();
 
-    expect(SCHEMA_VERSION).toBe(15);
-    expect(schemaVersion(migrated)).toBe(15);
+    expect(SCHEMA_VERSION).toBe(16);
+    expect(schemaVersion(migrated)).toBe(16);
     expect(
       migrated.prepare("SELECT * FROM kpi_components WHERE id = ?").get(componentId),
     ).toMatchObject({
@@ -904,7 +924,7 @@ describe("schema 12 migration", () => {
 
     resetDb();
     const reopened = getDb();
-    expect(schemaVersion(reopened)).toBe(15);
+    expect(schemaVersion(reopened)).toBe(16);
     expect(
       reopened
         .prepare(
@@ -944,7 +964,7 @@ describe("schema 12 migration", () => {
       expect(
         migrated.prepare("SELECT value FROM meta WHERE key = 'sample_data'").get(),
       ).toBeUndefined();
-      expect(schemaVersion(migrated)).toBe(15);
+      expect(schemaVersion(migrated)).toBe(16);
     },
   );
 
@@ -964,7 +984,7 @@ describe("schema 12 migration", () => {
     resetDb();
     const migrated = getDb();
 
-    expect(schemaVersion(migrated)).toBe(15);
+    expect(schemaVersion(migrated)).toBe(16);
     for (const table of BOARD_REPORTING_TABLES) {
       expect(migrated.prepare(
         "SELECT name FROM sqlite_master WHERE type = 'table' AND name = ?",
@@ -994,7 +1014,7 @@ describe("schema 12 migration", () => {
     resetDb();
     const migrated = getDb();
 
-    expect(schemaVersion(migrated)).toBe(15);
+    expect(schemaVersion(migrated)).toBe(16);
     for (const table of USER_LIFECYCLE_TABLES) {
       expect(migrated.prepare(
         "SELECT name FROM sqlite_master WHERE type = 'table' AND name = ?",
@@ -1029,7 +1049,7 @@ describe("schema 12 migration", () => {
   it("refuses a database written by a newer schema version without touching its rows", () => {
     const { db, categoryId, kpiId } = seedCurrentFixture();
     db.prepare(
-      "UPDATE meta SET value = '16' WHERE key = 'schema_version'",
+      "UPDATE meta SET value = '17' WHERE key = 'schema_version'",
     ).run();
     resetDb();
 
@@ -1052,7 +1072,7 @@ describe("schema 12 migration", () => {
     ).toEqual({ id: kpiId });
     expect(
       verify.prepare("SELECT value FROM meta WHERE key = 'schema_version'").get(),
-    ).toEqual({ value: "16" });
+    ).toEqual({ value: "17" });
     verify.close();
   });
 
@@ -1060,7 +1080,7 @@ describe("schema 12 migration", () => {
     const future = new DatabaseSync(dbPath);
     future.exec(`
       CREATE TABLE meta (key TEXT PRIMARY KEY, value TEXT NOT NULL);
-      INSERT INTO meta (key, value) VALUES ('schema_version', '16');
+      INSERT INTO meta (key, value) VALUES ('schema_version', '17');
       CREATE TABLE users (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         email TEXT UNIQUE NOT NULL,

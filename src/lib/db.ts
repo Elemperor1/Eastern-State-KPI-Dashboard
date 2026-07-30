@@ -166,6 +166,7 @@ export function getDb(): DB {
   configureConnectionPragmas(raw);
   try {
     migrateSchema(raw);
+    reconcileInterruptedPlanActivation(raw);
   } catch (error) {
     // Do not leak an open handle when migration refuses the database (for
     // example a schema written by a newer release); the next getDb() retry
@@ -180,6 +181,226 @@ export function getDb(): DB {
   }
   _db = wrapDatabase(raw);
   return _db;
+}
+
+/**
+ * Reconciles a process interruption at the durable activation checkpoints.
+ *
+ * A clearly pre-commit operation is closed and saving is reopened. A clearly
+ * committed transition is verified forward and finalized. Every ambiguous
+ * combination remains paused and marks integrity blocked; startup never
+ * guesses, rolls a committed transition back, or silently reopens writes.
+ */
+function reconcileInterruptedPlanActivation(raw: DatabaseSync): void {
+  const table = raw.prepare(
+    `SELECT name FROM sqlite_master
+     WHERE type = 'table' AND name = 'plan_activation_operations'`,
+  ).get();
+  if (!table) return;
+  const pending = raw.prepare(
+    `SELECT * FROM plan_activation_operations
+     WHERE phase IN (
+       'pausing','backup_verified','committed_unverified',
+       'verification_failed','integrity_incident'
+     )
+     ORDER BY requested_at, activation_id`,
+  ).all() as Array<Record<string, unknown>>;
+  const totalPlans = Number(
+    (raw.prepare("SELECT COUNT(*) AS count FROM strategic_plans").get() as { count: number }).count,
+  );
+  const activeCount = Number(
+    (raw.prepare(
+      "SELECT COUNT(*) AS count FROM strategic_plans WHERE lifecycle_state = 'active' AND archived_at IS NULL",
+    ).get() as { count: number }).count,
+  );
+  if (pending.length === 0) {
+    if (totalPlans > 0 && activeCount !== 1) {
+      raw.exec(`
+        INSERT OR REPLACE INTO meta (key, value)
+          VALUES ('plan_activation_write_pause', '1');
+        INSERT OR REPLACE INTO meta (key, value)
+          VALUES ('plan_activation_internal_write', '0');
+        INSERT OR REPLACE INTO meta (key, value)
+          VALUES ('active_plan_integrity_blocked', '1');
+      `);
+    }
+    return;
+  }
+
+  raw.exec("BEGIN IMMEDIATE;");
+  try {
+    raw.exec(
+      `INSERT OR REPLACE INTO meta (key, value)
+         VALUES ('plan_activation_internal_write', '1')`,
+    );
+    if (pending.length !== 1) {
+      raw.exec(`
+        INSERT OR REPLACE INTO meta (key, value)
+          VALUES ('plan_activation_write_pause', '1');
+        INSERT OR REPLACE INTO meta (key, value)
+          VALUES ('active_plan_integrity_blocked', '1');
+        INSERT OR REPLACE INTO meta (key, value)
+          VALUES ('plan_activation_internal_write', '0');
+      `);
+      raw.exec("COMMIT;");
+      return;
+    }
+    const operation = pending[0];
+    const activationId = String(operation.activation_id);
+    const predecessorPlanId = Number(operation.predecessor_plan_id);
+    const successorPlanId = Number(operation.successor_plan_id);
+    const phase = String(operation.phase);
+    const states = raw.prepare(
+      `SELECT id, lifecycle_state, status, archived_at, activation_id
+       FROM strategic_plans WHERE id IN (?, ?)`,
+    ).all(predecessorPlanId, successorPlanId) as Array<Record<string, unknown>>;
+    const predecessor = states.find((row) => Number(row.id) === predecessorPlanId);
+    const successor = states.find((row) => Number(row.id) === successorPlanId);
+    const preCommit =
+      ["pausing", "backup_verified"].includes(phase) &&
+      predecessor?.lifecycle_state === "active" &&
+      predecessor.status === "active" &&
+      successor?.lifecycle_state === "draft" &&
+      successor.status === "draft" &&
+      activeCount === 1;
+    const lifecycleEventCount = Number(
+      (raw.prepare(
+        `SELECT COUNT(*) AS count
+         FROM strategic_plan_lifecycle_events
+         WHERE activation_id = ? AND action IN ('archive','activate')`,
+      ).get(activationId) as { count: number }).count,
+    );
+    const boardScope = raw.prepare(
+      "SELECT id FROM board_reporting_scopes WHERE plan_id = ?",
+    ).get(successorPlanId);
+    const foreignKeyClean = raw.prepare("PRAGMA foreign_key_check").all().length === 0;
+    const committed =
+      phase === "committed_unverified" &&
+      predecessor?.lifecycle_state === "archived" &&
+      predecessor.status === "archived" &&
+      predecessor.archived_at !== null &&
+      successor?.lifecycle_state === "active" &&
+      successor.status === "active" &&
+      successor.activation_id === activationId &&
+      activeCount === 1 &&
+      lifecycleEventCount === 2 &&
+      Boolean(boardScope) &&
+      foreignKeyClean;
+    if (preCommit) {
+      raw.prepare(
+        `UPDATE plan_activation_operations
+         SET phase = 'failed_precommit', failure_code = 'restart_before_commit',
+             updated_at = datetime('now')
+         WHERE activation_id = ?`,
+      ).run(activationId);
+      raw.prepare(
+        `INSERT INTO activation_recovery_audit_events (
+           recovery_id, activation_id, backup_id, action, operator_snapshot,
+           integrity_result, details_json
+         ) VALUES (?, ?, ?, 'reopen_service', 'Automatic startup reconciliation',
+                   'verified_precommit_unchanged', ?)`,
+      ).run(
+        `startup-${activationId}-precommit`,
+        activationId,
+        String(operation.backup_id ?? "no-backup-created"),
+        JSON.stringify({ phase, predecessorPlanId, successorPlanId }),
+      );
+      raw.exec(`
+        INSERT OR REPLACE INTO meta (key, value)
+          VALUES ('plan_activation_write_pause', '0');
+        INSERT OR REPLACE INTO meta (key, value)
+          VALUES ('active_plan_integrity_blocked', '0');
+      `);
+    } else if (committed) {
+      raw.prepare(
+        `UPDATE plan_activation_operations
+         SET phase = 'verified', verified_at = COALESCE(verified_at, datetime('now')),
+             failure_code = NULL, updated_at = datetime('now')
+         WHERE activation_id = ?`,
+      ).run(activationId);
+      raw.prepare(
+        `INSERT INTO activation_recovery_audit_events (
+           recovery_id, activation_id, backup_id, action, operator_snapshot,
+           integrity_result, details_json
+         ) VALUES (?, ?, ?, 'repair_forward', 'Automatic startup reconciliation',
+                   'verified_committed_transition', ?)`,
+      ).run(
+        `startup-${activationId}-forward`,
+        activationId,
+        String(operation.backup_id ?? "unknown-backup"),
+        JSON.stringify({ phase, predecessorPlanId, successorPlanId }),
+      );
+      raw.prepare(
+        `INSERT OR IGNORE INTO strategic_plan_lifecycle_events (
+           event_id, plan_id, predecessor_plan_id, action, before_state,
+           after_state, checked_plan_revision, checked_predecessor_revision,
+           confirmation_text, result_json, activation_id
+         ) VALUES (?, ?, ?, 'activation_recovered', 'active', 'active',
+                   ?, NULL, NULL, ?, ?)`,
+      ).run(
+        `startup-recovered-${activationId}`,
+        successorPlanId,
+        predecessorPlanId,
+        Number(operation.requested_revision),
+        JSON.stringify({ automatic: true, verified_forward: true }),
+        activationId,
+      );
+      raw.exec(`
+        INSERT OR REPLACE INTO meta (key, value)
+          VALUES ('plan_activation_write_pause', '0');
+        INSERT OR REPLACE INTO meta (key, value)
+          VALUES ('active_plan_integrity_blocked', '0');
+      `);
+    } else if (
+      phase === "verification_failed" ||
+      phase === "integrity_incident"
+    ) {
+      raw.exec(`
+        INSERT OR REPLACE INTO meta (key, value)
+          VALUES ('plan_activation_write_pause', '1');
+        INSERT OR REPLACE INTO meta (key, value)
+          VALUES ('active_plan_integrity_blocked', '1');
+      `);
+    } else {
+      raw.prepare(
+        `UPDATE plan_activation_operations
+         SET phase = 'integrity_incident',
+             failure_code = 'ambiguous_restart_state',
+             updated_at = datetime('now')
+         WHERE activation_id = ?`,
+      ).run(activationId);
+      raw.exec(`
+        INSERT OR REPLACE INTO meta (key, value)
+          VALUES ('plan_activation_write_pause', '1');
+        INSERT OR REPLACE INTO meta (key, value)
+          VALUES ('active_plan_integrity_blocked', '1');
+      `);
+    }
+    raw.exec(
+      `INSERT OR REPLACE INTO meta (key, value)
+         VALUES ('plan_activation_internal_write', '0')`,
+    );
+    raw.exec("COMMIT;");
+  } catch (error) {
+    try {
+      raw.exec("ROLLBACK;");
+    } catch {
+      // Preserve the reconciliation failure.
+    }
+    try {
+      raw.exec(`
+        INSERT OR REPLACE INTO meta (key, value)
+          VALUES ('plan_activation_write_pause', '1');
+        INSERT OR REPLACE INTO meta (key, value)
+          VALUES ('plan_activation_internal_write', '0');
+        INSERT OR REPLACE INTO meta (key, value)
+          VALUES ('active_plan_integrity_blocked', '1');
+      `);
+    } catch {
+      // Opening the application will fail below; do not mask the root cause.
+    }
+    throw error;
+  }
 }
 
 /** Users table is stable and never reset by version bumps. */
@@ -499,6 +720,1009 @@ function migrateUserLifecycleAuditSchemaV15(raw: DatabaseSync): void {
 }
 
 /**
+ * Creates the schema-16 Successor Strategic Plan lifecycle model.
+ *
+ * The migration deliberately adds lifecycle metadata and immutable evidence
+ * beside the existing plan-owned records. Existing ids, content, results,
+ * Board scope, and audit rows are never rewritten or re-keyed. The sole
+ * backfill mirrors each existing plan's already-authoritative `status` into
+ * `lifecycle_state`; it does not invent a predecessor or create a Draft.
+ */
+function initializePlanLifecycleSchema(raw: DatabaseSync): void {
+  if (!tableHasColumn(raw, "strategic_plans", "lifecycle_state")) {
+    raw.exec(
+      `ALTER TABLE strategic_plans
+       ADD COLUMN lifecycle_state TEXT NOT NULL DEFAULT 'draft'
+       CHECK (lifecycle_state IN ('draft','active','archived','cancelled'))`,
+    );
+    raw.exec(
+      `UPDATE strategic_plans
+       SET lifecycle_state = status
+       WHERE lifecycle_state <> status`,
+    );
+  }
+  if (!tableHasColumn(raw, "strategic_plans", "predecessor_plan_id")) {
+    raw.exec(
+      `ALTER TABLE strategic_plans
+       ADD COLUMN predecessor_plan_id INTEGER
+       REFERENCES strategic_plans(id) ON DELETE RESTRICT`,
+    );
+  }
+  if (!tableHasColumn(raw, "strategic_plans", "creation_method")) {
+    raw.exec(
+      `ALTER TABLE strategic_plans
+       ADD COLUMN creation_method TEXT NOT NULL DEFAULT 'original'
+       CHECK (creation_method IN ('original','blank','structural_clone'))`,
+    );
+  }
+  if (!tableHasColumn(raw, "strategic_plans", "whole_plan_revision")) {
+    raw.exec(
+      `ALTER TABLE strategic_plans
+       ADD COLUMN whole_plan_revision INTEGER NOT NULL DEFAULT 1
+       CHECK (whole_plan_revision > 0)`,
+    );
+  }
+  if (!tableHasColumn(raw, "strategic_plans", "clone_source_revision")) {
+    raw.exec(
+      "ALTER TABLE strategic_plans ADD COLUMN clone_source_revision INTEGER",
+    );
+  }
+  if (!tableHasColumn(raw, "strategic_plans", "approval_source")) {
+    raw.exec(
+      "ALTER TABLE strategic_plans ADD COLUMN approval_source TEXT",
+    );
+  }
+  if (!tableHasColumn(raw, "strategic_plans", "source_changed_at")) {
+    raw.exec(
+      "ALTER TABLE strategic_plans ADD COLUMN source_changed_at TEXT",
+    );
+  }
+  if (!tableHasColumn(raw, "strategic_plans", "cancelled_at")) {
+    raw.exec(
+      "ALTER TABLE strategic_plans ADD COLUMN cancelled_at TEXT",
+    );
+  }
+  if (!tableHasColumn(raw, "strategic_plans", "activated_at")) {
+    raw.exec(
+      "ALTER TABLE strategic_plans ADD COLUMN activated_at TEXT",
+    );
+  }
+  if (!tableHasColumn(raw, "strategic_plans", "activation_id")) {
+    raw.exec(
+      "ALTER TABLE strategic_plans ADD COLUMN activation_id TEXT",
+    );
+  }
+
+  if (!tableHasColumn(raw, "board_reporting_scopes", "review_status")) {
+    raw.exec(
+      `ALTER TABLE board_reporting_scopes
+       ADD COLUMN review_status TEXT NOT NULL DEFAULT 'approved'
+       CHECK (review_status IN ('needs_review','approved','intentional_empty'))`,
+    );
+  }
+  if (!tableHasColumn(raw, "board_reporting_scopes", "reviewed_by")) {
+    raw.exec(
+      `ALTER TABLE board_reporting_scopes
+       ADD COLUMN reviewed_by INTEGER REFERENCES users(id) ON DELETE SET NULL`,
+    );
+  }
+  if (!tableHasColumn(raw, "board_reporting_scopes", "reviewed_at")) {
+    raw.exec(
+      "ALTER TABLE board_reporting_scopes ADD COLUMN reviewed_at TEXT",
+    );
+  }
+  if (!tableHasColumn(raw, "board_reporting_priorities", "review_status")) {
+    raw.exec(
+      `ALTER TABLE board_reporting_priorities
+       ADD COLUMN review_status TEXT NOT NULL DEFAULT 'approved'
+       CHECK (review_status IN ('needs_review','approved'))`,
+    );
+  }
+  if (!tableHasColumn(raw, "board_reporting_priorities", "reviewed_by")) {
+    raw.exec(
+      `ALTER TABLE board_reporting_priorities
+       ADD COLUMN reviewed_by INTEGER REFERENCES users(id) ON DELETE SET NULL`,
+    );
+  }
+  if (!tableHasColumn(raw, "board_reporting_priorities", "reviewed_at")) {
+    raw.exec(
+      "ALTER TABLE board_reporting_priorities ADD COLUMN reviewed_at TEXT",
+    );
+  }
+  if (!tableHasColumn(raw, "board_reporting_priorities", "archived_at")) {
+    raw.exec(
+      "ALTER TABLE board_reporting_priorities ADD COLUMN archived_at TEXT",
+    );
+  }
+  if (!tableHasColumn(raw, "board_reporting_statements", "archived_at")) {
+    raw.exec(
+      "ALTER TABLE board_reporting_statements ADD COLUMN archived_at TEXT",
+    );
+  }
+
+  raw.exec(`
+    CREATE UNIQUE INDEX IF NOT EXISTS idx_strategic_plans_single_draft
+      ON strategic_plans(organization_id)
+      WHERE lifecycle_state = 'draft' AND cancelled_at IS NULL;
+    CREATE UNIQUE INDEX IF NOT EXISTS idx_strategic_plans_lifecycle_active
+      ON strategic_plans(organization_id)
+      WHERE lifecycle_state = 'active';
+    CREATE UNIQUE INDEX IF NOT EXISTS idx_strategic_plans_activation_id
+      ON strategic_plans(activation_id)
+      WHERE activation_id IS NOT NULL;
+    CREATE INDEX IF NOT EXISTS idx_strategic_plans_predecessor
+      ON strategic_plans(predecessor_plan_id);
+
+    CREATE TABLE IF NOT EXISTS plan_section_reviews (
+      plan_id INTEGER NOT NULL
+        REFERENCES strategic_plans(id) ON DELETE RESTRICT,
+      section TEXT NOT NULL
+        CHECK (section IN ('plan_details','plan_structure','targets_board')),
+      review_status TEXT NOT NULL DEFAULT 'needs_review'
+        CHECK (review_status IN ('needs_review','approved')),
+      predecessor_revision INTEGER,
+      reviewed_by INTEGER REFERENCES users(id) ON DELETE SET NULL,
+      reviewed_at TEXT,
+      updated_at TEXT NOT NULL DEFAULT (datetime('now')),
+      PRIMARY KEY (plan_id, section)
+    );
+
+    CREATE TABLE IF NOT EXISTS successor_lineage (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      organization_id INTEGER NOT NULL
+        REFERENCES organizations(id) ON DELETE RESTRICT,
+      predecessor_plan_id INTEGER NOT NULL
+        REFERENCES strategic_plans(id) ON DELETE RESTRICT,
+      successor_plan_id INTEGER NOT NULL
+        REFERENCES strategic_plans(id) ON DELETE RESTRICT,
+      item_kind TEXT NOT NULL CHECK (item_kind IN (
+        'priority','goal','kpi','measurement_config','component',
+        'distribution_band','membership','target','board_scope',
+        'board_priority','board_statement'
+      )),
+      predecessor_item_id INTEGER NOT NULL,
+      successor_item_id INTEGER NOT NULL,
+      relationship_type TEXT NOT NULL
+        CHECK (relationship_type IN ('copied_from','merged_from','split_from')),
+      predecessor_name_snapshot TEXT NOT NULL,
+      predecessor_context_json TEXT NOT NULL,
+      created_by INTEGER REFERENCES users(id) ON DELETE SET NULL,
+      created_at TEXT NOT NULL DEFAULT (datetime('now')),
+      UNIQUE (
+        successor_plan_id, item_kind, successor_item_id,
+        predecessor_item_id, relationship_type
+      ),
+      CHECK (predecessor_plan_id <> successor_plan_id)
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_successor_lineage_successor
+      ON successor_lineage(successor_plan_id, item_kind, successor_item_id);
+    CREATE INDEX IF NOT EXISTS idx_successor_lineage_predecessor
+      ON successor_lineage(predecessor_plan_id, item_kind, predecessor_item_id);
+
+    CREATE TABLE IF NOT EXISTS plan_item_reviews (
+      plan_id INTEGER NOT NULL
+        REFERENCES strategic_plans(id) ON DELETE RESTRICT,
+      item_kind TEXT NOT NULL CHECK (item_kind IN (
+        'priority','goal','kpi','measurement_config','component',
+        'distribution_band','membership','target','board_priority'
+      )),
+      item_id INTEGER NOT NULL,
+      review_status TEXT NOT NULL DEFAULT 'needs_review'
+        CHECK (review_status IN ('needs_review','approved')),
+      reviewed_by INTEGER REFERENCES users(id) ON DELETE SET NULL,
+      reviewed_at TEXT,
+      updated_at TEXT NOT NULL DEFAULT (datetime('now')),
+      PRIMARY KEY (plan_id, item_kind, item_id)
+    );
+
+    CREATE TABLE IF NOT EXISTS plan_question_decisions (
+      plan_id INTEGER NOT NULL
+        REFERENCES strategic_plans(id) ON DELETE RESTRICT,
+      item_kind TEXT NOT NULL,
+      item_id INTEGER NOT NULL,
+      classification TEXT NOT NULL
+        CHECK (classification IN ('must_resolve','follow_up')),
+      explanation TEXT,
+      expected_revision TEXT NOT NULL,
+      decided_by INTEGER REFERENCES users(id) ON DELETE SET NULL,
+      decided_at TEXT NOT NULL DEFAULT (datetime('now')),
+      PRIMARY KEY (plan_id, item_kind, item_id)
+    );
+
+    CREATE TABLE IF NOT EXISTS plan_readiness_overrides (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      plan_id INTEGER NOT NULL
+        REFERENCES strategic_plans(id) ON DELETE RESTRICT,
+      requirement_key TEXT NOT NULL,
+      requirement_label_snapshot TEXT NOT NULL,
+      reason TEXT NOT NULL CHECK (length(trim(reason)) BETWEEN 1 AND 2000),
+      plan_revision INTEGER NOT NULL CHECK (plan_revision > 0),
+      created_by INTEGER REFERENCES users(id) ON DELETE SET NULL,
+      created_at TEXT NOT NULL DEFAULT (datetime('now')),
+      activation_id TEXT,
+      activated_at TEXT,
+      resolved_by INTEGER REFERENCES users(id) ON DELETE SET NULL,
+      resolved_at TEXT
+    );
+
+    CREATE UNIQUE INDEX IF NOT EXISTS idx_plan_readiness_override_open
+      ON plan_readiness_overrides(plan_id, requirement_key)
+      WHERE resolved_at IS NULL;
+    CREATE INDEX IF NOT EXISTS idx_plan_readiness_override_activation
+      ON plan_readiness_overrides(activation_id);
+
+    CREATE TABLE IF NOT EXISTS strategic_plan_lifecycle_events (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      event_id TEXT NOT NULL UNIQUE,
+      plan_id INTEGER NOT NULL,
+      predecessor_plan_id INTEGER,
+      action TEXT NOT NULL CHECK (action IN (
+        'create_blank','create_structural_clone','cancel','activate','archive',
+        'activation_recovered'
+      )),
+      before_state TEXT,
+      after_state TEXT NOT NULL,
+      checked_plan_revision INTEGER,
+      checked_predecessor_revision INTEGER,
+      confirmation_text TEXT,
+      result_json TEXT NOT NULL,
+      actor_id INTEGER REFERENCES users(id) ON DELETE SET NULL,
+      actor_email_snapshot TEXT,
+      activation_id TEXT,
+      occurred_at TEXT NOT NULL DEFAULT (datetime('now'))
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_plan_lifecycle_plan
+      ON strategic_plan_lifecycle_events(plan_id, occurred_at, id);
+    CREATE INDEX IF NOT EXISTS idx_plan_lifecycle_action
+      ON strategic_plan_lifecycle_events(action, occurred_at, id);
+    CREATE UNIQUE INDEX IF NOT EXISTS idx_plan_lifecycle_activation_action
+      ON strategic_plan_lifecycle_events(activation_id, plan_id, action)
+      WHERE activation_id IS NOT NULL;
+
+    CREATE TABLE IF NOT EXISTS plan_activation_operations (
+      activation_id TEXT PRIMARY KEY,
+      predecessor_plan_id INTEGER NOT NULL
+        REFERENCES strategic_plans(id) ON DELETE RESTRICT,
+      successor_plan_id INTEGER NOT NULL
+        REFERENCES strategic_plans(id) ON DELETE RESTRICT,
+      requested_revision INTEGER NOT NULL CHECK (requested_revision > 0),
+      phase TEXT NOT NULL CHECK (phase IN (
+        'pausing','backup_verified','committed_unverified','verified',
+        'failed_precommit','verification_failed','integrity_incident'
+      )),
+      backup_id TEXT,
+      backup_path TEXT,
+      backup_sha256 TEXT,
+      backup_size INTEGER,
+      warning_snapshot_json TEXT NOT NULL DEFAULT '[]',
+      override_snapshot_json TEXT NOT NULL DEFAULT '[]',
+      requested_by INTEGER REFERENCES users(id) ON DELETE SET NULL,
+      requested_at TEXT NOT NULL DEFAULT (datetime('now')),
+      committed_at TEXT,
+      committed_write_counter INTEGER CHECK (
+        committed_write_counter IS NULL OR committed_write_counter >= 0
+      ),
+      verified_at TEXT,
+      failure_code TEXT,
+      updated_at TEXT NOT NULL DEFAULT (datetime('now')),
+      CHECK (predecessor_plan_id <> successor_plan_id)
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_plan_activation_phase
+      ON plan_activation_operations(phase, requested_at);
+
+    CREATE TABLE IF NOT EXISTS activation_recovery_audit_events (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      recovery_id TEXT NOT NULL UNIQUE,
+      activation_id TEXT NOT NULL,
+      backup_id TEXT NOT NULL,
+      action TEXT NOT NULL CHECK (action IN (
+        'preserve_failed_database','restore_pre_activation_backup',
+        'repair_forward','reopen_service'
+      )),
+      operator_snapshot TEXT NOT NULL,
+      integrity_result TEXT NOT NULL,
+      details_json TEXT NOT NULL,
+      occurred_at TEXT NOT NULL DEFAULT (datetime('now'))
+    );
+
+    CREATE TRIGGER IF NOT EXISTS successor_lineage_immutable_update
+    BEFORE UPDATE ON successor_lineage
+    BEGIN
+      SELECT RAISE(ABORT, 'SUCCESSOR_LINEAGE_IMMUTABLE');
+    END;
+    CREATE TRIGGER IF NOT EXISTS successor_lineage_immutable_delete
+    BEFORE DELETE ON successor_lineage
+    BEGIN
+      SELECT RAISE(ABORT, 'SUCCESSOR_LINEAGE_IMMUTABLE');
+    END;
+    CREATE TRIGGER IF NOT EXISTS plan_lifecycle_events_immutable_update
+    BEFORE UPDATE ON strategic_plan_lifecycle_events
+    BEGIN
+      SELECT RAISE(ABORT, 'PLAN_LIFECYCLE_EVENT_IMMUTABLE');
+    END;
+    CREATE TRIGGER IF NOT EXISTS plan_lifecycle_events_immutable_delete
+    BEFORE DELETE ON strategic_plan_lifecycle_events
+    BEGIN
+      SELECT RAISE(ABORT, 'PLAN_LIFECYCLE_EVENT_IMMUTABLE');
+    END;
+    CREATE TRIGGER IF NOT EXISTS activation_recovery_events_immutable_update
+    BEFORE UPDATE ON activation_recovery_audit_events
+    BEGIN
+      SELECT RAISE(ABORT, 'ACTIVATION_RECOVERY_EVENT_IMMUTABLE');
+    END;
+    CREATE TRIGGER IF NOT EXISTS activation_recovery_events_immutable_delete
+    BEFORE DELETE ON activation_recovery_audit_events
+    BEGIN
+      SELECT RAISE(ABORT, 'ACTIVATION_RECOVERY_EVENT_IMMUTABLE');
+    END;
+
+    INSERT OR IGNORE INTO meta (key, value)
+      VALUES ('plan_activation_write_pause', '0');
+    INSERT OR IGNORE INTO meta (key, value)
+      VALUES ('plan_activation_internal_write', '0');
+    INSERT OR IGNORE INTO meta (key, value)
+      VALUES ('active_plan_integrity_blocked', '0');
+    INSERT OR IGNORE INTO meta (key, value)
+      VALUES ('authoritative_write_counter', '0');
+    INSERT OR IGNORE INTO meta (key, value)
+      VALUES ('seed_reset_internal_write', '0');
+
+    CREATE TRIGGER IF NOT EXISTS strategic_audit_events_immutable_update
+    BEFORE UPDATE ON strategic_audit_events
+    WHEN COALESCE(
+      (SELECT value FROM meta WHERE key = 'seed_reset_internal_write'),
+      '0'
+    ) <> '1'
+    AND NOT (
+      OLD.actor_id IS NOT NULL AND NEW.actor_id IS NULL
+      AND NEW.id IS OLD.id
+      AND NEW.entity_type IS OLD.entity_type
+      AND NEW.entity_id IS OLD.entity_id
+      AND NEW.event_type IS OLD.event_type
+      AND NEW.entity_display_name IS OLD.entity_display_name
+      AND NEW.parent_priority_name IS OLD.parent_priority_name
+      AND NEW.parent_goal_name IS OLD.parent_goal_name
+      AND NEW.previous_value_json IS OLD.previous_value_json
+      AND NEW.new_value_json IS OLD.new_value_json
+      AND NEW.actor_email_snapshot IS OLD.actor_email_snapshot
+      AND NEW.source_reference IS OLD.source_reference
+      AND NEW.occurred_at IS OLD.occurred_at
+    )
+    BEGIN
+      SELECT RAISE(ABORT, 'STRATEGIC_AUDIT_EVENT_IMMUTABLE');
+    END;
+    CREATE TRIGGER IF NOT EXISTS strategic_audit_events_immutable_delete
+    BEFORE DELETE ON strategic_audit_events
+    WHEN COALESCE(
+      (SELECT value FROM meta WHERE key = 'seed_reset_internal_write'),
+      '0'
+    ) <> '1'
+    BEGIN
+      SELECT RAISE(ABORT, 'STRATEGIC_AUDIT_EVENT_IMMUTABLE');
+    END;
+    CREATE TRIGGER IF NOT EXISTS installation_audit_events_immutable_update
+    BEFORE UPDATE ON installation_audit_events
+    WHEN COALESCE(
+      (SELECT value FROM meta WHERE key = 'seed_reset_internal_write'),
+      '0'
+    ) <> '1'
+    AND NOT (
+      OLD.actor_id IS NOT NULL AND NEW.actor_id IS NULL
+      AND NEW.id IS OLD.id
+      AND NEW.entity_type IS OLD.entity_type
+      AND NEW.entity_id IS OLD.entity_id
+      AND NEW.event_type IS OLD.event_type
+      AND NEW.entity_display_name IS OLD.entity_display_name
+      AND NEW.previous_value_json IS OLD.previous_value_json
+      AND NEW.new_value_json IS OLD.new_value_json
+      AND NEW.actor_email_snapshot IS OLD.actor_email_snapshot
+      AND NEW.occurred_at IS OLD.occurred_at
+    )
+    BEGIN
+      SELECT RAISE(ABORT, 'INSTALLATION_AUDIT_EVENT_IMMUTABLE');
+    END;
+    CREATE TRIGGER IF NOT EXISTS installation_audit_events_immutable_delete
+    BEFORE DELETE ON installation_audit_events
+    WHEN COALESCE(
+      (SELECT value FROM meta WHERE key = 'seed_reset_internal_write'),
+      '0'
+    ) <> '1'
+    BEGIN
+      SELECT RAISE(ABORT, 'INSTALLATION_AUDIT_EVENT_IMMUTABLE');
+    END;
+    CREATE TRIGGER IF NOT EXISTS entry_history_immutable_update
+    BEFORE UPDATE ON entry_history
+    WHEN COALESCE(
+      (SELECT value FROM meta WHERE key = 'seed_reset_internal_write'),
+      '0'
+    ) <> '1'
+    AND NOT (
+      OLD.changed_by IS NOT NULL AND NEW.changed_by IS NULL
+      AND NEW.id IS OLD.id
+      AND NEW.entry_type IS OLD.entry_type
+      AND NEW.entry_id IS OLD.entry_id
+      AND NEW.kpi_id IS OLD.kpi_id
+      AND NEW.year IS OLD.year
+      AND NEW.month_or_label IS OLD.month_or_label
+      AND NEW.prev_value IS OLD.prev_value
+      AND NEW.new_value IS OLD.new_value
+      AND NEW.prev_notes IS OLD.prev_notes
+      AND NEW.new_notes IS OLD.new_notes
+      AND NEW.changed_at IS OLD.changed_at
+      AND NEW.kpi_name IS OLD.kpi_name
+      AND NEW.kpi_slug IS OLD.kpi_slug
+      AND NEW.kpi_unit IS OLD.kpi_unit
+      AND NEW.category_id IS OLD.category_id
+      AND NEW.category_name IS OLD.category_name
+      AND NEW.category_slug IS OLD.category_slug
+      AND NEW.changed_by_email IS OLD.changed_by_email
+    )
+    BEGIN
+      SELECT RAISE(ABORT, 'ENTRY_HISTORY_IMMUTABLE');
+    END;
+    CREATE TRIGGER IF NOT EXISTS entry_history_immutable_delete
+    BEFORE DELETE ON entry_history
+    WHEN COALESCE(
+      (SELECT value FROM meta WHERE key = 'seed_reset_internal_write'),
+      '0'
+    ) <> '1'
+    BEGIN
+      SELECT RAISE(ABORT, 'ENTRY_HISTORY_IMMUTABLE');
+    END;
+  `);
+  if (
+    !tableHasColumn(
+      raw,
+      "plan_activation_operations",
+      "committed_write_counter",
+    )
+  ) {
+    raw.exec(
+      `ALTER TABLE plan_activation_operations
+       ADD COLUMN committed_write_counter INTEGER
+       CHECK (
+         committed_write_counter IS NULL OR committed_write_counter >= 0
+       )`,
+    );
+  }
+  initializePlanLifecycleTriggers(raw);
+}
+
+interface PlanOwnedTriggerDefinition {
+  table: string;
+  newPlanIdSql: string;
+  oldPlanIdSql: string;
+  section: "plan_structure" | "targets_board";
+  activeOnly: boolean;
+}
+
+/**
+ * Advances a durable monotonic witness for every authoritative application
+ * table mutation. Activation captures the value after its atomic lifecycle
+ * transaction. A recovery restore is safe only while the current value still
+ * equals that committed witness, proving that no later business write reached
+ * the database even if pause markers were temporarily changed.
+ */
+function initializeAuthoritativeWriteCounterTriggers(
+  raw: DatabaseSync,
+): void {
+  const excluded = new Set([
+    "meta",
+    "plan_activation_operations",
+    "activation_recovery_audit_events",
+  ]);
+  const tables = raw
+    .prepare(
+      `SELECT name FROM sqlite_schema
+       WHERE type = 'table' AND name NOT LIKE 'sqlite_%'
+       ORDER BY name`,
+    )
+    .all() as Array<{ name: string }>;
+  for (const { name } of tables) {
+    if (excluded.has(name)) continue;
+    if (!/^[A-Za-z_][A-Za-z0-9_]*$/.test(name)) {
+      throw new Error(`Unsafe table name while installing write witness: ${name}`);
+    }
+    for (const operation of ["INSERT", "UPDATE", "DELETE"] as const) {
+      const triggerName = `${name}_activation_write_counter_${operation.toLowerCase()}`;
+      raw.exec(`
+        CREATE TRIGGER IF NOT EXISTS "${triggerName}"
+        AFTER ${operation} ON "${name}"
+        BEGIN
+          UPDATE meta
+          SET value = CAST(value AS INTEGER) + 1
+          WHERE key = 'authoritative_write_counter';
+        END;
+      `);
+    }
+  }
+}
+
+/**
+ * Installs the database-enforced write pause, Archived/Cancelled
+ * immutability, result-to-Active ownership, Whole-Plan Revision advancement,
+ * and predecessor-change review triggers. The table and ownership expressions
+ * are static application constants, never request input.
+ */
+function initializePlanLifecycleTriggers(raw: DatabaseSync): void {
+  const definitions: PlanOwnedTriggerDefinition[] = [
+    {
+      table: "categories",
+      newPlanIdSql: "NEW.plan_id",
+      oldPlanIdSql: "OLD.plan_id",
+      section: "plan_structure",
+      activeOnly: false,
+    },
+    {
+      table: "kpis",
+      newPlanIdSql:
+        "(SELECT plan_id FROM categories WHERE id = NEW.category_id)",
+      oldPlanIdSql:
+        "(SELECT plan_id FROM categories WHERE id = OLD.category_id)",
+      section: "plan_structure",
+      activeOnly: false,
+    },
+    {
+      table: "strategic_goals",
+      newPlanIdSql:
+        "(SELECT priority.plan_id FROM categories priority WHERE priority.id = NEW.priority_id)",
+      oldPlanIdSql:
+        "(SELECT priority.plan_id FROM categories priority WHERE priority.id = OLD.priority_id)",
+      section: "plan_structure",
+      activeOnly: false,
+    },
+    {
+      table: "goal_kpis",
+      newPlanIdSql:
+        "(SELECT priority.plan_id FROM strategic_goals goal JOIN categories priority ON priority.id = goal.priority_id WHERE goal.id = NEW.goal_id)",
+      oldPlanIdSql:
+        "(SELECT priority.plan_id FROM strategic_goals goal JOIN categories priority ON priority.id = goal.priority_id WHERE goal.id = OLD.goal_id)",
+      section: "plan_structure",
+      activeOnly: false,
+    },
+    {
+      table: "kpi_measurement_configs",
+      newPlanIdSql:
+        "(SELECT priority.plan_id FROM kpis kpi JOIN categories priority ON priority.id = kpi.category_id WHERE kpi.id = NEW.kpi_id)",
+      oldPlanIdSql:
+        "(SELECT priority.plan_id FROM kpis kpi JOIN categories priority ON priority.id = kpi.category_id WHERE kpi.id = OLD.kpi_id)",
+      section: "plan_structure",
+      activeOnly: false,
+    },
+    {
+      table: "kpi_components",
+      newPlanIdSql:
+        "(SELECT priority.plan_id FROM kpis kpi JOIN categories priority ON priority.id = kpi.category_id WHERE kpi.id = NEW.kpi_id)",
+      oldPlanIdSql:
+        "(SELECT priority.plan_id FROM kpis kpi JOIN categories priority ON priority.id = kpi.category_id WHERE kpi.id = OLD.kpi_id)",
+      section: "plan_structure",
+      activeOnly: false,
+    },
+    {
+      table: "distribution_bands",
+      newPlanIdSql:
+        "(SELECT priority.plan_id FROM kpis kpi JOIN categories priority ON priority.id = kpi.category_id WHERE kpi.id = NEW.kpi_id)",
+      oldPlanIdSql:
+        "(SELECT priority.plan_id FROM kpis kpi JOIN categories priority ON priority.id = kpi.category_id WHERE kpi.id = OLD.kpi_id)",
+      section: "plan_structure",
+      activeOnly: false,
+    },
+    {
+      table: "kpi_targets",
+      newPlanIdSql:
+        "(SELECT priority.plan_id FROM kpis kpi JOIN categories priority ON priority.id = kpi.category_id LEFT JOIN kpi_components component ON component.id = NEW.component_id WHERE kpi.id = COALESCE(NEW.kpi_id, component.kpi_id))",
+      oldPlanIdSql:
+        "(SELECT priority.plan_id FROM kpis kpi JOIN categories priority ON priority.id = kpi.category_id LEFT JOIN kpi_components component ON component.id = OLD.component_id WHERE kpi.id = COALESCE(OLD.kpi_id, component.kpi_id))",
+      section: "targets_board",
+      activeOnly: false,
+    },
+    {
+      table: "board_reporting_scopes",
+      newPlanIdSql: "NEW.plan_id",
+      oldPlanIdSql: "OLD.plan_id",
+      section: "targets_board",
+      activeOnly: false,
+    },
+    {
+      table: "board_reporting_priorities",
+      newPlanIdSql:
+        "(SELECT plan_id FROM board_reporting_scopes WHERE id = NEW.scope_id)",
+      oldPlanIdSql:
+        "(SELECT plan_id FROM board_reporting_scopes WHERE id = OLD.scope_id)",
+      section: "targets_board",
+      activeOnly: false,
+    },
+    {
+      table: "board_reporting_statements",
+      newPlanIdSql:
+        "(SELECT scope.plan_id FROM board_reporting_priorities priority JOIN board_reporting_scopes scope ON scope.id = priority.scope_id WHERE priority.id = NEW.board_priority_id)",
+      oldPlanIdSql:
+        "(SELECT scope.plan_id FROM board_reporting_priorities priority JOIN board_reporting_scopes scope ON scope.id = priority.scope_id WHERE priority.id = OLD.board_priority_id)",
+      section: "targets_board",
+      activeOnly: false,
+    },
+    {
+      table: "board_reporting_statement_kpis",
+      newPlanIdSql:
+        "(SELECT scope.plan_id FROM board_reporting_statements statement JOIN board_reporting_priorities priority ON priority.id = statement.board_priority_id JOIN board_reporting_scopes scope ON scope.id = priority.scope_id WHERE statement.id = NEW.statement_id)",
+      oldPlanIdSql:
+        "(SELECT scope.plan_id FROM board_reporting_statements statement JOIN board_reporting_priorities priority ON priority.id = statement.board_priority_id JOIN board_reporting_scopes scope ON scope.id = priority.scope_id WHERE statement.id = OLD.statement_id)",
+      section: "targets_board",
+      activeOnly: false,
+    },
+    {
+      table: "board_reporting_audit_events",
+      newPlanIdSql:
+        "(SELECT plan_id FROM board_reporting_scopes WHERE id = NEW.scope_id)",
+      oldPlanIdSql:
+        "(SELECT plan_id FROM board_reporting_scopes WHERE id = OLD.scope_id)",
+      section: "targets_board",
+      activeOnly: false,
+    },
+    {
+      table: "plan_section_reviews",
+      newPlanIdSql: "NEW.plan_id",
+      oldPlanIdSql: "OLD.plan_id",
+      section: "plan_structure",
+      activeOnly: false,
+    },
+    {
+      table: "plan_item_reviews",
+      newPlanIdSql: "NEW.plan_id",
+      oldPlanIdSql: "OLD.plan_id",
+      section: "plan_structure",
+      activeOnly: false,
+    },
+    {
+      table: "plan_question_decisions",
+      newPlanIdSql: "NEW.plan_id",
+      oldPlanIdSql: "OLD.plan_id",
+      section: "plan_structure",
+      activeOnly: false,
+    },
+    {
+      table: "plan_readiness_overrides",
+      newPlanIdSql: "NEW.plan_id",
+      oldPlanIdSql: "OLD.plan_id",
+      section: "targets_board",
+      activeOnly: false,
+    },
+    {
+      table: "kpi_observations",
+      newPlanIdSql:
+        "(SELECT priority.plan_id FROM kpis kpi JOIN categories priority ON priority.id = kpi.category_id WHERE kpi.id = NEW.kpi_id)",
+      oldPlanIdSql:
+        "(SELECT priority.plan_id FROM kpis kpi JOIN categories priority ON priority.id = kpi.category_id WHERE kpi.id = OLD.kpi_id)",
+      section: "plan_structure",
+      activeOnly: true,
+    },
+    {
+      table: "kpi_component_entries",
+      newPlanIdSql:
+        "(SELECT priority.plan_id FROM kpi_components component JOIN kpis kpi ON kpi.id = component.kpi_id JOIN categories priority ON priority.id = kpi.category_id WHERE component.id = NEW.component_id)",
+      oldPlanIdSql:
+        "(SELECT priority.plan_id FROM kpi_components component JOIN kpis kpi ON kpi.id = component.kpi_id JOIN categories priority ON priority.id = kpi.category_id WHERE component.id = OLD.component_id)",
+      section: "plan_structure",
+      activeOnly: true,
+    },
+    {
+      table: "distribution_observations",
+      newPlanIdSql:
+        "(SELECT priority.plan_id FROM kpis kpi JOIN categories priority ON priority.id = kpi.category_id WHERE kpi.id = NEW.kpi_id)",
+      oldPlanIdSql:
+        "(SELECT priority.plan_id FROM kpis kpi JOIN categories priority ON priority.id = kpi.category_id WHERE kpi.id = OLD.kpi_id)",
+      section: "plan_structure",
+      activeOnly: true,
+    },
+    {
+      table: "distribution_values",
+      newPlanIdSql:
+        "(SELECT priority.plan_id FROM distribution_observations observation JOIN kpis kpi ON kpi.id = observation.kpi_id JOIN categories priority ON priority.id = kpi.category_id WHERE observation.id = NEW.observation_id)",
+      oldPlanIdSql:
+        "(SELECT priority.plan_id FROM distribution_observations observation JOIN kpis kpi ON kpi.id = observation.kpi_id JOIN categories priority ON priority.id = kpi.category_id WHERE observation.id = OLD.observation_id)",
+      section: "plan_structure",
+      activeOnly: true,
+    },
+    {
+      table: "monthly_entries",
+      newPlanIdSql:
+        "(SELECT priority.plan_id FROM kpis kpi JOIN categories priority ON priority.id = kpi.category_id WHERE kpi.id = NEW.kpi_id)",
+      oldPlanIdSql:
+        "(SELECT priority.plan_id FROM kpis kpi JOIN categories priority ON priority.id = kpi.category_id WHERE kpi.id = OLD.kpi_id)",
+      section: "plan_structure",
+      activeOnly: true,
+    },
+    {
+      table: "breakdown_entries",
+      newPlanIdSql:
+        "(SELECT priority.plan_id FROM kpis kpi JOIN categories priority ON priority.id = kpi.category_id WHERE kpi.id = NEW.kpi_id)",
+      oldPlanIdSql:
+        "(SELECT priority.plan_id FROM kpis kpi JOIN categories priority ON priority.id = kpi.category_id WHERE kpi.id = OLD.kpi_id)",
+      section: "plan_structure",
+      activeOnly: true,
+    },
+    {
+      table: "kpi_goals",
+      newPlanIdSql:
+        "(SELECT priority.plan_id FROM kpis kpi JOIN categories priority ON priority.id = kpi.category_id WHERE kpi.id = NEW.kpi_id)",
+      oldPlanIdSql:
+        "(SELECT priority.plan_id FROM kpis kpi JOIN categories priority ON priority.id = kpi.category_id WHERE kpi.id = OLD.kpi_id)",
+      section: "targets_board",
+      activeOnly: false,
+    },
+  ];
+
+  raw.exec(`
+    CREATE TRIGGER IF NOT EXISTS strategic_plans_pause_insert
+    BEFORE INSERT ON strategic_plans
+    WHEN (SELECT value FROM meta WHERE key = 'plan_activation_write_pause') = '1'
+      AND (SELECT value FROM meta WHERE key = 'plan_activation_internal_write') <> '1'
+    BEGIN
+      SELECT RAISE(ABORT, 'PLAN_WRITES_PAUSED');
+    END;
+    CREATE TRIGGER IF NOT EXISTS strategic_plans_pause_update
+    BEFORE UPDATE ON strategic_plans
+    WHEN (SELECT value FROM meta WHERE key = 'plan_activation_write_pause') = '1'
+      AND (SELECT value FROM meta WHERE key = 'plan_activation_internal_write') <> '1'
+    BEGIN
+      SELECT RAISE(ABORT, 'PLAN_WRITES_PAUSED');
+    END;
+    CREATE TRIGGER IF NOT EXISTS strategic_plans_pause_delete
+    BEFORE DELETE ON strategic_plans
+    WHEN (SELECT value FROM meta WHERE key = 'plan_activation_write_pause') = '1'
+      AND (SELECT value FROM meta WHERE key = 'plan_activation_internal_write') <> '1'
+    BEGIN
+      SELECT RAISE(ABORT, 'PLAN_WRITES_PAUSED');
+    END;
+    CREATE TRIGGER IF NOT EXISTS strategic_plans_immutable_update
+    BEFORE UPDATE ON strategic_plans
+    WHEN OLD.lifecycle_state IN ('archived','cancelled')
+      AND (SELECT value FROM meta WHERE key = 'plan_activation_internal_write') <> '1'
+    BEGIN
+      SELECT RAISE(ABORT, 'PLAN_IS_READ_ONLY');
+    END;
+    CREATE TRIGGER IF NOT EXISTS strategic_plans_no_delete
+    BEFORE DELETE ON strategic_plans
+    WHEN COALESCE(
+      (SELECT value FROM meta WHERE key = 'seed_reset_internal_write'),
+      '0'
+    ) <> '1'
+    BEGIN
+      SELECT RAISE(ABORT, 'PLAN_DELETION_FORBIDDEN');
+    END;
+    CREATE TRIGGER IF NOT EXISTS strategic_plans_original_state_sync
+    AFTER INSERT ON strategic_plans
+    WHEN NEW.creation_method = 'original'
+      AND NEW.lifecycle_state = 'draft'
+      AND NEW.status IN ('active','archived')
+    BEGIN
+      UPDATE strategic_plans
+      SET lifecycle_state = NEW.status
+      WHERE id = NEW.id;
+    END;
+    CREATE TRIGGER IF NOT EXISTS strategic_plans_details_revision
+    AFTER UPDATE OF name, description, start_year, end_year, source_reference,
+      approval_source ON strategic_plans
+    WHEN OLD.lifecycle_state IN ('active','draft')
+      AND NEW.whole_plan_revision = OLD.whole_plan_revision
+    BEGIN
+      UPDATE strategic_plans
+      SET whole_plan_revision = whole_plan_revision + 1
+      WHERE id = NEW.id;
+      UPDATE strategic_plans
+      SET source_changed_at = datetime('now'),
+          whole_plan_revision = whole_plan_revision + 1
+      WHERE predecessor_plan_id = NEW.id AND lifecycle_state = 'draft';
+      UPDATE plan_section_reviews
+      SET review_status = 'needs_review', reviewed_by = NULL,
+          reviewed_at = NULL, updated_at = datetime('now')
+      WHERE plan_id IN (
+        SELECT id FROM strategic_plans
+        WHERE predecessor_plan_id = NEW.id AND lifecycle_state = 'draft'
+      );
+    END;
+  `);
+
+  for (const table of [
+    "users",
+    "organizations",
+    "installation_audit_events",
+    "strategic_audit_events",
+    "user_lifecycle_audit_events",
+    "entry_history",
+    "successor_lineage",
+    "strategic_plan_lifecycle_events",
+    "activation_recovery_audit_events",
+  ]) {
+    raw.exec(`
+      CREATE TRIGGER IF NOT EXISTS ${table}_activation_pause_insert
+      BEFORE INSERT ON ${table}
+      WHEN (SELECT value FROM meta WHERE key = 'plan_activation_write_pause') = '1'
+        AND (SELECT value FROM meta WHERE key = 'plan_activation_internal_write') <> '1'
+      BEGIN
+        SELECT RAISE(ABORT, 'PLAN_WRITES_PAUSED');
+      END;
+      CREATE TRIGGER IF NOT EXISTS ${table}_activation_pause_update
+      BEFORE UPDATE ON ${table}
+      WHEN (SELECT value FROM meta WHERE key = 'plan_activation_write_pause') = '1'
+        AND (SELECT value FROM meta WHERE key = 'plan_activation_internal_write') <> '1'
+      BEGIN
+        SELECT RAISE(ABORT, 'PLAN_WRITES_PAUSED');
+      END;
+      CREATE TRIGGER IF NOT EXISTS ${table}_activation_pause_delete
+      BEFORE DELETE ON ${table}
+      WHEN (SELECT value FROM meta WHERE key = 'plan_activation_write_pause') = '1'
+        AND (SELECT value FROM meta WHERE key = 'plan_activation_internal_write') <> '1'
+      BEGIN
+        SELECT RAISE(ABORT, 'PLAN_WRITES_PAUSED');
+      END;
+    `);
+  }
+
+  for (const definition of definitions) {
+    const insertLifecycleCheck = definition.activeOnly
+      ? `<> 'active'`
+      : `IN ('archived','cancelled')`;
+    raw.exec(`
+      CREATE TRIGGER IF NOT EXISTS ${definition.table}_plan_pause_insert
+      BEFORE INSERT ON ${definition.table}
+      WHEN (SELECT value FROM meta WHERE key = 'plan_activation_write_pause') = '1'
+        AND (SELECT value FROM meta WHERE key = 'plan_activation_internal_write') <> '1'
+      BEGIN
+        SELECT RAISE(ABORT, 'PLAN_WRITES_PAUSED');
+      END;
+      CREATE TRIGGER IF NOT EXISTS ${definition.table}_plan_pause_update
+      BEFORE UPDATE ON ${definition.table}
+      WHEN (SELECT value FROM meta WHERE key = 'plan_activation_write_pause') = '1'
+        AND (SELECT value FROM meta WHERE key = 'plan_activation_internal_write') <> '1'
+      BEGIN
+        SELECT RAISE(ABORT, 'PLAN_WRITES_PAUSED');
+      END;
+      CREATE TRIGGER IF NOT EXISTS ${definition.table}_plan_pause_delete
+      BEFORE DELETE ON ${definition.table}
+      WHEN (SELECT value FROM meta WHERE key = 'plan_activation_write_pause') = '1'
+        AND (SELECT value FROM meta WHERE key = 'plan_activation_internal_write') <> '1'
+      BEGIN
+        SELECT RAISE(ABORT, 'PLAN_WRITES_PAUSED');
+      END;
+      CREATE TRIGGER IF NOT EXISTS ${definition.table}_plan_state_insert
+      BEFORE INSERT ON ${definition.table}
+      WHEN (
+        SELECT lifecycle_state FROM strategic_plans
+        WHERE id = ${definition.newPlanIdSql}
+      ) ${insertLifecycleCheck}
+      BEGIN
+        SELECT RAISE(ABORT, 'PLAN_IS_READ_ONLY');
+      END;
+      CREATE TRIGGER IF NOT EXISTS ${definition.table}_plan_state_update
+      BEFORE UPDATE ON ${definition.table}
+      WHEN (
+        (
+          SELECT lifecycle_state FROM strategic_plans
+          WHERE id = ${definition.oldPlanIdSql}
+        ) ${insertLifecycleCheck}
+        OR
+        (
+          SELECT lifecycle_state FROM strategic_plans
+          WHERE id = ${definition.newPlanIdSql}
+        ) ${insertLifecycleCheck}
+      )
+      BEGIN
+        SELECT RAISE(ABORT, 'PLAN_IS_READ_ONLY');
+      END;
+      CREATE TRIGGER IF NOT EXISTS ${definition.table}_plan_state_delete
+      BEFORE DELETE ON ${definition.table}
+      WHEN (
+        SELECT lifecycle_state FROM strategic_plans
+        WHERE id = ${definition.oldPlanIdSql}
+      ) ${insertLifecycleCheck}
+      BEGIN
+        SELECT RAISE(ABORT, 'PLAN_IS_READ_ONLY');
+      END;
+      CREATE TRIGGER IF NOT EXISTS ${definition.table}_whole_plan_insert
+      AFTER INSERT ON ${definition.table}
+      BEGIN
+        UPDATE strategic_plans
+        SET whole_plan_revision = whole_plan_revision + 1
+        WHERE id = ${definition.newPlanIdSql}
+          AND lifecycle_state IN ('active','draft');
+        UPDATE strategic_plans
+        SET source_changed_at = datetime('now'),
+            whole_plan_revision = whole_plan_revision + 1
+        WHERE predecessor_plan_id = ${definition.newPlanIdSql}
+          AND lifecycle_state = 'draft';
+        UPDATE plan_section_reviews
+        SET review_status = 'needs_review', reviewed_by = NULL,
+            reviewed_at = NULL, updated_at = datetime('now')
+        WHERE plan_id IN (
+          SELECT id FROM strategic_plans
+          WHERE predecessor_plan_id = ${definition.newPlanIdSql}
+            AND lifecycle_state = 'draft'
+        ) AND section = '${definition.section}';
+      END;
+      CREATE TRIGGER IF NOT EXISTS ${definition.table}_whole_plan_update
+      AFTER UPDATE ON ${definition.table}
+      BEGIN
+        UPDATE strategic_plans
+        SET whole_plan_revision = whole_plan_revision + 1
+        WHERE id IN (
+            ${definition.oldPlanIdSql},
+            ${definition.newPlanIdSql}
+          )
+          AND lifecycle_state IN ('active','draft');
+        UPDATE strategic_plans
+        SET source_changed_at = datetime('now'),
+            whole_plan_revision = whole_plan_revision + 1
+        WHERE predecessor_plan_id IN (
+            ${definition.oldPlanIdSql},
+            ${definition.newPlanIdSql}
+          )
+          AND lifecycle_state = 'draft';
+        UPDATE plan_section_reviews
+        SET review_status = 'needs_review', reviewed_by = NULL,
+            reviewed_at = NULL, updated_at = datetime('now')
+        WHERE plan_id IN (
+          SELECT id FROM strategic_plans
+          WHERE predecessor_plan_id IN (
+              ${definition.oldPlanIdSql},
+              ${definition.newPlanIdSql}
+            )
+            AND lifecycle_state = 'draft'
+        ) AND section = '${definition.section}';
+      END;
+      CREATE TRIGGER IF NOT EXISTS ${definition.table}_whole_plan_delete
+      AFTER DELETE ON ${definition.table}
+      BEGIN
+        UPDATE strategic_plans
+        SET whole_plan_revision = whole_plan_revision + 1
+        WHERE id = ${definition.oldPlanIdSql}
+          AND lifecycle_state IN ('active','draft');
+        UPDATE strategic_plans
+        SET source_changed_at = datetime('now'),
+            whole_plan_revision = whole_plan_revision + 1
+        WHERE predecessor_plan_id = ${definition.oldPlanIdSql}
+          AND lifecycle_state = 'draft';
+        UPDATE plan_section_reviews
+        SET review_status = 'needs_review', reviewed_by = NULL,
+            reviewed_at = NULL, updated_at = datetime('now')
+        WHERE plan_id IN (
+          SELECT id FROM strategic_plans
+          WHERE predecessor_plan_id = ${definition.oldPlanIdSql}
+            AND lifecycle_state = 'draft'
+        ) AND section = '${definition.section}';
+      END;
+    `);
+  }
+  initializeAuthoritativeWriteCounterTriggers(raw);
+}
+
+/**
+ * Applies the additive schema-15 -> schema-16 lifecycle step as one
+ * transaction. A fault at any DDL or backfill point rolls the entire step
+ * back, leaving schema 15 available for a safe retry.
+ */
+function migratePlanLifecycleSchemaV16(raw: DatabaseSync): void {
+  raw.exec("BEGIN IMMEDIATE;");
+  try {
+    initializePlanLifecycleSchema(raw);
+    raw.exec(
+      "INSERT OR REPLACE INTO meta (key, value) VALUES ('schema_version', '16');",
+    );
+    raw.exec("COMMIT;");
+  } catch (error) {
+    try {
+      raw.exec("ROLLBACK;");
+    } catch {
+      // Surface the migration error.
+    }
+    throw error;
+  }
+}
+
+/**
  * Reads the persisted schema version without changing the database.
  *
  * A missing `meta` table or missing `schema_version` row identifies a fresh
@@ -567,6 +1791,15 @@ function migrateSchema(raw: DatabaseSync): void {
     ensureStrategicSchemaV10Columns(raw);
     initializeBoardReportingSchema(raw);
     initializeUserLifecycleAuditSchema(raw);
+    initializePlanLifecycleSchema(raw);
+    return;
+  }
+
+  if (version === 15) {
+    ensureStrategicSchemaV10Columns(raw);
+    initializeBoardReportingSchema(raw);
+    initializeUserLifecycleAuditSchema(raw);
+    migratePlanLifecycleSchemaV16(raw);
     return;
   }
 
@@ -576,6 +1809,7 @@ function migrateSchema(raw: DatabaseSync): void {
     ensureStrategicSchemaV10Columns(raw);
     initializeBoardReportingSchema(raw);
     migrateUserLifecycleAuditSchemaV15(raw);
+    migratePlanLifecycleSchemaV16(raw);
     return;
   }
 
@@ -583,6 +1817,7 @@ function migrateSchema(raw: DatabaseSync): void {
     ensureStrategicSchemaV10Columns(raw);
     migrateBoardReportingSchemaV14(raw);
     migrateUserLifecycleAuditSchemaV15(raw);
+    migratePlanLifecycleSchemaV16(raw);
     return;
   }
 
@@ -593,6 +1828,7 @@ function migrateSchema(raw: DatabaseSync): void {
     recordSchemaV13(raw);
     migrateBoardReportingSchemaV14(raw);
     migrateUserLifecycleAuditSchemaV15(raw);
+    migratePlanLifecycleSchemaV16(raw);
     return;
   }
 
@@ -604,6 +1840,7 @@ function migrateSchema(raw: DatabaseSync): void {
     recordSchemaV13(raw);
     migrateBoardReportingSchemaV14(raw);
     migrateUserLifecycleAuditSchemaV15(raw);
+    migratePlanLifecycleSchemaV16(raw);
     return;
   }
 
@@ -619,6 +1856,7 @@ function migrateSchema(raw: DatabaseSync): void {
     recordSchemaV13(raw);
     migrateBoardReportingSchemaV14(raw);
     migrateUserLifecycleAuditSchemaV15(raw);
+    migratePlanLifecycleSchemaV16(raw);
     return;
   }
 
@@ -632,6 +1870,7 @@ function migrateSchema(raw: DatabaseSync): void {
     recordSchemaV13(raw);
     migrateBoardReportingSchemaV14(raw);
     migrateUserLifecycleAuditSchemaV15(raw);
+    migratePlanLifecycleSchemaV16(raw);
     return;
   }
 
@@ -653,6 +1892,7 @@ function migrateSchema(raw: DatabaseSync): void {
     recordSchemaV13(raw);
     migrateBoardReportingSchemaV14(raw);
     migrateUserLifecycleAuditSchemaV15(raw);
+    migratePlanLifecycleSchemaV16(raw);
     return;
   }
 
@@ -786,7 +2026,15 @@ function migrateGoalBaselineYear(raw: DatabaseSync): void {
 /** Implements the table has column operation. */
 function tableHasColumn(
   raw: DatabaseSync,
-  table: "categories" | "kpis" | "distribution_bands",
+  table:
+    | "categories"
+    | "kpis"
+    | "distribution_bands"
+    | "strategic_plans"
+    | "board_reporting_scopes"
+    | "board_reporting_priorities"
+    | "board_reporting_statements"
+    | "plan_activation_operations",
   column: string,
 ): boolean {
   const columns = raw.prepare(`PRAGMA table_info(${table})`).all() as
@@ -2043,6 +3291,7 @@ function initializeSchema(raw: DatabaseSync): void {
   initializeStrategicSchema(raw);
   initializeBoardReportingSchema(raw);
   initializeUserLifecycleAuditSchema(raw);
+  initializePlanLifecycleSchema(raw);
 }
 
 /** Reset connection — useful when env changes during dev hot reload. */

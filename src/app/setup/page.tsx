@@ -9,6 +9,7 @@ import { StrategicGoalsEditorClient } from "./_components/StrategicGoalsEditorCl
 import { UserManagerClient } from "./_components/UserManagerClient";
 import { PlanSettingsClient } from "./_components/PlanSettingsClient";
 import { BoardReportingEditorClient } from "./_components/BoardReportingEditorClient";
+import { PlansManagerClient } from "./_components/PlansManagerClient";
 import type { StrategicGoalEditorRecord } from "@/components/strategic-goal-editor-model";
 import type { StrategicKpiEditorData } from "@/components/strategic-kpi-editor-model";
 import {
@@ -35,20 +36,29 @@ import type { Category, KPIWithCategory } from "@/lib/types";
 import { cn } from "@/lib/utils";
 import { firstSearchParam } from "@/lib/search-params";
 import { getBoardReportingAdminModel } from "@/features/board-reporting";
+import {
+  getPlanManagerModel,
+  listPlanLifecycleEvents,
+} from "@/features/plans/server";
+import type {
+  PlanLifecycleAction,
+  StrategicPlanSummary,
+} from "@/features/plans/types";
 
 export const dynamic = "force-dynamic";
 
-type SetupArea = "measures" | "goals" | "people" | "activity";
+type SetupArea = "plans" | "measures" | "goals" | "people" | "activity";
 type Params = Record<string, string | string[] | undefined>;
 
 /** Implements the setup area operation. */
 function setupArea(value: string | undefined): SetupArea {
-  return value === "goals" || value === "people" || value === "activity"
+  return value === "plans" || value === "goals" || value === "people" || value === "activity"
     ? value
     : "measures";
 }
 
 const AREAS: Array<{ value: SetupArea; label: string }> = [
+  { value: "plans", label: "Plans" },
   { value: "measures", label: "Measures" },
   { value: "goals", label: "Goals" },
   { value: "people", label: "People" },
@@ -93,6 +103,7 @@ export default async function SetupPage({ searchParams }: { searchParams: Promis
         </nav>
 
         {area === "measures" ? <MeasuresArea params={params} year={year} /> : null}
+        {area === "plans" ? <PlansManagerClient initialModel={getPlanManagerModel()} /> : null}
         {area === "goals" ? <GoalsArea params={params} year={year} /> : null}
         {area === "people" ? (
           <UserManagerClient currentUserId={user.id} users={listUsers()} />
@@ -232,6 +243,34 @@ function ActivityArea({ params }: { params: Params }) {
     limit: pageSize + 1,
     offset,
   });
+  const planModel = getPlanManagerModel();
+  const plans: StrategicPlanSummary[] = [
+    planModel.active,
+    ...(planModel.draft ? [planModel.draft] : []),
+    ...planModel.archived,
+    ...planModel.cancelled,
+  ];
+  const lifecyclePlanId = Number(firstSearchParam(params.lifecycle_plan));
+  const lifecycleAction = firstSearchParam(params.lifecycle_action);
+  const allowedLifecycleActions = new Set<PlanLifecycleAction>([
+    "create_blank",
+    "create_structural_clone",
+    "cancel",
+    "activate",
+    "archive",
+    "activation_recovered",
+  ]);
+  const lifecycleEvents = listPlanLifecycleEvents({
+    ...(Number.isSafeInteger(lifecyclePlanId) && lifecyclePlanId > 0
+      ? { planId: lifecyclePlanId }
+      : {}),
+    ...(lifecycleAction &&
+    allowedLifecycleActions.has(lifecycleAction as PlanLifecycleAction)
+      ? { action: lifecycleAction }
+      : {}),
+    limit: pageSize + 1,
+    offset,
+  });
   return (
     <HistoryClient
       history={historyPage.slice(0, pageSize)}
@@ -240,8 +279,25 @@ function ActivityArea({ params }: { params: Params }) {
       activeFilter={filter}
       setupEvents={setupPage.slice(0, pageSize)}
       availableYears={listEntryHistoryYears()}
+      lifecycleEvents={lifecycleEvents.slice(0, pageSize)}
+      lifecyclePlans={plans}
+      lifecycleFilter={{
+        planId:
+          Number.isSafeInteger(lifecyclePlanId) && lifecyclePlanId > 0
+            ? lifecyclePlanId
+            : undefined,
+        action:
+          lifecycleAction &&
+          allowedLifecycleActions.has(lifecycleAction as PlanLifecycleAction)
+            ? lifecycleAction as PlanLifecycleAction
+            : undefined,
+      }}
       page={page}
-      hasOlder={historyPage.length > pageSize || setupPage.length > pageSize}
+      hasOlder={
+        historyPage.length > pageSize ||
+        setupPage.length > pageSize ||
+        lifecycleEvents.length > pageSize
+      }
     />
   );
 }

@@ -2,6 +2,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { StrategicAuditEvent, StrategicGoalReadModel } from "@/features/strategy";
 import type { KPIWithCategory } from "@/lib/types";
 import type { StrategicCalculatedActual } from "./strategy-actuals";
+import type { ReportingPlanContext } from "./types";
 
 const {
   isSampleDataEnabledMock,
@@ -162,6 +163,16 @@ const goal: StrategicGoalReadModel = {
   }],
 };
 
+const archivedPlan: ReportingPlanContext = {
+  id: 19,
+  slug: "strategic-plan-2020-2024",
+  name: "Strategic Plan 2020–2024",
+  startYear: 2020,
+  endYear: 2024,
+  lifecycleState: "archived",
+  years: [2020, 2021, 2022, 2023, 2024],
+};
+
 /** Supports the actual test scenario. */
 function actual(year: number, periodType: StrategicCalculatedActual["periodType"], periodIndex: number, value: number): StrategicCalculatedActual {
   return {
@@ -232,6 +243,61 @@ beforeEach(() => {
 });
 
 describe("strategic reporting server", () => {
+  it("threads an explicit Archived plan through Board scope, plan-owned reads, and export metadata", () => {
+    getBoardReportingDisclosureScopeMock.mockReturnValue({
+      id: 8,
+      planId: archivedPlan.id,
+      revision: 3,
+      priorities: [{
+        id: 9,
+        priorityId: 1,
+        prioritySlug: goal.priority_slug,
+        priorityName: goal.priority_name,
+        displayTitle: "Archived Education",
+        displayOrder: 10,
+        statements: [{
+          id: 10,
+          text: "Preserved Board focus.",
+          displayOrder: 10,
+          measures: [{
+            id: metric.id,
+            slug: metric.slug,
+            name: metric.name,
+          }],
+        }],
+      }],
+    });
+    const data = loadBoardReportPageData({
+      year: 2024,
+      audience: "board",
+      plan: archivedPlan,
+    });
+
+    expect(listStrategicGoalsForReportingDisclosureMock).toHaveBeenCalledWith({
+      year: 2024,
+      planId: archivedPlan.id,
+    });
+    expect(getBoardReportingDisclosureScopeMock).toHaveBeenCalledWith(
+      archivedPlan.id,
+    );
+    expect(listKPIsMock).toHaveBeenCalledWith({ planId: archivedPlan.id });
+    expect(listCalculatedStrategyActualsMock).toHaveBeenCalledWith({
+      kpiIds: [metric.id],
+      throughYear: 2024,
+      planStartYear: archivedPlan.startYear,
+    });
+    expect(data.years).toEqual(archivedPlan.years);
+    expect(data.report.plan).toMatchObject({
+      id: archivedPlan.id,
+      slug: archivedPlan.slug,
+      name: archivedPlan.name,
+      startYear: archivedPlan.startYear,
+      endYear: archivedPlan.endYear,
+      lifecycleState: "archived",
+      generatedAt: expect.any(String),
+    });
+  });
+
   it("filters Board reporting to the explicit priority and measure allowlist", () => {
     const boardMetric: KPIWithCategory = {
       ...metric,

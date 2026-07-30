@@ -33,7 +33,7 @@ describe("strategic definition editors", () => {
     expect(html).toContain("Add input");
     expect(html).toContain("What will people enter?");
     expect(html).toContain("Move Participant satisfaction up");
-    expect(html).toContain("Used as");
+    expect(html).toContain("How this input is used");
     expect(html).toContain("Top number");
     expect(html).toContain("Total number");
     expect(html).not.toContain("annual target");

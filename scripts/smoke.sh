@@ -198,14 +198,17 @@ else
   check "Trends does not render Board Report" true
 fi
 
-for area in measures goals people activity; do
+for area in plans measures goals people activity; do
   code=$(smoke_curl -sS "${CURL_TLS_ARGS[@]}" -b "$cookie_jar" -o /dev/null -w '%{http_code}' "$BASE/setup?area=$area")
   check "Setup $area renders" test "$code" = "200"
 done
 setup=$(smoke_curl -sS "${CURL_TLS_ARGS[@]}" -b "$cookie_jar" "$BASE/setup?area=measures")
-for label in Measures Goals People Activity; do
+for label in Plans Measures Goals People Activity; do
   check "Setup exposes $label" grep -q ">$label<" <<< "$setup"
 done
+plans=$(smoke_curl -sS "${CURL_TLS_ARGS[@]}" -b "$cookie_jar" "$BASE/setup?area=plans")
+check "Plans shows the current Active plan" grep -q "Current Active plan" <<< "$plans"
+check "Plans offers a dashboard-driven successor starting point" grep -q "Start the next plan" <<< "$plans"
 needs_attention=$(smoke_curl -sS "${CURL_TLS_ARGS[@]}" -b "$cookie_jar" "$BASE/setup?area=measures&filter=needs-attention")
 check "Measures integrates setup attention" grep -q "Needs attention (" <<< "$needs_attention"
 check "Attention rows link into Setup details" grep -q "area=measures&amp;item=" <<< "$needs_attention"

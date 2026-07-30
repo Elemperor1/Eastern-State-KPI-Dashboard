@@ -5,7 +5,7 @@
  * `PROTECTED_API_ROUTES` in `./auth-regression-helpers` is a
  * hand-maintained table; before this guard, a newly added
  * `src/app/api/** /route.ts` whose author forgot to register it there
- * failed NO test — the "exhaustive 29-combination matrix" would
+ * failed NO test — the "exhaustive protected-route matrix" would
  * silently cease to be exhaustive. This suite walks the real
  * filesystem, extracts every exported HTTP method from every API
  * route module, and asserts the on-disk surface is EXACTLY:
@@ -159,8 +159,8 @@ describe("authz route-table drift guard (S087-C1)", () => {
     expect(ON_DISK.length).toBeGreaterThanOrEqual(
       PROTECTED_API_ROUTES.length + UNGATED_API_ROUTE_EXCEPTIONS.length,
     );
-    expect(PROTECTED_API_ROUTES.length).toBe(29);
-    expect(ON_DISK.length).toBe(34);
+    expect(PROTECTED_API_ROUTES.length).toBe(32);
+    expect(ON_DISK.length).toBe(37);
   });
 
   it("every protected route+method on disk is registered in PROTECTED_API_ROUTES", () => {

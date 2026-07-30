@@ -186,7 +186,11 @@ export function PlanSettingsClient({
       <div className="mb-5">
         <h2 id="plan-settings-heading" className="text-xl font-semibold text-ink-950">Plan settings</h2>
         <p className="mt-1 max-w-3xl text-sm leading-6 text-ink-600">
-          These names and years appear throughout reporting. Existing records outside a shorter range must be resolved first.
+          These names and years appear throughout reporting. You can extend the
+          current plan beyond 2029. After extending it, review each measure&apos;s
+          future setup and add targets for the new years. This changes the
+          current plan; it does not create a separate new strategic plan. Before
+          shortening it, update or remove anything dated outside the new years.
         </p>
       </div>
       {feedback ? <StatusBanner variant={feedback.variant}>{feedback.message}</StatusBanner> : null}
@@ -216,7 +220,7 @@ export function PlanSettingsClient({
         <FormField label="Description" htmlFor="plan-description" className="md:col-span-2" hint={errorHint(errors.planDescription)}>
           <Textarea id="plan-description" rows={3} aria-invalid={Boolean(errors.planDescription)} value={draft.planDescription} onChange={(event) => update("planDescription", event.target.value)} />
         </FormField>
-        <FormField label="Source reference" htmlFor="plan-source-reference" className="md:col-span-2" hint={errorHint(errors.sourceReference)}>
+        <FormField label="Approval or source" htmlFor="plan-source-reference" className="md:col-span-2" hint={errorHint(errors.sourceReference, "For example: approved plan, Board minutes, or revision date.")}>
           <Textarea id="plan-source-reference" rows={2} aria-invalid={Boolean(errors.sourceReference)} value={draft.sourceReference} onChange={(event) => update("sourceReference", event.target.value)} />
         </FormField>
         <div className="md:col-span-2">

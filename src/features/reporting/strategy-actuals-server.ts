@@ -20,11 +20,12 @@ import {
 export function listCalculatedStrategyActuals({
   kpiIds,
   throughYear,
+  planStartYear = getActiveInstallation().plan.startYear,
 }: {
   kpiIds: number[];
   throughYear: number;
+  planStartYear?: number;
 }): StrategicCalculatedActual[] {
-  const planStartYear = getActiveInstallation().plan.startYear;
   if (kpiIds.length === 0 || throughYear < planStartYear) return [];
   const wanted = new Set(kpiIds);
   const actuals: StrategicCalculatedActual[] = [];

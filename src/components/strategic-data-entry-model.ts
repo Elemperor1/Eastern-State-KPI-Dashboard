@@ -393,7 +393,8 @@ export function buildStrategicDataEntryMutation(
     );
     const bands = activeBandsForDraft(selectedKpi, draft);
     if (bands.length === 0) {
-      errors.bands = "Configure at least one effective distribution band first.";
+      errors.bands =
+        "Set up at least one reporting group for this measure before entering results.";
     }
     const bandPayload = bands.map((band) => ({
       band_id: band.id,
@@ -419,13 +420,15 @@ export function buildStrategicDataEntryMutation(
         draft.mutuallyExclusive &&
         counts.reduce((sum, count) => sum + count, 0) !== respondentCount
       ) {
-        errors.bands = "Mutually exclusive band counts must equal the respondent total.";
+        errors.bands =
+          "Because each response belongs to one group, the group counts must add up to the total number of responses.";
       }
       if (
         !draft.mutuallyExclusive &&
         counts.some((count) => count > respondentCount)
       ) {
-        errors.bands = "A band count cannot exceed the respondent total.";
+        errors.bands =
+          "A reporting-group count cannot be greater than the total number of responses.";
       }
     }
     if (Object.keys(errors).length > 0) {

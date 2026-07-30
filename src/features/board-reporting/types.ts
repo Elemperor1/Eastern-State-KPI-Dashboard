@@ -25,6 +25,7 @@ export interface BoardReportingScope {
   id: number;
   planId: number;
   revision: number;
+  reviewStatus?: "needs_review" | "approved" | "intentional_empty";
   priorities: BoardReportingPriority[];
 }
 

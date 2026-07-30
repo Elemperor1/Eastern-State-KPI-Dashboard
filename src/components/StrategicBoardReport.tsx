@@ -38,6 +38,10 @@ export interface StrategicBoardReportProps {
   report: StrategicBoardReportViewModel;
   id?: string;
   className?: string;
+  boardScopeReviewStatus?:
+    | "needs_review"
+    | "approved"
+    | "intentional_empty";
 }
 
 type BadgeVariant = NonNullable<BadgeProps["variant"]>;
@@ -183,6 +187,7 @@ export function StrategicBoardReport({
   report,
   id = "strategic-board-report",
   className,
+  boardScopeReviewStatus = "approved",
 }: StrategicBoardReportProps) {
   const counts = countStrategicBoardReportStructure(report);
   const selectedYear = report.selectedYear?.toString() ?? "Not specified";
@@ -230,8 +235,9 @@ export function StrategicBoardReport({
               Executive summary
             </h2>
             <p className="mt-2 text-sm leading-6 text-ink-600">
-              Goal progress follows the rules set in Setup. Goals without enough
-              information remain visible and are not counted as failed.
+              Each goal uses the completion method chosen in Setup. Goals
+              missing required information are shown separately and do not
+              lower the completion rate.
             </p>
           </div>
           <Badge
@@ -280,8 +286,16 @@ export function StrategicBoardReport({
       {report.priorities.length === 0 ? (
         <Card className="break-inside-avoid p-10" data-pdf-keep-together>
           <EmptyState
-            title="No strategic priorities available"
-            description="No priorities are available for the selected year."
+            title={
+              boardScopeReviewStatus === "intentional_empty"
+                ? "No Board report configured"
+                : "No strategic priorities available"
+            }
+            description={
+              boardScopeReviewStatus === "intentional_empty"
+                ? "The Board scope for this Strategic Plan was deliberately approved with no Priorities or Measures."
+                : "No priorities are available for the selected year."
+            }
           />
         </Card>
       ) : (
@@ -327,6 +341,13 @@ function PrioritySection({
             <h2 id={headingId} className="wrap-break-word text-2xl font-semibold text-ink-900">
               {priority.name}
             </h2>
+            {(priority.focusStatements?.length ?? 0) > 0 ? (
+              <ul className="mt-3 space-y-2 text-sm leading-6 text-ink-700">
+                {priority.focusStatements?.map((statement) => (
+                  <li key={statement}>{statement}</li>
+                ))}
+              </ul>
+            ) : null}
           </div>
           <span className="text-sm font-medium tabular-nums text-ink-600">
             {priority.goals.length} goal{priority.goals.length === 1 ? "" : "s"}
@@ -536,12 +557,12 @@ function KpiSection({
 
       <div className="grid grid-cols-1 gap-3 lg:grid-cols-2">
         <TargetProgressCard
-          label="Annual target and pacing"
+          label="This year’s target and progress so far"
           progress={kpi.annualProgress}
           unit={kpi.unit}
         />
         <TargetProgressCard
-          label="Full-plan target and progress"
+          label="End-of-plan target and progress"
           progress={kpi.fullPlanProgress}
           unit={kpi.unit}
         />
@@ -608,14 +629,14 @@ function TargetProgressCard({
             {progress.pacingStatus !== null ? (
               <>
                 <SummaryMetric
-                  label="Year-to-date pacing target"
+                  label="Target for this point in the year"
                   value={formatBoardReportMetricValue(
                     progress.pacingTarget,
                     unit,
                   )}
                 />
                 <SummaryMetric
-                  label="Annual pacing status"
+                  label="Progress toward this year’s target"
                   value={formatBoardReportToken(progress.pacingStatus)}
                 />
               </>
@@ -663,9 +684,10 @@ function ComponentTable({
   return (
     <Card as="section" className="overflow-hidden" data-pdf-keep-together>
       <div className="border-b border-ink-100 p-4 lg:p-5">
-        <h5 className="text-base font-semibold text-ink-900">Component results</h5>
+        <h5 className="text-base font-semibold text-ink-900">Reported values</h5>
         <p className="mt-1 text-xs text-ink-500">
-          Components remain separate; no unrelated values are averaged here.
+          This measure has several reported values. They are shown separately
+          because they should not be combined.
         </p>
       </div>
       <Table className="table-fixed">
@@ -759,7 +781,7 @@ function DemographicTable({
             </p>
             {demographics.derivedNonWhitePercentage !== null ? (
               <p className="mt-1 text-xs font-semibold text-ink-700">
-                Derived non-white respondent share: {formatBoardReportPercentage(demographics.derivedNonWhitePercentage)}
+                Combined non-White response share: {formatBoardReportPercentage(demographics.derivedNonWhitePercentage)}
               </p>
             ) : null}
           </div>
@@ -771,16 +793,16 @@ function DemographicTable({
         </div>
         <div className="mt-3 rounded-lg bg-(--color-info-bg) p-3">
           <p className="text-xs font-semibold uppercase tracking-[0.06em] text-ink-700">
-            Respondent population caveat
+            How to interpret these responses
           </p>
           <p className="mt-1 wrap-break-word text-sm leading-6 text-ink-700">
             {demographics.populationCaveat ??
-              "A population-representation caveat was not supplied."}
+              "No explanation was supplied about who these responses represent."}
           </p>
           {!demographics.mutuallyExclusive ? (
             <p className="mt-1 text-sm leading-6 text-ink-700">
-              Respondents may appear in more than one band; band counts should
-              not be summed as unique people.
+              A person may appear in more than one reporting group. Do not add
+              the group counts together to estimate the number of people.
             </p>
           ) : null}
         </div>

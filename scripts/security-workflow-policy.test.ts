@@ -291,7 +291,10 @@ describe("security workflow policy", () => {
       'read -r -s -p "New password: " SETUP_ADMIN_PASSWORD',
     );
     expect(runbook).toContain(
-      'SETUP_ADMIN_EMAIL="kerry@easternstate.org" npm run setup:admin',
+      'SETUP_ADMIN_EMAIL="zach@easternstate.org"',
+    );
+    expect(runbook).toContain(
+      "node node_modules/tsx/dist/cli.mjs scripts/setup-admin.ts",
     );
     expect(runbook).toMatch(/there is no\s+password to recover or share/u);
   });

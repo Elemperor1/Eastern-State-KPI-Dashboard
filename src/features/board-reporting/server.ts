@@ -196,12 +196,23 @@ function readScope(
 ): BoardReportingScope {
   const db = getDb();
   const scopeRow = db.prepare(
-    "SELECT id, plan_id, revision FROM board_reporting_scopes WHERE plan_id = ?",
+    "SELECT id, plan_id, revision, review_status FROM board_reporting_scopes WHERE plan_id = ?",
   ).get(planId) as
-    | { id: number; plan_id: number; revision: number }
+    | {
+        id: number;
+        plan_id: number;
+        revision: number;
+        review_status: BoardReportingScope["reviewStatus"];
+      }
     | undefined;
   if (!scopeRow) {
-    return { id: 0, planId, revision: 0, priorities: [] };
+    return {
+      id: 0,
+      planId,
+      revision: 0,
+      reviewStatus: "needs_review",
+      priorities: [],
+    };
   }
   const rows = db.prepare(
     `SELECT
@@ -222,6 +233,7 @@ function readScope(
      JOIN categories priority ON priority.id = board_priority.priority_id
      LEFT JOIN board_reporting_statements statement
        ON statement.board_priority_id = board_priority.id
+      AND statement.archived_at IS NULL
      LEFT JOIN board_reporting_statement_kpis link
        ON link.statement_id = statement.id
      LEFT JOIN kpis kpi
@@ -233,11 +245,13 @@ function readScope(
           : "AND kpi.is_active = 1 AND kpi.archived_at IS NULL"
       }
      WHERE board_priority.scope_id = ?
+       AND board_priority.archived_at IS NULL
+       AND priority.plan_id = ?
        ${includeArchivedCatalogForDisclosure ? "" : "AND priority.archived_at IS NULL"}
      ORDER BY board_priority.display_order, board_priority.id,
               statement.display_order, statement.id,
               link.display_order, kpi.id`,
-  ).all(Number(scopeRow.id)) as Record<string, unknown>[];
+  ).all(Number(scopeRow.id), planId) as Record<string, unknown>[];
   const priorities = new Map<number, BoardReportingPriority>();
   const statementIds = new Map<number, Set<number>>();
   for (const row of rows) {
@@ -281,6 +295,7 @@ function readScope(
     id: Number(scopeRow.id),
     planId: Number(scopeRow.plan_id),
     revision: Number(scopeRow.revision),
+    reviewStatus: scopeRow.review_status,
     priorities: Array.from(priorities.values()),
   };
 }
@@ -297,9 +312,12 @@ export function getBoardReportingScope(): BoardReportingScope {
  * pipeline can surface an explicit archived exclusion instead of silently
  * dropping an approved Board measure.
  */
-export function getBoardReportingDisclosureScope(): BoardReportingScope {
-  initializeDefaultScope();
-  return readScope(getActiveInstallation().plan.id, true);
+export function getBoardReportingDisclosureScope(
+  planId = getActiveInstallation().plan.id,
+): BoardReportingScope {
+  const activePlanId = getActiveInstallation().plan.id;
+  if (planId === activePlanId) initializeDefaultScope();
+  return readScope(planId, true);
 }
 
 /** Retrieves the Admin editor model and every linkable active measure. */
@@ -387,19 +405,90 @@ export function updateBoardReportingScope(
       throw new BoardReportingEditConflictError();
     }
     validateReferences(parsed, installation.plan.id);
-    db.prepare(
-      "DELETE FROM board_reporting_priorities WHERE scope_id = ?",
-    ).run(current.id);
+    const retainedPriorityIds: number[] = [];
     parsed.priorities.forEach((priority, priorityIndex) => {
-      insertPriority({
-        scopeId: current.id,
-        priorityId: priority.priorityId,
-        displayTitle: priority.displayTitle,
-        displayOrder: (priorityIndex + 1) * 10,
-        statements: priority.statements,
-        actorId,
+      const existing = db.prepare(
+        `SELECT id FROM board_reporting_priorities
+         WHERE scope_id = ? AND priority_id = ?`,
+      ).get(current.id, priority.priorityId) as { id: number } | undefined;
+      let boardPriorityId: number;
+      if (existing) {
+        boardPriorityId = existing.id;
+        db.prepare(
+          `UPDATE board_reporting_priorities
+           SET display_title = ?, display_order = ?, archived_at = NULL,
+               updated_by = ?, updated_at = datetime('now')
+           WHERE id = ?`,
+        ).run(
+          priority.displayTitle,
+          (priorityIndex + 1) * 10,
+          actorId,
+          boardPriorityId,
+        );
+        db.prepare(
+          `UPDATE board_reporting_statements
+           SET archived_at = datetime('now'), updated_by = ?,
+               updated_at = datetime('now')
+           WHERE board_priority_id = ? AND archived_at IS NULL`,
+        ).run(actorId, boardPriorityId);
+      } else {
+        boardPriorityId = Number(
+          db.prepare(
+            `INSERT INTO board_reporting_priorities (
+               scope_id, priority_id, display_title, display_order,
+               created_by, updated_by
+             ) VALUES (?, ?, ?, ?, ?, ?)`,
+          ).run(
+            current.id,
+            priority.priorityId,
+            priority.displayTitle,
+            (priorityIndex + 1) * 10,
+            actorId,
+            actorId,
+          ).lastInsertRowid,
+        );
+      }
+      retainedPriorityIds.push(boardPriorityId);
+      priority.statements.forEach((statement, statementIndex) => {
+        const statementId = Number(
+          db.prepare(
+            `INSERT INTO board_reporting_statements (
+               board_priority_id, statement_text, display_order,
+               created_by, updated_by
+             ) VALUES (?, ?, ?, ?, ?)`,
+          ).run(
+            boardPriorityId,
+            statement.text,
+            (statementIndex + 1) * 10,
+            actorId,
+            actorId,
+          ).lastInsertRowid,
+        );
+        statement.kpiIds.forEach((kpiId, kpiIndex) => {
+          db.prepare(
+            `INSERT INTO board_reporting_statement_kpis (
+               statement_id, kpi_id, display_order, created_by
+             ) VALUES (?, ?, ?, ?)`,
+          ).run(statementId, kpiId, (kpiIndex + 1) * 10, actorId);
+        });
       });
     });
+    if (retainedPriorityIds.length === 0) {
+      db.prepare(
+        `UPDATE board_reporting_priorities
+         SET archived_at = datetime('now'), updated_by = ?,
+             updated_at = datetime('now')
+         WHERE scope_id = ? AND archived_at IS NULL`,
+      ).run(actorId, current.id);
+    } else {
+      db.prepare(
+        `UPDATE board_reporting_priorities
+         SET archived_at = datetime('now'), updated_by = ?,
+             updated_at = datetime('now')
+         WHERE scope_id = ? AND archived_at IS NULL
+           AND id NOT IN (${retainedPriorityIds.map(() => "?").join(",")})`,
+      ).run(actorId, current.id, ...retainedPriorityIds);
+    }
     const result = db.prepare(
       `UPDATE board_reporting_scopes
        SET revision = revision + 1, updated_by = ?, updated_at = datetime('now')

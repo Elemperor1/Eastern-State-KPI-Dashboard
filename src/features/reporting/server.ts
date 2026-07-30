@@ -5,6 +5,11 @@ import {
 } from "@/features/strategy";
 import { getActiveInstallation } from "@/features/installation/server";
 import {
+  getArchivedPlan,
+  listStrategicPlans,
+  PlanLifecycleNotFoundError,
+} from "@/features/plans/server";
+import {
   listStrategicAuditEvents,
   listStrategicAuditIdentitiesForKpi,
   listKpiIdsWithArchivedIntervalValues,
@@ -16,6 +21,7 @@ import { humanizeReportingReason } from "./language";
 import { buildStrategicBoardReportFromSummary } from "./strategic-board-adapter";
 import type {
   BoardReportPageData,
+  ReportingPlanContext,
   StrategicMetricPageData,
   StrategicPriorityPageData,
   StrategicTrendReportData,
@@ -30,13 +36,83 @@ import { getBoardReportingDisclosureScope } from "@/features/board-reporting";
 
 export type ReportingAudience = "staff" | "board";
 
+/** Maps one lifecycle-owned plan into the narrow reporting context. */
+function asReportingPlanContext(
+  plan: Pick<
+    ReturnType<typeof listStrategicPlans>[number],
+    "id" | "slug" | "name" | "startYear" | "endYear" | "lifecycleState"
+  >,
+): ReportingPlanContext {
+  if (
+    plan.lifecycleState !== "active" &&
+    plan.lifecycleState !== "archived"
+  ) {
+    throw new Error("Only Active and Archived Strategic Plans can be reported.");
+  }
+  return {
+    id: plan.id,
+    slug: plan.slug,
+    name: plan.name,
+    startYear: plan.startYear,
+    endYear: plan.endYear,
+    lifecycleState: plan.lifecycleState,
+    years: Array.from(
+      { length: plan.endYear - plan.startYear + 1 },
+      (_, index) => plan.startYear + index,
+    ),
+  };
+}
+
+/** Returns the Active plan first and every reportable Archived plan after it. */
+export function listReportingPlans(): ReportingPlanContext[] {
+  const installation = getActiveInstallation();
+  const active = asReportingPlanContext({
+    ...installation.plan,
+    lifecycleState: "active",
+  });
+  const archived = listStrategicPlans()
+    .filter(
+      (plan) =>
+        plan.organizationId === installation.organization.id &&
+        plan.lifecycleState === "archived",
+    )
+    .map(asReportingPlanContext);
+  return [active, ...archived];
+}
+
+/**
+ * Resolves an explicit Archived-plan request. Omitting the id always returns
+ * the Active plan; an explicit Active, Draft, Cancelled, or foreign plan is
+ * deliberately rejected so this never becomes a sticky plan switch.
+ */
+export function resolveReportingPlanContext(
+  archivedPlanId?: number,
+): ReportingPlanContext | null {
+  const installation = getActiveInstallation();
+  if (archivedPlanId === undefined) {
+    return asReportingPlanContext({
+      ...installation.plan,
+      lifecycleState: "active",
+    });
+  }
+  try {
+    const plan = getArchivedPlan(archivedPlanId);
+    if (plan.organizationId !== installation.organization.id) return null;
+    return asReportingPlanContext(plan);
+  } catch (error) {
+    if (error instanceof PlanLifecycleNotFoundError) return null;
+    throw error;
+  }
+}
+
 /** Keeps Board reporting on the explicitly approved priorities and measures. */
 function scopeGoalsForAudience(
   goals: ReturnType<typeof listStrategicGoals>,
   audience: ReportingAudience,
+  planId: number,
 ): ReturnType<typeof listStrategicGoals> {
   if (audience !== "board") return goals;
-  const scope = getBoardReportingDisclosureScope();
+  const scope = getBoardReportingDisclosureScope(planId);
   const scopeByPriority = new Map(
     scope.priorities.map((priority) => [
       priority.prioritySlug,
@@ -87,6 +163,11 @@ export function listDashboardYears(): number[] {
   return [...getActiveInstallation().years];
 }
 
+/** Returns only the Reporting Years owned by the supplied request context. */
+export function listReportYears(plan: ReportingPlanContext): number[] {
+  return [...plan.years];
+}
+
 /** Implements the unique kpi ids operation. */
 function uniqueKpiIds(
   goals: ReturnType<typeof listStrategicGoals>,
@@ -103,45 +184,74 @@ function loadStrategicReportModel({
   priorityId,
   reportingPeriod,
   audience = "staff",
+  plan = resolveReportingPlanContext()!,
 }: {
   year: number;
   throughMonth?: number;
   priorityId?: number;
   reportingPeriod?: ReportingCycleOption;
   audience?: ReportingAudience;
+  plan?: ReportingPlanContext;
 }) {
   const installation = getActiveInstallation();
   const goals = scopeGoalsForAudience(listGoalsForReporting({
     year,
+    planId: plan.id,
     ...(priorityId === undefined ? {} : { priority_id: priorityId }),
-  }), audience);
+  }), audience, plan.id);
   const actuals = listCalculatedStrategyActuals({
     kpiIds: uniqueKpiIds(goals),
     throughYear: year,
+    planStartYear: plan.startYear,
   });
   const scopedActuals = reportingPeriod
     ? actuals.filter((actual) => actualIncludedInReportingCycle(actual, reportingPeriod))
     : actuals;
   const summary = buildStrategicDashboardSummary({
     goals,
-    kpis: listKPIs(),
+    kpis: listKPIs({ planId: plan.id }),
     selectedYear: year,
-    planStartYear: installation.plan.startYear,
+    planStartYear: plan.startYear,
     throughMonth,
     actuals: scopedActuals,
     hiddenValueKpiIds: listKpiIdsWithArchivedIntervalValues(uniqueKpiIds(goals)),
   });
+  const report = buildStrategicBoardReportFromSummary({
+    summary,
+    goals,
+    organizationName: installation.organization.name,
+    organizationSlug: installation.organization.slug,
+    reportingPeriod: reportingPeriod?.label,
+    plan: {
+      id: plan.id,
+      slug: plan.slug,
+      name: plan.name,
+      startYear: plan.startYear,
+      endYear: plan.endYear,
+      lifecycleState: plan.lifecycleState,
+      generatedAt: new Date().toISOString(),
+    },
+  });
+  if (audience === "board") {
+    const scopeByPriorityId = new Map(
+      getBoardReportingDisclosureScope(plan.id).priorities.map((priority) => [
+        String(priority.priorityId),
+        priority,
+      ]),
+    );
+    report.priorities = report.priorities.map((priority) => ({
+      ...priority,
+      focusStatements:
+        scopeByPriorityId
+          .get(priority.id)
+          ?.statements.map((statement) => statement.text) ?? [],
+    }));
+  }
   return {
     goals,
     actuals: scopedActuals,
     summary,
-    report: buildStrategicBoardReportFromSummary({
-      summary,
-      goals,
-      organizationName: installation.organization.name,
-      organizationSlug: installation.organization.slug,
-      reportingPeriod: reportingPeriod?.label,
-    }),
+    report,
   };
 }
 
@@ -149,8 +259,13 @@ function loadStrategicReportModel({
 export function listStrategicReportingPeriods(
   year: number,
   audience: ReportingAudience = "staff",
+  plan = resolveReportingPlanContext()!,
 ): ReportingCycleOption[] {
-  const goals = scopeGoalsForAudience(listGoalsForReporting({ year }), audience);
+  const goals = scopeGoalsForAudience(
+    listGoalsForReporting({ year, planId: plan.id }),
+    audience,
+    plan.id,
+  );
   return buildReportingCycleOptions(
     goals.flatMap((goal) =>
       goal.members.map((member) => member.configuration?.reporting_frequency ?? null),
@@ -224,22 +339,31 @@ export function loadBoardReportPageData({
   throughMonth = 12,
   reportingPeriod,
   audience = "staff",
+  plan,
 }: {
   year: number;
   throughMonth?: number;
   reportingPeriod?: ReportingCycleOption;
   audience?: ReportingAudience;
+  plan?: ReportingPlanContext;
 }): BoardReportPageData {
   const { report } = loadStrategicReportModel({
     year,
     throughMonth,
     reportingPeriod,
     audience,
+    ...(plan ? { plan } : {}),
   });
   return {
-    years: listDashboardYears(),
+    years: plan ? listReportYears(plan) : listDashboardYears(),
     sampleData: isSampleDataEnabled(),
     report,
+    boardScopeReviewStatus:
+      audience === "board"
+          ? getBoardReportingDisclosureScope(
+            plan?.id ?? resolveReportingPlanContext()!.id,
+          ).reviewStatus ?? "needs_review"
+        : "approved",
   };
 }
 
@@ -302,7 +426,12 @@ export function loadStrategicMetricPageData(
 ): StrategicMetricPageData | null {
   const catalogKpi = listKPIs().find((kpi) => kpi.slug === kpiSlug);
   if (!catalogKpi) return null;
-  const goals = scopeGoalsForAudience(listGoalsForReporting({ year }), audience);
+  const activePlanId = getActiveInstallation().plan.id;
+  const goals = scopeGoalsForAudience(
+    listGoalsForReporting({ year }),
+    audience,
+    activePlanId,
+  );
   const context = goals
     .flatMap((goal) => goal.members.map((member) => ({ goal, member })))
     .find(({ member }) => member.kpi_id === catalogKpi.id);
@@ -373,16 +502,22 @@ export function loadStrategicTrendReportData({
   throughMonth = 12,
   reportingPeriod,
   audience = "staff",
+  plan = resolveReportingPlanContext()!,
 }: {
   year?: number;
   throughMonth?: number;
   reportingPeriod?: ReportingCycleOption;
   audience?: ReportingAudience;
+  plan?: ReportingPlanContext;
 } = {}): StrategicTrendReportData {
-  const years = getActiveInstallation().years.filter(
+  const years = plan.years.filter(
     (candidate) => candidate <= year,
   );
-  const goals = scopeGoalsForAudience(listGoalsForReporting({ year }), audience);
+  const goals = scopeGoalsForAudience(
+    listGoalsForReporting({ year, planId: plan.id }),
+    audience,
+    plan.id,
+  );
   const members = Array.from(
     new Map(
       goals.flatMap((goal) =>
@@ -413,6 +548,7 @@ export function loadStrategicTrendReportData({
   const actuals = listCalculatedStrategyActuals({
     kpiIds: memberIds,
     throughYear: year,
+    planStartYear: plan.startYear,
   });
 
   return {

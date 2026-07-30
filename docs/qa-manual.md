@@ -60,8 +60,8 @@ An explicitly allowed remote base retains the operator's curl proxy behavior.
 
 ## Setup
 
-- Confirm the persistent selector contains exactly Measures, Goals, People,
-  and Activity.
+- Confirm the persistent selector contains exactly Plans, Measures, Goals,
+  People, and Activity.
 - In Measures, apply Needs attention and open a measure detail without leaving
   Setup. At 390 px, verify Back to Measures restores the list and focus order is
   understandable.
@@ -93,6 +93,21 @@ An explicitly allowed remote base retains the operator's curl proxy behavior.
 - Confirm revoked sessions receive uniform 401 responses, CSRF failures remain
   generic, and `AUTH_DISABLED` cannot run outside loopback development.
 
+## First-run onboarding and roles
+
+- Against a fresh disposable database, set both `BOOTSTRAP_*_PASSWORD` values
+  before the first application request.
+- Sign in as `zach@easternstate.org`. Confirm the account is named Zach Palmer,
+  has the Admin role, and is sent to `/setup-password` before any product
+  destination. Replace the temporary password, confirm the session is ended,
+  sign in with the new password, and verify all four destinations are present.
+- Sign in as `kerry@easternstate.org`. Confirm the account is named Kerry
+  Sautner, has the Viewer role, receives the same forced-rotation flow, and
+  can access only Overview and Reports.
+- In Setup → People, confirm Zach is Admin and Kerry is Viewer. On an existing
+  database, promote Zach before demoting Kerry so the last-active-admin guard
+  never leaves the installation without an administrator.
+
 ## Release
 
 - Dispatch `Release Security` from `master`. Confirm `Release container
@@ -105,10 +120,14 @@ An explicitly allowed remote base retains the operator's curl proxy behavior.
 - Back up the production SQLite volume and verify the backup opens.
 - Run `DATABASE_PATH=/absolute/path/to/kpi.db npm run db:migrate`; never use
   `db:seed` as a migration.
-- Run the credentialed production/auth-enabled smoke.
-- Run `fly config validate --strict`, then confirm `fly checks list` reports the
-  `/api/health/ready` service check as passing. Configuration validation and
-  local checks do not authorize a deploy.
+- Run the credentialed production/auth-enabled smoke against a disposable
+  release-candidate database or restored clone, never the live database; the
+  harness performs authenticated mutations.
+- For Fly, run `fly config validate --strict`, then confirm `fly checks list`
+  reports the `/api/health/ready` service check as passing. For an on-premises
+  server, follow `docs/local-server-deployment.md` and verify the same endpoint
+  through the final HTTPS origin. Configuration validation and local checks do
+  not authorize a deploy.
 - Record before/after traces for Overview, Data Entry, Reports, and Setup on
   desktop and representative mobile widths.
 - Run `npm run perf:profile` with `BASE`, `PERF_EMAIL`, and `PERF_PASSWORD`.

@@ -12,8 +12,8 @@ On the first run against a fresh database, `ensureSeedAdmin()`
 
 | Email                     | Role    | Env var consumed at seed time       |
 | ------------------------- | ------- | ----------------------------------- |
-| `kerry@easternstate.org`  | admin   | `BOOTSTRAP_ADMIN_PASSWORD`          |
-| `zach@easternstate.org`   | viewer  | `BOOTSTRAP_VIEWER_PASSWORD`         |
+| `zach@easternstate.org`   | admin   | `BOOTSTRAP_ADMIN_PASSWORD`          |
+| `kerry@easternstate.org`  | viewer  | `BOOTSTRAP_VIEWER_PASSWORD`         |
 
 For each account:
 
@@ -30,8 +30,8 @@ In **both** cases the seed emits only non-sensitive status, e.g.:
 
 ```
 [seed] provisioned 2 bootstrap account(s) on first run. Each was given a temporary credential that must be rotated at first login.
-[seed]   kerry@easternstate.org  (admin)  credential source: BOOTSTRAP_ADMIN_PASSWORD
-[seed]   zach@easternstate.org  (viewer)  credential source: BOOTSTRAP_VIEWER_PASSWORD
+[seed]   zach@easternstate.org  (admin)  credential source: BOOTSTRAP_ADMIN_PASSWORD
+[seed]   kerry@easternstate.org  (viewer)  credential source: BOOTSTRAP_VIEWER_PASSWORD
 ```
 
 or, for the random fallback, a non-sensitive warning naming the account
@@ -42,6 +42,11 @@ the user is forced through `/setup-password` (login redirect + per-page
 server-component redirect + `requireSession`/`requireAdmin` HTTP 403)
 before reaching the dashboard. A seeded/temporary credential cannot be
 used as a permanent login.
+
+For an on-premises or other local production server, use
+[`local-server-deployment.md`](local-server-deployment.md). It applies the same
+credential contract to the repository's production Docker image and documents
+the Zach/Kerry first-login handoff.
 
 ## Production deployment (Fly.io)
 
@@ -77,8 +82,8 @@ fly deploy
 ```
 
 The deploy runs `scripts/start-production.sh` → `scripts/ensure-seeded.mjs`.
-An existing schema 9–14 database with business rows is migrated additively to
-schema 15 and is never sent through the destructive seed. Schema 8 is also
+An existing schema 9–15 database with business rows is migrated additively to
+schema 16 and is never sent through the destructive seed. Schema 8 is also
 additively migratable, but it is deliberately excluded from automatic boot
 migration: stop writes, back it up, and run
 `DATABASE_PATH=/absolute/path/to/kpi.db npm run db:migrate` explicitly. Schema
@@ -112,14 +117,15 @@ After deploy, the next step depends on how each account was initialized:
   fly ssh console --app eastern-state-kpi-dashboard
   read -r -s -p "New password: " SETUP_ADMIN_PASSWORD; echo
   export SETUP_ADMIN_PASSWORD
-  SETUP_ADMIN_EMAIL="kerry@easternstate.org" npm run setup:admin
+  SETUP_ADMIN_EMAIL="zach@easternstate.org" \
+    node node_modules/tsx/dist/cli.mjs scripts/setup-admin.ts
   unset SETUP_ADMIN_PASSWORD
   exit
   ```
 
   The `read -s` prompt keeps the plaintext out of the command line, terminal
   echo, and shell history. Repeat inside a fresh console for
-  `zach@easternstate.org` if the viewer secret was also unset. Because
+  `kerry@easternstate.org` if the viewer secret was also unset. Because
   `setup:admin` clears `must_change_password`, treat this as the user's
   permanent credential or issue a temporary replacement later through
   Setup → People. Share it only out of band.
@@ -147,15 +153,15 @@ password on any bootstrap account, use the operator-only command:
 
 ```bash
 SETUP_ADMIN_PASSWORD="<choose-a-strong-password>" \
-  SETUP_ADMIN_EMAIL="kerry@easternstate.org" \
+  SETUP_ADMIN_EMAIL="zach@easternstate.org" \
   npm run setup:admin
 ```
 
 - `SETUP_ADMIN_PASSWORD` is **required** and must be ≥ 8 chars. It is read
   from the environment only — **never** from a command-line argument — so
   it cannot leak through shell history, `ps`, or CI logs.
-- `SETUP_ADMIN_EMAIL` defaults to `kerry@easternstate.org`; set it to
-  target the viewer (`zach@easternstate.org`) or another bootstrap account.
+- `SETUP_ADMIN_EMAIL` defaults to `zach@easternstate.org`; set it to
+  target the viewer (`kerry@easternstate.org`) or another bootstrap account.
 - The command sets the password and **clears** `must_change_password`
   (the operator chose this password, so it is treated as permanent, not
   temporary). If you instead want the user to rotate it at next login, use
@@ -183,7 +189,7 @@ SETUP_ADMIN_PASSWORD="<choose-a-strong-password>" \
 - Output is non-sensitive only:
 
   ```
-  [setup:admin] password updated for kerry@easternstate.org (admin); must_change_password cleared. The account is ready for login.
+  [setup:admin] password updated for zach@easternstate.org (admin); must_change_password cleared. The account is ready for login.
   [setup:admin] reminder: share credentials out-of-band, never by email/log.
   ```
 

@@ -339,7 +339,7 @@ export function UserManagerClient({
       <ConfirmDialog
         open={Boolean(disableTarget)}
         title={`Disable ${disableTarget?.name ?? "this user"}?`}
-        description="A disabled account cannot log in and is signed out of every active session immediately. The account can be re-enabled later."
+        description="A disabled account cannot log in and will be signed out everywhere immediately. The account can be re-enabled later."
         confirmLabel="Disable account"
         onClose={() => setDisableTarget(null)}
         onConfirm={async () => {
@@ -353,7 +353,7 @@ export function UserManagerClient({
       <ConfirmDialog
         open={Boolean(roleChangeTarget)}
         title={`Change role for ${roleChangeTarget?.user.name ?? "this user"}?`}
-        description={`Their access becomes ${ADMIN_USER_ROLE_OPTIONS.find((option) => option.value === roleChangeTarget?.role)?.label ?? roleChangeTarget?.role ?? "the selected role"} and they are signed out of every active session immediately.`}
+        description={`Their access becomes ${ADMIN_USER_ROLE_OPTIONS.find((option) => option.value === roleChangeTarget?.role)?.label ?? roleChangeTarget?.role ?? "the selected role"} and they will be signed out everywhere immediately.`}
         confirmLabel="Change role"
         onClose={() => setRoleChangeTarget(null)}
         onConfirm={async () => {

@@ -112,7 +112,9 @@ export function ExecutiveOverview({
         <section aria-labelledby="board-focus-heading" className="mb-10">
           <h2 id="board-focus-heading" className="section-title mb-2">Board focus</h2>
           <p className="mb-5 text-sm text-ink-600">
-            Your account is limited to measures linked to these priorities. Items without a linked measure remain visible so reporting gaps are explicit.
+            Your account is limited to measures linked to these priorities.
+            Focus statements without a measure are still shown so you can see
+            what still needs to be tracked.
           </p>
           <div className="divide-y divide-ink-200 border-y border-ink-200">
             {boardFocus.map((priority) => (

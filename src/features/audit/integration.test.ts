@@ -155,7 +155,13 @@ describe("read-only legacy Activity archive", () => {
 
   it("paginates one globally ordered setup stream beyond one thousand events", () => {
     const db = getDb();
+    db.exec(
+      "INSERT OR REPLACE INTO meta (key, value) VALUES ('seed_reset_internal_write', '1');",
+    );
     db.exec("DELETE FROM strategic_audit_events; DELETE FROM installation_audit_events;");
+    db.exec(
+      "INSERT OR REPLACE INTO meta (key, value) VALUES ('seed_reset_internal_write', '0');",
+    );
     const insertStrategic = db.prepare(
       `INSERT INTO strategic_audit_events (
          entity_type, entity_id, event_type, entity_display_name,

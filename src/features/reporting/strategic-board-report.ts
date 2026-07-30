@@ -163,6 +163,7 @@ interface StrategicBoardGoalInput {
 interface StrategicBoardPriorityInput {
   id: string;
   name: string;
+  focusStatements?: Array<string | null | undefined> | null;
   goalCompletion?: GoalCompletionSummaryInput | null;
   goals?: StrategicBoardGoalInput[] | null;
 }
@@ -170,6 +171,15 @@ interface StrategicBoardPriorityInput {
 export interface StrategicBoardReportInput {
   organizationName?: string | null;
   organizationSlug?: string | null;
+  plan?: {
+    id?: number | null;
+    slug?: string | null;
+    name?: string | null;
+    startYear?: number | null;
+    endYear?: number | null;
+    lifecycleState?: "active" | "archived" | null;
+    generatedAt?: string | null;
+  } | null;
   selectedYear?: number | null;
   reportingPeriod?: string | null;
   organizationGoalCompletion?: GoalCompletionSummaryInput | null;
@@ -284,6 +294,7 @@ export interface StrategicBoardGoalViewModel {
 export interface StrategicBoardPriorityViewModel {
   id: string;
   name: string;
+  focusStatements?: string[];
   goalCompletion: GoalCompletionSummaryViewModel;
   goals: StrategicBoardGoalViewModel[];
 }
@@ -291,6 +302,15 @@ export interface StrategicBoardPriorityViewModel {
 export interface StrategicBoardReportViewModel {
   organizationName: string;
   organizationSlug: string;
+  plan?: {
+    id: number;
+    slug: string;
+    name: string;
+    startYear: number;
+    endYear: number;
+    lifecycleState: "active" | "archived";
+    generatedAt: string;
+  } | null;
   selectedYear: number | null;
   reportingPeriod: string;
   organizationGoalCompletion: GoalCompletionSummaryViewModel;
@@ -686,6 +706,7 @@ function sanitizePriorities(value: unknown): StrategicBoardPriorityViewModel[] {
     return {
       id: requiredText(input.id, `priority-${index + 1}`),
       name: requiredText(input.name, `Priority ${index + 1}`),
+      focusStatements: cleanReasons(input.focusStatements),
       goalCompletion: sanitizeGoalSummary(input.goalCompletion),
       goals: sanitizeGoals(input.goals),
     };
@@ -715,9 +736,36 @@ export function buildStrategicBoardReport(
     }
   }
   const organizationName = requiredText(input?.organizationName, "Organization");
+  const planInput = input?.plan;
+  const planId = finiteNumber(planInput?.id);
+  const planStartYear = year(planInput?.startYear);
+  const planEndYear = year(planInput?.endYear);
+  const plan = planInput &&
+      planId !== null &&
+      Number.isInteger(planId) &&
+      planId > 0 &&
+      planStartYear !== null &&
+      planEndYear !== null &&
+      planStartYear <= planEndYear &&
+      (planInput.lifecycleState === "active" ||
+        planInput.lifecycleState === "archived")
+    ? {
+        id: planId,
+        slug: filenameSlug(planInput.slug, "strategic-plan"),
+        name: requiredText(planInput.name, "Strategic Plan"),
+        startYear: planStartYear,
+        endYear: planEndYear,
+        lifecycleState: planInput.lifecycleState,
+        generatedAt: requiredText(
+          planInput.generatedAt,
+          new Date(0).toISOString(),
+        ),
+      }
+    : null;
   return {
     organizationName,
     organizationSlug: filenameSlug(input?.organizationSlug, organizationName),
+    plan,
     selectedYear: year(input?.selectedYear),
     reportingPeriod: requiredText(input?.reportingPeriod, "Full year"),
     organizationGoalCompletion,
@@ -727,6 +775,12 @@ export function buildStrategicBoardReport(
 }
 
 export const STRATEGIC_BOARD_CSV_COLUMNS = [
+  "Plan ID",
+  "Strategic Plan",
+  "Plan Start Year",
+  "Plan End Year",
+  "Plan Status",
+  "Generated At",
   "Selected Year",
   "Reporting Period",
   "Organization",
@@ -736,6 +790,7 @@ export const STRATEGIC_BOARD_CSV_COLUMNS = [
   "Organization Goals Not Counted",
   "Organization Reasons",
   "Priority",
+  "Priority Focus Statements",
   "Priority Completed Goals",
   "Priority Included Goals",
   "Priority Completion Percentage",
@@ -875,6 +930,12 @@ export function buildStrategicBoardCsvRows(
           const stream = detail.kind === "revenue_stream" ? detail.stream : null;
           const revenue = detail.kind === "revenue_stream" ? detail.revenue : null;
           rows.push({
+            "Plan ID": report.plan?.id ?? null,
+            "Strategic Plan": report.plan?.name ?? "",
+            "Plan Start Year": report.plan?.startYear ?? null,
+            "Plan End Year": report.plan?.endYear ?? null,
+            "Plan Status": report.plan?.lifecycleState ?? "",
+            "Generated At": report.plan?.generatedAt ?? "",
             "Selected Year": report.selectedYear,
             "Reporting Period": report.reportingPeriod,
             Organization: report.organizationName,
@@ -889,6 +950,7 @@ export function buildStrategicBoardCsvRows(
             "Organization Reasons":
               report.organizationGoalCompletion.excludedGoalReasons.join("; "),
             Priority: priority.name,
+            "Priority Focus Statements": (priority.focusStatements ?? []).join("; "),
             "Priority Completed Goals": priority.goalCompletion.completedGoalsCount,
             "Priority Included Goals": priority.goalCompletion.totalEligibleGoalsCount,
             "Priority Completion Percentage": priority.goalCompletion.completionPercentage,
@@ -1006,10 +1068,14 @@ export interface StrategicBoardCsvExport {
 export function buildStrategicBoardCsvExport(
   report: StrategicBoardReportViewModel,
 ): StrategicBoardCsvExport {
+  const planSlug =
+    report.plan?.lifecycleState === "archived"
+      ? `-${report.plan.slug}`
+      : "";
   return {
     columns: STRATEGIC_BOARD_CSV_COLUMNS,
     rows: buildStrategicBoardCsvRows(report),
-    filename: `${report.organizationSlug}-strategic-board-${report.selectedYear ?? "unselected"}.csv`,
+    filename: `${report.organizationSlug}${planSlug}-strategic-board-${report.selectedYear ?? "unselected"}.csv`,
   };
 }
 

@@ -28,6 +28,9 @@ import { EASTERN_STATE_STRATEGIC_CONFIGURATION_FIXTURE } from "./bootstrap/strat
 /** Removes or resets strategic plan data. */
 function resetStrategicPlanData(): void {
   const db = getDb();
+  db.exec(
+    "INSERT OR REPLACE INTO meta (key, value) VALUES ('seed_reset_internal_write', '1');",
+  );
   // S053-C1: tombstone for the destructive reset. `meta` survives the
   // wipe, so the timestamp of the most recent deliberate reset remains
   // auditable after every audit table has been cleared.
@@ -59,6 +62,9 @@ function resetStrategicPlanData(): void {
   db.exec("DELETE FROM installation_audit_events;");
   db.exec("DELETE FROM strategic_plans;");
   db.exec("DELETE FROM organizations;");
+  db.exec(
+    "INSERT OR REPLACE INTO meta (key, value) VALUES ('seed_reset_internal_write', '0');",
+  );
   db.exec("INSERT OR REPLACE INTO meta (key, value) VALUES ('sample_data', '1');");
 }
 

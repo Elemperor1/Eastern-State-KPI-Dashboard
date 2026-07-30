@@ -199,7 +199,7 @@ export function StrategicTargetEditorCard({
           <FormField
             label="Setup status"
             htmlFor={fieldId("status")}
-            hint={errors.configuration_status}
+            hint={errors.configuration_status ?? "Choose Ready only when the target has been approved and can be used in reporting."}
           >
             <Select
               id={fieldId("status")}
@@ -249,10 +249,10 @@ export function StrategicTargetEditorCard({
             />
           </FormField>
           <FormField
-            label="Source"
+            label="Where does this target come from?"
             htmlFor={fieldId("source")}
             className="md:col-span-2"
-            hint={errors.source_reference}
+            hint={errors.source_reference ?? "For example: approved plan, Board minutes, or revision date."}
           >
             <Input
               id={fieldId("source")}

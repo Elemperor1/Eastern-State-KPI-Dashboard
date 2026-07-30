@@ -7,14 +7,15 @@ Internal KPI dashboard for Eastern State Penitentiary Historic Site. Next.js 16 
 ADR 0022 supersedes older route and interaction notes below wherever they
 conflict. The production product has exactly four destinations:
 `/dashboard/overview`, `/data-entry`, `/reports`, and `/setup`. Setup contains
-Measures, Goals, People, and Activity; persisted Organization and Strategic
-Plan settings are edited inside Goals rather than through a fifth destination.
+Plans, Measures, Goals, People, and Activity. Organization and current-plan
+settings remain inside Goals; successor lifecycle work is contained inside
+Plans rather than becoming a fifth top-level destination.
 The former `/admin/*` and
 `/dashboard/trends` pages are removed, as are the legacy `/api/entries`,
 `/api/breakdowns`, and `/api/goals` mutation adapters. Legacy SQLite rows and
 `entry_history` remain a read-only archive; current writes use the strategic
 observation/component/distribution routes only. The exhaustive auth matrix is
-29 protected route/method combinations: 27 Admin-gated, one staff-session-gated,
+32 protected route/method combinations: 30 Admin-gated, one staff-session-gated,
 and one general-session-gated Board report export.
 
 ## Auth status (temporary)
@@ -38,7 +39,7 @@ approval boundaries are in `docs/production-observability.md`.
 
 **Durable session revocation (D8AD-CAN-003):** a per-user `sessions_valid_after` unix-ms watermark on the `users` row is the revocation value. Every newly issued session carries the stable user **id** (never email as the identity key) and an `issuedAt` timestamp. App code imports `getCurrentUser()` / `requireSession()` / `requireAdmin()` from `src/features/auth/session.ts`; the implementation in `src/lib/session.ts` re-reads the row from the DB by id on every protected request and rejects — destroying the cookie and returning null — when the user (a) no longer exists (deleted), (b) is disabled (`disabled` flag), or (c) has `issuedAt < sessions_valid_after` (a security-sensitive change happened after this session was issued). `requireAdmin` additionally rejects a downgraded role against the DB-synced role. The watermark is bumped atomically in a transaction on password reset (`updateUserPassword`), self-service password change, role change (`updateUserRole` via `PATCH /api/users/account`), and disable/enable (`setUserDisabled`); deletion needs no bump because the row is gone. Admin role-change + disable/enable live at `PATCH /api/users/account` (self-targeted changes are refused to prevent self-lockout), and admin deletion lives at `DELETE /api/users` (self-targeted deletion refused); the UI lives in Setup → People. All six lifecycle mutations (create, password reset/change, role change, disable/enable, delete) write an immutable, actor-attributed, hash-free event to `user_lifecycle_audit_events` in the same transaction as the change, and role-away-from-admin / disable / delete are refused with 409 when the subject is the last active administrator. Invalid cookies are cleared by `getCurrentUser` and every data API returns a consistent 401 `{error:"Unauthorized"}` (or 403 `{error:"Forbidden"}` for insufficient role) via the shared `authErrorResponse` helper. Login answers identically for unknown / wrong-password / disabled / deleted accounts ("Invalid email or password.") so no former existence leaks. Replay tests in `src/lib/session-revocation.test.ts` cover all five revocation triggers; the full auth/az suite is part of `npm test`.
 
-**D8AD-CAN-003 regression suite (`src/lib/auth-regression.test.ts` + `src/lib/auth-regression-helpers.ts`):** data-driven from `PROTECTED_API_ROUTES` (the exhaustive table of every protected API route + method + gate). The reusable helpers (`dispatch(method,path)`/`assertUnauthorized`/`assertForbidden`) exercise the shared authz boundary consistently. The suite (a) creates admin, viewer, and Board accounts and retains their cookies; (b) performs password reset, role change, disablement, and deletion; (c) replays revoked cookies against all **29 protected route+method combinations** → uniform 401 `{error:"Unauthorized"}` with the cookie cleared; (d) asserts viewer and Board sessions get 403 on the **27 admin-gated combinations**, and Board sessions additionally get 403 on the staff-only distribution-band read; (e) asserts a fresh session works after a legitimate reset; and (f) verifies invalid-session handling does not redirect-loop or leak account details. `GET /api/strategy/export` accepts any valid session and scopes Board output; `GET /api/strategy/distribution-bands` requires a staff viewer or admin. Routes outside the shared throw-based boundary are documented in `auth-regression-helpers.ts`.
+**D8AD-CAN-003 regression suite (`src/lib/auth-regression.test.ts` + `src/lib/auth-regression-helpers.ts`):** data-driven from `PROTECTED_API_ROUTES` (the exhaustive table of every protected API route + method + gate). The reusable helpers (`dispatch(method,path)`/`assertUnauthorized`/`assertForbidden`) exercise the shared authz boundary consistently. The suite (a) creates admin, viewer, and Board accounts and retains their cookies; (b) performs password reset, role change, disablement, and deletion; (c) replays revoked cookies against all **32 protected route+method combinations** → uniform 401 `{error:"Unauthorized"}` with the cookie cleared; (d) asserts viewer and Board sessions get 403 on the **30 admin-gated combinations**, and Board sessions additionally get 403 on the staff-only distribution-band read; (e) asserts a fresh session works after a legitimate reset; and (f) verifies invalid-session handling does not redirect-loop or leak account details. `GET /api/strategy/export` accepts any valid session and scopes Board output; `GET /api/strategy/distribution-bands` requires a staff viewer or admin. Routes outside the shared throw-based boundary are documented in `auth-regression-helpers.ts`.
 
 **Bypass row is not a login credential or durable administrator:** the `auth-disabled@local` row exists in `users` so FK references (`monthly_entries.updated_by`, `breakdown_entries.updated_by`) resolve to a real `users.id`, and so the dev bypass has a stable identity. `src/lib/reserved-auth-identities.ts` is the shared identity contract: `verifyCredentials()` uses the dummy-hash path for reserved email, and the last-active-administrator guard excludes reserved identities from its durable-admin count. The row is unreachable through `/api/auth/login` regardless of the stored hash and can never justify demoting, disabling, or deleting the final real administrator. The stored hash is also rotated to `bcrypt(crypto.randomBytes(64))` on every `ensureSeedAdmin()` call, so the previous documented plaintext is no longer a valid credential and the hash never appears in source control. Regression tests assert reserved-email rejection, hash rotation, and durable-admin exclusion.
 
@@ -52,9 +53,9 @@ DATABASE_PATH="$(pwd -P)/data/kpi.db" SEED_CONFIRM="$(pwd -P)/data/kpi.db" npm r
 AUTH_DISABLED=true npm run dev   # loopback-only bypass at http://localhost:3000
 ```
 
-For an existing schema 9–14 database, especially a production volume, back it
+For an existing schema 9–15 database, especially a production volume, back it
 up and run `DATABASE_PATH=/absolute/path/to/kpi.db npm run db:migrate` to reach
-schema 15. Do not run `db:seed` as a production migration; it intentionally
+schema 16. Do not run `db:seed` as a production migration; it intentionally
 replaces KPI-owned values, definitions, and audit history while preserving
 users. Schema 8 is migrated additively only through an explicit backed-up
 `db:migrate` run; schema 7 and older cross the intentional schema-8 catalog
@@ -62,7 +63,30 @@ replacement boundary documented below and in `docs/migration-notes.md`.
 
 Seeded accounts (first DB access only, via `ensureSeedAdmin` in `src/features/auth/server.ts`; unused while auth is disabled):
 
-On the first run against a fresh database, the seed creates `kerry@easternstate.org` (admin) and `zach@easternstate.org` (viewer). **No plaintext password is ever written to stdout, stderr, or logs** (security finding D8AD-CAN-001). The seed prefers operator-provided secrets — set `BOOTSTRAP_ADMIN_PASSWORD` / `BOOTSTRAP_VIEWER_PASSWORD` in the environment (production: `fly secrets set`; never in `fly.toml` or on the command line) before the first database access and the seed hashes them in, emitting only a non-sensitive status line naming the accounts and their credential source. If an env var is unset, the account gets a cryptographically-random password recorded nowhere (not in stdout, not in any log); the seed prints a non-sensitive warning pointing at `npm run setup:admin`, and the account is locked until the operator provisions a known credential. Every bootstrap account is created with `must_change_password=1`, so the user is forced through `/setup-password` (login redirect + per-page server-component redirect + `requireSession`/`requireAdmin` HTTP 403) before reaching the app. Operator recovery / first-credential provisioning after seeding: `SETUP_ADMIN_PASSWORD=... npm run setup:admin` (optionally `SETUP_ADMIN_EMAIL=...`) — the password is read from the env var only and never from argv/stdout/logs, then the rotation flag is cleared. See `docs/operator-provisioning.md`. The quick-start bypass workflow never logs in, so provisioning stays out of the way.
+On the first run against a fresh database, the seed creates
+`zach@easternstate.org` (Zach Palmer, admin) and
+`kerry@easternstate.org` (Kerry Sautner, viewer). **No plaintext password is
+ever written to stdout, stderr, or logs** (security finding D8AD-CAN-001). The
+seed prefers operator-provided secrets — set `BOOTSTRAP_ADMIN_PASSWORD` /
+`BOOTSTRAP_VIEWER_PASSWORD` in the environment (production: secret manager or
+a root-readable runtime env file; never in tracked configuration or on the
+command line) before the first database access and the seed hashes them in,
+emitting only a non-sensitive status line naming the accounts and their
+credential source. If an env var is unset, the account gets a
+cryptographically-random password recorded nowhere (not in stdout, not in any
+log); the seed prints a non-sensitive warning pointing at `npm run
+setup:admin`, and the account is locked until the operator provisions a known
+credential. Every bootstrap account is created with
+`must_change_password=1`, so the user is forced through `/setup-password`
+(login redirect + per-page server-component redirect +
+`requireSession`/`requireAdmin` HTTP 403) before reaching the app. Operator
+recovery / first-credential provisioning after seeding:
+`SETUP_ADMIN_PASSWORD=... npm run setup:admin` (optionally
+`SETUP_ADMIN_EMAIL=...`) — the password is read from the env var only and never
+from argv/stdout/logs, then the rotation flag is cleared. See
+`docs/operator-provisioning.md` and `docs/local-server-deployment.md`. The
+quick-start bypass workflow never logs in, so provisioning stays out of the
+way.
 
 ## Commands
 
@@ -116,7 +140,7 @@ AUTH_DISABLED=true PORT=3290 BASE=http://127.0.0.1:3290 bash ./scripts/smoke.sh
 # Stop the dev server before reusing :3290 for production/auth-enabled smoke.
 AUTH_DISABLED= npm run build
 AUTH_DISABLED=false PORT=3290 node_modules/.bin/next start -p 3290 &
-SMOKE_EMAIL=kerry@easternstate.org SMOKE_PASSWORD='<operator-provisioned password>' \
+SMOKE_EMAIL=zach@easternstate.org SMOKE_PASSWORD='<operator-provisioned password>' \
   AUTH_DISABLED=false PORT=3290 BASE=http://127.0.0.1:3290 bash ./scripts/smoke.sh
 ```
 
@@ -162,14 +186,14 @@ symlinks/hardlinks, and parent-directory escapes are rejected before seeding.
 - `DESIGN.md` (root) — visual language authority. `docs/design-system.md` translates it into component rules.
 
 Current top-level surfaces are `/dashboard/overview`, `/data-entry`, `/reports`,
-and `/setup`. Setup areas are Measures, Goals, People, and Activity.
+and `/setup`. Setup areas are Plans, Measures, Goals, People, and Activity.
 
 ## Data model quirks
 
 - Annual-only metrics are stored with `month = 0` in `monthly_entries` (single full-year value). See `src/lib/types.ts:60`.
 - `unit_type` ∈ `count | percent | currency | attendance | note | breakdown`. Breakdown KPIs write to `breakdown_entries` (label × year), not `monthly_entries`.
 - Direction (`higher | lower | neutral`) drives good/bad coloring — read it instead of hardcoding sign.
-- Schema bump: edit `src/lib/schema-version.json`. **Schema 8 was the intentional catalog replacement:** versions 7 and older reset KPI tables + `entry_history`, preserve users, and require `npm run db:seed`; back up production before crossing that boundary. **Schema 9 is additive:** v8 legacy KPI goals are preserved and receive a fixed `baseline_year` from their latest available pre-target actual. **Schema 10 is additive from 9:** it creates strategic sidecars and maps the existing 5-priority/22-goal/59-KPI configuration. **Schema 11 is additive from 10:** it scopes component identity to each effective configuration and records explicit ratio aggregation roles while preserving existing IDs and values. **Schema 12 is additive from 11:** it persists Organization/Strategic Plan ownership, attaches every priority through a required `plan_id`, removes plan-specific schema defaults/checks, and marks one explicit content-migration pass. **Schema 13** preservation-safely widens `users.role` with the Board reporting role. **Schema 14** additively persists the Admin-editable Board visibility scope and immutable audit snapshots. Its one-time bootstrap marker never reconciles Admin-edited or removed scope content after initialization. **Schema 15** additively persists the immutable user lifecycle audit log (`user_lifecycle_audit_events`): every account create, password reset/change, role change, disable/enable, and delete writes one actor-attributed, hash-free event in the same transaction as the mutation. With schema 15, role changes away from admin, disables, and deletions are refused (HTTP 409) when the subject is the last active administrator; admin self-deletion is refused (HTTP 400); admin-created users are issued temporary credentials (`must_change_password = 1`); and `getDb()`/`db:migrate` explicitly refuse a database whose persisted schema version is NEWER than the application supports, before any migration or reset path runs. Use `npm run db:migrate`, not `db:seed`, for an existing database. ADRs 0023/0024 and `docs/migration-notes.md` record rollout and rollback.
+- Schema bump: edit `src/lib/schema-version.json`. **Schema 8 was the intentional catalog replacement:** versions 7 and older reset KPI tables + `entry_history`, preserve users, and require `npm run db:seed`; back up production before crossing that boundary. **Schema 9 is additive:** v8 legacy KPI goals are preserved and receive a fixed `baseline_year` from their latest available pre-target actual. **Schema 10 is additive from 9:** it creates strategic sidecars and maps the existing 5-priority/22-goal/59-KPI configuration. **Schema 11 is additive from 10:** it scopes component identity to each effective configuration and records explicit ratio aggregation roles while preserving existing IDs and values. **Schema 12 is additive from 11:** it persists Organization/Strategic Plan ownership, attaches every priority through a required `plan_id`, removes plan-specific schema defaults/checks, and marks one explicit content-migration pass. **Schema 13** preservation-safely widens `users.role` with the Board reporting role. **Schema 14** additively persists the Admin-editable Board visibility scope and immutable audit snapshots. Its one-time bootstrap marker never reconciles Admin-edited or removed scope content after initialization. **Schema 15** additively persists the immutable user lifecycle audit log (`user_lifecycle_audit_events`): every account create, password reset/change, role change, disable/enable, and delete writes one actor-attributed, hash-free event in the same transaction as the mutation. With schema 15, role changes away from admin, disables, and deletions are refused (HTTP 409) when the subject is the last active administrator; admin self-deletion is refused (HTTP 400); admin-created users are issued temporary credentials (`must_change_password = 1`); and `getDb()`/`db:migrate` explicitly refuse a database whose persisted schema version is NEWER than the application supports, before any migration or reset path runs. **Schema 16** additively introduces Successor Strategic Plan lifecycle state, lineage, readiness, activation/recovery evidence, and database-enforced plan immutability without creating a Draft or rewriting existing plan-owned content. Use `npm run db:migrate`, not `db:seed`, for an existing database. ADRs 0023/0024 and `docs/migration-notes.md` record rollout and rollback.
 - Annual pacing and full-plan progress are separate contracts. Annual targets are selected by `reporting_year`; full-plan targets have no reporting year and use their plan target year. Do not substitute one for the other when a target is missing.
 - Effective-dated target/configuration integrity is enforced. Defined annual and full-plan targets must retain compatible configuration coverage, and full-plan selection uses nearest future then latest past. Once values or targets use calculation semantics, create a successor instead of editing them in place. For component lifecycle changes, archive affected parent/component targets first; restore the configuration and components before restoring targets.
 - First-class strategic observations are the sole live reporting source. Retained legacy rows are visible only as archive/history evidence and are never used as a fallback calculation input.
@@ -197,10 +221,10 @@ and `/setup`. Setup areas are Measures, Goals, People, and Activity.
 
 - `prelint` runs the complete `quality:guards` chain before ESLint — fixes for UI guard violations should land in `src/components/ui/` or the Tailwind theme tokens (`tailwind.config.ts` + `src/app/globals.css`), not in pages or feature components.
 - **`npm run design-system:test` is the CI gate.** It runs `quality:guards`, Next route type generation plus `tsc --noEmit`, and the explicit Webpack production build with `AUTH_DISABLED` cleared. CI must invoke this script verbatim; PRs that skip it will be rejected. The QA manual at `docs/qa-manual.md` is the human-readable companion to the smoke harness for visual verification.
-- API handlers follow the pattern `try { await requireSession()/requireStaffSession()/requireAdmin() } catch { return 401/403 }`. All protected mutations require admin. `GET /api/strategy/export` accepts any valid session and applies Board report scope by role; `GET /api/strategy/distribution-bands` requires a staff viewer or admin. The exhaustive matrix is 29 protected route/method combinations, 27 admin-gated.
+- API handlers follow the pattern `try { await requireSession()/requireStaffSession()/requireAdmin() } catch { return 401/403 }`. All protected mutations require admin. `GET /api/strategy/export` accepts any valid session and applies Board report scope by role; `GET /api/strategy/distribution-bands` requires a staff viewer or admin. The exhaustive matrix is 32 protected route/method combinations, 30 admin-gated.
 - Use `zod` for request body validation on API routes.
 - Server dashboard pages call the explicit reporting operations in `src/features/reporting/server.ts`; client components must not import `getDb()` or server-only feature modules.
-- New measures and priorities are added at runtime in Setup → Measures; plan identity/range and goals are edited in Setup → Goals. The database is authoritative after initialization. Change the fixture modules only when intentionally changing fresh-install/development seed content, update their invariant tests, and rerun `npm run db:seed` only against a disposable database.
+- New measures and priorities are added at runtime in Setup → Measures; Active-plan organization settings and goals are edited in Setup → Goals; successor lifecycle work belongs in Setup → Plans. The database is authoritative after initialization. Change the fixture modules only when intentionally changing fresh-install/development seed content, update their invariant tests, and rerun `npm run db:seed` only against a disposable database.
 
 ## Gotchas
 

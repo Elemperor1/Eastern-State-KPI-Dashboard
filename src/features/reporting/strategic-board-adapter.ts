@@ -27,12 +27,16 @@ export function buildStrategicBoardReportFromSummary({
   reportingPeriod,
   organizationName = "Organization",
   organizationSlug,
+  plan,
 }: {
   summary: StrategicDashboardSummary;
   goals: StrategicGoalReadModel[];
   reportingPeriod?: string;
   organizationName?: string;
   organizationSlug?: string;
+  plan?: NonNullable<
+    Parameters<typeof buildStrategicBoardReport>[0]["plan"]
+  >;
 }): StrategicBoardReportViewModel {
   const goalsById = new Map(goals.map((goal) => [String(goal.id), goal]));
   const goalSummariesByPriority = new Map<string, typeof summary.goals>();
@@ -45,6 +49,7 @@ export function buildStrategicBoardReportFromSummary({
   return buildStrategicBoardReport({
     organizationName,
     organizationSlug,
+    plan,
     selectedYear: summary.selectedYear,
     reportingPeriod,
     organizationGoalCompletion: {

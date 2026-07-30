@@ -176,8 +176,8 @@ describe("ensureSeedAdmin credential secrecy (in-process)", () => {
     // either the env secret stopped being used or it stopped being
     // hashed into the row; either way the secrecy assertion above
     // becomes worthless and must be re-grounded.
-    const admin = readHash("kerry@easternstate.org");
-    const viewer = readHash("zach@easternstate.org");
+    const admin = readHash("zach@easternstate.org");
+    const viewer = readHash("kerry@easternstate.org");
     expect(bcrypt.compareSync(adminSentinel, admin.hash)).toBe(true);
     expect(bcrypt.compareSync(viewerSentinel, viewer.hash)).toBe(true);
 
@@ -223,8 +223,8 @@ describe("ensureSeedAdmin credential secrecy (in-process)", () => {
     expect(secretMatches.length).toBe(0);
 
     // Accounts still provisioned + marked temporary.
-    const admin = readHash("kerry@easternstate.org");
-    const viewer = readHash("zach@easternstate.org");
+    const admin = readHash("zach@easternstate.org");
+    const viewer = readHash("kerry@easternstate.org");
     expect(admin.must_change).toBe(1);
     expect(viewer.must_change).toBe(1);
     expect(admin.hash).toMatch(/^\$2[aby]\$\d{2}\$/);
@@ -240,13 +240,13 @@ describe("ensureSeedAdmin credential secrecy (in-process)", () => {
     process.env.BOOTSTRAP_ADMIN_PASSWORD = "SENTINEL-Admin-DoNotLog-2026!";
     process.env.BOOTSTRAP_VIEWER_PASSWORD = "SENTINEL-Viewer-DoNotLog-2026!";
     ensureSeedAdmin();
-    const before = readHash("kerry@easternstate.org").hash;
+    const before = readHash("zach@easternstate.org").hash;
 
     // A second call against the now-seeded DB must be a no-op for the
     // named accounts: same hash (no regeneration), and no sentinel
     // re-logged (no status line for the named accounts at all).
     const { all } = captureOutput(() => ensureSeedAdmin());
-    const after = readHash("kerry@easternstate.org").hash;
+    const after = readHash("zach@easternstate.org").hash;
     expect(after).toBe(before);
     expect(all).not.toContain("SENTINEL-Admin-DoNotLog-2026!");
     expect(all).not.toContain("provisioned 2 bootstrap account");
@@ -255,13 +255,13 @@ describe("ensureSeedAdmin credential secrecy (in-process)", () => {
   it("updateUserPassword(false) rotates the credential and clears must_change", () => {
     process.env.BOOTSTRAP_ADMIN_PASSWORD = "SENTINEL-Admin-DoNotLog-2026!";
     ensureSeedAdmin();
-    const kerry = findUserByEmail("kerry@easternstate.org")!;
-    expect(kerry.must_change_password).toBe(true);
+    const zach = findUserByEmail("zach@easternstate.org")!;
+    expect(zach.must_change_password).toBe(true);
 
     const perm = "NewPermanentPass!2026";
-    updateUserPassword(kerry.id, perm, false);
+    updateUserPassword(zach.id, perm, false);
 
-    const row = readHash("kerry@easternstate.org");
+    const row = readHash("zach@easternstate.org");
     expect(row.must_change).toBe(0);
     expect(bcrypt.compareSync(perm, row.hash)).toBe(true);
     // The old temporary credential no longer works.
@@ -273,11 +273,11 @@ describe("ensureSeedAdmin credential secrecy (in-process)", () => {
   it("updateUserPassword(true) marks an admin-issued reset as temporary", () => {
     process.env.BOOTSTRAP_ADMIN_PASSWORD = "SENTINEL-Admin-DoNotLog-2026!";
     ensureSeedAdmin();
-    const kerry = findUserByEmail("kerry@easternstate.org")!;
+    const zach = findUserByEmail("zach@easternstate.org")!;
 
     const temp = "AdminIssuedTemp!2026";
-    updateUserPassword(kerry.id, temp, true);
-    const row = readHash("kerry@easternstate.org");
+    updateUserPassword(zach.id, temp, true);
+    const row = readHash("zach@easternstate.org");
     expect(row.must_change).toBe(1);
     expect(bcrypt.compareSync(temp, row.hash)).toBe(true);
   });
@@ -285,19 +285,19 @@ describe("ensureSeedAdmin credential secrecy (in-process)", () => {
   it("rejects a stale self-service password write after an administrator reset", () => {
     process.env.BOOTSTRAP_ADMIN_PASSWORD = "SENTINEL-Admin-DoNotLog-2026!";
     ensureSeedAdmin();
-    const kerry = findUserByEmail("kerry@easternstate.org")!;
-    const staleHash = readHash(kerry.email).hash;
+    const zach = findUserByEmail("zach@easternstate.org")!;
+    const staleHash = readHash(zach.email).hash;
 
-    updateUserPassword(kerry.id, "AdministratorReset!2026", true);
+    updateUserPassword(zach.id, "AdministratorReset!2026", true);
     const changed = updateUserPasswordIfCurrent(
-      kerry.id,
+      zach.id,
       staleHash,
       "StaleSelfService!2026",
       false,
     );
 
     expect(changed).toBe(false);
-    const row = readHash(kerry.email);
+    const row = readHash(zach.email);
     expect(bcrypt.compareSync("AdministratorReset!2026", row.hash)).toBe(true);
     expect(bcrypt.compareSync("StaleSelfService!2026", row.hash)).toBe(false);
   });
@@ -360,8 +360,8 @@ describe("ensureSeedAdmin credential secrecy (end-to-end child process)", () => 
     expect(out).toContain("kerry@easternstate.org");
     // And the sentinels really were the stored credentials.
     useDbFile(dbPath);
-    const admin = readHash("kerry@easternstate.org");
-    const viewer = readHash("zach@easternstate.org");
+    const admin = readHash("zach@easternstate.org");
+    const viewer = readHash("kerry@easternstate.org");
     expect(bcrypt.compareSync(adminSentinel, admin.hash)).toBe(true);
     expect(bcrypt.compareSync(viewerSentinel, viewer.hash)).toBe(true);
     expect(admin.must_change).toBe(1);
@@ -373,7 +373,7 @@ describe("ensureSeedAdmin credential secrecy (end-to-end child process)", () => 
     expect(tombstone?.value).toBeTruthy();
   }, 120000);
 
-  it("npm run setup:admin never writes the new password to stdout/stderr", () => {
+  it("npm run setup:admin defaults to Zach and never writes the new password to stdout/stderr", () => {
     // Seed first (random fallback) so the target account exists.
     const seedRes = spawnSync("npm", ["run", "db:seed"], {
       cwd: REPO_ROOT,
@@ -388,7 +388,6 @@ describe("ensureSeedAdmin credential secrecy (end-to-end child process)", () => 
       env: childEnv({
         DATABASE_PATH: dbPath,
         SETUP_ADMIN_PASSWORD: newPass,
-        SETUP_ADMIN_EMAIL: "kerry@easternstate.org",
       }),
       encoding: "utf8",
     });
@@ -399,11 +398,11 @@ describe("ensureSeedAdmin credential secrecy (end-to-end child process)", () => 
     }
     const out = `${res.stdout ?? ""}\n${res.stderr ?? ""}`;
     expect(out).not.toContain(newPass);
-    expect(out).toContain("kerry@easternstate.org");
+    expect(out).toContain("zach@easternstate.org");
     expect(out).toContain("password updated");
     // The password was actually set and the rotation flag cleared.
     useDbFile(dbPath);
-    const row = readHash("kerry@easternstate.org");
+    const row = readHash("zach@easternstate.org");
     expect(bcrypt.compareSync(newPass, row.hash)).toBe(true);
     expect(row.must_change).toBe(0);
   }, 120000);

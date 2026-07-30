@@ -108,9 +108,23 @@ function statusVariant(status: ConfigurationStatus) {
 /** Implements the completion rule label operation. */
 function completionRuleLabel(rule: GoalCompletionRuleName): string {
   if (rule === "all_required_kpis") return "Every required measure";
-  if (rule === "weighted_average") return "Weighted progress";
+  if (rule === "weighted_average") return "Weighted progress (more important measures count more)";
   if (rule === "threshold_count") return "A set number of measures";
   return "Set manually";
+}
+
+/** Explains the selected completion method in staff-facing language. */
+function completionRuleDescription(rule: GoalCompletionRuleName): string {
+  if (rule === "all_required_kpis") {
+    return "The goal is complete only when every required measure reaches its target.";
+  }
+  if (rule === "weighted_average") {
+    return "Measures with a higher weight have more influence on the goal's progress.";
+  }
+  if (rule === "threshold_count") {
+    return "The goal is complete when the chosen number or percentage of measures reaches target.";
+  }
+  return "An Admin records the goal's progress instead of calculating it from measures.";
 }
 
 /** Implements the setup status label operation. */
@@ -715,7 +729,9 @@ export function StrategicGoalSettingsForm({
         ) : null}
         {successorMode ? (
           <StatusBanner variant="neutral">
-            Choose the first year for this change. Earlier results will stay unchanged.
+            This creates a new version of the goal for future reporting. Choose
+            the first year it applies; past results and settings will not
+            change.
           </StatusBanner>
         ) : null}
 
@@ -751,7 +767,11 @@ export function StrategicGoalSettingsForm({
                 When this goal is complete
               </h3>
               <div className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-3">
-                <FormField label="Complete when" htmlFor="strategic-goal-completion-rule">
+                <FormField
+                  label="How should this goal be marked complete?"
+                  htmlFor="strategic-goal-completion-rule"
+                  hint={completionRuleDescription(draft.completionRule)}
+                >
                   <Select
                     id="strategic-goal-completion-rule"
                     value={draft.completionRule}
@@ -871,7 +891,11 @@ export function StrategicGoalSettingsForm({
                 Current status
               </h3>
               <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
-                <FormField label="Progress" htmlFor="strategic-goal-board-status">
+                <FormField
+                  label="Leadership assessment"
+                  htmlFor="strategic-goal-board-status"
+                  hint="An assessment such as On track or At risk. This is separate from calculated goal progress."
+                >
                   <Select
                     id="strategic-goal-board-status"
                     value={draft.boardStatus}
@@ -893,6 +917,7 @@ export function StrategicGoalSettingsForm({
                 <FormField
                   label="Setup status"
                   htmlFor="strategic-goal-configuration-status"
+                  hint="Choose Ready only when the goal has everything needed for reporting."
                 >
                   <Select
                     id="strategic-goal-configuration-status"
@@ -991,7 +1016,7 @@ export function StrategicGoalSettingsForm({
                     }
                   />
                 </FormField>
-                <FormField label="Source" htmlFor="strategic-goal-source-reference" hint={<FieldHint error={errors.source_reference} />}>
+                <FormField label="Where does this goal come from?" htmlFor="strategic-goal-source-reference" hint={<FieldHint error={errors.source_reference} fallback="For example: approved plan, Board minutes, or revision date." />}>
                   <Textarea
                     id="strategic-goal-source-reference"
                     value={draft.sourceReference}
@@ -1342,9 +1367,9 @@ function StrategicGoalMembershipForm({
           </FormField>
         ) : null}
         <FormField
-          label="How it counts"
+          label="Does this measure affect goal completion?"
           htmlFor={`goal-membership-role-${member.id}`}
-          hint={<FieldHint error={errors.role} />}
+          hint={<FieldHint error={errors.role} fallback="Required measures affect completion. Measures for information only remain visible but do not affect the result." />}
         >
           <Select
             id={`goal-membership-role-${member.id}`}
@@ -1366,9 +1391,9 @@ function StrategicGoalMembershipForm({
         </FormField>
         <div className="grid grid-cols-2 gap-3">
           <FormField
-            label="Importance"
+            label="Weight in goal progress"
             htmlFor={`goal-membership-weight-${member.id}`}
-            hint={<FieldHint error={errors.weight} fallback="Must be greater than zero." />}
+            hint={<FieldHint error={errors.weight} fallback="Used only when this goal uses weighted progress. Must be greater than zero." />}
           >
             <Input
               id={`goal-membership-weight-${member.id}`}
@@ -1383,7 +1408,7 @@ function StrategicGoalMembershipForm({
           <FormField
             label="List order"
             htmlFor={`goal-membership-order-${member.id}`}
-            hint={<FieldHint error={errors.display_order} />}
+            hint={<FieldHint error={errors.display_order} fallback="Lower numbers appear first." />}
           >
             <Input
               id={`goal-membership-order-${member.id}`}

@@ -58,15 +58,15 @@ describe("StrategicBoardReport render contract", () => {
   });
 
   it("states respondent and revenue caveats explicitly", () => {
-    expect(source).toContain("Respondent population caveat");
+    expect(source).toContain("How to interpret these responses");
     expect(source).toContain(
-      "Respondents may appear in more than one band",
+      "A person may appear in more than one reporting group",
     );
     expect(source).toContain(
       "Values and shares are presented as supplied by the report model.",
     );
     expect(source).toContain(
-      "Components remain separate; no unrelated values are averaged here.",
+      "They are shown separately",
     );
   });
 

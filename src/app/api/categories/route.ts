@@ -7,6 +7,7 @@ import { logUnexpectedServerError } from "@/lib/operational-log";
 import {
   archiveCategory,
   CatalogEntityNotFoundError,
+  CatalogPlanLifecycleError,
   createCategory,
   DependentEntriesError,
   listCategories,
@@ -71,6 +72,12 @@ export async function POST(req: NextRequest) {
       return NextResponse.json(
         { error: err.message, code: err.code },
         { status: 404 },
+      );
+    }
+    if (err instanceof CatalogPlanLifecycleError) {
+      return NextResponse.json(
+        { error: err.message, code: err.code },
+        { status: 409 },
       );
     }
     if (err instanceof DependentEntriesError) {
@@ -156,6 +163,12 @@ export async function PATCH(req: NextRequest) {
   } catch (err) {
     if (err instanceof InstallationEditConflictError) {
       return NextResponse.json({ error: err.message }, { status: 409 });
+    }
+    if (err instanceof CatalogPlanLifecycleError) {
+      return NextResponse.json(
+        { error: err.message, code: err.code },
+        { status: 409 },
+      );
     }
     if (err instanceof InstallationValidationError) {
       return NextResponse.json({ error: err.message }, { status: 400 });

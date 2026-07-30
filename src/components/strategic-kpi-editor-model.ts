@@ -404,12 +404,14 @@ export function buildTargetFormPayload(
     try {
       const parsed = JSON.parse(draft.structuredTarget) as unknown;
       if (parsed === null || Array.isArray(parsed) || typeof parsed !== "object") {
-        errors.structured_target = "Structured target must be a JSON object.";
+        errors.structured_target =
+          "This target needs to be re-entered as a value or short description.";
       } else {
         structuredTarget = parsed as Record<string, unknown>;
       }
     } catch {
-      errors.structured_target = "Structured target must be valid JSON.";
+      errors.structured_target =
+        "This target needs to be re-entered as a value or short description.";
     }
   }
   if (
@@ -427,7 +429,7 @@ export function buildTargetFormPayload(
     structuredTarget === null &&
     targetDescription === null
   ) {
-    errors.target_value = "Provide a numeric, structured, or descriptive target.";
+    errors.target_value = "Enter a target value or describe the expected result.";
   }
   if (
     measurementType === "percentage" &&
@@ -536,7 +538,7 @@ export function buildComponentFormPayload(
     unresolvedQuestion === null
   ) {
     errors.unresolved_question =
-      "An unresolved question is required for unresolved configuration.";
+      "Describe what still needs an answer before this setup can be ready.";
   }
   if (
     (draft.configurationStatus === "ready" ||
@@ -544,11 +546,11 @@ export function buildComponentFormPayload(
     (draft.measurementType === "percentage" || draft.measurementType === "ratio")
   ) {
     if (numeratorLabel === null) {
-      errors.numerator_label = "A numerator label is required.";
+      errors.numerator_label = "Name the amount being measured.";
     }
     if (denominatorLabel === null && fixedDenominator === null) {
       errors.denominator_label =
-        "Provide a denominator label or positive fixed denominator.";
+        "Name the total used for the calculation, or enter a fixed total greater than zero.";
     }
   }
   if (Object.keys(errors).length > 0) return { ok: false, errors };

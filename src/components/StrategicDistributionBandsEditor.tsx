@@ -367,7 +367,11 @@ function DistributionBandFormCard({
               onChange={(event) => update("label", event.target.value)}
             />
           </FormField>
-          <FormField label="Include in summary" htmlFor={`${prefix}-group`}>
+          <FormField
+            label="Board demographic summary"
+            htmlFor={`${prefix}-group`}
+            hint="Choose White or Non-white only when this group belongs in that combined Board percentage. To change its meaning in a later year, create a new group."
+          >
             <Select
               id={`${prefix}-group`}
               value={draft.derivedGroup}

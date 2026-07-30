@@ -1,7 +1,7 @@
 # Eastern State Strategic Plan product foundation
 
 Status: current product authority  
-Evidence cutoff: July 15, 2026
+Evidence cutoff: July 30, 2026
 
 This document preserves the product decisions that sit between Eastern State's
 strategic-plan source material and the implemented interface. ADR 0022 remains
@@ -36,7 +36,7 @@ Use these labels in product decisions:
 | Local, untracked `Eastern.State.Strategic.Dashboard.2025.2029.8.1.25.pdf` | Five priorities, named goals, KPI/data/result/target fields, Board-level notes, and unresolved TK/TBD decisions; this document records the durable product conclusions needed by a clean clone | User behavior, task frequency, usability, or preferred terminology |
 | Accepted ADRs, especially 0020–0022 | Canonical strategic data, calculation ownership, four destinations, permissions, archive, and migration boundaries | Whether the workflow matches real reporting handoffs |
 | Current source, schema, unit/contract tests, smoke, and Playwright acceptance | Implemented rules, supported actions, permissions, and tested recovery behavior | Why people behave as they do or whether a feature is valuable |
-| July 15 browser walk at desktop and 390 px | Rendered hierarchy, navigation, current copy, responsive behavior, and available feedback | Viewer behavior, production data quality, or longitudinal usage |
+| July 30 browser walk at desktop and 390 px | Rendered hierarchy, navigation, current copy, responsive behavior, onboarding, and available feedback | Real-user behavior, production data quality, or longitudinal usage |
 | README and earlier product briefs | Documented intent to support executive leadership and Board reporting | Direct research evidence |
 
 No interviews, contextual observation, support-ticket corpus, usability-study
@@ -55,7 +55,7 @@ This was the decision landscape before this foundation was consolidated:
 | Product and service strategy | Partial | The decision-support direction and four-destination bet are clear; a bounded outcome metric and discovery loop were not. |
 | Conceptual model | Partial | Objects and rules exist, but were scattered across tables, types, routes, and docs. |
 | Interaction structure | Strong | Four destinations, drill-downs, Admin gating, server-confirmed saves, and core recovery paths are implemented and acceptance-tested. Some cross-links and global error states remain unresolved. |
-| Surface | Partial | A shared visual system and component library exist, but `DESIGN.md` retained obsolete route and card-grid examples and the live 390 px Overview has a collision defect. |
+| Surface | Strong | The shared visual system and component library govern all four destinations. The July 30 desktop/mobile walk found no horizontal overflow or runtime error, and the authentication lockup now matches the in-app Eastern State / Strategic Plan hierarchy. |
 
 The bottleneck is **observed behavior**. It makes the user-needs and outcome
 decisions below explicit hypotheses, even when the implemented solution is
@@ -84,10 +84,11 @@ quota.
 
 ## People, situations, and needs
 
-`Admin` and `Viewer` are permission roles, not personas.
+`Admin`, `Viewer`, and `Board` are permission roles, not personas.
 
 - A **decision reviewer** is someone preparing for or participating in a
-  strategic-performance review. They may hold either role.
+  strategic-performance review. They may hold the Viewer or scoped Board role;
+  an Admin may also perform this work.
 - A **reporting Admin** is someone responsible for recording results,
   completing definitions and targets, managing access, or reviewing history.
   They must hold the Admin role.
@@ -141,7 +142,7 @@ is instrumented.
 | Prepare a review | I cannot tell what requires discussion quickly. | A narrow Overview with one organization rollup, five Strategic Priorities, and a bounded attention list. | The shown rollup and attention reasons match the review agenda. |
 | Investigate a result | I need to understand what a summary means. | Priority and Measure drill-downs preserve Reporting Year and show results, Targets, inputs, history, and caveats. | This is enough evidence without an additional reconciliation artifact. |
 | Complete reporting | I do not know what is due or safe to submit. | A period-scoped checklist with one focused Measure form and one atomic save. | One Admin can complete or coordinate the cycle through this workflow. |
-| Resolve ambiguity | I need to finish a definition without corrupting history. | Setup consolidates Measures, Goals, People, and Activity and uses effective-dated successors. | Splitting Measure setup and Target editing across two areas remains understandable. |
+| Resolve ambiguity | I need to finish a definition without corrupting history. | Setup consolidates Plans, Measures, Goals, People, and Activity and uses effective-dated successors. | Successor-plan preparation and ordinary definition work remain understandable as separate Setup areas. |
 | Present results | I need a Board-ready artifact that matches the product. | Reports loads one selected Board Report or Trends view and exports only that visible report. | The report structure matches how leadership and the Board consume evidence. |
 
 Do not add destinations or broad visual concepts until observation shows one
@@ -151,7 +152,8 @@ a decision-review walkthrough, and an Admin recovery task—not another redesign
 ### Constraints and risks
 
 - The product is internal, authenticated, and online-required.
-- Viewer is read-only; Admin owns every product mutation.
+- Viewer and Board are read-only; Board output is limited to the persisted
+  Board visibility scope. Admin owns every product mutation.
 - SQLite is the persistent runtime and requires additive migrations and backup
   discipline.
 - Strategic observations are the sole current reporting truth. Legacy rows are
@@ -276,7 +278,7 @@ flowchart TD
 | Calculation State | `Valid`, `Missing`, `Invalid`. Missing and invalid are never zero. |
 | Progress State | `Not started`, `In progress`, `Complete`, `Exceeded`, `Target not finalized`, `Needs definition`. |
 | Board Status | `Not reported`, `Not started`, `On track`, `At risk`, `Off track`, `Complete`, `Exceeded`, `Not applicable`. |
-| User Account | Active or Disabled; Admin or Viewer; may require password change. Role and status changes revoke prior sessions. |
+| User Account | Active or Disabled; Admin, Viewer, or Board; may require password change. Role and status changes revoke prior sessions. |
 | Effective relationships | The selected Reporting Year chooses the applicable Definition, Membership, Target, Input, and Reporting Group. |
 | Semantic change | Once reporting or Targets depend on semantics, create a future successor instead of editing history in place. |
 | Removal | Archive is the reversible strategic lifecycle. Delete is reserved for removable records and non-strategic catalog metadata after audit/dependency rules pass. |
@@ -284,15 +286,15 @@ flowchart TD
 
 ## Information architecture
 
-The authenticated product has exactly four top-level destinations. Viewer sees
-the first two; Admin sees all four.
+The authenticated product has exactly four top-level destinations. Viewer and
+Board see the first two; Board content is scoped. Admin sees all four.
 
 | Place | Audience | Purpose | Required content and affordances |
 | --- | --- | --- | --- |
-| Overview | Viewer, Admin | Orient to organization performance and attention | Reporting Year, organization rollup, five Strategic Priorities, bounded attention list, Priority drill-down |
-| Reports | Viewer, Admin | Review and share the selected report | Report type, Reporting Year/Period, visible Board Report or Trends, matching exports |
+| Overview | Board, Viewer, Admin | Orient to organization performance and attention | Reporting Year, organization rollup, five Strategic Priorities, bounded attention list, Priority drill-down |
+| Reports | Board, Viewer, Admin | Review and share the selected report | Report type, Reporting Year/Period, visible Board Report or Trends, matching exports |
 | Data Entry | Admin | Complete one Reporting Cycle | Reporting Year/Period, checklist, focused Measure, exact raw fields, source/notes, save/retry/continue |
-| Setup | Admin | Govern definitions, Targets, access, and accountability | Persistent areas: Measures, Goals, People, Activity |
+| Setup | Admin | Govern Strategic Plans, definitions, Targets, access, and accountability | Persistent areas: Plans, Measures, Goals, People, Activity |
 
 Priority (`/dashboard/category/[slug]`) and Measure
 (`/dashboard/metric/[slug]`) are supporting drill-down places, not additional
@@ -344,8 +346,8 @@ Navigation rules:
 Success means the reviewer can name the performance state, denominator,
 unresolved caveat, and evidence path without inferring missing data. Empty or
 partial data stays visible as `Not available`, `Not reported`, `Target not
-finalized`, or an exact exclusion reason. A Viewer is never instructed to use
-Admin-only Data Entry or Setup.
+finalized`, or an exact exclusion reason. A Viewer or Board reviewer is never
+instructed to use Admin-only Data Entry or Setup.
 
 ### Primary: complete a reporting cycle
 
@@ -432,12 +434,12 @@ decorative authority.
   bright-yellow badges and therefore does not yet satisfy `DESIGN.md`'s
   single-accent intent.
 
-The July 15 live walk confirmed consistent four-item navigation, working
+The July 30 live walk confirmed consistent four-item Admin navigation, working
 desktop hierarchy, mobile list/detail transitions, explicit form labels, and
-zero browser-console errors. It also reproduced a 390 px Overview collision
-where long Priority names overlap `Not available` and `Needs attention`.
-That is a required surface fix for the Taste implementation, not a reason to
-change the conceptual model or navigation.
+zero browser-console errors. The earlier July 15 walk reproduced a 390 px Overview collision
+where long Priority names overlapped `Not available` and `Needs attention`.
+That collision was subsequently fixed; the July 30 walk found no horizontal
+overflow at 390 px. The conceptual model and navigation remain unchanged.
 
 ## Decisions and unresolved assumptions
 
@@ -463,7 +465,7 @@ Assumptions and unknowns requiring validation:
 - which Overview signals actually change leadership or Board decisions;
 - whether reviewers need source documents, commentary, sign-off, or freshness
   beyond the current source/notes fields;
-- whether Viewer and Admin are sufficient permission roles;
+- whether the current Board, Viewer, and Admin roles remain sufficient;
 - whether Targets are best edited in Goal context or need a Measure-context
   editing affordance as well;
 - acceptable concurrent-edit behavior on the remaining unversioned Setup and
@@ -487,7 +489,7 @@ but it must preserve:
 6. distinct Annual Pacing, Annual Completion, and Full-plan Progress;
 7. visible denominators, Targets, sources, provenance, and caveats wherever a
    result supports a decision;
-8. Viewer/Admin permissions, forced password change, and immutable Activity;
+8. Board/Viewer/Admin permissions, forced password change, and immutable Activity;
 9. Reports as the only Board Report/Trends and export place—no hidden report in
    Overview;
 10. effective-dated successors, archive/restore, and historical meaning;
@@ -498,7 +500,7 @@ but it must preserve:
 14. responsive layouts that tolerate the longest real names without overlap,
     truncation of meaning, or unreachable actions.
 
-Do not begin the Taste pass by changing colors or cards. Start with the 390 px
-collision, Measure/Target cross-link, report scanability, role-appropriate
-empty states, and route-level error/recovery gaps identified here; then apply
-the visual system to the resolved structure.
+Future surface work should start with the Measure/Target cross-link, report
+scanability, role-appropriate empty states, and any route-level error/recovery
+gaps identified through real use; then apply the visual system to the resolved
+structure.
