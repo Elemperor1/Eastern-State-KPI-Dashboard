@@ -59,7 +59,13 @@ afterEach(() => {
   }
 });
 
-describe("resolveScanner", () => {
+// POSIX-only: these cases prove scanner resolution against `#!/bin/sh`
+// fixtures placed on PATH, and the code under test spawns the resolved
+// executable directly. Windows cannot execute an extensionless shell
+// script through CreateProcess, so the fixtures would never run and the
+// assertions would pass or fail for reasons unrelated to S052-C1. The
+// security scans themselves run only on the Linux CI jobs.
+describe.skipIf(process.platform === "win32")("resolveScanner", () => {
   it("prefers Docker even when a shadow scanner binary is present", () => {
     makeExecutable("docker", 'if [ "$1" = "info" ]; then exit 0; fi; exit 1');
     makeExecutable(SCANNER_NAME, "exit 0");
@@ -103,7 +109,9 @@ describe("resolveScanner", () => {
   });
 });
 
-describe("dockerDaemon", () => {
+// POSIX-only for the same reason as `resolveScanner` above: the Docker
+// shim fixtures are shell scripts that Windows cannot execute.
+describe.skipIf(process.platform === "win32")("dockerDaemon", () => {
   it("ignores a repository-owned Docker shim and uses an external executable", () => {
     repositoryFixtureDir = mkdtempSync(
       join(process.cwd(), ".security-tooling-fixture-"),

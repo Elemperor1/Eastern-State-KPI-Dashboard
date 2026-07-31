@@ -5,6 +5,11 @@ import path from "node:path";
 import { DatabaseSync } from "node:sqlite";
 import { afterAll, describe, expect, it } from "vitest";
 
+// `node_modules/.bin/tsx` is an extensionless POSIX shim that Windows cannot
+// spawn (ENOENT). Run tsx's CLI with the current Node binary instead, the same
+// way scripts/ensure-seeded.mjs invokes operator scripts.
+const TSX_CLI = path.join(process.cwd(), "node_modules", "tsx", "dist", "cli.mjs");
+
 describe("production migration entrypoint", () => {
   const directory = fs.mkdtempSync(path.join(os.tmpdir(), "kpi-migrate-entrypoint-"));
 
@@ -104,8 +109,8 @@ describe("production migration entrypoint", () => {
     database.close();
 
     const migrated = spawnSync(
-      path.join(process.cwd(), "node_modules", ".bin", "tsx"),
-      [path.join(process.cwd(), "scripts", "migrate.ts")],
+      process.execPath,
+      [TSX_CLI, path.join(process.cwd(), "scripts", "migrate.ts")],
       {
         cwd: workingDirectory,
         env: {
@@ -766,7 +771,7 @@ function readById(
 
 /** Supports the run tsx test scenario. */
 function runTsx(script: string, databasePath: string) {
-  return spawnSync(path.join(process.cwd(), "node_modules", ".bin", "tsx"), [script], {
+  return spawnSync(process.execPath, [TSX_CLI, script], {
     cwd: process.cwd(),
     // S053-C1: the destructive seed requires SEED_CONFIRM naming the
     // exact resolved database; these disposable test databases are

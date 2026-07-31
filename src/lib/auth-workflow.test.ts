@@ -234,9 +234,11 @@ afterAll(() => {
 
 beforeEach(() => {
   // Fresh DB + fresh bootstrap accounts per test so password changes
-  // in one test never leak into another.
-  fs.rmSync(dbPath, { force: true });
+  // in one test never leak into another. Close the previous connection
+  // BEFORE unlinking: POSIX allows unlinking an open file, Windows
+  // refuses it with EPERM.
   resetDb();
+  fs.rmSync(dbPath, { force: true });
   ensureSeedAdmin();
   resetSession();
   resetThrottle();

@@ -4,6 +4,7 @@ import path from "node:path";
 import { spawnSync } from "node:child_process";
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import bcrypt from "bcryptjs";
+import { resolveNpmCli } from "../../scripts/install-dependencies.mjs";
 import { ensureSeedAdmin } from "@/features/auth/server";
 import {
   createUser,
@@ -147,12 +148,14 @@ describe("ensureSeedAdmin credential secrecy (in-process)", () => {
   });
 
   beforeEach(() => {
-    // Fresh DB file per test.
+    // Fresh DB file per test. Close the previous connection BEFORE
+    // unlinking: POSIX allows unlinking an open file, Windows refuses it
+    // with EPERM.
+    resetDb();
     fs.rmSync(dbPath, { force: true });
     process.env.DATABASE_PATH = dbPath;
     delete process.env.BOOTSTRAP_ADMIN_PASSWORD;
     delete process.env.BOOTSTRAP_VIEWER_PASSWORD;
-    resetDb();
   });
 
   it("never writes the operator-provided bootstrap passwords to stdout/stderr", () => {
@@ -340,6 +343,27 @@ describe("ensureSeedAdmin credential secrecy (end-to-end child process)", () => 
     return env;
   }
 
+  /**
+   * Runs one repository npm script as a real child process.
+   *
+   * Windows cannot spawn the extensionless `npm` shim (and refuses
+   * `npm.cmd` without a shell since the CVE-2024-27980 fix), so the npm
+   * CLI file runs under the current Node binary there — the same
+   * resolution `scripts/install-dependencies.mjs` performs.
+   */
+  function runNpmScript(script: string, env: NodeJS.ProcessEnv) {
+    const [executable, args] =
+      process.platform === "win32"
+        ? [process.execPath, [resolveNpmCli(), "run", script]]
+        : ["npm", ["run", script]];
+    return spawnSync(executable, args, {
+      cwd: REPO_ROOT,
+      env,
+      encoding: "utf8",
+      shell: false,
+    });
+  }
+
   /** Returns a source-map-safe diagnostic for a failed child command. */
   function childFailureDiagnostic(
     command: string,
@@ -354,16 +378,15 @@ describe("ensureSeedAdmin credential secrecy (end-to-end child process)", () => 
   }
 
   it("npm run db:seed never writes the bootstrap passwords to stdout/stderr", () => {
-    const res = spawnSync("npm", ["run", "db:seed"], {
-      cwd: REPO_ROOT,
-      env: childEnv({
+    const res = runNpmScript(
+      "db:seed",
+      childEnv({
         DATABASE_PATH: dbPath,
         SEED_CONFIRM: dbPath,
         BOOTSTRAP_ADMIN_PASSWORD: adminSentinel,
         BOOTSTRAP_VIEWER_PASSWORD: viewerSentinel,
       }),
-      encoding: "utf8",
-    });
+    );
     if (res.status !== 0) {
       throw childFailureDiagnostic("db:seed", res);
     }
@@ -390,24 +413,22 @@ describe("ensureSeedAdmin credential secrecy (end-to-end child process)", () => 
 
   it("npm run setup:admin defaults to Zach and never writes the new password to stdout/stderr", () => {
     // Seed first (random fallback) so the target account exists.
-    const seedRes = spawnSync("npm", ["run", "db:seed"], {
-      cwd: REPO_ROOT,
-      env: childEnv({ DATABASE_PATH: dbPath, SEED_CONFIRM: dbPath }),
-      encoding: "utf8",
-    });
+    const seedRes = runNpmScript(
+      "db:seed",
+      childEnv({ DATABASE_PATH: dbPath, SEED_CONFIRM: dbPath }),
+    );
     if (seedRes.status !== 0) {
       throw childFailureDiagnostic("db:seed", seedRes);
     }
 
     const newPass = "SetupAdminPerm!2026";
-    const res = spawnSync("npm", ["run", "setup:admin"], {
-      cwd: REPO_ROOT,
-      env: childEnv({
+    const res = runNpmScript(
+      "setup:admin",
+      childEnv({
         DATABASE_PATH: dbPath,
         SETUP_ADMIN_PASSWORD: newPass,
       }),
-      encoding: "utf8",
-    });
+    );
     if (res.status !== 0) {
       throw childFailureDiagnostic("setup:admin", res);
     }

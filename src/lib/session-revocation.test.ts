@@ -206,8 +206,11 @@ let adminPassword: string;
 let adminId: number;
 
 beforeEach(() => {
-  fs.rmSync(dbPath, { force: true });
+  // Close the previous test's connection BEFORE unlinking the file. POSIX
+  // allows unlinking an open file; Windows refuses it with EPERM, which
+  // failed every test in this suite on a Windows checkout.
   resetDb();
+  fs.rmSync(dbPath, { force: true });
   ensureSeedAdmin();
   resetSession();
   resetThrottle();
