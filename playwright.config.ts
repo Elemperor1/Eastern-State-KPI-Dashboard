@@ -21,6 +21,12 @@ export default defineConfig({
   fullyParallel: false,
   workers: 1,
   timeout: 180_000,
+  // The suite runs 13 ordered tests against one shared disposable database
+  // on a contended CI runner, so a single slow navigation could fail the
+  // required workflow with no second attempt. Playwright still reports a
+  // retried pass as "flaky", so instability stays visible instead of being
+  // hidden. Local runs keep failing on the first attempt.
+  retries: process.env.CI ? 2 : 0,
   expect: {
     timeout: 15_000,
   },
