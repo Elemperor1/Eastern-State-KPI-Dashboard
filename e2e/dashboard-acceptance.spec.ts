@@ -1130,7 +1130,17 @@ test("uses one flat Setup workspace on desktop and mobile", async ({ page }, tes
     name: new RegExp(COMPONENT_MEASURE),
   });
   await destinationLink.click();
-  await expect(page.getByRole("heading", { name: COMPONENT_MEASURE })).toBeFocused();
+  // Assert arrival before focus. Collapsing both into `toBeFocused` made a
+  // slow first paint on a contended runner surface as "element(s) not found"
+  // — indistinguishable from a genuine focus-management regression, and the
+  // cause of a red master on 2026-07-30. The destination is server-rendered
+  // after a full navigation, so it gets a longer budget than the 15s default
+  // expect timeout; focus is then asserted on an element known to exist.
+  const destinationHeading = page.getByRole("heading", {
+    name: COMPONENT_MEASURE,
+  });
+  await expect(destinationHeading).toBeVisible({ timeout: 60_000 });
+  await expect(destinationHeading).toBeFocused();
 
   for (const width of [360, 390, 768, 1440, 1920]) {
     await page.setViewportSize({ width, height: width < 1_000 ? 844 : 1_080 });
