@@ -60,8 +60,10 @@ function sweepAbandonedRunDirectories(temporaryRoot: string): void {
     }
     const candidate = path.join(temporaryRoot, entry.name);
     try {
-      const marker = fs.lstatSync(path.join(candidate, E2E_OWNERSHIP_MARKER));
+      const markerPath = path.join(candidate, E2E_OWNERSHIP_MARKER);
+      const marker = fs.lstatSync(markerPath);
       if (!marker.isFile() || marker.mtimeMs > cutoff) continue;
+      if (!abandonedRunMarker(markerPath, candidate)) continue;
       fs.rmSync(candidate, {
         recursive: true,
         force: true,
@@ -73,6 +75,48 @@ function sweepAbandonedRunDirectories(temporaryRoot: string): void {
       // ours to remove right now". Never fail a run over cleanup of a
       // previous one.
     }
+  }
+}
+
+/**
+ * True only when the marker proves its run is over.
+ *
+ * Age alone is not proof: a slow or hung acceptance run stays alive well past
+ * any threshold, and deleting its directory would unlink the SQLite database
+ * out from under it on POSIX, or half-remove its sidecars on Windows, and
+ * break its identity-checked teardown. So the marker must parse, must name
+ * the directory it sits in — proving it is this harness's own record and not
+ * a lookalike file — and must name a process that is no longer running.
+ */
+function abandonedRunMarker(markerPath: string, runDirectory: string): boolean {
+  let marker: { runDirectory?: unknown; createdByPid?: unknown };
+  try {
+    marker = JSON.parse(fs.readFileSync(markerPath, "utf8")) as typeof marker;
+  } catch {
+    return false;
+  }
+  if (marker.runDirectory !== runDirectory) return false;
+  const pid = marker.createdByPid;
+  if (typeof pid !== "number" || !Number.isInteger(pid) || pid <= 0) {
+    return false;
+  }
+  return !processIsRunning(pid);
+}
+
+/** True when a process with this id currently exists. */
+function processIsRunning(pid: number): boolean {
+  try {
+    // Signal 0 performs the existence check without delivering a signal.
+    process.kill(pid, 0);
+    return true;
+  } catch (error) {
+    const code = error instanceof Error && "code" in error
+      ? (error as NodeJS.ErrnoException).code
+      : undefined;
+    // EPERM means the process exists but belongs to someone else. Treat
+    // anything other than "no such process" as still running, so the sweep
+    // errs toward leaving a directory alone.
+    return code !== "ESRCH";
   }
 }
 
@@ -143,9 +187,13 @@ export function createE2EDatabaseRun({
       databaseDevice: databaseStat.dev.toString(),
       databaseInode: databaseStat.ino.toString(),
     };
+    // `createdByPid` is sweep evidence, not part of the run contract: a later
+    // run uses it to prove this one is over instead of guessing from a
+    // timestamp. Cleanup compares the run fields individually, so the extra
+    // key is inert there.
     fs.writeFileSync(
       path.join(runDirectory, E2E_OWNERSHIP_MARKER),
-      JSON.stringify(run),
+      JSON.stringify({ ...run, createdByPid: process.pid }),
       { encoding: "utf8", flag: "wx", mode: 0o600 },
     );
     return run;
@@ -371,7 +419,7 @@ export async function cleanupE2EDatabaseRun(
     // up; the deletion has to happen once the run is over instead. Ownership
     // was fully verified above, and the exit handler re-resolves nothing: it
     // removes the exact directory this run created.
-    deferRemovalToProcessExit(run.runDirectory);
+    deferRemovalToProcessExit([...files, markerPath], run.runDirectory);
   }
 }
 
@@ -384,16 +432,35 @@ function windowsFileStillOpen(error: unknown): boolean {
   return code === "EBUSY" || code === "EPERM";
 }
 
-/** Removes a verified run directory once the web server has exited. */
-function deferRemovalToProcessExit(runDirectory: string): void {
+/**
+ * Removes the already-verified run once the web server has exited.
+ *
+ * The files are removed explicitly rather than relying on the recursive
+ * directory removal: an `E2E_DATABASE_PATH` override places the database
+ * directly under the temp root instead of inside the run directory, so
+ * deleting only the directory would leave that database and its WAL/SHM
+ * sidecars behind — which then makes the next run with the same override
+ * refuse to start, because it reserves the path with `wx+`.
+ */
+function deferRemovalToProcessExit(
+  files: string[],
+  runDirectory: string,
+): void {
   process.once("exit", () => {
+    const removal = {
+      force: true,
+      maxRetries: 20,
+      retryDelay: 50,
+    } as const;
+    for (const file of files) {
+      try {
+        fs.rmSync(file, removal);
+      } catch {
+        // Best effort by construction: the process is already exiting.
+      }
+    }
     try {
-      fs.rmSync(runDirectory, {
-        recursive: true,
-        force: true,
-        maxRetries: 20,
-        retryDelay: 50,
-      });
+      fs.rmSync(runDirectory, { ...removal, recursive: true });
     } catch {
       // Best effort by construction: the process is already exiting, and the
       // directory is a uniquely named disposable run under the OS temp root.

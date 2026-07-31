@@ -323,24 +323,45 @@ describe("Playwright database run portability", () => {
     );
     createdDirectories.push(temporaryDirectory);
 
+    const longAgo = new Date(Date.now() - 3 * 60 * 60 * 1000);
+    /** Writes an aged run directory carrying the given owner marker. */
+    const agedRun = (marker: Record<string, unknown>): string => {
+      const directory = fs.mkdtempSync(
+        path.join(temporaryDirectory, "eastern-state-kpi-playwright-run-"),
+      );
+      const markerPath = path.join(directory, ".eastern-state-kpi-e2e-owner.json");
+      fs.writeFileSync(
+        markerPath,
+        JSON.stringify({ runDirectory: directory, ...marker }),
+      );
+      fs.utimesSync(markerPath, longAgo, longAgo);
+      return directory;
+    };
+
     // A hard kill (CI cancellation, Ctrl-C) skips teardown on every platform,
     // and on Windows teardown can also lose the database to a still-open
     // handle, so the temp root would otherwise gain a directory per run.
-    const abandoned = fs.mkdtempSync(
-      path.join(temporaryDirectory, "eastern-state-kpi-playwright-run-"),
-    );
-    const abandonedMarker = path.join(
-      abandoned,
-      ".eastern-state-kpi-e2e-owner.json",
-    );
-    fs.writeFileSync(abandonedMarker, "{}");
-    const longAgo = new Date(Date.now() - 3 * 60 * 60 * 1000);
-    fs.utimesSync(abandonedMarker, longAgo, longAgo);
+    // 2^22 is above every default pid_max, so no live process can hold it.
+    const abandoned = agedRun({ createdByPid: 4_194_303 });
+
+    // Age is not proof of abandonment: a slow or hung run stays alive well
+    // past any threshold, and sweeping it would unlink its live database.
+    const hungButAlive = agedRun({ createdByPid: process.pid });
+
+    // A marker that does not describe its own directory is not this
+    // harness's record, whatever its name.
+    const foreignMarker = agedRun({
+      runDirectory: path.join(temporaryDirectory, "somewhere-else"),
+      createdByPid: 4_194_303,
+    });
 
     const recent = fs.mkdtempSync(
       path.join(temporaryDirectory, "eastern-state-kpi-playwright-run-"),
     );
-    fs.writeFileSync(path.join(recent, ".eastern-state-kpi-e2e-owner.json"), "{}");
+    fs.writeFileSync(
+      path.join(recent, ".eastern-state-kpi-e2e-owner.json"),
+      JSON.stringify({ runDirectory: recent, createdByPid: 4_194_303 }),
+    );
 
     // Unrelated directories must never be selected, prefix or not.
     const unrelated = fs.mkdtempSync(path.join(temporaryDirectory, "operator-"));
@@ -353,6 +374,8 @@ describe("Playwright database run portability", () => {
     createdDirectories.push(run.runDirectory);
 
     expect(fs.existsSync(abandoned)).toBe(false);
+    expect(fs.existsSync(hungButAlive)).toBe(true);
+    expect(fs.existsSync(foreignMarker)).toBe(true);
     expect(fs.existsSync(recent)).toBe(true);
     expect(fs.existsSync(unrelated)).toBe(true);
     expect(fs.existsSync(prefixedWithoutMarker)).toBe(true);
