@@ -131,6 +131,47 @@ describe("strategic Data Entry server model", () => {
     ]);
   });
 
+  it.each(["draft", "needs_definition", "needs_target"])(
+    "withholds the entry form for a %s configuration the write path refuses",
+    (configurationStatus) => {
+      const goal = readyGoal();
+      goal.members[0]!.configuration.configuration_status = configurationStatus;
+      listStrategicGoalsMock.mockReturnValue([goal]);
+
+      const data = loadStrategicDataEntryPageData({
+        reportingYear: 2027,
+        reportingPeriod: "monthly:6",
+        requestedKpiId: 7,
+      });
+
+      expect(data.kpis).toEqual([
+        expect.objectContaining({ id: 7, checklistStatus: "needs_attention" }),
+      ]);
+      expect(data.selectedKpi).toBeNull();
+      expect(data.selectedKpiId).toBe(7);
+      expect(data.loadError).toBe(
+        "Finish this measure's setup before entering results.",
+      );
+    },
+  );
+
+  it("withholds the entry form for a multi-component measure with no components", () => {
+    const goal = readyGoal();
+    goal.members[0]!.configuration.measurement_type = "multi_component";
+    listStrategicGoalsMock.mockReturnValue([goal]);
+
+    const data = loadStrategicDataEntryPageData({
+      reportingYear: 2027,
+      reportingPeriod: "annual:0",
+      requestedKpiId: 7,
+    });
+
+    expect(data.selectedKpi).toBeNull();
+    expect(data.loadError).toBe(
+      "Finish this measure's setup before entering results.",
+    );
+  });
+
   it("offers every month plus full year for an annual measure", () => {
     const data = loadStrategicDataEntryPageData({
       reportingYear: 2027,

@@ -409,6 +409,16 @@ export const RawAverageInputsSchema = z
           path: ["positive_response_count"],
           message: "Percent-positive inputs require positive and total response counts.",
         });
+      } else if (raw.total_response_count === 0) {
+        // The total response count is the denominator of the percentage
+        // (CALC-001): zero persists a row the kernel can only render invalid
+        // (ZERO_DENOMINATOR) while the Data Entry checklist counts the period
+        // complete. A period with no responses stays unreported.
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ["total_response_count"],
+          message: "Percent-positive inputs require at least one total response.",
+        });
       } else if (raw.positive_response_count > raw.total_response_count) {
         ctx.addIssue({
           code: z.ZodIssueCode.custom,

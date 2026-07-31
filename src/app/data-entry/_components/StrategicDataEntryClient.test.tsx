@@ -79,7 +79,91 @@ function pageData(): StrategicDataEntryPageData {
   };
 }
 
+/** Supports the saved component entry test scenario. */
+function savedComponentEntry(componentId: number) {
+  return {
+    id: 400 + componentId,
+    kind: "component_entry" as const,
+    kpiId: 7,
+    componentId,
+    componentLabel: "Admissions",
+    measurementType: "count" as const,
+    reportingFrequency: "annual" as const,
+    year: 2027,
+    periodType: "annual" as const,
+    periodIndex: 0,
+    scalarValue: 120,
+    numerator: null,
+    denominator: null,
+    respondentCount: null,
+    averageMethod: null,
+    totalScore: null,
+    averageScore: null,
+    maxScorePerRespondent: null,
+    totalPossibleScore: null,
+    positiveResponseCount: null,
+    totalResponseCount: null,
+    booleanValue: null,
+    milestoneValue: null,
+    mutuallyExclusive: null,
+    notes: null,
+    sourceReference: null,
+    bands: [],
+  };
+}
+
 describe("Data Entry", () => {
+  it("offers no way to remove a result before one is recorded", () => {
+    const html = renderToStaticMarkup(
+      <StrategicDataEntryClient data={pageData()} />,
+    );
+
+    expect(html).not.toContain("Remove saved result");
+  });
+
+  it("offers to remove a recorded result only for the input that has one", () => {
+    const data = pageData();
+    data.records = [savedComponentEntry(11)];
+
+    const html = renderToStaticMarkup(
+      <StrategicDataEntryClient data={data} />,
+    );
+
+    expect(html.match(/Remove saved result/g)).toHaveLength(1);
+    // The action sits inside the section for the component that owns the
+    // record, so clearing one component cannot remove another's value.
+    const admissions = html.indexOf('data-entry-section="11"');
+    const memberVisits = html.indexOf('data-entry-section="12"');
+    const action = html.indexOf("Remove saved result");
+    expect(admissions).toBeGreaterThanOrEqual(0);
+    expect(action).toBeGreaterThan(admissions);
+    expect(action).toBeLessThan(memberVisits);
+  });
+
+  it("names the reporting period the removal applies to", () => {
+    const data = pageData();
+    data.records = [savedComponentEntry(11)];
+
+    const html = renderToStaticMarkup(
+      <StrategicDataEntryClient data={data} />,
+    );
+
+    expect(html).toContain("A result is recorded for Full year 2027");
+    expect(html).toContain("recorded in Activity");
+  });
+
+  it("removes a saved result only through the delete route, never as an empty save", () => {
+    const source = readFileSync(
+      new URL("./StrategicDataEntryClient.tsx", import.meta.url),
+      "utf8",
+    );
+
+    expect(source).toContain('method: "DELETE"');
+    expect(source).toContain("deleteEndpointForRecord(pending.record)");
+    // The destructive path is gated behind an explicit confirmation.
+    expect(source).toContain("Remove this saved result?");
+  });
+
   it("shows every component together in one period-scoped form", () => {
     const html = renderToStaticMarkup(
       <StrategicDataEntryClient data={pageData()} />,

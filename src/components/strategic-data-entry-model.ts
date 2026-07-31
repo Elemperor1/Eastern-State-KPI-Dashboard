@@ -243,6 +243,36 @@ function draftForReportingCycle(
   };
 }
 
+/**
+ * The editable inputs for one checklist item, each paired with the component
+ * it writes (null for a single-input Measure) and the record it edits. Drafts
+ * and the clear-value action both derive from this so a saved value can never
+ * be hydrated into one input and cleared from another.
+ */
+function entrySlots(
+  selectedKpi: StrategicDataEntrySelectedKpi,
+  records: StrategicDataEntryRecord[],
+): Array<{
+  key: string;
+  componentId: number | null;
+  record: StrategicDataEntryRecord | undefined;
+}> {
+  if (selectedKpi.measurementType !== "multi_component") {
+    return [
+      {
+        key: PRIMARY_DATA_ENTRY_DRAFT,
+        componentId: null,
+        record: records.find((record) => record.componentId === null),
+      },
+    ];
+  }
+  return selectedKpi.components.map((component) => ({
+    key: String(component.id),
+    componentId: component.id,
+    record: records.find((record) => record.componentId === component.id),
+  }));
+}
+
 /** Build the complete editable draft set for one checklist item and period. */
 export function initialStrategicDataEntryDrafts(
   selectedKpi: StrategicDataEntrySelectedKpi,
@@ -250,32 +280,33 @@ export function initialStrategicDataEntryDrafts(
   reportingPeriod: ReportingCycleOption,
   records: StrategicDataEntryRecord[],
 ): StrategicDataEntryDrafts {
-  if (selectedKpi.measurementType !== "multi_component") {
-    return {
-      [PRIMARY_DATA_ENTRY_DRAFT]: draftForReportingCycle(
+  return Object.fromEntries(
+    entrySlots(selectedKpi, records).map((slot) => [
+      slot.key,
+      draftForReportingCycle(
         selectedKpi,
         reportingYear,
         reportingPeriod,
-        null,
-        records.find((record) => record.componentId === null),
+        slot.componentId,
+        slot.record,
       ),
-    };
-  }
+    ]),
+  );
+}
 
+/**
+ * The already-saved record behind each editable input, keyed by draft key.
+ * An input with no entry here has nothing recorded for the selected
+ * Reporting Period, so it has nothing to clear.
+ */
+export function savedStrategicDataEntryRecords(
+  selectedKpi: StrategicDataEntrySelectedKpi,
+  records: StrategicDataEntryRecord[],
+): Record<string, StrategicDataEntryRecord> {
   return Object.fromEntries(
-    selectedKpi.components.map((component) => {
-      const key = String(component.id);
-      return [
-        key,
-        draftForReportingCycle(
-          selectedKpi,
-          reportingYear,
-          reportingPeriod,
-          component.id,
-          records.find((record) => record.componentId === component.id),
-        ),
-      ];
-    }),
+    entrySlots(selectedKpi, records).flatMap((slot) =>
+      slot.record ? [[slot.key, slot.record]] : [],
+    ),
   );
 }
 
@@ -389,7 +420,10 @@ export function buildStrategicDataEntryMutation(
       draft.respondentCount,
       "respondentCount",
       errors,
-      { integer: true, nonnegative: true },
+      // Zero respondents can never produce a reportable distribution; reject
+      // it at entry instead of persisting a row the kernel renders invalid
+      // (ZERO_RESPONDENT_TOTAL) while the checklist shows complete.
+      { integer: true, positive: true },
     );
     const bands = activeBandsForDraft(selectedKpi, draft);
     if (bands.length === 0) {
@@ -471,11 +505,12 @@ export function buildStrategicDataEntryMutation(
     }
     body.value = value;
   } else if (measurementType === "percentage" || measurementType === "ratio") {
-    body.numerator = readNumber(draft.numerator, "numerator", errors, {
+    const numerator = readNumber(draft.numerator, "numerator", errors, {
       nonnegative: true,
     });
+    body.numerator = numerator;
     const fixedDenominator = component?.fixedDenominator ?? selectedKpi.fixedDenominator;
-    body.denominator =
+    const denominator =
       fixedDenominator === null
         ? readNumber(draft.denominator, "denominator", errors, {
             // A zero denominator can never produce a reportable value;
@@ -484,6 +519,22 @@ export function buildStrategicDataEntryMutation(
             positive: true,
           })
         : null;
+    body.denominator = denominator;
+    // A percentage is a fraction of a whole, so the server rejects a
+    // numerator above the denominator (ObservationInputSchema). Mirror that
+    // rule here so the admin gets a field error on the offending input
+    // instead of a banner-only failure with nothing to focus. Ratios may
+    // legitimately exceed 1, so the ceiling applies to percentages only.
+    const ceiling = denominator ?? fixedDenominator;
+    if (
+      measurementType === "percentage" &&
+      numerator !== null &&
+      ceiling !== null &&
+      numerator > ceiling
+    ) {
+      errors.numerator =
+        "A percentage cannot exceed 100%: the measured amount cannot be greater than the total.";
+    }
   } else if (measurementType === "average") {
     const averageInputs: Record<string, unknown> = {
       method: draft.averageMethod,
@@ -499,7 +550,9 @@ export function buildStrategicDataEntryMutation(
         draft.totalResponseCount,
         "totalResponseCount",
         errors,
-        { integer: true, nonnegative: true },
+        // The total is the denominator of the percentage; zero responses can
+        // never produce a reportable value (ZERO_DENOMINATOR).
+        { integer: true, positive: true },
       );
       if (positive !== null && total !== null && positive > total) {
         errors.positiveResponseCount =
