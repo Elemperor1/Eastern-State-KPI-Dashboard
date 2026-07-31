@@ -662,10 +662,24 @@ export function calculateAnnualAndPlanProgress(
       issues: [issue],
     };
   }
+  const baselineCheck = readOptionalFinite(input.annualBaseline, "annualBaseline");
   if (targetToDateCheck.value !== null) {
     pacingTarget = targetToDateCheck.value;
   } else if (annualTargetCheck.value !== null) {
-    pacingTarget = roundFinite(annualTargetCheck.value * elapsedFraction, precision);
+    // The pacing target is where the Measure should stand at this point in the
+    // year. Without a baseline that is a plain share of the annual target. WITH
+    // one, the year's work is the distance from baseline to target, so the
+    // elapsed share applies to that DISTANCE and the baseline itself stays put:
+    // scaling both ends cancels out, which used to report a Measure sitting
+    // exactly on its baseline as 100% and "On track" at mid-year, and could
+    // even place the pacing target below the baseline it starts from.
+    pacingTarget = roundFinite(
+      baselineCheck.value === null
+        ? annualTargetCheck.value * elapsedFraction
+        : baselineCheck.value +
+            (annualTargetCheck.value - baselineCheck.value) * elapsedFraction,
+      precision,
+    );
   }
 
   const shared = {
@@ -678,7 +692,7 @@ export function calculateAnnualAndPlanProgress(
       input.annualConfigurationStatus ?? input.configurationStatus,
     currentValue: input.annualActual,
     targetValue: pacingTarget,
-    baselineValue: prorateBaseline(input.annualBaseline, elapsedFraction, precision),
+    baselineValue: input.annualBaseline,
   });
   const annualCompletion = calculateProgress({
     ...shared,
@@ -1957,17 +1971,6 @@ function combineStates(states: CalculationState[]): CalculationState {
   if (states.includes("invalid")) return "invalid";
   if (states.includes("missing")) return "missing";
   return "ok";
-}
-
-/** Implements the prorate baseline operation. */
-function prorateBaseline(
-  value: number | null | undefined,
-  fraction: number,
-  precision: number,
-): number | null | undefined {
-  if (value === null || value === undefined) return value;
-  if (!Number.isFinite(value)) return value;
-  return roundFinite(value * fraction, precision);
 }
 
 /** Implements the rounded average operation. */

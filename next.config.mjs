@@ -37,10 +37,10 @@ if (
  *   - nosniff: blocks MIME confusion on the CSV/PNG/PDF downloads.
  *   - Referrer-Policy strict-origin-when-cross-origin: keeps report
  *     query strings out of cross-origin referrers.
- *   - HSTS: Fly terminates TLS; plain max-age without includeSubDomains
- *     so a future custom domain cannot force HTTPS on sibling
- *     subdomains the site does not control. Ignored by browsers over
- *     plain-HTTP loopback, so local development is unaffected.
+ *   - HSTS is deliberately NOT sent. This installation is served over
+ *     plain HTTP on a VPN-only network, and an HSTS header cached from
+ *     any incidental HTTPS request would pin clients to HTTPS for the
+ *     max-age window and make the site unreachable.
  * A full CSP and Permissions-Policy remain backlog until the
  * export/PNG flows are header-tested.
  */
@@ -49,7 +49,6 @@ const securityHeaders = [
   { key: "X-Frame-Options", value: "DENY" },
   { key: "X-Content-Type-Options", value: "nosniff" },
   { key: "Referrer-Policy", value: "strict-origin-when-cross-origin" },
-  { key: "Strict-Transport-Security", value: "max-age=63072000" },
 ];
 
 /** @type {import('next').NextConfig} */

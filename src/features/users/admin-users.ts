@@ -1,3 +1,4 @@
+import { asUtcTimestamp } from "@/lib/sqlite-timestamp";
 import type { Role, User } from "@/lib/types";
 
 export const ADMIN_USER_ROLE_OPTIONS: Array<{ value: Role; label: string }> = [
@@ -41,9 +42,15 @@ export function formatAdminUserStatus(user: Pick<User, "disabled">): "Active" | 
   return user.disabled ? "Disabled" : "Active";
 }
 
-/** Formats admin user created date. */
+/**
+ * Formats admin user created date.
+ *
+ * The stored value is UTC without a zone marker, so it must be pinned before
+ * parsing — otherwise an account created late in the evening local time shows
+ * the following day's date.
+ */
 export function formatAdminUserCreatedDate(createdAt: string): string {
-  return new Date(createdAt).toLocaleDateString("en-US");
+  return new Date(asUtcTimestamp(createdAt)).toLocaleDateString("en-US");
 }
 
 /** Builds role change success message. */

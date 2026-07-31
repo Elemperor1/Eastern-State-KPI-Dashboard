@@ -5,6 +5,7 @@ import {
   buildAdminHistoryHref,
   describeAdminHistoryPeriod,
   filterAdminHistoryKpisByCategory,
+  formatAdminHistoryChangedAt,
   formatAdminHistoryValue,
   getAdminHistoryActorLabel,
   getAdminHistoryCategoryLabel,
@@ -69,6 +70,16 @@ function kpi(id: number, categoryId: number): KPIWithCategory {
 }
 
 describe("admin history helpers", () => {
+  it("reads the stored UTC changed_at as UTC, not as local time", () => {
+    // entry_history.changed_at defaults to datetime('now'): UTC with no zone
+    // marker. Parsed bare it renders every Activity row shifted by the
+    // viewer's offset. Compared against the equivalent explicit-UTC instant so
+    // the assertion holds in any timezone.
+    expect(formatAdminHistoryChangedAt("2026-07-31 20:13:14")).toBe(
+      formatAdminHistoryChangedAt("2026-07-31T20:13:14.000Z"),
+    );
+  });
+
   it("normalizes active filters into client state and detects clearable filters", () => {
     expect(buildAdminHistoryFilterState({ category_id: 2, kpi_id: 3, year: 2026 })).toEqual({
       categoryId: "2",

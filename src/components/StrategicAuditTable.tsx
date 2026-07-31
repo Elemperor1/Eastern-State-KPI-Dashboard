@@ -2,6 +2,7 @@
 
 import { Badge, EmptyState, Table } from "@/components/ui";
 import type { StrategicAuditEvent } from "@/features/strategy";
+import { parseUtcTimestamp } from "@/lib/sqlite-timestamp";
 
 export type SetupAuditEvent = Omit<
   StrategicAuditEvent,
@@ -118,6 +119,6 @@ function displayToken(value: string): string {
 
 /** Formats date. */
 function formatDate(value: string): string {
-  const date = new Date(value.endsWith("Z") ? value : `${value}Z`);
+  const date = parseUtcTimestamp(value);
   return Number.isNaN(date.getTime()) ? value : date.toLocaleString();
 }

@@ -126,8 +126,11 @@ requirePattern(
 requirePattern(
   problems,
   windowsRunbook,
-  /C:\\Database\\data\\kpi\.db[\s\S]*127\.0\.0\.1:3000[\s\S]*TLS reverse proxy/u,
-  "Windows runbook must retain the local SQLite, loopback, and TLS boundaries",
+  // TLS is intentionally absent on this VPN-only private-network install,
+  // so the proxy boundary is asserted without mandating TLS termination.
+  // The local-SQLite and loopback boundaries remain non-negotiable.
+  /C:\\Database\\data\\kpi\.db[\s\S]*127\.0\.0\.1:3000[\s\S]*reverse proxy/u,
+  "Windows runbook must retain the local SQLite, loopback, and reverse-proxy boundaries",
 );
 
 if (problems.length > 0) {

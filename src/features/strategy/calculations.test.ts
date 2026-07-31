@@ -535,6 +535,67 @@ describe("strategy calculation kernel", () => {
       expect(result.annualCompletion.actualProgressPercentage).toBe(25);
       expect(result.fullPlanProgress.actualProgressPercentage).toBe(10);
     });
+
+    it("paces the distance from the baseline, not the whole target", () => {
+      // A Measure sitting exactly on its baseline has done none of the year's
+      // work. Prorating the baseline alongside the target cancelled out and
+      // reported this as complete.
+      const stalled = calculateAnnualAndPlanProgress({
+        annualActual: 100,
+        annualTarget: 200,
+        annualBaseline: 100,
+        elapsedFraction: 0.5,
+        direction: "higher",
+        precision: 1,
+      });
+      expect(stalled.pacingTarget).toBe(150);
+      expect(stalled.annualPacing.baselineValue).toBe(100);
+      expect(stalled.annualPacing.actualProgressPercentage).toBe(0);
+      expect(stalled.annualPacing.status).toBe("not_started");
+
+      const onPace = calculateAnnualAndPlanProgress({
+        annualActual: 150,
+        annualTarget: 200,
+        annualBaseline: 100,
+        elapsedFraction: 0.5,
+        direction: "higher",
+        precision: 1,
+      });
+      expect(onPace.annualPacing.status).toBe("complete");
+      expect(onPace.annualCompletion.actualProgressPercentage).toBe(50);
+    });
+
+    it("paces a lower-is-better measure down from its baseline", () => {
+      const result = calculateAnnualAndPlanProgress({
+        annualActual: 90,
+        annualTarget: 50,
+        annualBaseline: 100,
+        elapsedFraction: 0.5,
+        direction: "lower",
+        precision: 1,
+      });
+      expect(result.pacingTarget).toBe(75);
+      expect(result.annualPacing.actualProgressPercentage).toBe(40);
+      expect(result.annualPacing.status).toBe("in_progress");
+    });
+
+    it("keeps an explicit target-to-date compatible with its baseline", () => {
+      // The to-date target is already scoped to the elapsed period; prorating
+      // the baseline underneath it pushed the baseline below the target and
+      // failed the whole row as INVALID_TARGET_RANGE.
+      const result = calculateAnnualAndPlanProgress({
+        annualActual: 95,
+        annualTargetToDate: 90,
+        annualTarget: 50,
+        annualBaseline: 100,
+        elapsedFraction: 0.25,
+        direction: "lower",
+        precision: 1,
+      });
+      expect(result.pacingTarget).toBe(90);
+      expect(result.annualPacing.state).toBe("ok");
+      expect(result.annualPacing.actualProgressPercentage).toBe(50);
+    });
   });
 
   describe("multi-component aggregation", () => {
