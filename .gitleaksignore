@@ -9,3 +9,10 @@
 # Owner: repository maintainers. Remove when this commit leaves retained
 # history or the upstream rule no longer matches the prose.
 4232ee71508d3ef3870a661ef3cd0626a9d85313:.impeccable/critique/2026-07-15T18-43-23Z__src-app.md:generic-api-key:35
+
+# Exact historical false positive: a Windows runtime test fixture used a
+# high-entropy hex placeholder for SESSION_SECRET. The fixture now uses the
+# repository's low-entropy test placeholder, so only the retained commit still
+# matches. Owner: repository maintainers. Remove when this commit leaves
+# retained history.
+140dd4896d3b6402f8ebc33d3114e6fd04064b02:scripts/windows-production.test.ts:generic-api-key:31

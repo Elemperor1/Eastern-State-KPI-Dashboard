@@ -295,13 +295,17 @@ Gitleaks 8.30.1 scans all retained commits locally. CI passes a validated
 `fetch-depth: 0`; findings are always redacted. The scanner has no network in
 Docker and no credentials are passed to it.
 
-`.gitleaksignore` contains two exact historical fingerprints. A prose list of
+`.gitleaksignore` contains three exact historical fingerprints. A prose list of
 CSRF test cases in commit `7d2e5e2` and Impeccable critique prose about an
 authentication heading in commit `4232ee7` were classified as generic API-key
-assignments. Each allowlist entry is limited to its commit, file, rule, and
-line. Remove an entry when its commit leaves retained history or the upstream
-rule no longer matches that prose. Do not allowlist realistic test credentials;
-replace them with obviously deterministic fixtures.
+assignments. A high-entropy hex `SESSION_SECRET` placeholder in the Windows
+runtime test fixture in commit `140dd48` was also classified as a generic API
+key; the fixture in the current tree now uses the repository's obviously
+deterministic placeholder, so only the retained commit still matches. Each
+allowlist entry is limited to its commit, file, rule, and line. Remove an entry
+when its commit leaves retained history or the upstream rule no longer matches.
+Do not allowlist realistic test credentials; replace them with obviously
+deterministic fixtures.
 
 Gitleaks cannot revoke a credential or prove that an exposed credential was
 never used. Treat a real match as an incident: revoke/rotate it, remove it from
