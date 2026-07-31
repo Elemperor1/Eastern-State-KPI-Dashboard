@@ -1,5 +1,6 @@
 import { notFound, redirect } from "next/navigation";
 import { AppShell } from "@/components/AppShell";
+import { PeriodTrendChart } from "@/components/PeriodTrendChart";
 import { ReportingYearFilter } from "@/components/ReportingYearFilter";
 import { SampleDataBadge } from "@/components/SampleDataBadge";
 import {
@@ -12,6 +13,10 @@ import {
 } from "@/components/ui";
 import { getCurrentUserReadOnly } from "@/features/auth/session";
 import { listDashboardYears, loadStrategicMetricPageData } from "@/features/reporting/server";
+import {
+  buildPeriodTrendSeries,
+  periodTrendSeriesHasValues,
+} from "@/features/reporting/period-trend";
 import {
   resolveStrategicReportingYear,
   strategyPeriods,
@@ -127,6 +132,12 @@ export default async function StrategicMeasurePage({
   });
   if (!data) notFound();
 
+  // Only monthly and quarterly measures have a shape inside the year worth
+  // charting; everything else keeps the reported-results list on its own.
+  const periodTrend = buildPeriodTrendSeries(data.actuals, {
+    selectedYear: data.selectedYear,
+  });
+
   return (
     <AppShell user={user} organizationShortName={installation.organization.shortName} planName={installation.plan.name}>
       <div className="page-content page-enter">
@@ -209,18 +220,29 @@ export default async function StrategicMeasurePage({
                 : "No results have been reported for this period."}
             />
           ) : (
-            <dl className="divide-y divide-ink-200 border-y border-ink-200">
-              {data.actuals.map((actual) => (
-                <div key={`${actual.year}-${actual.periodType}-${actual.periodIndex}`} className="flex items-center justify-between gap-4 py-4">
-                  <dt className="text-sm text-ink-700">
-                    {reportedPeriodLabel(actual)}
-                  </dt>
-                  <dd className="font-semibold tabular text-ink-950">
-                    {formatBoardReportMetricValue(actual.value, data.kpi.unit)}
-                  </dd>
+            <>
+              {periodTrend && periodTrendSeriesHasValues(periodTrend) ? (
+                <div className="mb-6">
+                  <PeriodTrendChart
+                    series={periodTrend}
+                    unit={data.kpi.unit}
+                    measureName={data.kpi.name}
+                  />
                 </div>
-              ))}
-            </dl>
+              ) : null}
+              <dl className="divide-y divide-ink-200 border-y border-ink-200">
+                {data.actuals.map((actual) => (
+                  <div key={`${actual.year}-${actual.periodType}-${actual.periodIndex}`} className="flex items-center justify-between gap-4 py-4">
+                    <dt className="text-sm text-ink-700">
+                      {reportedPeriodLabel(actual)}
+                    </dt>
+                    <dd className="font-semibold tabular text-ink-950">
+                      {formatBoardReportMetricValue(actual.value, data.kpi.unit)}
+                    </dd>
+                  </div>
+                ))}
+              </dl>
+            </>
           )}
         </section>
 

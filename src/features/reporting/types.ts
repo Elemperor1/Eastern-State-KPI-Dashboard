@@ -5,6 +5,7 @@ import type {
 } from "./strategic-board-report";
 import type { StrategicAuditEvent } from "@/features/strategy";
 import type { StrategicCalculatedActual } from "./strategy-actuals";
+import type { PeriodTrendSeries } from "./period-trend";
 
 export interface ReportingPlanContext {
   id: number;
@@ -64,5 +65,11 @@ export interface StrategicTrendReportData {
     unit: string | null;
     restoredWithHiddenData: boolean;
     points: Array<{ year: number; value: number | null }>;
+    /**
+     * Within-year detail for measures reported monthly or quarterly, scoped by
+     * the same reporting cutoff as `points`. `null` when the measure reports
+     * once a year and has no shape inside it to chart.
+     */
+    periodTrend: PeriodTrendSeries | null;
   }>;
 }
