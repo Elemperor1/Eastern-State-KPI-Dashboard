@@ -15,6 +15,7 @@ import {
   filterAdminHistoryKpisByCategory,
   hasActiveAdminHistoryFilter,
 } from "@/features/audit/admin-history";
+import { formatUtcTimestamp } from "@/lib/sqlite-timestamp";
 import type {
   Category,
   EntryHistoryWithMeta,
@@ -221,7 +222,7 @@ export function HistoryClient({
               {lifecycleEvents.map((event) => (
                 <tr key={event.eventId} className="border-t border-ink-200 align-top">
                   <td className="px-4 py-3 text-ink-600">
-                    {new Date(`${event.occurredAt}Z`).toLocaleString()}
+                    {formatUtcTimestamp(event.occurredAt)}
                   </td>
                   <td className="px-4 py-3 font-medium text-ink-900">
                     {event.planName}

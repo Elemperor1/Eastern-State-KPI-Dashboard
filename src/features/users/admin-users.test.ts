@@ -78,6 +78,16 @@ describe("admin user helpers", () => {
     expect(formatAdminUserCreatedDate("2026-07-08T12:30:00.000Z")).toBe("7/8/2026");
   });
 
+  it("reads the stored UTC created_at as UTC, not as local time", () => {
+    // users.created_at defaults to datetime('now'): UTC with no zone marker.
+    // Parsed bare it shifts by the viewer's offset, which can roll a late
+    // evening signup onto the following day. Compared against the equivalent
+    // explicit-UTC instant so the assertion holds in any timezone.
+    expect(formatAdminUserCreatedDate("2026-07-08 02:30:00")).toBe(
+      formatAdminUserCreatedDate("2026-07-08T02:30:00.000Z"),
+    );
+  });
+
   it("builds security-sensitive account mutation messages", () => {
     expect(buildRoleChangeSuccessMessage("Kerry", "viewer")).toBe(
       "Role for Kerry updated to viewer. They have been signed out on all devices.",

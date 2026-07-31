@@ -1,4 +1,5 @@
 import { isAnnualEntryMonth, MONTH_LABELS } from "@/features/metrics";
+import { formatUtcTimestamp } from "@/lib/sqlite-timestamp";
 import type { EntryHistoryWithMeta, KPIWithCategory } from "@/lib/types";
 
 export interface AdminHistoryFilterState {
@@ -61,15 +62,16 @@ export function buildAdminHistoryHref(
   return `/setup?area=activity${suffix}`;
 }
 
-/** Formats admin history changed at. */
+/**
+ * Formats admin history changed at.
+ *
+ * SQLite writes `datetime('now')` as UTC in "YYYY-MM-DD HH:MM:SS" with no zone
+ * marker, which JS parses as LOCAL time. The shared formatter pins it to UTC
+ * and renders it in the organization's clock, so the reader sees the
+ * wall-clock time the change actually happened.
+ */
 export function formatAdminHistoryChangedAt(changedAt: string): string {
-  return new Date(changedAt).toLocaleString("en-US", {
-    year: "numeric",
-    month: "short",
-    day: "numeric",
-    hour: "numeric",
-    minute: "2-digit",
-  });
+  return formatUtcTimestamp(changedAt);
 }
 
 /** Implements the describe admin history period operation. */

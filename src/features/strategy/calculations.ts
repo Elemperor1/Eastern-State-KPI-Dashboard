@@ -645,9 +645,20 @@ export function calculateAnnualAndPlanProgress(
 
   const annualTargetCheck = readOptionalFinite(input.annualTarget, "annualTarget");
   const targetToDateCheck = readOptionalFinite(input.annualTargetToDate, "annualTargetToDate");
+  // The baseline is one of the pacing target's inputs, so an unusable baseline
+  // has to refuse the whole calculation here. Checking it only afterwards would
+  // publish a pacing target derived as though no baseline were set, next to
+  // progress results that correctly report themselves invalid.
+  const baselineCheck = readOptionalFinite(input.annualBaseline, "annualBaseline");
   let pacingTarget: number | null = null;
-  if (targetToDateCheck.issue?.kind === "invalid" || annualTargetCheck.issue?.kind === "invalid") {
-    const issue = targetToDateCheck.issue ?? annualTargetCheck.issue as CalculationIssue;
+  if (
+    targetToDateCheck.issue?.kind === "invalid" ||
+    annualTargetCheck.issue?.kind === "invalid" ||
+    baselineCheck.issue?.kind === "invalid"
+  ) {
+    const issue = (targetToDateCheck.issue ??
+      annualTargetCheck.issue ??
+      baselineCheck.issue) as CalculationIssue;
     const invalidProgress = progressResult({
       state: "invalid",
       status: "needs_definition",
@@ -665,7 +676,20 @@ export function calculateAnnualAndPlanProgress(
   if (targetToDateCheck.value !== null) {
     pacingTarget = targetToDateCheck.value;
   } else if (annualTargetCheck.value !== null) {
-    pacingTarget = roundFinite(annualTargetCheck.value * elapsedFraction, precision);
+    // The pacing target is where the Measure should stand at this point in the
+    // year. Without a baseline that is a plain share of the annual target. WITH
+    // one, the year's work is the distance from baseline to target, so the
+    // elapsed share applies to that DISTANCE and the baseline itself stays put:
+    // scaling both ends cancels out, which used to report a Measure sitting
+    // exactly on its baseline as 100% and "On track" at mid-year, and could
+    // even place the pacing target below the baseline it starts from.
+    pacingTarget = roundFinite(
+      baselineCheck.value === null
+        ? annualTargetCheck.value * elapsedFraction
+        : baselineCheck.value +
+            (annualTargetCheck.value - baselineCheck.value) * elapsedFraction,
+      precision,
+    );
   }
 
   const shared = {
@@ -678,7 +702,7 @@ export function calculateAnnualAndPlanProgress(
       input.annualConfigurationStatus ?? input.configurationStatus,
     currentValue: input.annualActual,
     targetValue: pacingTarget,
-    baselineValue: prorateBaseline(input.annualBaseline, elapsedFraction, precision),
+    baselineValue: input.annualBaseline,
   });
   const annualCompletion = calculateProgress({
     ...shared,
@@ -1957,17 +1981,6 @@ function combineStates(states: CalculationState[]): CalculationState {
   if (states.includes("invalid")) return "invalid";
   if (states.includes("missing")) return "missing";
   return "ok";
-}
-
-/** Implements the prorate baseline operation. */
-function prorateBaseline(
-  value: number | null | undefined,
-  fraction: number,
-  precision: number,
-): number | null | undefined {
-  if (value === null || value === undefined) return value;
-  if (!Number.isFinite(value)) return value;
-  return roundFinite(value * fraction, precision);
 }
 
 /** Implements the rounded average operation. */

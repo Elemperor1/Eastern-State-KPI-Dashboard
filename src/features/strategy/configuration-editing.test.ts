@@ -1200,6 +1200,67 @@ describe("strategic configuration editing repository", () => {
     });
   });
 
+  it("lets an unfinished configuration be finished after history exists", () => {
+    // Finishing setup changes no unit, precision, denominator, or measurement
+    // type, so it is not a reinterpretation of recorded values. Blocking it
+    // made the lifecycle a one-way trap: a Measure whose plan years hold any
+    // legacy entry could never leave needs_target, and the advice the error
+    // gave (create an effective-dated successor) cannot cover years the
+    // current configuration already owns.
+    const created = createMeasurementConfiguration(
+      configuration(countKpiId, {
+        configuration_status: "needs_target",
+        unresolved_question: "Finalize the dwell-time target.",
+      }),
+      actorId,
+    );
+    getDb()
+      .prepare(
+        `INSERT INTO monthly_entries (kpi_id, year, month, value, updated_by)
+         VALUES (?, 2026, 3, 12, ?)`,
+      )
+      .run(countKpiId, actorId);
+
+    // Lateral moves between unfinished states calculate nothing either way.
+    for (const status of ["draft", "needs_definition", "needs_target"]) {
+      expect(
+        updateMeasurementConfiguration(
+          {
+            id: created.id,
+            configuration_status: status,
+            unresolved_question: "Finalize the dwell-time target.",
+          },
+          actorId,
+        ),
+      ).toMatchObject({ configuration_status: status });
+    }
+    expect(
+      updateMeasurementConfiguration(
+        { id: created.id, configuration_status: "ready" },
+        actorId,
+      ),
+    ).toMatchObject({ configuration_status: "ready" });
+    expect(
+      updateMeasurementConfiguration(
+        { id: created.id, configuration_status: "active" },
+        actorId,
+      ),
+    ).toMatchObject({ configuration_status: "active" });
+
+    // Demotion still reinterprets history: a period that reported a calculated
+    // result would silently stop reporting one.
+    expectHistoricalSemanticsConflict(() =>
+      updateMeasurementConfiguration(
+        {
+          id: created.id,
+          configuration_status: "needs_definition",
+          unresolved_question: "Revisit the calculation definition.",
+        },
+        actorId,
+      ),
+    );
+  });
+
   it("freezes in-place measurement semantics once a configured target uses them", () => {
     const created = createMeasurementConfiguration(
       configuration(countKpiId),
@@ -1752,7 +1813,13 @@ describe("strategic configuration editing repository", () => {
       unit: "visits",
       weight: 1,
     });
-    expectHistoricalSemanticsConflict(() =>
+    // Moving between two unfinished states reinterprets nothing: draft and
+    // needs_definition both calculate no result, so the reader of the recorded
+    // value sees the same thing either way. Freezing this stranded a
+    // half-configured component the moment it held one entry. Demoting a
+    // component that WAS calculating is still frozen — the configuration-level
+    // suite covers that direction against the same shared rule.
+    expect(
       updateStrategyComponent(
         {
           id: component.id,
@@ -1761,7 +1828,7 @@ describe("strategic configuration editing repository", () => {
         },
         actorId,
       ),
-    );
+    ).toMatchObject({ configuration_status: "needs_definition" });
   });
 
   it("scopes reusable component slugs to one effective configuration", () => {

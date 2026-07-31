@@ -97,7 +97,7 @@ describe("native Windows production startup", () => {
         AUTH_DISABLED: "true",
         DATABASE_PATH: "\\\\fileserver\\share\\kpi.db",
         APP_CANONICAL_ORIGIN: "http://strategy.example.org/path",
-        SESSION_SECURE: "false",
+        SESSION_SECURE: "maybe",
         TRUST_PROXY: "maybe",
         SESSION_SECRET: "short",
         PORT: "70000",
@@ -108,13 +108,95 @@ describe("native Windows production startup", () => {
 
     expect(problems.join(" ")).toMatch(/AUTH_DISABLED/u);
     expect(problems.join(" ")).toMatch(/local fixed-disk/u);
-    expect(problems.join(" ")).toMatch(/exact HTTPS origins/u);
+    expect(problems.join(" ")).toMatch(/exact http or https origins/u);
     expect(problems.join(" ")).toMatch(/SESSION_SECURE/u);
     expect(problems.join(" ")).toMatch(/TRUST_PROXY/u);
     expect(problems.join(" ")).toMatch(/SESSION_SECRET/u);
     expect(problems.join(" ")).toMatch(/PORT/u);
     expect(problems.join(" ")).toMatch(/PLAN_ACTIVATION_BACKUP_DIR/u);
     expect(problems.join(" ")).toMatch(/SUCCESSOR_PLANS_ENABLED/u);
+  });
+
+  it("accepts a plain-HTTP private-network origin with non-secure cookies", () => {
+    // This installation is reachable only over a VPN-restricted private
+    // network and is served as plain HTTP, so Secure cookies would never
+    // be sent. Both settings must agree.
+    expect(
+      validateWindowsRuntimeEnvironment(
+        validRuntime({
+          APP_CANONICAL_ORIGIN: "http://10.20.30.40:8080",
+          SESSION_SECURE: "false",
+        }),
+      ),
+    ).toEqual([]);
+    expect(
+      validateWindowsRuntimeEnvironment(
+        validRuntime({
+          APP_CANONICAL_ORIGIN: "http://10.20.30.40",
+          SESSION_SECURE: "false",
+        }),
+      ),
+    ).toEqual([]);
+  });
+
+  it("refuses a cookie policy that contradicts the origin scheme", () => {
+    // A Secure cookie is never sent over http, so this combination would
+    // fail every login with no visible error; the reverse combination would
+    // hand out a session cookie that plain http could carry in cleartext.
+    expect(
+      validateWindowsRuntimeEnvironment(
+        validRuntime({
+          APP_CANONICAL_ORIGIN: "http://10.20.30.40:8080",
+          SESSION_SECURE: "true",
+        }),
+      ).join(" "),
+    ).toMatch(/SESSION_SECURE must be false when APP_CANONICAL_ORIGIN serves http/u);
+    expect(
+      validateWindowsRuntimeEnvironment(
+        validRuntime({
+          APP_CANONICAL_ORIGIN: "https://strategy.easternstate.org",
+          SESSION_SECURE: "false",
+        }),
+      ).join(" "),
+    ).toMatch(/SESSION_SECURE must be true when every APP_CANONICAL_ORIGIN is https/u);
+    // One plain-http entry decides the whole list: the cookie cannot be
+    // marked Secure and still reach the http origin.
+    expect(
+      validateWindowsRuntimeEnvironment(
+        validRuntime({
+          APP_CANONICAL_ORIGIN: "https://strategy.easternstate.org,http://10.20.30.40:8080",
+          SESSION_SECURE: "true",
+        }),
+      ).join(" "),
+    ).toMatch(/SESSION_SECURE must be false when APP_CANONICAL_ORIGIN serves http/u);
+  });
+
+  it("reports a mistyped cookie policy as itself rather than as a scheme mismatch", () => {
+    const problems = validateWindowsRuntimeEnvironment(
+      validRuntime({
+        APP_CANONICAL_ORIGIN: "http://10.20.30.40:8080",
+        SESSION_SECURE: "maybe",
+      }),
+    );
+
+    expect(problems).toEqual(["SESSION_SECURE must be explicitly true or false."]);
+  });
+
+  it("still requires an exact origin with no default port or trailing path", () => {
+    // URL parsing drops the default port, so ":80" would never match the
+    // Origin header the browser actually sends.
+    for (const origin of [
+      "http://10.20.30.40:80",
+      "http://10.20.30.40:8080/",
+      "ftp://10.20.30.40",
+    ]) {
+      expect(
+        validateWindowsRuntimeEnvironment(
+          validRuntime({ APP_CANONICAL_ORIGIN: origin, SESSION_SECURE: "false" }),
+        ).join(" "),
+        origin,
+      ).toMatch(/exact http or https origins/u);
+    }
   });
 
   it("refuses documentation placeholders before first-boot account creation", () => {
@@ -127,7 +209,7 @@ describe("native Windows production startup", () => {
       }),
     );
 
-    expect(problems.join(" ")).toMatch(/exact HTTPS origins/u);
+    expect(problems.join(" ")).toMatch(/exact http or https origins/u);
     expect(problems.join(" ")).toMatch(/SESSION_SECRET/u);
     expect(problems.join(" ")).toMatch(/BOOTSTRAP_ADMIN_PASSWORD/u);
     expect(problems.join(" ")).toMatch(/BOOTSTRAP_VIEWER_PASSWORD/u);

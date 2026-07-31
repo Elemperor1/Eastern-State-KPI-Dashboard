@@ -40,6 +40,9 @@ describe("next.config security headers (S045-C1)", () => {
     expect(byKey.get("referrer-policy")).toBe(
       "strict-origin-when-cross-origin",
     );
-    expect(byKey.get("strict-transport-security")).toMatch(/^max-age=\d+/);
+    // HSTS is deliberately absent: this installation is served over plain
+    // HTTP on a VPN-only network, and a cached HSTS policy would pin
+    // clients to HTTPS and make the site unreachable.
+    expect(byKey.has("strict-transport-security")).toBe(false);
   });
 });

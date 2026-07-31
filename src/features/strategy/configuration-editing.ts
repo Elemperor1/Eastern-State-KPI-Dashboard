@@ -546,21 +546,42 @@ function fieldsChanged(
   return fields.some((field) => !same(before[field], values[field]));
 }
 
-/** Implements the calculation status meaning operation. */
-function calculationStatusMeaning(value: unknown): string {
-  return value === "ready" || value === "active"
-    ? "calculation_ready"
-    : String(value ?? "");
+/**
+ * Whether a lifecycle status lets the calculation kernel produce a result.
+ * Only `ready` and `active` do; `draft`, `needs_definition`, `needs_target`,
+ * and `archived` all mean the same thing to a reader of the numbers — nothing
+ * is being calculated — so they share one bucket.
+ */
+function calculationStatusIsReady(value: unknown): boolean {
+  return value === "ready" || value === "active";
 }
 
-/** Implements the calculation status meaning changed operation. */
+/** Implements the calculation status meaning operation. */
+function calculationStatusMeaning(value: unknown): string {
+  return calculationStatusIsReady(value)
+    ? "calculation_ready"
+    : "calculation_not_ready";
+}
+
+/**
+ * Whether a status change reinterprets values that were already recorded.
+ *
+ * Only the DEMOTION is a reinterpretation: a period that reported a calculated
+ * result would silently stop reporting one. The PROMOTION to ready/active is
+ * the ordinary way setup is finished, and blocking it made the lifecycle a
+ * one-way trap — a Measure whose plan years hold any legacy monthly or
+ * breakdown entry could never be marked Ready, and the advice the error gave
+ * (create an effective-dated successor) is impossible for years the current
+ * configuration already owns. Finishing setup changes no unit, precision,
+ * denominator, or measurement type, which is what this guard exists to freeze.
+ */
 function calculationStatusMeaningChanged(
   before: RawRow,
   values: Record<string, unknown>,
 ): boolean {
   return (
-    calculationStatusMeaning(before.configuration_status) !==
-    calculationStatusMeaning(values.configuration_status)
+    calculationStatusIsReady(before.configuration_status) &&
+    !calculationStatusIsReady(values.configuration_status)
   );
 }
 
