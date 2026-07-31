@@ -191,7 +191,7 @@ export function BoardReportingEditorClient({
   }
 
   return (
-    <section className="mb-10 border-b border-ink-200 pb-10" aria-labelledby="board-visibility-heading">
+    <section aria-labelledby="board-visibility-heading">
       <div className="mb-5 max-w-3xl">
         <h2 id="board-visibility-heading" className="text-xl font-semibold text-ink-950">
           Board visibility

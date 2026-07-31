@@ -58,7 +58,8 @@ and `entry_history` remain a read-only archive visible in Setup → Activity.
 
 Use `/setup?area=measures` for Measurement Configurations, frequencies,
 components, bands, and attention filters. Use `/setup?area=goals` for goal
-membership, completion rules, and annual/full-plan targets. People owns access;
-Activity owns the two immutable audit feeds.
+membership, completion rules, and annual/full-plan targets. Plans owns the plan
+settings and successor-plan workspace; Board owns Board visibility; People owns
+access; Activity owns the two immutable audit feeds.
 
 ADR 0022 is the backup, migration, and rollback authority.

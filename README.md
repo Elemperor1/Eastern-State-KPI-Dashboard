@@ -154,7 +154,7 @@ never exposed as a user-selectable month.
 - **Overview** (`/dashboard/overview`) — a route-scoped organization score, the five Strategic Priorities, and a bounded Needs attention list. It never calculates or renders the Board Report.
 - **Data Entry** (`/data-entry`, Admin) — one resumable reporting-year checklist. Each measure renders only the raw inputs required by its effective strategic configuration. Save state is server-confirmed and failed saves retain the draft.
 - **Reports** (`/reports`) — Board Report and strategic Trends behind one selector. Only the selected report is loaded; CSV/PNG/PDF exports operate from the visible report.
-- **Setup** (`/setup`, Admin) — one Plans, Measures, Goals, People, and Activity workspace. Configuration gaps are a Measures attention filter rather than a destination.
+- **Setup** (`/setup`, Admin) — one Plans, Measures, Goals, Board, People, and Activity workspace. Configuration gaps are a Measures attention filter rather than a destination.
 
 Overview also links to two deliberate drill-down routes; they are not top-level
 destinations or additional workflows:
@@ -219,7 +219,7 @@ the UI.
 | `/dashboard/metric/[slug]`     | Measure drill-down                          | Board + viewer + admin |
 | `/reports`                     | Board Report and strategic Trends           | Board + viewer + admin |
 | `/data-entry`                  | Reporting checklist and strategic values    | admin only          |
-| `/setup`                       | Plans, Measures, Goals, People, and Activity | admin only          |
+| `/setup`                       | Plans, Measures, Goals, Board, People, and Activity | admin only   |
 
 ### Strategic API surfaces
 

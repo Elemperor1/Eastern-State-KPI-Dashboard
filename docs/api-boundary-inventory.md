@@ -14,7 +14,7 @@ operations; server-rendered pages call feature operations directly.
 | `/api/health/ready` | Minimal process-to-SQLite production readiness | public, read-only, constant-shape response | `src/features/health/readiness.ts` |
 | `/api/strategy/{observations,component-entries,distributions}` | Data Entry | Admin + CSRF for mutations | `src/features/strategy` |
 | `/api/strategy/{configurations,components,targets,goals,memberships}` | Setup → Measures/Goals | Admin + CSRF | `src/features/strategy` |
-| `/api/strategy/board-reporting` | Setup → Goals → Board visibility | Admin + CSRF | `src/features/board-reporting` |
+| `/api/strategy/board-reporting` | Setup → Board → Board visibility | Admin + CSRF | `src/features/board-reporting` |
 | `/api/strategy/distribution-bands` | Data Entry and Setup | staff-session read; Admin + CSRF mutation | `src/features/strategy` |
 | `/api/strategy/export` | Reports → Board Report CSV/JSON | session | `src/features/reporting` |
 | `/api/{categories,kpis}` | Setup → Measures | Admin + CSRF mutation | `src/features/catalog` |

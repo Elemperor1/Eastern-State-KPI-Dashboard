@@ -107,8 +107,8 @@ in-place downgrade.
 
 ## Administrative behavior
 
-Setup retains its existing Plans, Measures, Goals, People, and Activity workspaces.
-The smallest missing capability is added above Setup → Goals: an admin can edit
+Setup retains its existing Plans, Measures, Goals, Board, People, and Activity
+workspaces. The smallest missing capability is added above Setup → Plans: an admin can edit
 the Organization display/short names and Strategic Plan name, description,
 start/end years, and source reference. Saves use the existing protected
 `PATCH /api/categories` boundary, shared request/domain validation, an expected

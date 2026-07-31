@@ -569,7 +569,7 @@ export function PlansManagerClient({ initialModel }: { initialModel: PlanManager
               <FormField label="Approved by or source" htmlFor="draft-plan-source">
                 <Input id="draft-plan-source" name="approvalSource" defaultValue={draft.approvalSource ?? ""} required />
               </FormField>
-              <FormField label="Description" htmlFor="draft-plan-description" className="md:col-span-2">
+              <FormField label="Plain-language description" htmlFor="draft-plan-description" className="md:col-span-2">
                 <Textarea id="draft-plan-description" name="description" rows={3} defaultValue={draft.description ?? ""} required />
               </FormField>
               <div className="flex flex-wrap gap-3 md:col-span-2">

@@ -206,7 +206,7 @@ export function PlanSettingsClient({
         <FormField label="Short name" htmlFor="plan-organization-short-name" hint={errorHint(errors.organizationShortName)}>
           <Input id="plan-organization-short-name" required aria-invalid={Boolean(errors.organizationShortName)} value={draft.organizationShortName} onChange={(event) => update("organizationShortName", event.target.value)} />
         </FormField>
-        <FormField label="Plan name" htmlFor="plan-name" hint={errorHint(errors.planName)}>
+        <FormField label="Current plan name" htmlFor="plan-name" hint={errorHint(errors.planName)}>
           <Input id="plan-name" required aria-invalid={Boolean(errors.planName)} value={draft.planName} onChange={(event) => update("planName", event.target.value)} />
         </FormField>
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">

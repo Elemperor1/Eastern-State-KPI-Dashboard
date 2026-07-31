@@ -7,8 +7,8 @@ Internal KPI dashboard for Eastern State Penitentiary Historic Site. Next.js 16 
 ADR 0022 supersedes older route and interaction notes below wherever they
 conflict. The production product has exactly four destinations:
 `/dashboard/overview`, `/data-entry`, `/reports`, and `/setup`. Setup contains
-Plans, Measures, Goals, People, and Activity. Organization and current-plan
-settings remain inside Goals; successor lifecycle work is contained inside
+Plans, Measures, Goals, Board, People, and Activity. Organization and
+current-plan settings and successor lifecycle work are both contained inside
 Plans rather than becoming a fifth top-level destination.
 The former `/admin/*` and
 `/dashboard/trends` pages are removed, as are the legacy `/api/entries`,
@@ -186,7 +186,7 @@ symlinks/hardlinks, and parent-directory escapes are rejected before seeding.
 - `DESIGN.md` (root) — visual language authority. `docs/design-system.md` translates it into component rules.
 
 Current top-level surfaces are `/dashboard/overview`, `/data-entry`, `/reports`,
-and `/setup`. Setup areas are Plans, Measures, Goals, People, and Activity.
+and `/setup`. Setup areas are Plans, Measures, Goals, Board, People, and Activity.
 
 ## Data model quirks
 
@@ -224,7 +224,7 @@ and `/setup`. Setup areas are Plans, Measures, Goals, People, and Activity.
 - API handlers follow the pattern `try { await requireSession()/requireStaffSession()/requireAdmin() } catch { return 401/403 }`. All protected mutations require admin. `GET /api/strategy/export` accepts any valid session and applies Board report scope by role; `GET /api/strategy/distribution-bands` requires a staff viewer or admin. The exhaustive matrix is 32 protected route/method combinations, 30 admin-gated.
 - Use `zod` for request body validation on API routes.
 - Server dashboard pages call the explicit reporting operations in `src/features/reporting/server.ts`; client components must not import `getDb()` or server-only feature modules.
-- New measures and priorities are added at runtime in Setup → Measures; Active-plan organization settings and goals are edited in Setup → Goals; successor lifecycle work belongs in Setup → Plans. The database is authoritative after initialization. Change the fixture modules only when intentionally changing fresh-install/development seed content, update their invariant tests, and rerun `npm run db:seed` only against a disposable database.
+- New measures and priorities are added at runtime in Setup → Measures; goals are edited in Setup → Goals; Board visibility is edited in Setup → Board; Active-plan organization settings and successor lifecycle work belong in Setup → Plans. The database is authoritative after initialization. Change the fixture modules only when intentionally changing fresh-install/development seed content, update their invariant tests, and rerun `npm run db:seed` only against a disposable database.
 
 ## Gotchas
 

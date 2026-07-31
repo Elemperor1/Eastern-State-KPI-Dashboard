@@ -10,7 +10,7 @@ Current Schema Version: Schema 16 (src/lib/schema-version.json). Schema 16 intro
 Current Product Boundary: Defined by ADR 0022 and Issue 42. The application has exactly four top-level destinations:/dashboard/overview (Executive overview, progress scorecards, KPI drill-downs, filters)
 /data-entry (Monthly/annual reporting checklist, focused observation batch forms, component entry)
 /reports (Board report, strategic priority breakdowns, multi-year trend analysis, CSV/PNG/PDF export)
-/setup (Five administrative sub-areas: Plans, Measures, Goals, People, and Activity)
+/setup (Six administrative sub-areas: Plans, Measures, Goals, Board, People, and Activity)
 
 Auth & Access Boundary: 32 protected API route/method combinations (30 Admin-gated, 1 staff viewer session-gated for distribution bands, and 1 general session-gated for Board report export).
 Git & Release Status: Current HEAD commit is cd561d6 (docs: record ultimate security remediation & PR #87 verification evidence). The working tree is clean with no uncommitted or staged changes. PR #87 was merged into main following full release gate verification.
@@ -30,7 +30,7 @@ The repository is in a pristine, highly guarded, evidence-verified state. All te
 2. Product Requirements and User Workflows
 Primary Users and Roles
 The system enforces three primary access roles (src/lib/types.ts):
-Admin (admin): Complete system authority. Access to all 4 destinations, Setup administration (Plans, Measures, Goals, People, Activity), catalog editing, user lifecycle management, and target configuration.
+Admin (admin): Complete system authority. Access to all 4 destinations, Setup administration (Plans, Measures, Goals, Board, People, Activity), catalog editing, user lifecycle management, and target configuration.
 Viewer / Staff (viewer): Staff access. Can view Overview, Data Entry, Reports, and staff-level demographic distribution bands. Cannot access Setup administration or mutate system configuration.
 Board (board): Board member access. Restricted view access to Overview, Reports (/reports), and strategic exports (/api/strategy/export). Excluded from Data Entry, Setup, and staff-only demographic band details.
 Authentication & Authorization Expectations
@@ -148,7 +148,7 @@ Source Code Directory (src/)
 src/app/ — Next.js App Router Pages & API Endpoints:src/app/dashboard/ — Overview scorecard grid, category drill-downs, metric details.
 src/app/data-entry/ — Monthly/annual observation batch reporting interface.
 src/app/reports/ — Strategic Board report view, trend charts, export triggers.
-src/app/setup/ — Admin management (Plans, Measures, Goals, People, Activity).
+src/app/setup/ — Admin management (Plans, Measures, Goals, Board, People, Activity).
 src/app/login/ — Authenticated login interface.
 src/app/api/auth/ — Login, logout, session state, password change routes.
 src/app/api/strategy/ — Strategic observations, distributions, configurations, targets, exports.
@@ -366,7 +366,7 @@ The app has EXACTLY FOUR top-level destinations:
 1. /dashboard/overview (KPI Scorecards, Filters, Category Drill-downs)
 2. /data-entry (Monthly/Annual Observation Checklist & Batch Entry)
 3. /reports (Strategic Board Report, Multi-year Trends, Exports)
-4. /setup (Plans, Measures, Goals, People, Activity)
+4. /setup (Plans, Measures, Goals, Board, People, Activity)
 
 ROLES & ACCESS:
 - admin: Full access across all destinations and setup options.

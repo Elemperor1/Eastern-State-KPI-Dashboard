@@ -142,7 +142,7 @@ is instrumented.
 | Prepare a review | I cannot tell what requires discussion quickly. | A narrow Overview with one organization rollup, five Strategic Priorities, and a bounded attention list. | The shown rollup and attention reasons match the review agenda. |
 | Investigate a result | I need to understand what a summary means. | Priority and Measure drill-downs preserve Reporting Year and show results, Targets, inputs, history, and caveats. | This is enough evidence without an additional reconciliation artifact. |
 | Complete reporting | I do not know what is due or safe to submit. | A period-scoped checklist with one focused Measure form and one atomic save. | One Admin can complete or coordinate the cycle through this workflow. |
-| Resolve ambiguity | I need to finish a definition without corrupting history. | Setup consolidates Plans, Measures, Goals, People, and Activity and uses effective-dated successors. | Successor-plan preparation and ordinary definition work remain understandable as separate Setup areas. |
+| Resolve ambiguity | I need to finish a definition without corrupting history. | Setup consolidates Plans, Measures, Goals, Board, People, and Activity and uses effective-dated successors. | Successor-plan preparation and ordinary definition work remain understandable as separate Setup areas. |
 | Present results | I need a Board-ready artifact that matches the product. | Reports loads one selected Board Report or Trends view and exports only that visible report. | The report structure matches how leadership and the Board consume evidence. |
 
 Do not add destinations or broad visual concepts until observation shows one
@@ -294,7 +294,7 @@ Board see the first two; Board content is scoped. Admin sees all four.
 | Overview | Board, Viewer, Admin | Orient to organization performance and attention | Reporting Year, organization rollup, five Strategic Priorities, bounded attention list, Priority drill-down |
 | Reports | Board, Viewer, Admin | Review and share the selected report | Report type, Reporting Year/Period, visible Board Report or Trends, matching exports |
 | Data Entry | Admin | Complete one Reporting Cycle | Reporting Year/Period, checklist, focused Measure, exact raw fields, source/notes, save/retry/continue |
-| Setup | Admin | Govern Strategic Plans, definitions, Targets, access, and accountability | Persistent areas: Plans, Measures, Goals, People, Activity |
+| Setup | Admin | Govern Strategic Plans, definitions, Targets, access, and accountability | Persistent areas: Plans, Measures, Goals, Board, People, Activity |
 
 Priority (`/dashboard/category/[slug]`) and Measure
 (`/dashboard/metric/[slug]`) are supporting drill-down places, not additional

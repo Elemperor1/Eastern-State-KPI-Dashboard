@@ -47,12 +47,16 @@ import type {
 
 export const dynamic = "force-dynamic";
 
-type SetupArea = "plans" | "measures" | "goals" | "people" | "activity";
+type SetupArea = "plans" | "measures" | "goals" | "board" | "people" | "activity";
 type Params = Record<string, string | string[] | undefined>;
 
 /** Implements the setup area operation. */
 function setupArea(value: string | undefined): SetupArea {
-  return value === "plans" || value === "goals" || value === "people" || value === "activity"
+  return value === "plans" ||
+    value === "goals" ||
+    value === "board" ||
+    value === "people" ||
+    value === "activity"
     ? value
     : "measures";
 }
@@ -61,6 +65,7 @@ const AREAS: Array<{ value: SetupArea; label: string }> = [
   { value: "plans", label: "Plans" },
   { value: "measures", label: "Measures" },
   { value: "goals", label: "Goals" },
+  { value: "board", label: "Board" },
   { value: "people", label: "People" },
   { value: "activity", label: "Activity" },
 ];
@@ -103,14 +108,27 @@ export default async function SetupPage({ searchParams }: { searchParams: Promis
         </nav>
 
         {area === "measures" ? <MeasuresArea params={params} year={year} /> : null}
-        {area === "plans" ? <PlansManagerClient initialModel={getPlanManagerModel()} /> : null}
+        {area === "plans" ? <PlansArea /> : null}
         {area === "goals" ? <GoalsArea params={params} year={year} /> : null}
+        {area === "board" ? (
+          <BoardReportingEditorClient initialModel={getBoardReportingAdminModel()} />
+        ) : null}
         {area === "people" ? (
           <UserManagerClient currentUserId={user.id} users={listUsers()} />
         ) : null}
         {area === "activity" ? <ActivityArea params={params} /> : null}
       </div>
     </AppShell>
+  );
+}
+
+/** Renders the plans area interface. */
+function PlansArea() {
+  return (
+    <>
+      <PlanSettingsClient installation={getActiveInstallation()} />
+      <PlansManagerClient initialModel={getPlanManagerModel()} />
+    </>
   );
 }
 
@@ -200,17 +218,13 @@ function GoalsArea({ params, year }: { params: Params; year: number }) {
         .filter((item): item is StrategicKpiEditorData => item !== null)
     : [];
   return (
-    <>
-      <PlanSettingsClient installation={installation} />
-      <BoardReportingEditorClient initialModel={getBoardReportingAdminModel()} />
-      <StrategicGoalsEditorClient
-        initialGoals={initialGoals}
-        initialSelectedGoalId={initialGoals.some((goal) => goal.id === requestedGoalId) ? requestedGoalId : null}
-        reportingYear={year}
-        planYears={[...installation.years]}
-        targetData={targetData}
-      />
-    </>
+    <StrategicGoalsEditorClient
+      initialGoals={initialGoals}
+      initialSelectedGoalId={initialGoals.some((goal) => goal.id === requestedGoalId) ? requestedGoalId : null}
+      reportingYear={year}
+      planYears={[...installation.years]}
+      targetData={targetData}
+    />
   );
 }
 

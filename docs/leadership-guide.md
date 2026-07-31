@@ -53,7 +53,7 @@ The product has four main areas:
 | **Overview** | A concise picture of the plan, the five Strategic Priorities, and the items that need attention | Board, Viewer, and Admin |
 | **Reports** | The detailed Board Report, trends, and downloadable report formats | Board, Viewer, and Admin |
 | **Data Entry** | A reporting checklist and focused forms for recording results | Admin |
-| **Setup** | Strategic Plans, Measures, Goals, People, and a permanent history of changes | Admin |
+| **Setup** | Strategic Plans, Measures, Goals, Board visibility, People, and a permanent history of changes | Admin |
 
 You may also open a Strategic Priority or an individual Measure for more
 detail. Those pages support the four destinations above; they are not separate systems
@@ -131,7 +131,7 @@ it.
 ### Continuing after 2029
 
 The product does not stop working in 2029. An Admin can extend the current
-plan's last reporting year in **Setup → Goals → Plan settings**. When the year
+plan's last reporting year in **Setup → Plans → Plan settings**. When the year
 is extended, the new year appears automatically in Overview, Data Entry,
 Reports, and the detailed result pages.
 
