@@ -420,10 +420,10 @@ export function buildStrategicDataEntryMutation(
       draft.respondentCount,
       "respondentCount",
       errors,
-      // Zero respondents can never produce a reportable distribution; reject
-      // it at entry instead of persisting a row the kernel renders invalid
-      // (ZERO_RESPONDENT_TOTAL) while the checklist shows complete.
-      { integer: true, positive: true },
+      // Zero respondents is allowed: a period that genuinely collected no
+      // responses is reported evidence, and the kernel qualifies it as
+      // NO_RESPONSES_RECORDED rather than computing a composition.
+      { integer: true, nonnegative: true },
     );
     const bands = activeBandsForDraft(selectedKpi, draft);
     if (bands.length === 0) {
@@ -550,9 +550,10 @@ export function buildStrategicDataEntryMutation(
         draft.totalResponseCount,
         "totalResponseCount",
         errors,
-        // The total is the denominator of the percentage; zero responses can
-        // never produce a reportable value (ZERO_DENOMINATOR).
-        { integer: true, positive: true },
+        // Zero responses is allowed: the kernel qualifies the period as
+        // NO_RESPONSES_RECORDED rather than reporting a share the evidence
+        // does not support.
+        { integer: true, nonnegative: true },
       );
       if (positive !== null && total !== null && positive > total) {
         errors.positiveResponseCount =

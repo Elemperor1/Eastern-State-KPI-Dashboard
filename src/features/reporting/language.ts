@@ -6,6 +6,9 @@ const REPORTING_REASON_LABELS: Record<string, string> = {
   GOAL_ARCHIVED: "The goal is archived",
   MANUAL_STATUS_REQUIRED: "The completion status has not been set",
   ZERO_WEIGHT_TOTAL: "The measure weights need a positive total",
+  // Curated rather than auto-humanized so the distinction from an unreported
+  // period is explicit: the reporter recorded this outcome.
+  NO_RESPONSES_RECORDED: "No responses were collected for this period",
   INVALID_COMPLETION_THRESHOLD: "The completion threshold needs correction",
   INVALID_THRESHOLD_COUNT: "The required measure count needs correction",
   needs_definition: "One or more measure definitions are not finalized",

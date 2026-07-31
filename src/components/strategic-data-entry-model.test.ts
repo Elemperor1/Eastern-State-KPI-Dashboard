@@ -441,7 +441,7 @@ describe("strategic data-entry model", () => {
     }
   });
 
-  it("rejects a zero total-response count before submission (CALC-001)", () => {
+  it("accepts a period that collected no responses", () => {
     const kpi = selected("average", { reportingFrequency: "monthly" });
     const result = buildStrategicDataEntryMutation(
       kpi,
@@ -453,11 +453,13 @@ describe("strategic data-entry model", () => {
         totalResponseCount: "0",
       }),
     );
-    expect(result.ok).toBe(false);
-    if (!result.ok) {
-      expect(result.errors.totalResponseCount).toBe(
-        "Enter a number greater than zero.",
-      );
+    expect(result.ok).toBe(true);
+    if (result.ok) {
+      expect(result.mutation.body.average_inputs).toMatchObject({
+        method: "percent_positive",
+        positive_response_count: 0,
+        total_response_count: 0,
+      });
     }
   });
 
@@ -683,7 +685,7 @@ describe("strategic data-entry model", () => {
     });
   });
 
-  it("rejects a zero respondent total before submission (CALC-001)", () => {
+  it("accepts a distribution period that collected no responses", () => {
     const kpi = selected("distribution", {
       bands: [
         {
@@ -703,9 +705,35 @@ describe("strategic data-entry model", () => {
       2026,
       draftFor(kpi, { respondentCount: "0", bandCounts: { "101": "0" } }),
     );
+    expect(result.ok).toBe(true);
+    if (result.ok) {
+      expect(result.mutation.body).toMatchObject({ respondent_count: 0 });
+    }
+  });
+
+  it("still rejects a band count above a zero respondent total", () => {
+    const kpi = selected("distribution", {
+      bands: [
+        {
+          id: 101,
+          componentId: null,
+          slug: "known",
+          label: "Known",
+          displayOrder: 0,
+          isUnknown: false,
+          isDeclined: false,
+          derivedGroup: null,
+        },
+      ],
+    });
+    const result = buildStrategicDataEntryMutation(
+      kpi,
+      2026,
+      draftFor(kpi, { respondentCount: "0", bandCounts: { "101": "3" } }),
+    );
     expect(result).toMatchObject({
       ok: false,
-      errors: { respondentCount: "Enter a number greater than zero." },
+      errors: { bands: expect.stringContaining("must add up") },
     });
   });
 

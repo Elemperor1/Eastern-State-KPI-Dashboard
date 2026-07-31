@@ -1108,7 +1108,7 @@ function AverageFields({
             <Input
               id={`${idPrefix}-total-responses`}
               type="number"
-              min={1}
+              min={0}
               step={1}
               value={draft.totalResponseCount}
               aria-invalid={Boolean(errors.totalResponseCount)}
@@ -1220,7 +1220,7 @@ function DistributionFields({
         <Input
           id={`${idPrefix}-distribution-total`}
           type="number"
-          min={1}
+          min={0}
           step={1}
           value={draft.respondentCount}
           aria-invalid={Boolean(errors.respondentCount)}
