@@ -27,6 +27,14 @@ describe("reporting language", () => {
     );
   });
 
+  it("distinguishes a recorded empty period from an unreported one", () => {
+    // The auto-humanized fallback ("No responses recorded") reads as an
+    // omission; the curated label says the reporter recorded this outcome.
+    expect(humanizeReportingReason("NO_RESPONSES_RECORDED")).toBe(
+      "No responses were collected for this period",
+    );
+  });
+
   it("deduplicates translated reasons without rewriting normal sentences", () => {
     expect(
       humanizeReportingReasons([

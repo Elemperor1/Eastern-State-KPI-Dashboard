@@ -1166,6 +1166,27 @@ function calculateAverage(input: AverageMeasurementInput, precision: number): Me
   }
   const numeratorValue = numerator.value as number;
   const denominatorValue = denominator.value as number;
+  // A percent-positive period that collected no responses is reported
+  // evidence, not broken data: the share is undefined rather than wrong, so
+  // it qualifies as missing with an explicit reason. The score methods keep
+  // failing as invalid, because their denominator is a configured scale
+  // maximum -- a zero there is a broken definition, not an empty survey.
+  if (denominatorValue === 0 && input.method === "percent_positive") {
+    return averageResult({
+      state: "missing",
+      measurementType: input.measurementType,
+      precision,
+      // Keep the recorded zeros, exactly as the success path does. Percent
+      // positive carries its count in the response total rather than
+      // respondentCount, and dropping the raw pair here would blank the
+      // Respondents, numerator, and denominator columns in the Board report
+      // and its CSV for a period that was deliberately recorded.
+      respondentCount: respondentCheck.value ?? denominatorValue,
+      numerator: numeratorValue,
+      denominator: denominatorValue,
+      issues: [missing("NO_RESPONSES_RECORDED", "No responses were recorded for this period.", "totalResponseCount")],
+    });
+  }
   if (denominatorValue <= 0) {
     return averageResult({
       state: "invalid",
@@ -1256,13 +1277,27 @@ function calculateDistribution(
       issues: [total.issue],
     });
   }
-  if ((total.value as number) <= 0) {
+  if ((total.value as number) < 0) {
     return result({
       state: "invalid",
       measurementType: input.measurementType,
       precision,
       respondentCount: total.value,
-      issues: [invalid("ZERO_RESPONDENT_TOTAL", "Respondent total must be greater than zero.", "respondentTotal")],
+      issues: [invalid("NEGATIVE_RESPONDENT_TOTAL", "Respondent total cannot be negative.", "respondentTotal")],
+    });
+  }
+  // A period that genuinely collected no responses is reported evidence, not
+  // broken data: the composition is undefined rather than wrong, so it
+  // qualifies as missing with an explicit reason instead of failing as
+  // invalid. Reporting a 0% share for every band would state something the
+  // evidence does not support.
+  if ((total.value as number) === 0) {
+    return result({
+      state: "missing",
+      measurementType: input.measurementType,
+      precision,
+      respondentCount: total.value,
+      issues: [missing("NO_RESPONSES_RECORDED", "No responses were recorded for this period.", "respondentTotal")],
     });
   }
   if (!Array.isArray(input.categories) || input.categories.length === 0) {
@@ -1461,6 +1496,13 @@ function calculateMultiComponent(
       precision,
       aggregationMethod: "none",
       components,
+      // An unaggregated parent has no value of its own, but its components'
+      // qualified and failed reasons are the only explanation the report can
+      // show. Dropping them left a recorded no-response component with no
+      // stated reason anywhere on the Board.
+      issues: components.flatMap((component) =>
+        component.result.state === "ok" ? [] : component.result.issues,
+      ),
     });
   }
 
