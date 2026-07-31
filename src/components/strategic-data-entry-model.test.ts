@@ -12,6 +12,8 @@ import {
   emptyStrategicDataEntryDraft,
   initialStrategicDataEntryDrafts,
   entryPeriodOptions,
+  PRIMARY_DATA_ENTRY_DRAFT,
+  savedStrategicDataEntryRecords,
   strategicDataEntryPeriodLabel,
   strategicDataEntryRawValueLabel,
   type StrategicDataEntryDraft,
@@ -394,6 +396,71 @@ describe("strategic data-entry model", () => {
     }
   });
 
+  it("rejects a percentage numerator above the denominator before submission", () => {
+    const kpi = selected("percentage", { reportingFrequency: "monthly" });
+    const result = buildStrategicDataEntryMutation(
+      kpi,
+      2026,
+      draftFor(kpi, { periodIndex: "7", numerator: "120", denominator: "100" }),
+    );
+    expect(result.ok).toBe(false);
+    if (!result.ok) {
+      expect(result.errors.numerator).toContain("cannot exceed 100%");
+    }
+  });
+
+  it("applies the 100% ceiling to a fixed denominator too", () => {
+    const kpi = selected("percentage", {
+      reportingFrequency: "monthly",
+      fixedDenominator: 80,
+    });
+    const result = buildStrategicDataEntryMutation(
+      kpi,
+      2026,
+      draftFor(kpi, { periodIndex: "7", numerator: "81" }),
+    );
+    expect(result.ok).toBe(false);
+    if (!result.ok) {
+      expect(result.errors.numerator).toContain("cannot exceed 100%");
+    }
+  });
+
+  it("still allows a ratio numerator above its denominator", () => {
+    const kpi = selected("ratio", { reportingFrequency: "monthly" });
+    const result = buildStrategicDataEntryMutation(
+      kpi,
+      2026,
+      draftFor(kpi, { periodIndex: "7", numerator: "120", denominator: "100" }),
+    );
+    expect(result.ok).toBe(true);
+    if (result.ok) {
+      expect(result.mutation.body).toMatchObject({
+        numerator: 120,
+        denominator: 100,
+      });
+    }
+  });
+
+  it("rejects a zero total-response count before submission (CALC-001)", () => {
+    const kpi = selected("average", { reportingFrequency: "monthly" });
+    const result = buildStrategicDataEntryMutation(
+      kpi,
+      2026,
+      draftFor(kpi, {
+        periodIndex: "7",
+        averageMethod: "percent_positive",
+        positiveResponseCount: "0",
+        totalResponseCount: "0",
+      }),
+    );
+    expect(result.ok).toBe(false);
+    if (!result.ok) {
+      expect(result.errors.totalResponseCount).toBe(
+        "Enter a number greater than zero.",
+      );
+    }
+  });
+
   it("builds each raw average method without mixing formulas", () => {
     const kpi = selected("average");
     const totalScore = buildStrategicDataEntryMutation(
@@ -616,6 +683,32 @@ describe("strategic data-entry model", () => {
     });
   });
 
+  it("rejects a zero respondent total before submission (CALC-001)", () => {
+    const kpi = selected("distribution", {
+      bands: [
+        {
+          id: 101,
+          componentId: null,
+          slug: "known",
+          label: "Known",
+          displayOrder: 0,
+          isUnknown: false,
+          isDeclined: false,
+          derivedGroup: null,
+        },
+      ],
+    });
+    const result = buildStrategicDataEntryMutation(
+      kpi,
+      2026,
+      draftFor(kpi, { respondentCount: "0", bandCounts: { "101": "0" } }),
+    );
+    expect(result).toMatchObject({
+      ok: false,
+      errors: { respondentCount: "Enter a number greater than zero." },
+    });
+  });
+
   it("hydrates saved raw values for idempotent period updates", () => {
     const kpi = selected("percentage", { reportingFrequency: "monthly" });
     const saved = record({
@@ -638,6 +731,67 @@ describe("strategic data-entry model", () => {
     });
     expect(strategicDataEntryPeriodLabel(saved)).toBe("July 2026");
     expect(strategicDataEntryRawValueLabel(saved, "%")).toBe("25 / 40");
+  });
+
+  it("pairs each editable input with the saved record it edits", () => {
+    const kpi = selected("multi_component", {
+      components: [
+        {
+          id: 11,
+          label: "Admissions",
+          measurementType: "count",
+          unit: "visits",
+          numeratorLabel: null,
+          denominatorLabel: null,
+          fixedDenominator: null,
+        },
+        {
+          id: 12,
+          label: "Member visits",
+          measurementType: "count",
+          unit: "visits",
+          numeratorLabel: null,
+          denominatorLabel: null,
+          fixedDenominator: null,
+        },
+      ],
+    });
+    const saved = record({
+      id: 91,
+      kind: "component_entry",
+      componentId: 11,
+      scalarValue: 120,
+    });
+
+    const found = savedStrategicDataEntryRecords(kpi, [saved]);
+    expect(Object.keys(found)).toEqual(["11"]);
+    expect(found["11"]?.id).toBe(91);
+  });
+
+  it("reports no saved record for a single-input measure with nothing recorded", () => {
+    const kpi = selected("count");
+    expect(savedStrategicDataEntryRecords(kpi, [])).toEqual({});
+    expect(
+      savedStrategicDataEntryRecords(kpi, [record({ id: 5, componentId: null })]),
+    ).toEqual({ [PRIMARY_DATA_ENTRY_DRAFT]: expect.objectContaining({ id: 5 }) });
+  });
+
+  it("never offers a component's record to a different component's input", () => {
+    const kpi = selected("multi_component", {
+      components: [
+        {
+          id: 11,
+          label: "Admissions",
+          measurementType: "count",
+          unit: "visits",
+          numeratorLabel: null,
+          denominatorLabel: null,
+          fixedDenominator: null,
+        },
+      ],
+    });
+    const foreign = record({ id: 91, kind: "component_entry", componentId: 99 });
+    expect(savedStrategicDataEntryRecords(kpi, [foreign])).toEqual({});
   });
 
   it("maps deletes to the owning normalized value route", () => {

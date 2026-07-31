@@ -337,7 +337,17 @@ export function loadStrategicDataEntryPageData({
 
   const { goal, member } = context;
   const configuration = member.configuration;
-  if (!configuration?.measurement_type || !configuration.reporting_frequency) {
+  // Withhold the entry form for anything the checklist flags as needing
+  // attention, not just a missing measurement type or cadence. The write
+  // path refuses values against a draft/needs_definition/needs_target
+  // configuration (assertValueWriteAllowed), so rendering an editable form
+  // for one invites an admin to type a full reporting period's evidence
+  // into a save that can never succeed.
+  if (
+    !configuration?.measurement_type ||
+    !configuration.reporting_frequency ||
+    needsAttention(member)
+  ) {
     return {
       reportingYear,
       years,

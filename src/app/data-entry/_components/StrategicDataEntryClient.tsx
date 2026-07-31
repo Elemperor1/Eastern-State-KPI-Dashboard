@@ -9,14 +9,16 @@ import {
   type FormEvent,
 } from "react";
 import { useRouter } from "next/navigation";
-import { ArrowLeft, Save } from "lucide-react";
+import { ArrowLeft, Save, Trash2 } from "lucide-react";
 import {
   activeBandsForDraft,
   buildStrategicDataEntryRequests,
   buildStrategicDataEntryMutation,
+  deleteEndpointForRecord,
   displayStrategyLabel,
   initialStrategicDataEntryDrafts,
   PRIMARY_DATA_ENTRY_DRAFT,
+  savedStrategicDataEntryRecords,
   selectedEntryComponent,
   selectedEntryMeasurementType,
   selectedEntryUnit,
@@ -24,6 +26,7 @@ import {
   type StrategicDataEntryDrafts,
   type StrategicDataEntryErrors,
   type StrategicDataEntryPageData,
+  type StrategicDataEntryRecord,
 } from "@/components/strategic-data-entry-model";
 import {
   Badge,
@@ -57,6 +60,21 @@ type PendingSelection = {
   period: string;
   kpiId: number | null;
 };
+
+type PendingClear = {
+  draftKey: string;
+  label: string;
+  record: StrategicDataEntryRecord;
+};
+
+/**
+ * Stable key for one saved record. Ids are per-table, so the record kind has
+ * to take part or an observation and a distribution sharing an id would be
+ * treated as the same record.
+ */
+function recordIdentity(record: StrategicDataEntryRecord): string {
+  return `${record.kind}:${record.id}`;
+}
 
 /** Implements the issue message operation. */
 function issueMessage(value: unknown): string | null {
@@ -102,16 +120,30 @@ export function StrategicDataEntryClient({
   const router = useRouter();
   const { setState: setUnsavedState } = useUnsavedChanges();
   const [isNavigating, startNavigation] = useTransition();
+  const [removedRecordKeys, setRemovedRecordKeys] = useState<readonly string[]>([]);
+  /**
+   * Records confirmed removed in this tab. `router.refresh()` resolves on its
+   * own schedule (and can fail), so the form must stop showing a removed
+   * result the moment the server confirms the delete — otherwise the success
+   * banner sits above the old values and the next Save recreates the record
+   * the admin just removed.
+   */
+  const visibleRecords = useMemo(
+    () => data.records.filter(
+      (record) => !removedRecordKeys.includes(recordIdentity(record)),
+    ),
+    [data.records, removedRecordKeys],
+  );
   const initialDrafts = useMemo<StrategicDataEntryDrafts>(
     () => data.selectedKpi
       ? initialStrategicDataEntryDrafts(
           data.selectedKpi,
           data.reportingYear,
           data.reportingPeriod,
-          data.records,
+          visibleRecords,
         )
       : {},
-    [data.records, data.reportingPeriod, data.reportingYear, data.selectedKpi],
+    [visibleRecords, data.reportingPeriod, data.reportingYear, data.selectedKpi],
   );
   const [drafts, setDrafts] = useState<StrategicDataEntryDrafts>(initialDrafts);
   const [baselineDrafts, setBaselineDrafts] = useState<StrategicDataEntryDrafts>(initialDrafts);
@@ -120,8 +152,15 @@ export function StrategicDataEntryClient({
   const [busy, setBusy] = useState(false);
   const [isOnline, setIsOnline] = useState(true);
   const [pendingSelection, setPendingSelection] = useState<PendingSelection | null>(null);
+  const [pendingClear, setPendingClear] = useState<PendingClear | null>(null);
   const formRef = useRef<HTMLFormElement>(null);
   const returnFocusKpiId = useRef<number | null>(null);
+  const savedRecords = useMemo(
+    () => data.selectedKpi
+      ? savedStrategicDataEntryRecords(data.selectedKpi, visibleRecords)
+      : {},
+    [visibleRecords, data.selectedKpi],
+  );
   const isDirty = useMemo(
     () => JSON.stringify(drafts) !== JSON.stringify(baselineDrafts),
     [baselineDrafts, drafts],
@@ -137,6 +176,13 @@ export function StrategicDataEntryClient({
     setBaselineDrafts(initialDrafts);
     setErrors({});
   }, [initialDrafts]);
+
+  // Fresh server data already excludes anything removed, so the local
+  // suppression list has done its job and must not outlive it — otherwise it
+  // would hide a record later recreated for the same period.
+  useEffect(() => {
+    setRemovedRecordKeys([]);
+  }, [data.records]);
 
   useEffect(() => {
     /** Updates connection state. */
@@ -204,6 +250,78 @@ export function StrategicDataEntryClient({
       delete next[draftKey][String(key)];
       return next;
     });
+  }
+
+  /** Moves focus to the first input of an entry after its value is cleared. */
+  function focusEntrySection(draftKey: string) {
+    window.requestAnimationFrame(() => {
+      formRef.current
+        ?.querySelector<HTMLElement>(`[data-entry-section="${draftKey}"]`)
+        ?.querySelector<HTMLElement>("input, select, textarea")
+        ?.focus();
+    });
+  }
+
+  /**
+   * Remove one already-saved value for the selected Reporting Period. The
+   * server deletes the normalized record and writes an immutable Activity
+   * event; the route refresh then rehydrates this input as empty.
+   */
+  async function clearSavedValue(pending: PendingClear) {
+    if (!window.navigator.onLine) {
+      setFeedback({
+        variant: "error",
+        kind: "offline",
+        message: "You're offline. Nothing was removed. Reconnect before trying again.",
+      });
+      return;
+    }
+    setFeedback(null);
+    setBusy(true);
+    try {
+      const response = await apiFetch(deleteEndpointForRecord(pending.record), {
+        method: "DELETE",
+        body: { id: pending.record.id },
+      });
+      const body = (await response.json().catch(() => ({}))) as {
+        error?: string;
+        issues?: unknown;
+      };
+      if (!response.ok) {
+        const detail = issueMessage(body.issues);
+        setFeedback({
+          variant: "error",
+          message: detail
+            ? `${body.error ?? "Couldn't remove the saved value"}: ${detail}`
+            : body.error ?? "Couldn't remove the saved value. Nothing was changed.",
+        });
+        return;
+      }
+      // Drop the record locally before asking for fresh server data, so the
+      // input is empty and its Remove action is gone the instant the success
+      // banner appears — not whenever the refresh happens to land.
+      setRemovedRecordKeys((current) => [
+        ...current,
+        recordIdentity(pending.record),
+      ]);
+      setFeedback({
+        variant: "success",
+        message: `Removed the saved ${data.reportingPeriod.label} ${data.reportingYear} result for ${pending.label}.`,
+      });
+      router.refresh();
+    } catch {
+      const offline = !window.navigator.onLine;
+      setFeedback({
+        variant: "error",
+        kind: offline ? "offline" : undefined,
+        message: offline
+          ? "You're offline. Nothing was removed. Reconnect before trying again."
+          : "Couldn't remove the saved value. Check the connection and try again.",
+      });
+    } finally {
+      setBusy(false);
+      focusEntrySection(pending.draftKey);
+    }
   }
 
   /** Runs the submit workflow. */
@@ -451,6 +569,8 @@ export function StrategicDataEntryClient({
                 errors={errors}
                 busy={busy}
                 offline={!isOnline}
+                savedRecords={savedRecords}
+                requestClear={setPendingClear}
                 updateDraft={updateDraft}
                 submit={submit}
                 formRef={formRef}
@@ -483,6 +603,24 @@ export function StrategicDataEntryClient({
           if (selection) replaceSelection(selection, true);
         }}
         onClose={() => setPendingSelection(null)}
+      />
+
+      <ConfirmDialog
+        open={pendingClear !== null}
+        title="Remove this saved result?"
+        description={
+          pendingClear
+            ? `This removes the saved ${data.reportingPeriod.label} ${data.reportingYear} result for ${pendingClear.label} and records the removal in Activity. Any unsaved edits in this form are discarded.`
+            : ""
+        }
+        confirmLabel="Remove result"
+        cancelLabel="Keep result"
+        onConfirm={async () => {
+          const pending = pendingClear;
+          setPendingClear(null);
+          if (pending) await clearSavedValue(pending);
+        }}
+        onClose={() => setPendingClear(null)}
       />
     </div>
   );
@@ -579,6 +717,8 @@ function EntryForm({
   errors,
   busy,
   offline,
+  savedRecords,
+  requestClear,
   updateDraft,
   submit,
   formRef,
@@ -590,6 +730,8 @@ function EntryForm({
   errors: Record<string, StrategicDataEntryErrors>;
   busy: boolean;
   offline: boolean;
+  savedRecords: Record<string, StrategicDataEntryRecord>;
+  requestClear: (pending: PendingClear) => void;
   updateDraft: <K extends keyof StrategicDataEntryDraft>(
     draftKey: string,
     key: K,
@@ -640,11 +782,13 @@ function EntryForm({
             const bands = activeBandsForDraft(kpi, entry.draft);
             const fieldErrors = errors[entry.key] ?? {};
             const prefix = `strategy-entry-${entry.key}`;
+            const saved = savedRecords[entry.key];
             return (
               <section
                 key={entry.key}
                 className={index === 0 ? "pb-6" : "py-6"}
                 aria-labelledby={`${prefix}-title`}
+                data-entry-section={entry.key}
               >
                 <div className="mb-5">
                   {entries.length > 1 ? (
@@ -690,6 +834,33 @@ function EntryForm({
                     />
                   </FormField>
                 </div>
+
+                {saved ? (
+                  <div className="mt-5 flex flex-wrap items-center gap-3">
+                    <Button
+                      type="button"
+                      variant="danger"
+                      size="sm"
+                      icon={Trash2}
+                      disabled={offline}
+                      onClick={() =>
+                        requestClear({
+                          draftKey: entry.key,
+                          label: entry.label,
+                          record: saved,
+                        })
+                      }
+                    >
+                      Remove saved result
+                    </Button>
+                    <p className="text-sm text-ink-500">
+                      A result is recorded for {data.reportingPeriod.label}
+                      {" "}
+                      {data.reportingYear}. Saving overwrites it; removing it is
+                      recorded in Activity.
+                    </p>
+                  </div>
+                ) : null}
               </section>
             );
           })}
@@ -937,7 +1108,7 @@ function AverageFields({
             <Input
               id={`${idPrefix}-total-responses`}
               type="number"
-              min={0}
+              min={1}
               step={1}
               value={draft.totalResponseCount}
               aria-invalid={Boolean(errors.totalResponseCount)}
@@ -1049,7 +1220,7 @@ function DistributionFields({
         <Input
           id={`${idPrefix}-distribution-total`}
           type="number"
-          min={0}
+          min={1}
           step={1}
           value={draft.respondentCount}
           aria-invalid={Boolean(errors.respondentCount)}
