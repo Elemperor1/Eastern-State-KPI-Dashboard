@@ -67,6 +67,15 @@ type PendingClear = {
   record: StrategicDataEntryRecord;
 };
 
+/**
+ * Stable key for one saved record. Ids are per-table, so the record kind has
+ * to take part or an observation and a distribution sharing an id would be
+ * treated as the same record.
+ */
+function recordIdentity(record: StrategicDataEntryRecord): string {
+  return `${record.kind}:${record.id}`;
+}
+
 /** Implements the issue message operation. */
 function issueMessage(value: unknown): string | null {
   if (typeof value === "string" && value.trim()) return value;
@@ -111,16 +120,30 @@ export function StrategicDataEntryClient({
   const router = useRouter();
   const { setState: setUnsavedState } = useUnsavedChanges();
   const [isNavigating, startNavigation] = useTransition();
+  const [removedRecordKeys, setRemovedRecordKeys] = useState<readonly string[]>([]);
+  /**
+   * Records confirmed removed in this tab. `router.refresh()` resolves on its
+   * own schedule (and can fail), so the form must stop showing a removed
+   * result the moment the server confirms the delete — otherwise the success
+   * banner sits above the old values and the next Save recreates the record
+   * the admin just removed.
+   */
+  const visibleRecords = useMemo(
+    () => data.records.filter(
+      (record) => !removedRecordKeys.includes(recordIdentity(record)),
+    ),
+    [data.records, removedRecordKeys],
+  );
   const initialDrafts = useMemo<StrategicDataEntryDrafts>(
     () => data.selectedKpi
       ? initialStrategicDataEntryDrafts(
           data.selectedKpi,
           data.reportingYear,
           data.reportingPeriod,
-          data.records,
+          visibleRecords,
         )
       : {},
-    [data.records, data.reportingPeriod, data.reportingYear, data.selectedKpi],
+    [visibleRecords, data.reportingPeriod, data.reportingYear, data.selectedKpi],
   );
   const [drafts, setDrafts] = useState<StrategicDataEntryDrafts>(initialDrafts);
   const [baselineDrafts, setBaselineDrafts] = useState<StrategicDataEntryDrafts>(initialDrafts);
@@ -134,9 +157,9 @@ export function StrategicDataEntryClient({
   const returnFocusKpiId = useRef<number | null>(null);
   const savedRecords = useMemo(
     () => data.selectedKpi
-      ? savedStrategicDataEntryRecords(data.selectedKpi, data.records)
+      ? savedStrategicDataEntryRecords(data.selectedKpi, visibleRecords)
       : {},
-    [data.records, data.selectedKpi],
+    [visibleRecords, data.selectedKpi],
   );
   const isDirty = useMemo(
     () => JSON.stringify(drafts) !== JSON.stringify(baselineDrafts),
@@ -153,6 +176,13 @@ export function StrategicDataEntryClient({
     setBaselineDrafts(initialDrafts);
     setErrors({});
   }, [initialDrafts]);
+
+  // Fresh server data already excludes anything removed, so the local
+  // suppression list has done its job and must not outlive it — otherwise it
+  // would hide a record later recreated for the same period.
+  useEffect(() => {
+    setRemovedRecordKeys([]);
+  }, [data.records]);
 
   useEffect(() => {
     /** Updates connection state. */
@@ -267,6 +297,13 @@ export function StrategicDataEntryClient({
         });
         return;
       }
+      // Drop the record locally before asking for fresh server data, so the
+      // input is empty and its Remove action is gone the instant the success
+      // banner appears — not whenever the refresh happens to land.
+      setRemovedRecordKeys((current) => [
+        ...current,
+        recordIdentity(pending.record),
+      ]);
       setFeedback({
         variant: "success",
         message: `Removed the saved ${data.reportingPeriod.label} ${data.reportingYear} result for ${pending.label}.`,

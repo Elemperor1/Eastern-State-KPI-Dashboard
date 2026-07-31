@@ -642,31 +642,99 @@ describe("monthly Data Entry", () => {
       denominatorLabel: "Total",
     });
 
-    const distributionBands = openPeriod(withBands.kpiId, "monthly:3")
-      .data.selectedKpi!.bands.map((band) => String(band.id));
-    const degenerate: Array<{ kpiId: number; patch: Partial<StrategicDataEntryDraft> }> = [
+    const bands = openPeriod(withBands.kpiId, "monthly:3")
+      .data.selectedKpi!.bands;
+    /**
+     * Each case carries the write boundary that owns its record type. Sending
+     * every payload to `upsertStrategyObservation` would make the distribution
+     * case throw "use the distribution endpoint" rather than for its zero
+     * respondent total, so it would pass for the wrong reason. Each `write`
+     * therefore differs from a valid payload only in the degenerate field, and
+     * each asserts the message that field produces.
+     */
+    const degenerate: Array<{
+      name: string;
+      kpiId: number;
+      patch: Partial<StrategicDataEntryDraft>;
+      write: () => void;
+      refusal: RegExp;
+    }> = [
       {
+        name: "distribution with no respondents",
         kpiId: withBands.kpiId,
         patch: {
           respondentCount: "0",
-          bandCounts: {
-            [distributionBands[0]!]: "0",
-            [distributionBands[1]!]: "0",
-          },
+          bandCounts: Object.fromEntries(
+            bands.map((band) => [String(band.id), "0"]),
+          ),
         },
+        /** Posts a complete distribution whose only fault is the zero total. */
+        write: () =>
+          upsertStrategyDistribution(
+            {
+              kpi_id: withBands.kpiId,
+              reporting_year: 2026,
+              reporting_month: 3,
+              respondent_count: 0,
+              mutually_exclusive: true,
+              bands: bands.map((band) => ({
+                band_id: band.id,
+                slug: band.slug,
+                label: band.label,
+                count: 0,
+                display_order: band.displayOrder,
+              })),
+            },
+            null,
+          ),
+        refusal: /invalid strategy value entry/i,
       },
       {
+        name: "percent-positive average with no responses",
         kpiId: average.kpiId,
         patch: {
           averageMethod: "percent_positive",
           positiveResponseCount: "0",
           totalResponseCount: "0",
         },
+        /** Posts average inputs whose only fault is the zero response total. */
+        write: () =>
+          upsertStrategyObservation(
+            {
+              kpi_id: average.kpiId,
+              reporting_year: 2026,
+              reporting_month: 3,
+              average_inputs: {
+                method: "percent_positive",
+                positive_response_count: 0,
+                total_response_count: 0,
+              },
+            },
+            null,
+          ),
+        refusal: /invalid observation values/i,
       },
-      { kpiId: percentage.kpiId, patch: { numerator: "5", denominator: "0" } },
+      {
+        name: "percentage over a zero denominator",
+        kpiId: percentage.kpiId,
+        patch: { numerator: "5", denominator: "0" },
+        /** Posts a ratio pair whose only fault is the zero denominator. */
+        write: () =>
+          upsertStrategyObservation(
+            {
+              kpi_id: percentage.kpiId,
+              reporting_year: 2026,
+              reporting_month: 3,
+              numerator: 5,
+              denominator: 0,
+            },
+            null,
+          ),
+        refusal: /invalid strategy value entry/i,
+      },
     ];
 
-    for (const { kpiId, patch } of degenerate) {
+    for (const { name, kpiId, patch, write, refusal } of degenerate) {
       const opened = openPeriod(kpiId, "monthly:3");
       const built = buildStrategicDataEntryMutation(
         opened.data.selectedKpi!,
@@ -674,35 +742,11 @@ describe("monthly Data Entry", () => {
         { ...opened.drafts[PRIMARY_DATA_ENTRY_DRAFT]!, ...patch },
       );
       // Refused at entry with a field error the form can focus...
-      expect(built.ok, JSON.stringify(patch)).toBe(false);
-      expect(Object.keys(built.errors).length).toBeGreaterThan(0);
-      // ...and refused again at the write boundary, so an API caller cannot
-      // bypass the form to persist it.
-      expect(() =>
-        upsertStrategyObservation(
-          {
-            kpi_id: kpiId,
-            reporting_year: 2026,
-            reporting_month: 3,
-            ...(patch.numerator === undefined
-              ? {}
-              : { numerator: Number(patch.numerator) }),
-            ...(patch.denominator === undefined
-              ? {}
-              : { denominator: Number(patch.denominator) }),
-            ...(patch.averageMethod === undefined
-              ? {}
-              : {
-                  average_inputs: {
-                    method: patch.averageMethod,
-                    positive_response_count: 0,
-                    total_response_count: 0,
-                  },
-                }),
-          },
-          null,
-        ),
-      ).toThrow();
+      expect(built.ok, name).toBe(false);
+      expect(Object.keys(built.errors).length, name).toBeGreaterThan(0);
+      // ...and refused again at the write boundary that owns the record, so
+      // an API caller cannot bypass the form to persist it.
+      expect(write, name).toThrowError(refusal);
     }
 
     // Nothing degenerate reached storage, so no period is falsely complete.
