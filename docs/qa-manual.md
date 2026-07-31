@@ -61,13 +61,15 @@ An explicitly allowed remote base retains the operator's curl proxy behavior.
 ## Setup
 
 - Confirm the persistent selector contains exactly Plans, Measures, Goals,
-  People, and Activity.
+  Board, People, and Activity.
+- In Plans, confirm Plan settings edits the Active organization/plan names and
+  years above the successor-plan workspace.
 - In Measures, apply Needs attention and open a measure detail without leaving
   Setup. At 390 px, verify Back to Measures restores the list and focus order is
   understandable.
 - In Goals, exercise selection, completion rules, membership, annual targets,
   and full-plan targets.
-- In Goals → Board visibility, edit a focus statement, link and unlink a
+- In Board → Board visibility, edit a focus statement, link and unlink a
   measure, review the preview, and save. Sign in as a Board account and confirm
   Overview, Reports, priority/measure details, and JSON/CSV exports all reflect
   the saved scope. Confirm an unlinked focus statement remains visible as “No

@@ -648,7 +648,7 @@ test("lets an Admin edit the Board view and enforces the saved scope for Board m
     setupDb.close();
     setupDb = null;
 
-    await page.goto("/setup?area=goals");
+    await page.goto("/setup?area=board");
     await expect(page.getByRole("heading", { name: "Board visibility" })).toBeVisible();
     const visitorEditor = page
       .getByRole("checkbox", { name: /^Reimagine Visitor Experience/ })
@@ -834,23 +834,25 @@ test("uses one flat Setup workspace on desktop and mobile", async ({ page }, tes
   const browserErrors = collectBrowserErrors(page);
   await page.goto("/setup?area=measures&year=2029");
   const areas = page.getByRole("navigation", { name: "Setup areas" });
-  await expect(areas.getByRole("link")).toHaveCount(5);
-  for (const name of ["Plans", "Measures", "Goals", "People", "Activity"]) {
+  await expect(areas.getByRole("link")).toHaveCount(6);
+  for (const name of ["Plans", "Measures", "Goals", "Board", "People", "Activity"]) {
     await expect(areas.getByRole("link", { name })).toBeVisible();
   }
   await expect(page.getByRole("tab")).toHaveCount(0);
 
   await areas.getByRole("link", { name: "Plans" }).click();
+  await expect(page.getByRole("heading", { name: "Plan settings" })).toBeVisible();
   await expect(page.getByRole("heading", { name: "Strategic Plans" })).toBeVisible();
   await expect(page.getByRole("heading", { name: "Current Active plan" })).toBeVisible();
-  await page.getByLabel("Starting point").selectOption("blank");
-  await page.getByLabel("Plan name").fill("Acceptance Successor Plan");
-  await page.getByLabel("Final year").fill("2034");
-  await page.getByLabel("Approved by or source").fill("Acceptance Board resolution");
-  await page.getByLabel("Plain-language description").fill(
+  const startDraft = page.getByRole("region", { name: "Start the next plan" });
+  await startDraft.getByLabel("Starting point").selectOption("blank");
+  await startDraft.getByLabel("Plan name").fill("Acceptance Successor Plan");
+  await startDraft.getByLabel("Final year").fill("2034");
+  await startDraft.getByLabel("Approved by or source").fill("Acceptance Board resolution");
+  await startDraft.getByLabel("Plain-language description").fill(
     "A disposable browser acceptance Draft.",
   );
-  await page.getByRole("button", { name: "Create successor plan" }).click();
+  await startDraft.getByRole("button", { name: "Create successor plan" }).click();
   await expect(page.getByRole("heading", { name: "1. Plan details" })).toBeVisible();
   await expect(page.getByText("Current reporting still uses")).toBeVisible();
   const cancelDraft = page.getByRole("region", { name: "Cancel this Draft" });

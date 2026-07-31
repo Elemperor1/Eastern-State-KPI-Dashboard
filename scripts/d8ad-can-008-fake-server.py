@@ -158,8 +158,15 @@ class SmokeFakeHandler(http.server.BaseHTTPRequestHandler):
             if area == "plans":
                 return self._html_resp(200, html_body(
                     "Setup</h1><nav><a>Plans</a><a>Measures</a><a>Goals</a>"
-                    "<a>People</a><a>Activity</a></nav>"
+                    "<a>Board</a><a>People</a><a>Activity</a></nav>"
+                    '<h2 id="plan-settings-heading">Plan settings</h2>'
                     "<h2>Current Active plan</h2><h3>Start the next plan</h3>"
+                ))
+            if area == "board":
+                return self._html_resp(200, html_body(
+                    "Setup</h1><nav><a>Plans</a><a>Measures</a><a>Goals</a>"
+                    "<a>Board</a><a>People</a><a>Activity</a></nav>"
+                    '<h2 id="board-visibility-heading">Board visibility</h2>'
                 ))
             if area == "measures" and params.get("filter") == ["needs-attention"]:
                 return self._html_resp(200, html_body(
@@ -168,7 +175,7 @@ class SmokeFakeHandler(http.server.BaseHTTPRequestHandler):
                 ))
             return self._html_resp(200, html_body(
                 "Setup</h1><nav><a>Plans</a><a>Measures</a><a>Goals</a>"
-                "<a>People</a><a>Activity</a></nav>"
+                "<a>Board</a><a>People</a><a>Activity</a></nav>"
                 "<p>Setup changes — Smoke test; delete after verification</p>"
             ))
 
