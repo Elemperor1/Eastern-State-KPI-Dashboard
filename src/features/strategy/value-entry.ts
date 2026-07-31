@@ -220,12 +220,12 @@ const StrategyDistributionWriteSchema = z
     reporting_month: z.number().int().min(1).max(12).nullable().optional().default(null),
     reporting_quarter: z.number().int().min(1).max(4).nullable().optional().default(null),
     flexible_mode: z.enum(["monthly", "annual"]).nullable().optional().default(null),
-    // A recorded respondent total must be strictly positive, for the same
-    // reason a denominator must be (CALC-001): zero respondents persists a
-    // row the calculation kernel can only render invalid
-    // (ZERO_RESPONDENT_TOTAL) while the Data Entry checklist counts the
-    // period complete. A period with nothing to report stays unreported.
-    respondent_count: z.number().int().positive(),
+    // Zero respondents is a legitimate reported outcome: a period that
+    // genuinely collected no responses is evidence, not a gap. The kernel
+    // renders it as a qualified NO_RESPONSES_RECORDED rather than a computed
+    // composition, so recording it does not put an invalid row behind a
+    // complete checklist (CALC-001).
+    respondent_count: z.number().int().nonnegative(),
     mutually_exclusive: z.boolean().optional().default(true),
     bands: z.array(DistributionBandWriteSchema).min(1).max(100),
     notes: OptionalTextSchema,

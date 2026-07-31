@@ -630,150 +630,176 @@ describe("monthly Data Entry", () => {
   /**
    * CALC-001: the checklist calls a period complete as soon as a record
    * exists, so Data Entry must never accept inputs the calculation kernel
-   * can only render invalid. Anything savable has to compute.
+   * renders invalid. Anything savable either computes or carries an explicit
+   * qualified reason -- never a bare failure behind a complete checklist.
    */
   it("never accepts a monthly value the kernel can only render invalid", () => {
-    const withBands = seedMeasure("invariant-dist", "distribution", "monthly");
-    seedBand(withBands.kpiId, null, "a", "A", 0);
-    seedBand(withBands.kpiId, null, "b", "B", 1);
-    const average = seedMeasure("invariant-avg", "average", "monthly");
     const percentage = seedMeasure("invariant-pct", "percentage", "monthly", {
       numeratorLabel: "Reached",
       denominatorLabel: "Total",
     });
-
-    const bands = openPeriod(withBands.kpiId, "monthly:3")
-      .data.selectedKpi!.bands;
-    /**
-     * Each case carries the write boundary that owns its record type. Sending
-     * every payload to `upsertStrategyObservation` would make the distribution
-     * case throw "use the distribution endpoint" rather than for its zero
-     * respondent total, so it would pass for the wrong reason. Each `write`
-     * therefore differs from a valid payload only in the degenerate field, and
-     * each asserts the message that field produces.
-     */
-    const degenerate: Array<{
-      name: string;
-      kpiId: number;
-      patch: Partial<StrategicDataEntryDraft>;
-      write: () => void;
-      refusal: RegExp;
-    }> = [
+    const opened = openPeriod(percentage.kpiId, "monthly:3");
+    const built = buildStrategicDataEntryMutation(
+      opened.data.selectedKpi!,
+      2026,
       {
-        name: "distribution with no respondents",
-        kpiId: withBands.kpiId,
-        patch: {
-          respondentCount: "0",
-          bandCounts: Object.fromEntries(
-            bands.map((band) => [String(band.id), "0"]),
-          ),
+        ...opened.drafts[PRIMARY_DATA_ENTRY_DRAFT]!,
+        numerator: "5",
+        denominator: "0",
+      },
+    );
+    // Refused at entry with a field error the form can focus...
+    expect(built.ok).toBe(false);
+    expect(Object.keys(built.errors).length).toBeGreaterThan(0);
+    // ...and refused again at the write boundary that owns the record, so an
+    // API caller cannot bypass the form to persist it. A zero denominator is
+    // a broken definition, not an empty survey, so it stays refused.
+    expect(() =>
+      upsertStrategyObservation(
+        {
+          kpi_id: percentage.kpiId,
+          reporting_year: 2026,
+          reporting_month: 3,
+          numerator: 5,
+          denominator: 0,
         },
-        /** Posts a complete distribution whose only fault is the zero total. */
-        write: () =>
-          upsertStrategyDistribution(
-            {
-              kpi_id: withBands.kpiId,
-              reporting_year: 2026,
-              reporting_month: 3,
-              respondent_count: 0,
-              mutually_exclusive: true,
-              bands: bands.map((band) => ({
-                band_id: band.id,
-                slug: band.slug,
-                label: band.label,
-                count: 0,
-                display_order: band.displayOrder,
-              })),
-            },
-            null,
-          ),
-        refusal: /invalid strategy value entry/i,
-      },
-      {
-        name: "percent-positive average with no responses",
-        kpiId: average.kpiId,
-        patch: {
-          averageMethod: "percent_positive",
-          positiveResponseCount: "0",
-          totalResponseCount: "0",
-        },
-        /** Posts average inputs whose only fault is the zero response total. */
-        write: () =>
-          upsertStrategyObservation(
-            {
-              kpi_id: average.kpiId,
-              reporting_year: 2026,
-              reporting_month: 3,
-              average_inputs: {
-                method: "percent_positive",
-                positive_response_count: 0,
-                total_response_count: 0,
-              },
-            },
-            null,
-          ),
-        refusal: /invalid observation values/i,
-      },
-      {
-        name: "percentage over a zero denominator",
-        kpiId: percentage.kpiId,
-        patch: { numerator: "5", denominator: "0" },
-        /** Posts a ratio pair whose only fault is the zero denominator. */
-        write: () =>
-          upsertStrategyObservation(
-            {
-              kpi_id: percentage.kpiId,
-              reporting_year: 2026,
-              reporting_month: 3,
-              numerator: 5,
-              denominator: 0,
-            },
-            null,
-          ),
-        refusal: /invalid strategy value entry/i,
-      },
-    ];
+        null,
+      ),
+    ).toThrowError(/invalid strategy value entry/i);
 
-    for (const { name, kpiId, patch, write, refusal } of degenerate) {
-      const opened = openPeriod(kpiId, "monthly:3");
-      const built = buildStrategicDataEntryMutation(
-        opened.data.selectedKpi!,
-        2026,
-        { ...opened.drafts[PRIMARY_DATA_ENTRY_DRAFT]!, ...patch },
-      );
-      // Refused at entry with a field error the form can focus...
-      expect(built.ok, name).toBe(false);
-      expect(Object.keys(built.errors).length, name).toBeGreaterThan(0);
-      // ...and refused again at the write boundary that owns the record, so
-      // an API caller cannot bypass the form to persist it.
-      expect(write, name).toThrowError(refusal);
-    }
-
-    // Nothing degenerate reached storage, so no period is falsely complete.
-    for (const { kpiId } of degenerate) {
-      expect(openPeriod(kpiId, "monthly:3").data.kpis
-        .find((kpi) => kpi.id === kpiId)?.checklistStatus).toBe("not_started");
-    }
+    expect(openPeriod(percentage.kpiId, "monthly:3").data.kpis
+      .find((kpi) => kpi.id === percentage.kpiId)?.checklistStatus)
+      .toBe("not_started");
     expect(
       listCalculatedStrategyActuals({
-        kpiIds: degenerate.map(({ kpiId }) => kpiId),
+        kpiIds: [percentage.kpiId],
         throughYear: 2026,
       }),
     ).toEqual([]);
   });
 
-  it("refuses a zero respondent total at the distribution write boundary", () => {
+  /**
+   * A period that genuinely collected no responses is reported evidence, not
+   * a gap and not broken data. It records, and the kernel qualifies it with
+   * an explicit reason instead of computing a share the evidence does not
+   * support -- so the checklist and the report still agree.
+   */
+  it("records a distribution period that collected no responses", () => {
+    const owner = seedMeasure("no-responses-dist", "distribution", "monthly");
+    seedBand(owner.kpiId, null, "a", "A", 0);
+    seedBand(owner.kpiId, null, "b", "B", 1);
+
+    const opened = openPeriod(owner.kpiId, "monthly:3");
+    const bands = opened.data.selectedKpi!.bands;
+    const built = buildStrategicDataEntryMutation(opened.data.selectedKpi!, 2026, {
+      ...opened.drafts[PRIMARY_DATA_ENTRY_DRAFT]!,
+      respondentCount: "0",
+      bandCounts: Object.fromEntries(bands.map((band) => [String(band.id), "0"])),
+    });
+    expect(built.errors).toEqual({});
+    save(built.mutation!.endpoint, built.mutation!.body);
+
+    const after = openPeriod(owner.kpiId, "monthly:3");
+    expect(after.data.records).toHaveLength(1);
+    expect(after.data.records[0]?.respondentCount).toBe(0);
+    expect(after.data.kpis[0]?.checklistStatus).toBe("complete");
+
+    const actuals = listCalculatedStrategyActuals({
+      kpiIds: [owner.kpiId],
+      throughYear: 2026,
+    });
+    expect(actuals).toHaveLength(1);
+    // Qualified, not failed: the report says why there is no value.
+    expect(actuals[0]?.calculation.state).toBe("missing");
+    expect(actuals[0]?.calculation.issues).toContainEqual(
+      expect.objectContaining({
+        kind: "missing",
+        code: "NO_RESPONSES_RECORDED",
+      }),
+    );
+    expect(actuals[0]?.value).toBeNull();
+  });
+
+  it("records a percent-positive period that collected no responses", () => {
+    const { kpiId } = seedMeasure("no-responses-avg", "average", "monthly");
+    const opened = openPeriod(kpiId, "monthly:3");
+    const built = buildStrategicDataEntryMutation(opened.data.selectedKpi!, 2026, {
+      ...opened.drafts[PRIMARY_DATA_ENTRY_DRAFT]!,
+      averageMethod: "percent_positive",
+      positiveResponseCount: "0",
+      totalResponseCount: "0",
+    });
+    expect(built.errors).toEqual({});
+    save(built.mutation!.endpoint, built.mutation!.body);
+
+    const after = openPeriod(kpiId, "monthly:3");
+    expect(after.data.records).toHaveLength(1);
+    expect(after.data.kpis[0]?.checklistStatus).toBe("complete");
+
+    const actuals = listCalculatedStrategyActuals({
+      kpiIds: [kpiId],
+      throughYear: 2026,
+    });
+    expect(actuals).toHaveLength(1);
+    expect(actuals[0]?.calculation.state).toBe("missing");
+    expect(actuals[0]?.calculation.issues).toContainEqual(
+      expect.objectContaining({
+        kind: "missing",
+        code: "NO_RESPONSES_RECORDED",
+      }),
+    );
+    expect(actuals[0]?.value).toBeNull();
+  });
+
+  it("keeps a zero-response period re-savable and removable like any other", () => {
+    const { kpiId } = seedMeasure("no-responses-edit", "average", "monthly");
+    const first = openPeriod(kpiId, "monthly:3");
+    save(
+      "/api/strategy/observations",
+      buildStrategicDataEntryMutation(first.data.selectedKpi!, 2026, {
+        ...first.drafts[PRIMARY_DATA_ENTRY_DRAFT]!,
+        averageMethod: "percent_positive",
+        positiveResponseCount: "0",
+        totalResponseCount: "0",
+      }).mutation!.body,
+    );
+
+    // The saved zeros reload into the form rather than reading as blank.
+    const reloaded = openPeriod(kpiId, "monthly:3");
+    const draft = reloaded.drafts[PRIMARY_DATA_ENTRY_DRAFT]!;
+    expect(draft.positiveResponseCount).toBe("0");
+    expect(draft.totalResponseCount).toBe("0");
+
+    // Later real responses overwrite it in place.
+    save(
+      "/api/strategy/observations",
+      buildStrategicDataEntryMutation(reloaded.data.selectedKpi!, 2026, {
+        ...draft,
+        positiveResponseCount: "7",
+        totalResponseCount: "10",
+      }).mutation!.body,
+    );
+    const actuals = listCalculatedStrategyActuals({
+      kpiIds: [kpiId],
+      throughYear: 2026,
+    });
+    expect(actuals).toHaveLength(1);
+    expect(actuals[0]?.calculation.state).toBe("ok");
+    expect(actuals[0]?.value).toBe(70);
+  });
+
+  it("accepts a zero but refuses a negative respondent total", () => {
     const owner = seedMeasure("zero-respondents", "distribution", "monthly");
     seedBand(owner.kpiId, null, "a", "A", 0);
     const band = openPeriod(owner.kpiId, "monthly:3").data.selectedKpi!.bands[0]!;
-
-    expect(() =>
+    /** Builds a distribution write with the supplied respondent total. */
+    const write = (respondentCount: number) => () =>
       upsertStrategyDistribution(
         {
           kpi_id: owner.kpiId,
           reporting_year: 2026,
           reporting_month: 3,
-          respondent_count: 0,
+          respondent_count: respondentCount,
           mutually_exclusive: true,
           bands: [
             {
@@ -786,8 +812,12 @@ describe("monthly Data Entry", () => {
           ],
         },
         null,
-      ),
-    ).toThrowError(/invalid strategy value entry/i);
+      );
+
+    // Nothing collected is a real reported outcome.
+    expect(write(0)).not.toThrow();
+    // A negative total is not an outcome, it is broken data.
+    expect(write(-1)).toThrowError(/invalid strategy value entry/i);
   });
 
   it("refuses a monthly entry outside the active plan years", () => {

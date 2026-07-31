@@ -290,6 +290,32 @@ describe("strategy calculation kernel", () => {
       })).toMatchObject({ state: "invalid", issues: [{ code: "SCORE_EXCEEDS_MAXIMUM" }] });
     });
 
+    it("qualifies an empty percent-positive period but still fails a zero scale", () => {
+      // No responses is reported evidence: the share is undefined, not wrong.
+      expect(calculateMeasurement({
+        measurementType: "average",
+        method: "percent_positive",
+        positiveResponseCount: 0,
+        totalResponseCount: 0,
+      })).toMatchObject({
+        state: "missing",
+        averageMethod: "percent_positive",
+        issues: [{ kind: "missing", code: "NO_RESPONSES_RECORDED" }],
+      });
+
+      // A zero scale maximum is a broken definition, not an empty survey.
+      expect(calculateMeasurement({
+        measurementType: "average",
+        method: "average_score",
+        respondentCount: 10,
+        averageScore: 0,
+        maxScaleValue: 0,
+      })).toMatchObject({
+        state: "invalid",
+        issues: [{ code: "ZERO_DENOMINATOR" }],
+      });
+    });
+
     it("calculates year-over-year change and rejects a zero prior denominator", () => {
       expect(calculateMeasurement({
         measurementType: "year_over_year",
@@ -352,6 +378,33 @@ describe("strategy calculation kernel", () => {
       })).toMatchObject({
         state: "ok",
         distribution: { categoryTotal: 15, allowNonExclusive: true },
+      });
+    });
+
+    it("qualifies an empty response period instead of failing it", () => {
+      // Nothing collected is reported evidence, so the period carries an
+      // explicit reason rather than an invalid composition. Reporting a 0%
+      // share for every band would state something the evidence cannot.
+      expect(calculateMeasurement({
+        measurementType: "distribution",
+        respondentTotal: 0,
+        categories: [
+          { id: "a", label: "A", count: 0 },
+          { id: "b", label: "B", count: 0 },
+        ],
+      })).toMatchObject({
+        state: "missing",
+        issues: [{ kind: "missing", code: "NO_RESPONSES_RECORDED" }],
+      });
+
+      // A negative total is not an outcome, so it still fails.
+      expect(calculateMeasurement({
+        measurementType: "distribution",
+        respondentTotal: -1,
+        categories: [{ id: "a", label: "A", count: 0 }],
+      })).toMatchObject({
+        state: "invalid",
+        issues: [{ code: "NEGATIVE_RESPONDENT_TOTAL" }],
       });
     });
 
