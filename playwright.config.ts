@@ -21,6 +21,16 @@ export default defineConfig({
   fullyParallel: false,
   workers: 1,
   timeout: 180_000,
+  // Deliberately no `retries`. The spec is `mode: "serial"`, so Playwright
+  // replays the whole file from the first test, but the web server seeds its
+  // single disposable database exactly once — a second attempt therefore runs
+  // against state the failed attempt already mutated. The first test alone
+  // rotates a password and provisions an account, and the Setup test creates
+  // "Temporary acceptance measure" and then ARCHIVES rather than deletes it,
+  // so a replay re-posts that name against a slug that is still taken and
+  // fails on the 409 no matter how transient the original failure was.
+  // Retries here would convert a flake into a slower, deterministic failure,
+  // so flaky assertions get fixed at the assertion instead.
   expect: {
     timeout: 15_000,
   },
