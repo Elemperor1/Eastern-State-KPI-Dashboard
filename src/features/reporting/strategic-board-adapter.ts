@@ -143,6 +143,8 @@ export function buildStrategicBoardReportFromSummary({
                         componentResult?.components?.map(
                           (entry) => entry.result.state,
                         ) ?? [],
+                      issueCodes:
+                        componentResult?.issues.map((issue) => issue.code) ?? [],
                     }),
                     numerator: componentResult?.numerator ?? null,
                     denominator: componentResult?.denominator ?? null,
@@ -264,6 +266,8 @@ export function buildStrategicBoardReportFromSummary({
                       calculation?.components?.map(
                         (component) => component.result.state,
                       ) ?? [],
+                    issueCodes:
+                      calculation?.issues.map((issue) => issue.code) ?? [],
                   }),
                   numerator:
                     calculation?.numerator ?? null,
@@ -528,6 +532,7 @@ function presentBoardResult({
   distributionRespondentTotal,
   aggregationMethod,
   componentStates,
+  issueCodes = [],
 }: {
   measurementType: BoardMeasurementType;
   state: BoardResultState;
@@ -538,7 +543,14 @@ function presentBoardResult({
   distributionRespondentTotal: number | null;
   aggregationMethod: string | null;
   componentStates: BoardResultState[];
+  issueCodes?: string[];
 }): string {
+  // A period that recorded no responses is not an unreported period. Both
+  // are `missing` because neither yields a value, but collapsing them to
+  // "Not reported" would describe deliberately recorded evidence as absent.
+  if (state === "missing" && issueCodes.includes("NO_RESPONSES_RECORDED")) {
+    return "No responses";
+  }
   if (state === "missing") return "Not reported";
   if (state === "invalid") return "Needs review";
   if (measurementType === "distribution") {

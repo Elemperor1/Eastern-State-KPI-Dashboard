@@ -110,6 +110,51 @@ describe("strategic board adapter", () => {
     });
   });
 
+  it("distinguishes a recorded no-response period from an unreported one", () => {
+    const summary = summaryFixture();
+    const kpiSummary = summary.goals[0]!.kpis[0]!;
+    kpiSummary.measurementType = "average";
+    kpiSummary.currentValue = null;
+    const {
+      component_id: _componentId,
+      component_label: _componentLabel,
+      ...baseObservation
+    } = componentEntry();
+    void _componentId;
+    void _componentLabel;
+    kpiSummary.currentCalculation = calculateStrategyObservation(
+      {
+        ...baseObservation,
+        measurement_type: "average",
+        scalar_value: null,
+        average_method: "percent_positive",
+        positive_response_count: 0,
+        total_response_count: 0,
+      },
+      { measurementType: "average", precision: 1, unit: null },
+    );
+
+    const report = buildStrategicBoardReportFromSummary({
+      summary,
+      goals: [goalFixture()],
+    });
+    const kpi = report.priorities[0]?.goals[0]?.kpis[0];
+
+    // Both states are `missing` because neither yields a value, but the
+    // Board must not describe recorded evidence as absent.
+    expect(kpi?.result).toMatchObject({
+      state: "missing",
+      displayValue: "No responses",
+    });
+    expect(kpi?.result.displayValue).not.toBe("Not reported");
+    // The recorded zeros survive into the reported columns.
+    expect(kpi?.result.respondentCount).toBe(0);
+    // ...and the reason is stated rather than left to inference.
+    expect(kpi?.unresolvedReasons).toContain(
+      "No responses were recorded for this period.",
+    );
+  });
+
   it("shows the year-to-date aggregate as the Result for additive monthly measures (S038-C1)", () => {
     const summary = summaryFixture();
     const kpiSummary = summary.goals[0]!.kpis[0]!;

@@ -1176,7 +1176,14 @@ function calculateAverage(input: AverageMeasurementInput, precision: number): Me
       state: "missing",
       measurementType: input.measurementType,
       precision,
-      respondentCount: respondentCheck.value,
+      // Keep the recorded zeros, exactly as the success path does. Percent
+      // positive carries its count in the response total rather than
+      // respondentCount, and dropping the raw pair here would blank the
+      // Respondents, numerator, and denominator columns in the Board report
+      // and its CSV for a period that was deliberately recorded.
+      respondentCount: respondentCheck.value ?? denominatorValue,
+      numerator: numeratorValue,
+      denominator: denominatorValue,
       issues: [missing("NO_RESPONSES_RECORDED", "No responses were recorded for this period.", "totalResponseCount")],
     });
   }
@@ -1489,6 +1496,13 @@ function calculateMultiComponent(
       precision,
       aggregationMethod: "none",
       components,
+      // An unaggregated parent has no value of its own, but its components'
+      // qualified and failed reasons are the only explanation the report can
+      // show. Dropping them left a recorded no-response component with no
+      // stated reason anywhere on the Board.
+      issues: components.flatMap((component) =>
+        component.result.state === "ok" ? [] : component.result.issues,
+      ),
     });
   }
 
