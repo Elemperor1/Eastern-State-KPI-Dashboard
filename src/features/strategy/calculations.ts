@@ -645,9 +645,20 @@ export function calculateAnnualAndPlanProgress(
 
   const annualTargetCheck = readOptionalFinite(input.annualTarget, "annualTarget");
   const targetToDateCheck = readOptionalFinite(input.annualTargetToDate, "annualTargetToDate");
+  // The baseline is one of the pacing target's inputs, so an unusable baseline
+  // has to refuse the whole calculation here. Checking it only afterwards would
+  // publish a pacing target derived as though no baseline were set, next to
+  // progress results that correctly report themselves invalid.
+  const baselineCheck = readOptionalFinite(input.annualBaseline, "annualBaseline");
   let pacingTarget: number | null = null;
-  if (targetToDateCheck.issue?.kind === "invalid" || annualTargetCheck.issue?.kind === "invalid") {
-    const issue = targetToDateCheck.issue ?? annualTargetCheck.issue as CalculationIssue;
+  if (
+    targetToDateCheck.issue?.kind === "invalid" ||
+    annualTargetCheck.issue?.kind === "invalid" ||
+    baselineCheck.issue?.kind === "invalid"
+  ) {
+    const issue = (targetToDateCheck.issue ??
+      annualTargetCheck.issue ??
+      baselineCheck.issue) as CalculationIssue;
     const invalidProgress = progressResult({
       state: "invalid",
       status: "needs_definition",
@@ -662,7 +673,6 @@ export function calculateAnnualAndPlanProgress(
       issues: [issue],
     };
   }
-  const baselineCheck = readOptionalFinite(input.annualBaseline, "annualBaseline");
   if (targetToDateCheck.value !== null) {
     pacingTarget = targetToDateCheck.value;
   } else if (annualTargetCheck.value !== null) {

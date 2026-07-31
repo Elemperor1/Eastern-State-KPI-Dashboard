@@ -146,7 +146,9 @@ the CSRF and same-origin guards compare against it byte for byte. Omit the
 port only when it is 80 — URL parsing drops the default port, so
 `http://10.20.30.40:80` is rejected. Never add a trailing slash.
 `SESSION_SECURE=false` must accompany a plain-HTTP origin; with `true` the
-session cookie is never sent and every login silently fails.
+session cookie is never sent and every login silently fails. The preflight
+check enforces the pairing in both directions and refuses to start on a
+mismatch, so an HTTPS origin requires `SESSION_SECURE=true`.
 
 `TRUST_PROXY=false` is the safe initial value. Change it to `true` only after
 the reverse proxy is configured to discard client-supplied forwarding

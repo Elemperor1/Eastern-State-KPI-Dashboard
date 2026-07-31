@@ -93,7 +93,8 @@ export function validateWindowsRuntimeEnvironment(runtime) {
   // This installation is reachable only over a VPN-restricted private
   // network and is served as plain HTTP, so Secure cookies would never be
   // sent. The value stays explicit rather than defaulted: an unset or
-  // mistyped setting must fail closed instead of silently choosing.
+  // mistyped setting must fail closed instead of silently choosing. It is
+  // then cross-checked against the origin scheme below.
   if (
     runtime.SESSION_SECURE !== "true" &&
     runtime.SESSION_SECURE !== "false"
@@ -157,6 +158,7 @@ export function validateWindowsRuntimeEnvironment(runtime) {
     .split(",")
     .map((origin) => origin.trim())
     .filter(Boolean);
+  const protocols = new Set();
   if (origins.length === 0) {
     problems.push("APP_CANONICAL_ORIGIN must name at least one origin.");
   } else {
@@ -179,10 +181,26 @@ export function validateWindowsRuntimeEnvironment(runtime) {
         ) {
           throw new Error("invalid origin");
         }
+        protocols.add(parsed.protocol);
       } catch {
         problems.push("APP_CANONICAL_ORIGIN entries must be exact http or https origins without paths or credentials.");
+        protocols.clear();
         break;
       }
+    }
+  }
+  // The two settings are only correct together. A Secure cookie is never sent
+  // over http, so an http origin with SESSION_SECURE=true fails every login
+  // silently; and an https origin with SESSION_SECURE=false hands out a
+  // session cookie that a plain-http request would carry in cleartext. Only
+  // cross-check once both sides are individually well formed, so a mistyped
+  // value is reported as itself rather than as a mismatch.
+  if (protocols.size > 0 && (runtime.SESSION_SECURE === "true" || runtime.SESSION_SECURE === "false")) {
+    const servesPlainHttp = protocols.has("http:");
+    if (servesPlainHttp && runtime.SESSION_SECURE !== "false") {
+      problems.push("SESSION_SECURE must be false when APP_CANONICAL_ORIGIN serves http, because Secure cookies are never sent over http.");
+    } else if (!servesPlainHttp && runtime.SESSION_SECURE !== "true") {
+      problems.push("SESSION_SECURE must be true when every APP_CANONICAL_ORIGIN is https.");
     }
   }
   if (

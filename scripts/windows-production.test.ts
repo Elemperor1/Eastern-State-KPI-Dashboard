@@ -139,6 +139,49 @@ describe("native Windows production startup", () => {
     ).toEqual([]);
   });
 
+  it("refuses a cookie policy that contradicts the origin scheme", () => {
+    // A Secure cookie is never sent over http, so this combination would
+    // fail every login with no visible error; the reverse combination would
+    // hand out a session cookie that plain http could carry in cleartext.
+    expect(
+      validateWindowsRuntimeEnvironment(
+        validRuntime({
+          APP_CANONICAL_ORIGIN: "http://10.20.30.40:8080",
+          SESSION_SECURE: "true",
+        }),
+      ).join(" "),
+    ).toMatch(/SESSION_SECURE must be false when APP_CANONICAL_ORIGIN serves http/u);
+    expect(
+      validateWindowsRuntimeEnvironment(
+        validRuntime({
+          APP_CANONICAL_ORIGIN: "https://strategy.easternstate.org",
+          SESSION_SECURE: "false",
+        }),
+      ).join(" "),
+    ).toMatch(/SESSION_SECURE must be true when every APP_CANONICAL_ORIGIN is https/u);
+    // One plain-http entry decides the whole list: the cookie cannot be
+    // marked Secure and still reach the http origin.
+    expect(
+      validateWindowsRuntimeEnvironment(
+        validRuntime({
+          APP_CANONICAL_ORIGIN: "https://strategy.easternstate.org,http://10.20.30.40:8080",
+          SESSION_SECURE: "true",
+        }),
+      ).join(" "),
+    ).toMatch(/SESSION_SECURE must be false when APP_CANONICAL_ORIGIN serves http/u);
+  });
+
+  it("reports a mistyped cookie policy as itself rather than as a scheme mismatch", () => {
+    const problems = validateWindowsRuntimeEnvironment(
+      validRuntime({
+        APP_CANONICAL_ORIGIN: "http://10.20.30.40:8080",
+        SESSION_SECURE: "maybe",
+      }),
+    );
+
+    expect(problems).toEqual(["SESSION_SECURE must be explicitly true or false."]);
+  });
+
   it("still requires an exact origin with no default port or trailing path", () => {
     // URL parsing drops the default port, so ":80" would never match the
     // Origin header the browser actually sends.

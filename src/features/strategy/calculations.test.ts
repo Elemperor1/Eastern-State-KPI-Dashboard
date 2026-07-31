@@ -596,6 +596,25 @@ describe("strategy calculation kernel", () => {
       expect(result.annualPacing.state).toBe("ok");
       expect(result.annualPacing.actualProgressPercentage).toBe(50);
     });
+
+    it("refuses the whole calculation when the baseline is not a finite number", () => {
+      // The baseline is an input to the pacing target. Checking it only after
+      // the derivation published a pacing target computed as though no
+      // baseline were set, next to progress results that reported invalid.
+      const result = calculateAnnualAndPlanProgress({
+        annualActual: 150,
+        annualTarget: 200,
+        annualBaseline: Number.NaN,
+        elapsedFraction: 0.5,
+        direction: "higher",
+        precision: 1,
+      });
+
+      expect(result.state).toBe("invalid");
+      expect(result.pacingTarget).toBeNull();
+      expect(result.issues[0]?.field).toBe("annualBaseline");
+      expect(result.annualPacing.state).toBe("invalid");
+    });
   });
 
   describe("multi-component aggregation", () => {

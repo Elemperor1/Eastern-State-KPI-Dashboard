@@ -2,7 +2,7 @@
 
 import { Badge, EmptyState, Table } from "@/components/ui";
 import type { StrategicAuditEvent } from "@/features/strategy";
-import { parseUtcTimestamp } from "@/lib/sqlite-timestamp";
+import { formatUtcTimestamp } from "@/lib/sqlite-timestamp";
 
 export type SetupAuditEvent = Omit<
   StrategicAuditEvent,
@@ -48,7 +48,7 @@ export function StrategicAuditTable({
             {events.map((event) => (
               <tr key={`${event.entity_type}-${event.id}`} className="align-top">
                 <td className="whitespace-nowrap text-xs tabular-nums text-ink-500">
-                  {formatDate(event.occurred_at)}
+                  {formatUtcTimestamp(event.occurred_at)}
                 </td>
                 <td>
                   <p className="font-semibold text-ink-900">{event.entity_display_name}</p>
@@ -115,10 +115,4 @@ function snapshot(value: unknown): string {
 /** Implements the display token operation. */
 function displayToken(value: string): string {
   return value.replaceAll("_", " ").replace(/^./, (letter) => letter.toUpperCase());
-}
-
-/** Formats date. */
-function formatDate(value: string): string {
-  const date = parseUtcTimestamp(value);
-  return Number.isNaN(date.getTime()) ? value : date.toLocaleString();
 }
