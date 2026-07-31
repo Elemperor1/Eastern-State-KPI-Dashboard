@@ -140,8 +140,10 @@ afterAll(() => {
 
 /** Fresh DB + bootstrap accounts + clean jar + clean throttle. */
 function freshDb(): void {
-  fs.rmSync(dbPath, { force: true });
+  // Close the previous connection BEFORE unlinking the file: POSIX allows
+  // unlinking an open file, Windows refuses it with EPERM.
   resetDb();
+  fs.rmSync(dbPath, { force: true });
   ensureSeedAdmin();
   resetThrottle();
   resetSession();

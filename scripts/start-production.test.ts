@@ -12,7 +12,11 @@ afterEach(() => {
   }
 });
 
-describe("production startup", () => {
+// POSIX-only: this exercises `scripts/start-production.sh`, the Linux and
+// container entrypoint, by putting shell shims on PATH and asserting the
+// `exec` line it produces. Windows production startup is a separate
+// entrypoint with its own coverage in `scripts/windows-production.test.ts`.
+describe.skipIf(process.platform === "win32")("production startup", () => {
   it("continues to Next when the best-effort startup logger fails", () => {
     const binDirectory = fs.mkdtempSync(
       path.join(os.tmpdir(), "start-production-"),

@@ -41,9 +41,14 @@ function runSeed(overrides: Record<string, string>) {
   delete env.SEED_CONFIRM;
   delete env.NODE_ENV;
   Object.assign(env, overrides);
+  // `node_modules/.bin/tsx` is an extensionless POSIX shim that Windows
+  // cannot spawn (ENOENT); run tsx's CLI with the current Node binary.
   return spawnSync(
-    path.join(process.cwd(), "node_modules", ".bin", "tsx"),
-    ["scripts/seed.ts"],
+    process.execPath,
+    [
+      path.join(process.cwd(), "node_modules", "tsx", "dist", "cli.mjs"),
+      "scripts/seed.ts",
+    ],
     { cwd: process.cwd(), env: env as NodeJS.ProcessEnv, encoding: "utf8" },
   );
 }

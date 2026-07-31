@@ -18,7 +18,14 @@ afterEach(() => {
   });
 });
 
-describe("Playwright database isolation", () => {
+// POSIX-only. `createE2EDatabaseRun` proves its isolation with Unix file
+// semantics that Windows does not implement: a 0o700 private run directory
+// (Windows reports 0o666/0o777 regardless of the requested mode, so the
+// ownership check can never hold) and symlink fixtures (unprivileged
+// symlink creation fails with EPERM outside Developer Mode). The harness
+// under test only ever runs on the Linux Playwright job, so the suite is
+// skipped rather than asserting weaker guarantees on Windows.
+describe.skipIf(process.platform === "win32")("Playwright database isolation", () => {
   it("creates each default database inside a private unique run directory", () => {
     const temporaryDirectory = fs.mkdtempSync(
       path.join(os.tmpdir(), "es-kpi-e2e-run-root-"),

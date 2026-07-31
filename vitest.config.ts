@@ -29,6 +29,15 @@ export default defineConfig({
   plugins: [stripShebang()],
   test: {
     environment: "node",
+    // Several suites (migrate, seed-guard, ensure-seeded, and the shell
+    // guard harnesses) spawn real child processes — tsx, bash, and the
+    // repository guards — rather than stubbing them. Windows process
+    // creation costs roughly two orders of magnitude more than the POSIX
+    // fork these suites were tuned against, so the 5s default expired on
+    // work that had not hung. This ceiling still fails a genuine hang
+    // quickly enough to be useful.
+    testTimeout: 30_000,
+    hookTimeout: 30_000,
     include: [
       "src/**/*.test.ts",
       "src/**/*.test.tsx",
