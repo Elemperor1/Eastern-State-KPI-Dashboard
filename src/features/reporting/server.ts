@@ -28,6 +28,7 @@ import type {
 } from "./types";
 import { listCalculatedStrategyActuals } from "./strategy-actuals-server";
 import type { StrategicCalculatedActual } from "./strategy-actuals";
+import { buildPeriodTrendSeries } from "./period-trend";
 import {
   buildStrategicDashboardSummary,
   type StrategicDashboardSummary,
@@ -558,6 +559,13 @@ export function loadStrategicTrendReportData({
     planStartYear: plan.startYear,
     planId: plan.id,
   });
+  // The period view must not reveal results the selected reporting cutoff
+  // hides from the yearly view, so both read from the same scoped set.
+  const scopedActuals = actuals.filter((actual) =>
+    reportingPeriod
+      ? actualIncludedInReportingCycle(actual, reportingPeriod)
+      : actual.year < year || periodIncluded(actual, throughMonth),
+  );
 
   return {
     organizationSlug: getActiveInstallation().organization.slug,
@@ -570,6 +578,10 @@ export function loadStrategicTrendReportData({
         priorityName: goal.priority_name,
         unit: member.configuration?.unit ?? member.kpi.unit,
         restoredWithHiddenData: hiddenValueKpiIds.has(member.kpi_id),
+        periodTrend: buildPeriodTrendSeries(
+          scopedActuals.filter((actual) => actual.kpiId === member.kpi_id),
+          { selectedYear: year },
+        ),
         points: years.map((pointYear) => {
           const candidates = actuals.filter(
             (actual) =>

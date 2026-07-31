@@ -450,6 +450,11 @@
     --chart-primary: #209ba5; /* main stroke / current year */
     --chart-grid: #e7eef0;
     --chart-axis: #557883;
+    /* Prior reporting years, deepest to softest, so older years read as a
+     fade behind the selected year rather than as competing series. */
+    --chart-history-1: #1f6b80;
+    --chart-history-2: #7aa3b0;
+    --chart-history-3: #b7ccd3;
   }
 
   * {
