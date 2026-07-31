@@ -28,7 +28,7 @@ function validRuntime(overrides: Record<string, string> = {}): Record<string, st
     APP_CANONICAL_ORIGIN: "https://strategy.easternstate.org",
     SESSION_SECURE: "true",
     TRUST_PROXY: "false",
-    SESSION_SECRET: "0123456789abcdef0123456789abcdef",
+    SESSION_SECRET: "test-secret-test-secret-test-secret-test",
     PLAN_ACTIVATION_BACKUP_DIR:
       "C:\\Database\\data\\plan-activation-backups",
     SUCCESSOR_PLANS_ENABLED: "false",

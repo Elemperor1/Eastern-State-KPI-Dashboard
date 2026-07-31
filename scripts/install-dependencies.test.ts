@@ -4,6 +4,7 @@ import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   approvedInstalledSpecs,
+  resolveNpmCli,
   runControlledInstall,
 } from "./install-dependencies.mjs";
 
@@ -125,6 +126,29 @@ describe("controlled dependency install", () => {
         "--omit=dev",
       ],
       directory,
+    );
+  });
+
+  // Windows cannot spawn npm.cmd with shell: false, so the installer runs
+  // npm's CLI file with the current Node binary instead of the launcher shim.
+  it("resolves npm's CLI file beside the Node executable", () => {
+    const nodeDirectory = path.join(directory, "node-install");
+    const cli = path.join(
+      nodeDirectory,
+      "node_modules",
+      "npm",
+      "bin",
+      "npm-cli.js",
+    );
+    fs.mkdirSync(path.dirname(cli), { recursive: true });
+    fs.writeFileSync(cli, "");
+
+    expect(resolveNpmCli("", path.join(nodeDirectory, "node.exe"))).toBe(cli);
+    expect(resolveNpmCli(nodeDirectory, path.join(directory, "node.exe"))).toBe(
+      cli,
+    );
+    expect(() => resolveNpmCli("", path.join(directory, "node.exe"))).toThrow(
+      /npm's CLI entry point was not found/u,
     );
   });
 });
