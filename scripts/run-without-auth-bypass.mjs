@@ -39,22 +39,36 @@ function localCli(...segments) {
 
 /**
  * The exact verification tasks that must not inherit AUTH_DISABLED.
- * Each entry resolves to a JavaScript entry point executed with the
- * current Node binary, so no `.cmd` shim or shell is involved on any
- * platform.
+ *
+ * Repository-local tools resolve to a JavaScript entry point run with the
+ * current Node binary, so no `.cmd` shim or shell is involved anywhere.
+ * `npm` is not repository-local: it ships beside the Node installation,
+ * and only Windows needs the CLI-file treatment.
  */
 const TASKS = {
   "next-typegen": { cli: ["next", "dist", "bin", "next"], args: ["typegen"] },
   tsc: { cli: ["typescript", "bin", "tsc"], args: ["--noEmit"] },
-  // npm resolves beside the Node binary rather than under node_modules.
   build: { cli: null, args: ["run", "build"] },
 };
 
-/** Resolves one task name to its JavaScript entry point and arguments. */
-function resolveTask(name) {
+/**
+ * Resolves one task name to the executable and argument vector to spawn.
+ *
+ * The npm task stays platform-aware, mirroring
+ * `scripts/install-dependencies.mjs`: POSIX layouts put the CLI under
+ * `<prefix>/lib/node_modules/npm`, which `resolveNpmCli()` deliberately
+ * does not probe (it exists to dodge the Windows `npm.cmd` EINVAL), so
+ * calling it on Linux would fail the required CI gate before the
+ * production build ever started.
+ */
+export function resolveTask(name, platform = process.platform) {
   const task = TASKS[name];
-  const entry = task.cli === null ? resolveNpmCli() : localCli(...task.cli);
-  return [entry, task.args];
+  if (task.cli === null) {
+    return platform === "win32"
+      ? [process.execPath, [resolveNpmCli(), ...task.args]]
+      : ["npm", task.args];
+  }
+  return [process.execPath, [localCli(...task.cli), ...task.args]];
 }
 
 /** Parses the fixed task-name argument surface. */
@@ -74,10 +88,24 @@ export function parseTaskNames(args) {
   return args;
 }
 
-/** Returns the process environment with the auth bypass cleared. */
+/**
+ * Returns the process environment with the auth bypass cleared.
+ *
+ * Every key whose uppercase form is `AUTH_DISABLED` is removed, not just
+ * the exact-case one. Windows environment lookup is case-insensitive, so
+ * an inherited `auth_disabled=true` would survive a case-sensitive delete
+ * on the spread copy and still be visible to the child as
+ * `process.env.AUTH_DISABLED` — re-arming the bypass the gate exists to
+ * clear.
+ *
+ * @param {Record<string, string | undefined>} [inherited]
+ * @returns {Record<string, string | undefined>}
+ */
 export function environmentWithoutAuthBypass(inherited = process.env) {
   const environment = { ...inherited };
-  delete environment.AUTH_DISABLED;
+  for (const key of Object.keys(environment)) {
+    if (key.toUpperCase() === "AUTH_DISABLED") delete environment[key];
+  }
   return environment;
 }
 
@@ -87,16 +115,16 @@ export function runTasks({
   runner = defaultRunner,
 } = {}) {
   for (const name of parseTaskNames(names)) {
-    const [entry, entryArgs] = resolveTask(name);
-    const status = runner(entry, entryArgs);
+    const [executable, executableArgs] = resolveTask(name);
+    const status = runner(executable, executableArgs);
     if (status !== 0) return status;
   }
   return 0;
 }
 
-/** Executes one JavaScript entry point with the current Node binary. */
-function defaultRunner(entry, entryArgs) {
-  const result = spawnSync(process.execPath, [entry, ...entryArgs], {
+/** Executes one resolved task without a shell, bypass cleared. */
+function defaultRunner(executable, executableArgs) {
+  const result = spawnSync(executable, executableArgs, {
     cwd: APP_ROOT,
     env: environmentWithoutAuthBypass(),
     stdio: "inherit",

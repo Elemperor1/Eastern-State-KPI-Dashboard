@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   environmentWithoutAuthBypass,
   parseTaskNames,
+  resolveTask,
   runTasks,
 } from "./run-without-auth-bypass.mjs";
 
@@ -30,6 +31,19 @@ describe("verification tasks without the auth bypass", () => {
     });
   });
 
+  it("clears the bypass whatever case Windows inherited it in", () => {
+    // Windows environment lookup is case-insensitive, so a surviving
+    // `auth_disabled` key would still reach the child as
+    // `process.env.AUTH_DISABLED`.
+    const environment = environmentWithoutAuthBypass({
+      auth_disabled: "true",
+      Auth_Disabled: "1",
+      PORT: "3000",
+    });
+
+    expect(Object.keys(environment)).toEqual(["PORT"]);
+  });
+
   it("accepts the exact supported task names", () => {
     expect(parseTaskNames(["next-typegen", "tsc"])).toEqual([
       "next-typegen",
@@ -49,11 +63,28 @@ describe("verification tasks without the auth bypass", () => {
     );
   });
 
+  it("invokes npm directly on POSIX rather than the Windows CLI resolver", () => {
+    // `resolveNpmCli()` only probes `<node-bin>/node_modules/npm`; POSIX
+    // installs put the CLI under `<prefix>/lib/node_modules/npm`, so
+    // calling it on Linux would fail the required CI gate before the
+    // production build started.
+    expect(resolveTask("build", "linux")).toEqual(["npm", ["run", "build"]]);
+    expect(resolveTask("build", "darwin")).toEqual(["npm", ["run", "build"]]);
+  });
+
+  it("runs a repository-local tool with the current Node binary", () => {
+    const [executable, args] = resolveTask("tsc", "linux");
+
+    expect(executable).toBe(process.execPath);
+    expect(args[0]).toMatch(/typescript[\\/]bin[\\/]tsc$/u);
+    expect(args[1]).toBe("--noEmit");
+  });
+
   it("runs every named task in order", () => {
     const invoked: string[] = [];
-    /** Records each entry point instead of spawning it. */
-    const runner = (entry: string) => {
-      invoked.push(entry);
+    /** Records each resolved entry point instead of spawning it. */
+    const runner = (_executable: string, args: string[]) => {
+      invoked.push(args[0] ?? "");
       return 0;
     };
 
@@ -66,8 +97,8 @@ describe("verification tasks without the auth bypass", () => {
   it("stops at the first failing task and reports its status", () => {
     const invoked: string[] = [];
     /** Fails the first task so the second must not run. */
-    const runner = (entry: string) => {
-      invoked.push(entry);
+    const runner = (_executable: string, args: string[]) => {
+      invoked.push(args[0] ?? "");
       return 2;
     };
 
